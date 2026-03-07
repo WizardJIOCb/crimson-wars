@@ -36,6 +36,8 @@ const game = {
   sortedTrees: [],
   qualityKey: 'medium',
   renderPlayers: new Map(),
+  renderEnemies: new Map(),
+  renderBullets: new Map(),
 };
 
 const camera = { x: 0, y: 0 };
@@ -184,6 +186,62 @@ function updatePlayerInterpolation(dt) {
 
 function getPlayerRenderPos(player) {
   return game.renderPlayers.get(player.id) || player;
+}
+
+function updateEnemyInterpolation(dt) {
+  if (!game.state) return;
+  const alpha = 1 - Math.exp(-14 * dt);
+  const alive = new Set();
+
+  for (const e of game.state.enemies) {
+    alive.add(e.id);
+    let r = game.renderEnemies.get(e.id);
+    if (!r) {
+      r = { x: e.x, y: e.y };
+      game.renderEnemies.set(e.id, r);
+      continue;
+    }
+
+    r.x += (e.x - r.x) * alpha;
+    r.y += (e.y - r.y) * alpha;
+  }
+
+  for (const id of Array.from(game.renderEnemies.keys())) {
+    if (!alive.has(id)) game.renderEnemies.delete(id);
+  }
+}
+
+function updateBulletInterpolation(dt) {
+  if (!game.state) return;
+  const alpha = 1 - Math.exp(-20 * dt);
+  const alive = new Set();
+
+  for (const b of game.state.bullets) {
+    const id = b.id ?? `${b.x.toFixed(1)}:${b.y.toFixed(1)}`;
+    alive.add(id);
+    let r = game.renderBullets.get(id);
+    if (!r) {
+      r = { x: b.x, y: b.y };
+      game.renderBullets.set(id, r);
+      continue;
+    }
+
+    r.x += (b.x - r.x) * alpha;
+    r.y += (b.y - r.y) * alpha;
+  }
+
+  for (const id of Array.from(game.renderBullets.keys())) {
+    if (!alive.has(id)) game.renderBullets.delete(id);
+  }
+}
+
+function getEnemyRenderPos(enemy) {
+  return game.renderEnemies.get(enemy.id) || enemy;
+}
+
+function getBulletRenderPos(bullet) {
+  const id = bullet.id ?? `${bullet.x.toFixed(1)}:${bullet.y.toFixed(1)}`;
+  return game.renderBullets.get(id) || bullet;
 }
 function isVisibleWorld(x, y, pad = 0) {
   const sx = x - camera.x;
@@ -460,7 +518,9 @@ function drawPlayer(p, t, isMe, rx, ry) {
 
     ctx.save();
     ctx.translate(x, y + 2);
-    if (isMe && input.pointerX < x) ctx.scale(-1, 1);
+    const rv = game.renderPlayers.get(p.id);
+    const faceLeft = isMe ? (input.pointerX > x) : ((rv?.vx || 0) < -0.2);
+    if (faceLeft) ctx.scale(-1, 1);
     ctx.drawImage(sprites.player, frame * fw, 0, fw, fh, -18, -30, 36, 54);
     ctx.restore();
   } else {
@@ -488,10 +548,10 @@ function drawEnemies(enemies, t) {
       const frame = Math.floor(t * 12) % frames;
       ctx.drawImage(sprites.enemy, frame * fw, 0, fw, fh, x - 21, y - 24, 42, 50);
     } else {
-      drawCircle(e.x, e.y, 18, '#ef4444');
+      drawCircle(re.x, re.y, 18, '#ef4444');
     }
 
-    drawHpBar(e.x, e.y, Math.max(0, e.hp / e.maxHp));
+    drawHpBar(re.x, re.y, Math.max(0, e.hp / e.maxHp));
   }
 }
 
@@ -536,6 +596,8 @@ function render(ts) {
 
   updateFx(dt);
   updatePlayerInterpolation(dt);
+  updateEnemyInterpolation(dt);
+  updateBulletInterpolation(dt);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   if (!game.state) {
@@ -594,6 +656,13 @@ function render(ts) {
 
 setInterval(sendInput, 1000 / 30);
 requestAnimationFrame(render);
+
+
+
+
+
+
+
 
 
 
