@@ -61,10 +61,27 @@ body {
 }
 
 #scoreboard {
-  max-width: 340px;
-  text-align: right;
+  max-width: 360px;
+  text-align: left;
 }
 
+#scoreboard .score-title {
+  font-weight: 700;
+  margin-bottom: 6px;
+  letter-spacing: 0.4px;
+}
+
+#scoreboard .score-row {
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#scoreboard .score-row.me {
+  font-weight: 700;
+  color: #f8fafc;
+}
 #join-overlay {
   position: fixed;
   inset: 0;

@@ -46,7 +46,7 @@ const game = {
 };
 
 const camera = { x: 0, y: 0 };
-const visuals = { blood: [], muzzle: [], enemyHp: new Map(), bulletIds: new Set(), groundTileCanvas: null, groundTileSize: 0 };
+const visuals = { blood: [], bloodPuddles: [], muzzle: [], enemyPrev: new Map(), bulletIds: new Set(), groundTileCanvas: null, groundTileSize: 0 };
 
 let joinMode = 'create';
 let infoPanelHidden = localStorage.getItem('cw:infoPanelHidden') === '1';
@@ -560,10 +560,14 @@ function isVisibleWorld(x, y, pad = 0) {
 
 function updateScoreboard(players) {
   const sorted = [...players].sort((a, b) => b.score - a.score);
-  scoreboardEl.innerHTML = sorted.map((p) => {
-    const line = `${p.name}: ${p.score} (${p.weaponLabel} ${p.ammo === null ? 'inf' : p.ammo})`;
-    return p.id === game.myId ? `<b>${line}</b>` : line;
-  }).join('<br>');
+  const rows = sorted.map((p) => {
+    const kills = Number(p.score) || 0;
+    const ammo = p.ammo === null ? 'inf' : p.ammo;
+    const meClass = p.id === game.myId ? ' me' : '';
+    return `<div class="score-row${meClass}">${p.name} - Kills: ${kills} (${p.weaponLabel} ${ammo})</div>`;
+  });
+
+  scoreboardEl.innerHTML = `<div class="score-title">Players</div>${rows.join('')}`;
 }
 
 function keyStateFromCode(code, isDown) {
@@ -645,6 +649,10 @@ ws.addEventListener('message', (ev) => {
     game.renderBullets.clear();
     game.netSnapshots = [];
     game.sampledNet = null;
+    visuals.enemyPrev = new Map();
+    visuals.bloodPuddles = [];
+    visuals.blood = [];
+    visuals.muzzle = [];
     roomMetaEl.textContent = `Room: ${msg.roomCode}`;
     statusEl.textContent = `Online as ${msg.id}`;
   }
@@ -706,16 +714,36 @@ function spawnBlood(x, y, count) {
   if (visuals.blood.length > q.maxBlood) visuals.blood.splice(0, visuals.blood.length - q.maxBlood);
 }
 
+function spawnBloodPuddle(x, y, intensity = 1) {
+  visuals.bloodPuddles.push({
+    x: x + (Math.random() * 10 - 5),
+    y: y + (Math.random() * 10 - 5),
+    r: 14 + Math.random() * 10 * intensity,
+    life: 1.2 + Math.random() * 0.6,
+    ttl: 1.2 + Math.random() * 0.6,
+  });
+  if (visuals.bloodPuddles.length > 60) visuals.bloodPuddles.splice(0, visuals.bloodPuddles.length - 60);
+}
+
 function processStateFx(nextState) {
-  const hpMap = new Map();
+  const prevMap = visuals.enemyPrev;
+  const nextMap = new Map();
+
   for (const e of nextState.enemies) {
-    hpMap.set(e.id, e.hp);
-    const prevHp = visuals.enemyHp.get(e.id);
-    if (typeof prevHp === 'number' && e.hp < prevHp) {
-      spawnBlood(e.x, e.y, Math.max(2, Math.floor((prevHp - e.hp) * 0.45)));
+    nextMap.set(e.id, { x: e.x, y: e.y, hp: e.hp });
+    const prev = prevMap.get(e.id);
+    if (prev && e.hp < prev.hp) {
+      spawnBlood(e.x, e.y, Math.max(2, Math.floor((prev.hp - e.hp) * 0.45)));
     }
   }
-  visuals.enemyHp = hpMap;
+
+  for (const [id, prev] of prevMap.entries()) {
+    if (!nextMap.has(id)) {
+      spawnBlood(prev.x, prev.y, 18);
+      spawnBloodPuddle(prev.x, prev.y, 1);
+    }
+  }
+  visuals.enemyPrev = nextMap;
 
   const playersById = new Map(nextState.players.map((p) => [p.id, p]));
   const ids = new Set();
@@ -734,7 +762,6 @@ function processStateFx(nextState) {
   const maxM = getQ().maxMuzzle;
   if (visuals.muzzle.length > maxM) visuals.muzzle.splice(0, visuals.muzzle.length - maxM);
 }
-
 function updateFx(dt) {
   for (let i = visuals.blood.length - 1; i >= 0; i -= 1) {
     const p = visuals.blood[i];
@@ -746,12 +773,16 @@ function updateFx(dt) {
     if (p.life <= 0) visuals.blood.splice(i, 1);
   }
 
+  for (let i = visuals.bloodPuddles.length - 1; i >= 0; i -= 1) {
+    visuals.bloodPuddles[i].life -= dt;
+    if (visuals.bloodPuddles[i].life <= 0) visuals.bloodPuddles.splice(i, 1);
+  }
+
   for (let i = visuals.muzzle.length - 1; i >= 0; i -= 1) {
     visuals.muzzle[i].life -= dt;
     if (visuals.muzzle[i].life <= 0) visuals.muzzle.splice(i, 1);
   }
 }
-
 function drawGround() {
   ctx.fillStyle = '#0d0f14';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -892,6 +923,15 @@ function drawEnemies(enemies, t) {
 }
 
 function drawFx() {
+  for (const p of visuals.bloodPuddles) {
+    if (!isVisibleWorld(p.x, p.y, 34)) continue;
+    const a = Math.max(0, p.life / p.ttl);
+    ctx.fillStyle = `rgba(120, 10, 18, ${(a * 0.6).toFixed(3)})`;
+    ctx.beginPath();
+    ctx.ellipse(p.x - camera.x, p.y - camera.y, p.r, p.r * 0.65, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   for (const p of visuals.blood) {
     if (!isVisibleWorld(p.x, p.y, 20)) continue;
     const a = Math.max(0, p.life / p.ttl);
