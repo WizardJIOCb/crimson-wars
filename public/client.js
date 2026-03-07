@@ -1,42 +1,112 @@
 ﻿
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
+
 const statusEl = document.getElementById('status');
 const roomMetaEl = document.getElementById('room-meta');
 const weaponMetaEl = document.getElementById('weapon-meta');
 const fpsMetaEl = document.getElementById('fps-meta');
+const qualitySelect = document.getElementById('quality-select');
 const scoreboardEl = document.getElementById('scoreboard');
 const joinOverlay = document.getElementById('join-overlay');
 const joinForm = document.getElementById('join-form');
 const nameInput = document.getElementById('name');
 const roomCodeInput = document.getElementById('room-code');
+
 ctx.imageSmoothingEnabled = false;
 
 const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
 const ws = new WebSocket(`${wsProto}://${location.host}`);
 
+const QUALITY = {
+  low: { groundTexture: false, groundTileSize: 96, maxBlood: 120, maxMuzzle: 28, bloodMult: 0.55, overlays: false },
+  medium: { groundTexture: true, groundTileSize: 128, maxBlood: 220, maxMuzzle: 50, bloodMult: 0.85, overlays: true },
+  high: { groundTexture: true, groundTileSize: 160, maxBlood: 360, maxMuzzle: 90, bloodMult: 1, overlays: true },
+};
+
 const input = { up: false, down: false, left: false, right: false, shooting: false, pointerX: 0, pointerY: 0 };
-const game = { myId: null, roomCode: null, connected: false, world: { width: 2400, height: 1400 }, state: null };
+const game = {
+  myId: null,
+  roomCode: null,
+  connected: false,
+  world: { width: 2400, height: 1400 },
+  state: null,
+  sortedTrees: [],
+  qualityKey: 'medium',
+};
+
 const camera = { x: 0, y: 0 };
+const visuals = { blood: [], muzzle: [], enemyHp: new Map(), bulletIds: new Set(), groundTileCanvas: null, groundTileSize: 0 };
+
 let joinMode = 'create';
 let lastFrameTs = performance.now();
 let fpsFrameCount = 0;
 let fpsAccumSec = 0;
-let fpsShown = 0;
 
-const visuals = { blood: [], muzzle: [], enemyHp: new Map(), bulletIds: new Set(), groundPattern: null };
+function loadImage(src) {
+  const img = new Image();
+  img.src = src;
+  return img;
+}
 
-function loadImage(src) { const img = new Image(); img.src = src; return img; }
 const sprites = {
   player: loadImage('/assets/sprites/player_dude.png'),
   enemy: loadImage('/assets/sprites/enemy_mummy.png'),
-  tree: loadImage('/assets/sprites/tree.png'),
   ground: loadImage('/assets/tiles/ground_grass.jpg'),
 };
 
-function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+function getQ() {
+  return QUALITY[game.qualityKey] || QUALITY.medium;
+}
+
+function rebuildGroundTile() {
+  visuals.groundTileCanvas = null;
+  if (!sprites.ground.complete || sprites.ground.naturalWidth <= 0 || !getQ().groundTexture) return;
+
+  const size = getQ().groundTileSize;
+  const c = document.createElement('canvas');
+  c.width = size;
+  c.height = size;
+  const g = c.getContext('2d');
+
+  g.drawImage(sprites.ground, 0, 0, size, size);
+  g.fillStyle = 'rgba(8,10,14,0.72)';
+  g.fillRect(0, 0, size, size);
+
+  visuals.groundTileCanvas = c;
+  visuals.groundTileSize = size;
+}
+
+sprites.ground.addEventListener('load', rebuildGroundTile);
+
+qualitySelect?.addEventListener('change', () => {
+  const q = qualitySelect.value;
+  if (!QUALITY[q]) return;
+  game.qualityKey = q;
+  rebuildGroundTile();
+});
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
+
+function isVisibleWorld(x, y, pad = 0) {
+  const sx = x - camera.x;
+  const sy = y - camera.y;
+  return sx >= -pad && sx <= canvas.width + pad && sy >= -pad && sy <= canvas.height + pad;
+}
+
+function updateScoreboard(players) {
+  const sorted = [...players].sort((a, b) => b.score - a.score);
+  scoreboardEl.innerHTML = sorted.map((p) => {
+    const line = `${p.name}: ${p.score} (${p.weaponLabel} ${p.ammo === null ? 'inf' : p.ammo})`;
+    return p.id === game.myId ? `<b>${line}</b>` : line;
+  }).join('<br>');
+}
 
 function keyStateFromCode(code, isDown) {
   if (code === 'KeyW' || code === 'ArrowUp') input.up = isDown;
@@ -57,9 +127,9 @@ window.addEventListener('mouseup', () => { input.shooting = false; });
 canvas.addEventListener('mousemove', (e) => { input.pointerX = e.clientX; input.pointerY = e.clientY; });
 
 joinForm.addEventListener('click', (e) => {
-  const target = e.target;
-  if (!(target instanceof HTMLButtonElement)) return;
-  joinMode = target.dataset.mode || 'create';
+  const t = e.target;
+  if (!(t instanceof HTMLButtonElement)) return;
+  joinMode = t.dataset.mode || 'create';
 });
 
 joinForm.addEventListener('submit', (e) => {
@@ -71,8 +141,15 @@ joinForm.addEventListener('submit', (e) => {
   joinOverlay.style.display = 'none';
 });
 
-ws.addEventListener('open', () => { game.connected = true; statusEl.textContent = 'Connected. Create room or join code.'; });
-ws.addEventListener('close', () => { game.connected = false; statusEl.textContent = 'Disconnected'; });
+ws.addEventListener('open', () => {
+  game.connected = true;
+  statusEl.textContent = 'Connected. Create room or join code.';
+});
+
+ws.addEventListener('close', () => {
+  game.connected = false;
+  statusEl.textContent = 'Disconnected';
+});
 ws.addEventListener('message', (ev) => {
   let msg;
   try { msg = JSON.parse(ev.data); } catch { return; }
@@ -83,17 +160,29 @@ ws.addEventListener('message', (ev) => {
     roomMetaEl.textContent = `Room: ${msg.roomCode}`;
     statusEl.textContent = `Online as ${msg.id}`;
   }
+
   if (msg.type === 'joinError') {
     statusEl.textContent = msg.message;
     joinOverlay.style.display = 'grid';
   }
+
   if (msg.type === 'system') statusEl.textContent = msg.message;
 
   if (msg.type === 'state') {
-    processStateFx(msg.payload);
-    game.state = msg.payload;
-    game.world = msg.payload.world;
-    roomMetaEl.textContent = `Room: ${msg.payload.roomCode}`;
+    const s = msg.payload;
+    processStateFx(s);
+    game.state = s;
+    game.world = s.world;
+    game.roomCode = s.roomCode;
+    roomMetaEl.textContent = `Room: ${s.roomCode}`;
+
+    game.sortedTrees = (s.decor?.trees || []).slice().sort((a, b) => a.y - b.y);
+    updateScoreboard(s.players);
+
+    const me = s.players.find((p) => p.id === game.myId);
+    if (me) {
+      weaponMetaEl.textContent = `Weapon: ${me.weaponLabel} | Ammo: ${me.ammo === null ? 'inf' : me.ammo}`;
+    }
   }
 });
 
@@ -104,9 +193,25 @@ function sendInput() {
 
   const moveX = (input.right ? 1 : 0) - (input.left ? 1 : 0);
   const moveY = (input.down ? 1 : 0) - (input.up ? 1 : 0);
-  const aimX = input.pointerX + camera.x;
-  const aimY = input.pointerY + camera.y;
-  ws.send(JSON.stringify({ type: 'input', moveX, moveY, aimX, aimY, shooting: input.shooting }));
+  ws.send(JSON.stringify({
+    type: 'input',
+    moveX,
+    moveY,
+    aimX: input.pointerX + camera.x,
+    aimY: input.pointerY + camera.y,
+    shooting: input.shooting,
+  }));
+}
+
+function spawnBlood(x, y, count) {
+  const q = getQ();
+  const n = Math.floor(count * q.bloodMult);
+  for (let i = 0; i < n; i += 1) {
+    const a = Math.random() * Math.PI * 2;
+    const sp = 30 + Math.random() * 170;
+    visuals.blood.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.2 + Math.random() * 0.45, ttl: 0.2 + Math.random() * 0.45, s: 1.2 + Math.random() * 2.4 });
+  }
+  if (visuals.blood.length > q.maxBlood) visuals.blood.splice(0, visuals.blood.length - q.maxBlood);
 }
 
 function processStateFx(nextState) {
@@ -114,7 +219,9 @@ function processStateFx(nextState) {
   for (const e of nextState.enemies) {
     hpMap.set(e.id, e.hp);
     const prevHp = visuals.enemyHp.get(e.id);
-    if (typeof prevHp === 'number' && e.hp < prevHp) spawnBlood(e.x, e.y, Math.max(3, Math.floor((prevHp - e.hp) * 0.5)));
+    if (typeof prevHp === 'number' && e.hp < prevHp) {
+      spawnBlood(e.x, e.y, Math.max(2, Math.floor((prevHp - e.hp) * 0.45)));
+    }
   }
   visuals.enemyHp = hpMap;
 
@@ -126,29 +233,27 @@ function processStateFx(nextState) {
       const owner = playersById.get(b.ownerId);
       if (owner) {
         const a = Math.atan2(b.y - owner.y, b.x - owner.x);
-        visuals.muzzle.push({ x: owner.x + Math.cos(a) * 20, y: owner.y + Math.sin(a) * 20, a, c: b.color || '#ffd166', life: 0.06, ttl: 0.06 });
+        visuals.muzzle.push({ x: owner.x + Math.cos(a) * 20, y: owner.y + Math.sin(a) * 20, a, c: b.color || '#ffd166', life: 0.05, ttl: 0.05 });
       }
     }
   }
   visuals.bulletIds = ids;
-}
 
-function spawnBlood(x, y, count) {
-  for (let i = 0; i < count; i += 1) {
-    const a = Math.random() * Math.PI * 2;
-    const sp = 30 + Math.random() * 210;
-    visuals.blood.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.25 + Math.random() * 0.6, ttl: 0.25 + Math.random() * 0.6, s: 1.5 + Math.random() * 3.5 });
-  }
+  const maxM = getQ().maxMuzzle;
+  if (visuals.muzzle.length > maxM) visuals.muzzle.splice(0, visuals.muzzle.length - maxM);
 }
 
 function updateFx(dt) {
   for (let i = visuals.blood.length - 1; i >= 0; i -= 1) {
     const p = visuals.blood[i];
     p.life -= dt;
-    p.x += p.vx * dt; p.y += p.vy * dt;
-    p.vx *= 0.95; p.vy *= 0.95;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vx *= 0.95;
+    p.vy *= 0.95;
     if (p.life <= 0) visuals.blood.splice(i, 1);
   }
+
   for (let i = visuals.muzzle.length - 1; i >= 0; i -= 1) {
     visuals.muzzle[i].life -= dt;
     if (visuals.muzzle[i].life <= 0) visuals.muzzle.splice(i, 1);
@@ -156,99 +261,58 @@ function updateFx(dt) {
 }
 
 function drawGround() {
-  if (sprites.ground.complete && sprites.ground.naturalWidth > 0) {
-    if (!visuals.groundPattern) visuals.groundPattern = ctx.createPattern(sprites.ground, 'repeat');
-    ctx.save();
-    ctx.translate(-camera.x, -camera.y);
+  ctx.fillStyle = '#0d0f14';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    ctx.fillStyle = visuals.groundPattern;
-    ctx.globalAlpha = 0.35;
-    ctx.fillRect(0, 0, game.world.width, game.world.height);
+  const q = getQ();
+  if (q.groundTexture && visuals.groundTileCanvas) {
+    const t = visuals.groundTileSize;
+    const startX = Math.floor(camera.x / t) * t;
+    const startY = Math.floor(camera.y / t) * t;
+    const endX = camera.x + canvas.width + t;
+    const endY = camera.y + canvas.height + t;
 
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = 'rgba(8,10,14,0.78)';
-    ctx.fillRect(0, 0, game.world.width, game.world.height);
+    for (let y = startY; y < endY; y += t) {
+      for (let x = startX; x < endX; x += t) {
+        ctx.drawImage(visuals.groundTileCanvas, x - camera.x, y - camera.y, t, t);
+      }
+    }
+  }
 
-    const lavaGlow = ctx.createRadialGradient(
-      game.world.width * 0.5,
-      game.world.height * 0.55,
-      120,
-      game.world.width * 0.5,
-      game.world.height * 0.55,
-      Math.max(game.world.width, game.world.height) * 0.7
-    );
-    lavaGlow.addColorStop(0, 'rgba(120,35,20,0.16)');
-    lavaGlow.addColorStop(1, 'rgba(25,8,8,0.03)');
-    ctx.fillStyle = lavaGlow;
-    ctx.fillRect(0, 0, game.world.width, game.world.height);
-
-    ctx.restore();
-  } else {
-    ctx.fillStyle = '#0d0f14';
+  if (q.overlays) {
+    const g = ctx.createRadialGradient(canvas.width * 0.5, canvas.height * 0.55, 70, canvas.width * 0.5, canvas.height * 0.55, Math.max(canvas.width, canvas.height) * 0.8);
+    g.addColorStop(0, 'rgba(120,35,20,0.13)');
+    g.addColorStop(1, 'rgba(16,8,8,0.02)');
+    ctx.fillStyle = g;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 }
 
-function drawCircle(x, y, r, fill, stroke) {
+function drawCircle(x, y, r, fill) {
   ctx.beginPath();
   ctx.arc(x - camera.x, y - camera.y, r, 0, Math.PI * 2);
   ctx.fillStyle = fill;
   ctx.fill();
-  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.stroke(); }
 }
 
 function drawHpBar(x, y, ratio) {
   const sx = x - camera.x - 19;
   const sy = y - camera.y - 36;
+  if (sx < -40 || sx > canvas.width + 40 || sy < -20 || sy > canvas.height + 20) return;
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
   ctx.fillRect(sx, sy, 38, 5);
   ctx.fillStyle = ratio > 0.35 ? '#84cc16' : '#ef4444';
   ctx.fillRect(sx, sy, 38 * ratio, 5);
 }
-function drawPlayer(p, t) {
-  const x = p.x - camera.x;
-  const y = p.y - camera.y;
-  const fw = 32;
-  const fh = 48;
-  if (sprites.player.complete && sprites.player.naturalWidth >= fw * 3) {
-    const moving = input.up || input.down || input.left || input.right;
-    const frame = moving ? Math.floor(t * 10) % 3 : 1;
-    ctx.save();
-    ctx.translate(x, y + 2);
-    if (input.pointerX < x) ctx.scale(-1, 1);
-    ctx.drawImage(sprites.player, frame * fw, 0, fw, fh, -18, -30, 36, 54);
-    ctx.restore();
-  } else {
-    drawCircle(p.x, p.y, 18, '#22d3ee', '#fff');
-  }
-}
-
-function drawEnemy(e, t) {
-  const x = e.x - camera.x;
-  const y = e.y - camera.y;
-  const fw = 37;
-  const fh = 45;
-  if (sprites.enemy.complete && sprites.enemy.naturalWidth >= fw * 2) {
-    const frames = Math.max(2, Math.floor(sprites.enemy.naturalWidth / fw));
-    const frame = Math.floor(t * 12) % frames;
-    ctx.drawImage(sprites.enemy, frame * fw, 0, fw, fh, x - 21, y - 24, 42, 50);
-  } else {
-    drawCircle(e.x, e.y, 18, '#ef4444', 'rgba(255,255,255,0.2)');
-  }
-}
-
 function drawTrees() {
-  const trees = game.state?.decor?.trees || [];
-  const sorted = [...trees].sort((a, b) => a.y - b.y);
-  for (const tr of sorted) {
+  for (const tr of game.sortedTrees) {
+    if (!isVisibleWorld(tr.x, tr.y - 20, 60)) continue;
     const x = tr.x - camera.x;
     const y = tr.y - camera.y;
     const s = tr.scale || 1;
 
     ctx.save();
     ctx.translate(x, y);
-
-    // Trunk
     ctx.fillStyle = '#2a211c';
     ctx.beginPath();
     ctx.moveTo(-2 * s, 10 * s);
@@ -258,7 +322,6 @@ function drawTrees() {
     ctx.closePath();
     ctx.fill();
 
-    // Canopy layers (dark, non-neon)
     const canopy = ['#132a1b', '#173221', '#1c3b27'];
     const blobs = [
       { x: -16, y: -24, r: 10 },
@@ -275,40 +338,74 @@ function drawTrees() {
       ctx.arc(b.x * s, b.y * s, b.r * s, 0, Math.PI * 2);
       ctx.fill();
     }
-
-    // Slight top highlight to keep shape readable on dark floor
-    ctx.fillStyle = 'rgba(92, 140, 100, 0.18)';
-    ctx.beginPath();
-    ctx.arc(-2 * s, -30 * s, 12 * s, 0, Math.PI * 2);
-    ctx.fill();
-
     ctx.restore();
   }
 }
 
-function drawDrop(drop) {
-  const x = drop.x - camera.x;
-  const y = drop.y - camera.y;
-  ctx.beginPath();
-  ctx.moveTo(x, y - 12); ctx.lineTo(x + 10, y); ctx.lineTo(x, y + 12); ctx.lineTo(x - 10, y);
-  ctx.closePath();
-  ctx.fillStyle = '#22c55e';
-  ctx.fill();
-  ctx.font = '11px sans-serif';
-  ctx.fillStyle = '#e2e8f0';
+function drawPlayer(p, t, isMe) {
+  if (!isVisibleWorld(p.x, p.y, 50)) return;
+  const x = p.x - camera.x;
+  const y = p.y - camera.y;
+
+  if (!p.alive) {
+    drawCircle(p.x, p.y, 18, '#6b7280');
+    return;
+  }
+
+  const fw = 32;
+  const fh = 48;
+  if (isMe && sprites.player.complete && sprites.player.naturalWidth >= fw * 3) {
+    const moving = input.up || input.down || input.left || input.right;
+    const frame = moving ? Math.floor(t * 10) % 3 : 1;
+    ctx.save();
+    ctx.translate(x, y + 2);
+    if (input.pointerX < x) ctx.scale(-1, 1);
+    ctx.drawImage(sprites.player, frame * fw, 0, fw, fh, -18, -30, 36, 54);
+    ctx.restore();
+  } else {
+    drawCircle(p.x, p.y, 18, isMe ? '#22d3ee' : '#a78bfa');
+  }
+
+  drawHpBar(p.x, p.y, Math.max(0, p.hp / p.maxHp));
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = '13px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(drop.weaponLabel, x, y - 16);
+  ctx.fillText(p.name, x, y - 42);
+}
+
+function drawEnemies(enemies, t) {
+  const fw = 37;
+  const fh = 45;
+  const frames = Math.max(2, Math.floor((sprites.enemy.naturalWidth || (fw * 2)) / fw));
+
+  for (const e of enemies) {
+    if (!isVisibleWorld(e.x, e.y, 60)) continue;
+    const x = e.x - camera.x;
+    const y = e.y - camera.y;
+
+    if (sprites.enemy.complete && sprites.enemy.naturalWidth >= fw * 2) {
+      const frame = Math.floor(t * 12) % frames;
+      ctx.drawImage(sprites.enemy, frame * fw, 0, fw, fh, x - 21, y - 24, 42, 50);
+    } else {
+      drawCircle(e.x, e.y, 18, '#ef4444');
+    }
+
+    drawHpBar(e.x, e.y, Math.max(0, e.hp / e.maxHp));
+  }
 }
 
 function drawFx() {
   for (const p of visuals.blood) {
+    if (!isVisibleWorld(p.x, p.y, 20)) continue;
     const a = Math.max(0, p.life / p.ttl);
     ctx.fillStyle = `rgba(180,16,28,${a.toFixed(3)})`;
     ctx.beginPath();
     ctx.arc(p.x - camera.x, p.y - camera.y, p.s, 0, Math.PI * 2);
     ctx.fill();
   }
+
   for (const f of visuals.muzzle) {
+    if (!isVisibleWorld(f.x, f.y, 20)) continue;
     const a = Math.max(0, f.life / f.ttl);
     ctx.save();
     ctx.translate(f.x - camera.x, f.y - camera.y);
@@ -316,7 +413,9 @@ function drawFx() {
     ctx.globalAlpha = a;
     ctx.fillStyle = f.c;
     ctx.beginPath();
-    ctx.moveTo(0, -2); ctx.lineTo(18, 0); ctx.lineTo(0, 2);
+    ctx.moveTo(0, -2);
+    ctx.lineTo(18, 0);
+    ctx.lineTo(0, 2);
     ctx.fill();
     ctx.restore();
   }
@@ -324,15 +423,16 @@ function drawFx() {
 }
 function render(ts) {
   const dt = Math.min(0.05, (ts - lastFrameTs) / 1000);
+  lastFrameTs = ts;
+
   fpsFrameCount += 1;
   fpsAccumSec += dt;
   if (fpsAccumSec >= 0.25) {
-    fpsShown = Math.round(fpsFrameCount / fpsAccumSec);
-    if (fpsMetaEl) fpsMetaEl.textContent = `FPS: ${fpsShown}`;
+    if (fpsMetaEl) fpsMetaEl.textContent = `FPS: ${Math.round(fpsFrameCount / fpsAccumSec)}`;
     fpsFrameCount = 0;
     fpsAccumSec = 0;
   }
-  lastFrameTs = ts;
+
   updateFx(dt);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -344,57 +444,49 @@ function render(ts) {
     return;
   }
 
-  const now = ts / 1000;
   const me = game.state.players.find((p) => p.id === game.myId) || game.state.players[0];
   if (me) {
     camera.x = Math.max(0, Math.min(me.x - canvas.width / 2, game.world.width - canvas.width));
     camera.y = Math.max(0, Math.min(me.y - canvas.height / 2, game.world.height - canvas.height));
-    weaponMetaEl.textContent = `Weapon: ${me.weaponLabel} | Ammo: ${me.ammo === null ? 'inf' : me.ammo}`;
   }
 
   drawGround();
-  for (const d of game.state.drops || []) drawDrop(d);
-  drawTrees();
-  for (const b of game.state.bullets) drawCircle(b.x, b.y, 3, b.color || '#f59e0b');
 
-  for (const e of game.state.enemies) {
-    drawEnemy(e, now);
-    drawHpBar(e.x, e.y, Math.max(0, e.hp / e.maxHp));
+  for (const d of game.state.drops || []) {
+    if (!isVisibleWorld(d.x, d.y, 30)) continue;
+    const x = d.x - camera.x;
+    const y = d.y - camera.y;
+    ctx.beginPath();
+    ctx.moveTo(x, y - 12);
+    ctx.lineTo(x + 10, y);
+    ctx.lineTo(x, y + 12);
+    ctx.lineTo(x - 10, y);
+    ctx.closePath();
+    ctx.fillStyle = '#22c55e';
+    ctx.fill();
   }
 
-  for (const p of game.state.players) {
-    const isMe = p.id === game.myId;
-    if (!p.alive) drawCircle(p.x, p.y, 18, '#6b7280', 'rgba(255,255,255,0.2)');
-    else if (isMe) drawPlayer(p, now);
-    else drawCircle(p.x, p.y, 18, '#a78bfa', 'rgba(255,255,255,0.2)');
+  drawTrees();
 
-    drawHpBar(p.x, p.y, Math.max(0, p.hp / p.maxHp));
-    ctx.fillStyle = '#f8fafc';
-    ctx.font = '13px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(p.name, p.x - camera.x, p.y - camera.y - 42);
+  for (const b of game.state.bullets) {
+    if (!isVisibleWorld(b.x, b.y, 12)) continue;
+    drawCircle(b.x, b.y, 3, b.color || '#f59e0b');
+  }
+
+  drawEnemies(game.state.enemies, ts / 1000);
+
+  for (const p of game.state.players) {
+    drawPlayer(p, ts / 1000, p.id === game.myId);
   }
 
   drawFx();
 
-  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.16)';
   ctx.lineWidth = 2;
   ctx.strokeRect(-camera.x, -camera.y, game.world.width, game.world.height);
-
-  const sorted = [...game.state.players].sort((a, b) => b.score - a.score);
-  scoreboardEl.innerHTML = sorted.map((p) => {
-    const line = `${p.name}: ${p.score} (${p.weaponLabel} ${p.ammo === null ? 'inf' : p.ammo})`;
-    return p.id === game.myId ? `<b>${line}</b>` : line;
-  }).join('<br>');
 
   requestAnimationFrame(render);
 }
 
 setInterval(sendInput, 1000 / 30);
 requestAnimationFrame(render);
-
-
-
-
-
-
