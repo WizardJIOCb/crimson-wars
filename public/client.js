@@ -9,6 +9,7 @@ const fpsMetaEl = document.getElementById('fps-meta');
 const netMetaEl = document.getElementById('net-meta');
 const qualitySelect = document.getElementById('quality-select');
 const shadowToggleEl = document.getElementById('shadow-toggle');
+const enemyHpToggleEl = document.getElementById('enemy-hp-toggle');
 const scoreboardEl = document.getElementById('scoreboard');
 const joinOverlay = document.getElementById('join-overlay');
 const joinForm = document.getElementById('join-form');
@@ -40,6 +41,7 @@ const game = {
   sortedTrees: [],
   qualityKey: 'medium',
   shadowsEnabled: localStorage.getItem('cw:shadowsEnabled') !== '0',
+  enemyHpBarsEnabled: localStorage.getItem('cw:enemyHpBarsEnabled') !== '0',
   renderPlayers: new Map(),
   renderEnemies: new Map(),
   renderBullets: new Map(),
@@ -231,6 +233,17 @@ shadowToggleEl?.addEventListener('change', () => {
   setShadowsEnabled(shadowToggleEl.checked);
 });
 setShadowsEnabled(game.shadowsEnabled);
+
+function setEnemyHpBarsEnabled(enabled) {
+  game.enemyHpBarsEnabled = Boolean(enabled);
+  if (enemyHpToggleEl) enemyHpToggleEl.checked = game.enemyHpBarsEnabled;
+  localStorage.setItem('cw:enemyHpBarsEnabled', game.enemyHpBarsEnabled ? '1' : '0');
+}
+
+enemyHpToggleEl?.addEventListener('change', () => {
+  setEnemyHpBarsEnabled(enemyHpToggleEl.checked);
+});
+setEnemyHpBarsEnabled(game.enemyHpBarsEnabled);
 
 function resizeCanvas() {
   canvas.width = window.innerWidth;
@@ -935,7 +948,7 @@ function drawEnemies(enemies, t) {
     const x = re.x - camera.x;
     const y = re.y - camera.y;
 
-    drawShadowAtScreen(x, y + 22, 12, 5, 0.28);
+    drawShadowAtScreen(x, y + 25, 12, 5, 0.28);
 
     if (sprites.enemy.complete && sprites.enemy.naturalWidth >= fw * 2) {
       const frame = Math.floor(t * 12) % frames;
@@ -951,7 +964,7 @@ function drawEnemies(enemies, t) {
       drawCircle(re.x, re.y, 18, '#ef4444');
     }
 
-    drawHpBar(re.x, re.y, Math.max(0, e.hp / e.maxHp));
+    if (game.enemyHpBarsEnabled) drawHpBar(re.x, re.y, Math.max(0, e.hp / e.maxHp));
   }
 }
 
