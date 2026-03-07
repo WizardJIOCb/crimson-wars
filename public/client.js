@@ -540,9 +540,10 @@ function drawEnemies(enemies, t) {
   const frames = Math.max(2, Math.floor((sprites.enemy.naturalWidth || (fw * 2)) / fw));
 
   for (const e of enemies) {
-    if (!isVisibleWorld(e.x, e.y, 60)) continue;
-    const x = e.x - camera.x;
-    const y = e.y - camera.y;
+    const re = getEnemyRenderPos(e);
+    if (!isVisibleWorld(re.x, re.y, 60)) continue;
+    const x = re.x - camera.x;
+    const y = re.y - camera.y;
 
     if (sprites.enemy.complete && sprites.enemy.naturalWidth >= fw * 2) {
       const frame = Math.floor(t * 12) % frames;
@@ -656,6 +657,7 @@ function render(ts) {
 
 setInterval(sendInput, 1000 / 30);
 requestAnimationFrame(render);
+
 
 
 
