@@ -135,3 +135,68 @@ body {
   padding: 2px 6px;
 }
 
+
+.rooms-browser {
+  margin-top: 6px;
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 10px;
+  padding: 8px;
+  background: rgba(8, 12, 18, 0.55);
+}
+
+.rooms-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: #dbeafe;
+}
+
+#join-form button.mini {
+  padding: 4px 8px;
+  font-size: 12px;
+  background: #334155;
+}
+
+.rooms-list {
+  display: grid;
+  gap: 6px;
+  max-height: 190px;
+  overflow: auto;
+  font-size: 13px;
+}
+
+.room-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.room-code {
+  font-weight: 600;
+  letter-spacing: 0.4px;
+}
+
+.room-meta {
+  color: #cbd5e1;
+}
+
+.room-join {
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: none;
+  background: #0ea5e9;
+  color: white;
+  cursor: pointer;
+}
+
+.room-join:disabled {
+  background: #475569;
+  cursor: not-allowed;
+}

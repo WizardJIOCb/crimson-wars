@@ -42,9 +42,18 @@
         <button type="submit" data-mode="create">Create room</button>
         <button type="submit" data-mode="join" class="secondary">Join code</button>
       </div>
+      <div id="rooms-browser" class="rooms-browser">
+        <div class="rooms-head">
+          <span>Active rooms</span>
+          <button type="button" id="refresh-rooms" class="mini">Refresh</button>
+        </div>
+        <div id="rooms-list" class="rooms-list">Loading...</div>
+      </div>
     </form>
   </div>
 
   <script src="/client.js"></script>
 </body>
 </html>
+
+

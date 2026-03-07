@@ -12,6 +12,8 @@ const joinOverlay = document.getElementById('join-overlay');
 const joinForm = document.getElementById('join-form');
 const nameInput = document.getElementById('name');
 const roomCodeInput = document.getElementById('room-code');
+const refreshRoomsBtn = document.getElementById('refresh-rooms');
+const roomsListEl = document.getElementById('rooms-list');
 
 ctx.imageSmoothingEnabled = false;
 
@@ -93,6 +95,67 @@ function resizeCanvas() {
 
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
+function sendJoinRequest(roomCode) {
+  if (ws.readyState !== WebSocket.OPEN) return;
+  const name = nameInput.value.trim() || 'Fighter';
+  ws.send(JSON.stringify({
+    type: 'join',
+    name,
+    roomCode,
+  }));
+  joinOverlay.style.display = 'none';
+}
+
+function renderRoomsList(rooms) {
+  if (!roomsListEl) return;
+
+  if (!rooms.length) {
+    roomsListEl.textContent = 'No active rooms yet.';
+    return;
+  }
+
+  roomsListEl.innerHTML = '';
+  for (const room of rooms) {
+    const row = document.createElement('div');
+    row.className = 'room-row';
+
+    const code = document.createElement('div');
+    code.className = 'room-code';
+    code.textContent = room.code;
+
+    const meta = document.createElement('div');
+    meta.className = 'room-meta';
+    meta.textContent = `${room.players}/${room.maxPlayers}`;
+
+    const joinBtn = document.createElement('button');
+    joinBtn.type = 'button';
+    joinBtn.className = 'room-join';
+    joinBtn.textContent = 'Join';
+    joinBtn.disabled = room.players >= room.maxPlayers;
+    joinBtn.addEventListener('click', () => {
+      roomCodeInput.value = room.code;
+      joinMode = 'join';
+      sendJoinRequest(room.code);
+    });
+
+    row.appendChild(code);
+    row.appendChild(meta);
+    row.appendChild(joinBtn);
+    roomsListEl.appendChild(row);
+  }
+}
+
+async function requestRoomsList() {
+  if (!roomsListEl) return;
+  try {
+    const res = await fetch('/api/rooms', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const payload = await res.json();
+    renderRoomsList(Array.isArray(payload.rooms) ? payload.rooms : []);
+  } catch {
+    roomsListEl.textContent = 'Failed to load rooms.';
+  }
+}
 
 function isVisibleWorld(x, y, pad = 0) {
   const sx = x - camera.x;
@@ -490,3 +553,10 @@ function render(ts) {
 
 setInterval(sendInput, 1000 / 30);
 requestAnimationFrame(render);
+
+
+
+
+
+
+

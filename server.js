@@ -81,6 +81,25 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 const rooms = new Map();
+function listRoomsForLobby() {
+  return Array.from(rooms.values())
+    .filter((room) => room.players.size > 0)
+    .sort((a, b) => (b.players.size - a.players.size) || a.code.localeCompare(b.code))
+    .slice(0, 40)
+    .map((room) => ({
+      code: room.code,
+      players: room.players.size,
+      maxPlayers: MAX_PLAYERS,
+      startedAt: room.startedAt,
+    }));
+}
+
+app.get('/api/rooms', (_req, res) => {
+  res.json({
+    rooms: listRoomsForLobby(),
+    now: Date.now(),
+  });
+});
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -548,3 +567,4 @@ setInterval(() => {
 server.listen(PORT, () => {
   console.log(`Server started: http://localhost:${PORT}`);
 });
+
