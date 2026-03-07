@@ -10,6 +10,7 @@ const netMetaEl = document.getElementById('net-meta');
 const qualitySelect = document.getElementById('quality-select');
 const shadowToggleEl = document.getElementById('shadow-toggle');
 const enemyHpToggleEl = document.getElementById('enemy-hp-toggle');
+const extraBloodToggleEl = document.getElementById('extra-blood-toggle');
 const scoreboardEl = document.getElementById('scoreboard');
 const joinOverlay = document.getElementById('join-overlay');
 const joinForm = document.getElementById('join-form');
@@ -42,6 +43,7 @@ const game = {
   qualityKey: 'medium',
   shadowsEnabled: localStorage.getItem('cw:shadowsEnabled') !== '0',
   enemyHpBarsEnabled: localStorage.getItem('cw:enemyHpBarsEnabled') !== '0',
+  extraBloodEnabled: localStorage.getItem('cw:extraBloodEnabled') !== '0',
   renderPlayers: new Map(),
   renderEnemies: new Map(),
   renderBullets: new Map(),
@@ -50,7 +52,7 @@ const game = {
 };
 
 const camera = { x: 0, y: 0 };
-const visuals = { blood: [], bloodPuddles: [], muzzle: [], enemyPrev: new Map(), bulletIds: new Set(), groundTileCanvas: null, groundTileSize: 0 };
+const visuals = { blood: [], bloodPuddles: [], gore: [], muzzle: [], enemyPrev: new Map(), bulletIds: new Set(), groundTileCanvas: null, groundTileSize: 0 };
 
 let joinMode = 'create';
 let infoPanelHidden = localStorage.getItem('cw:infoPanelHidden') === '1';
@@ -244,6 +246,17 @@ enemyHpToggleEl?.addEventListener('change', () => {
   setEnemyHpBarsEnabled(enemyHpToggleEl.checked);
 });
 setEnemyHpBarsEnabled(game.enemyHpBarsEnabled);
+
+function setExtraBloodEnabled(enabled) {
+  game.extraBloodEnabled = Boolean(enabled);
+  if (extraBloodToggleEl) extraBloodToggleEl.checked = game.extraBloodEnabled;
+  localStorage.setItem('cw:extraBloodEnabled', game.extraBloodEnabled ? '1' : '0');
+}
+
+extraBloodToggleEl?.addEventListener('change', () => {
+  setExtraBloodEnabled(extraBloodToggleEl.checked);
+});
+setExtraBloodEnabled(game.extraBloodEnabled);
 
 function resizeCanvas() {
   canvas.width = window.innerWidth;
@@ -676,8 +689,9 @@ ws.addEventListener('message', (ev) => {
     game.netSnapshots = [];
     game.sampledNet = null;
     visuals.enemyPrev = new Map();
-    visuals.bloodPuddles = [];
     visuals.blood = [];
+    visuals.bloodPuddles = [];
+    visuals.gore = [];
     visuals.muzzle = [];
     roomMetaEl.textContent = `Room: ${msg.roomCode}`;
     statusEl.textContent = `Online as ${msg.id}`;
@@ -751,6 +765,30 @@ function spawnBloodPuddle(x, y, intensity = 1) {
   if (visuals.bloodPuddles.length > 60) visuals.bloodPuddles.splice(0, visuals.bloodPuddles.length - 60);
 }
 
+
+function spawnGoreBurst(x, y, damage = 10) {
+  if (!game.extraBloodEnabled) return;
+  const chunks = Math.max(3, Math.min(14, Math.floor(damage * 0.45)));
+  for (let i = 0; i < chunks; i += 1) {
+    const angle = (Math.random() - 0.5) * Math.PI * 0.9;
+    const speed = 26 + Math.random() * 120;
+    const lift = 45 + Math.random() * 120;
+    visuals.gore.push({
+      x,
+      y,
+      z: 4 + Math.random() * 8,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      vz: lift,
+      life: 0.45 + Math.random() * 0.55,
+      ttl: 0.45 + Math.random() * 0.55,
+      s: 1.4 + Math.random() * 1.8,
+      splat: false,
+    });
+  }
+  if (visuals.gore.length > 260) visuals.gore.splice(0, visuals.gore.length - 260);
+}
+
 function processStateFx(nextState) {
   const prevMap = visuals.enemyPrev;
   const nextMap = new Map();
@@ -759,13 +797,16 @@ function processStateFx(nextState) {
     nextMap.set(e.id, { x: e.x, y: e.y, hp: e.hp });
     const prev = prevMap.get(e.id);
     if (prev && e.hp < prev.hp) {
-      spawnBlood(e.x, e.y, Math.max(2, Math.floor((prev.hp - e.hp) * 0.45)));
+      const hitDamage = Math.max(1, prev.hp - e.hp);
+      spawnBlood(e.x, e.y, Math.max(2, Math.floor(hitDamage * 0.45)));
+      spawnGoreBurst(e.x, e.y, hitDamage);
     }
   }
 
   for (const [id, prev] of prevMap.entries()) {
     if (!nextMap.has(id)) {
       spawnBlood(prev.x, prev.y, 18);
+      spawnGoreBurst(prev.x, prev.y, 18);
       spawnBloodPuddle(prev.x, prev.y, 1);
     }
   }
@@ -797,6 +838,28 @@ function updateFx(dt) {
     p.vx *= 0.95;
     p.vy *= 0.95;
     if (p.life <= 0) visuals.blood.splice(i, 1);
+  }
+
+  for (let i = visuals.gore.length - 1; i >= 0; i -= 1) {
+    const g = visuals.gore[i];
+    g.life -= dt;
+    g.x += g.vx * dt;
+    g.y += g.vy * dt;
+    g.vx *= 0.985;
+    g.vy *= 0.985;
+    g.vz -= 280 * dt;
+    g.z += g.vz * dt;
+
+    if (g.z <= 0 && !g.splat) {
+      g.z = 0;
+      g.splat = true;
+      spawnBlood(g.x, g.y, 2);
+      spawnBloodPuddle(g.x, g.y, 0.35);
+    }
+
+    if (g.life <= 0 || (g.splat && g.life < g.ttl * 0.35)) {
+      visuals.gore.splice(i, 1);
+    }
   }
 
   for (let i = visuals.bloodPuddles.length - 1; i >= 0; i -= 1) {
@@ -980,6 +1043,19 @@ function drawBloodPuddles() {
 }
 
 function drawFx() {
+  for (const g of visuals.gore) {
+    if (!isVisibleWorld(g.x, g.y, 26)) continue;
+    if (game.shadowsEnabled && g.z > 0) {
+      drawShadowAtScreen(g.x - camera.x, g.y - camera.y + 4, g.s * 1.25, g.s * 0.6, 0.2);
+    }
+
+    const a = Math.max(0, g.life / g.ttl);
+    ctx.fillStyle = `rgba(150, 12, 20, ${Math.min(1, a + 0.2).toFixed(3)})`;
+    ctx.beginPath();
+    ctx.arc(g.x - camera.x, g.y - camera.y - g.z, g.s, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   for (const p of visuals.blood) {
     if (!isVisibleWorld(p.x, p.y, 20)) continue;
     const a = Math.max(0, p.life / p.ttl);
