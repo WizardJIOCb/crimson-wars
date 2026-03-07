@@ -204,6 +204,14 @@ joinForm.addEventListener('submit', (e) => {
   joinOverlay.style.display = 'none';
 });
 
+
+refreshRoomsBtn?.addEventListener('click', () => {
+  requestRoomsList();
+});
+
+setInterval(() => {
+  if (!game.myId && game.connected) requestRoomsList();
+}, 5000);
 ws.addEventListener('open', () => {
   game.connected = true;
   statusEl.textContent = 'Connected. Create room or join code.';
@@ -553,6 +561,9 @@ function render(ts) {
 
 setInterval(sendInput, 1000 / 30);
 requestAnimationFrame(render);
+
+
+
 
 
 
