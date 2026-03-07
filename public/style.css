@@ -1,0 +1,127 @@
+﻿:root {
+  color-scheme: dark;
+  --bg: #0b0c0f;
+  --bg2: #11151c;
+  --panel: rgba(12, 15, 20, 0.75);
+  --line: rgba(255, 255, 255, 0.15);
+  --text: #eef2f7;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 20% 20%, rgba(157, 36, 48, 0.2), transparent 35%),
+    radial-gradient(circle at 80% 60%, rgba(143, 37, 21, 0.15), transparent 40%),
+    linear-gradient(150deg, var(--bg), var(--bg2));
+}
+
+#game {
+  width: 100vw;
+  height: 100vh;
+  display: block;
+}
+
+#hud {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  pointer-events: none;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  z-index: 10;
+}
+
+.panel {
+  min-width: 260px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  backdrop-filter: blur(8px);
+}
+
+.panel h1 {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: 0.5px;
+}
+
+.panel p {
+  margin: 6px 0 0;
+  opacity: 0.9;
+}
+
+#scoreboard {
+  max-width: 340px;
+  text-align: right;
+}
+
+#join-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.65);
+  z-index: 20;
+}
+
+#join-form {
+  background: #10151d;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  padding: 18px;
+  display: grid;
+  gap: 8px;
+  min-width: 300px;
+}
+
+#join-form input,
+#join-form button {
+  font: inherit;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+}
+
+#join-form input {
+  background: #0b0f15;
+  color: var(--text);
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+#join-form button {
+  cursor: pointer;
+  background: linear-gradient(135deg, #dc2626, #be123c);
+  color: #fff;
+  border: none;
+}
+
+#join-form button.secondary {
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+}
+
+@media (max-width: 720px) {
+  #hud {
+    flex-direction: column;
+    right: auto;
+  }
+
+  .panel {
+    min-width: 0;
+    width: calc(100vw - 24px);
+  }
+}

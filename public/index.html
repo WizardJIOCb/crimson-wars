@@ -1,0 +1,44 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Crimson Wars</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div id="hud">
+    <div class="panel">
+      <h1>Crimson Wars</h1>
+      <p>WASD move, mouse aim, LMB fire</p>
+      <p>Press `1` for pistol</p>
+      <p id="status">Connecting...</p>
+      <p id="room-meta"></p>
+      <p id="weapon-meta"></p>
+      <p id="fps-meta">FPS: --</p>
+    </div>
+    <div class="panel" id="scoreboard"></div>
+  </div>
+
+  <canvas id="game" width="1280" height="720"></canvas>
+
+  <div id="join-overlay">
+    <form id="join-form" autocomplete="off">
+      <label for="name">Nickname</label>
+      <input id="name" maxlength="18" value="Fighter" />
+
+      <label for="room-code">Room code (optional)</label>
+      <input id="room-code" maxlength="10" placeholder="AUTO or e.g. ABC123" />
+
+      <div class="actions">
+        <button type="submit" data-mode="create">Create room</button>
+        <button type="submit" data-mode="join" class="secondary">Join code</button>
+      </div>
+    </form>
+  </div>
+
+  <script src="/client.js"></script>
+</body>
+</html>
+
+

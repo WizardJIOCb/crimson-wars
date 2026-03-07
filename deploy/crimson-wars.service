@@ -1,0 +1,17 @@
+﻿[Unit]
+Description=Crimson Wars Node Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/crimson-wars
+ExecStart=/usr/bin/node /var/www/crimson-wars/server.js
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=production
+Environment=PORT=8080
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target
