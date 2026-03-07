@@ -170,7 +170,11 @@ async function requestRoomsList() {
 
 function updatePlayerInterpolation(dt) {
   if (!game.state) return;
-  const targetMap = game.sampledNet?.players || mapById(game.state.players);
+  const liveMap = mapById(game.state.players);
+  const targetMap = game.sampledNet?.players ? new Map(game.sampledNet.players) : new Map(liveMap);
+  if (game.myId && liveMap.has(game.myId)) {
+    targetMap.set(game.myId, liveMap.get(game.myId));
+  }
   const alpha = 1 - Math.exp(-ENTITY_INTERP_RATE * dt);
   const alive = new Set();
 
