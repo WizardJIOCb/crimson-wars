@@ -35,6 +35,7 @@ const game = {
   state: null,
   sortedTrees: [],
   qualityKey: 'medium',
+  renderPlayers: new Map(),
 };
 
 const camera = { x: 0, y: 0 };
@@ -157,6 +158,33 @@ async function requestRoomsList() {
   }
 }
 
+
+function updatePlayerInterpolation(dt) {
+  if (!game.state) return;
+  const alpha = 1 - Math.exp(-14 * dt);
+  const alive = new Set();
+
+  for (const p of game.state.players) {
+    alive.add(p.id);
+    let r = game.renderPlayers.get(p.id);
+    if (!r) {
+      r = { x: p.x, y: p.y };
+      game.renderPlayers.set(p.id, r);
+      continue;
+    }
+
+    r.x += (p.x - r.x) * alpha;
+    r.y += (p.y - r.y) * alpha;
+  }
+
+  for (const id of Array.from(game.renderPlayers.keys())) {
+    if (!alive.has(id)) game.renderPlayers.delete(id);
+  }
+}
+
+function getPlayerRenderPos(player) {
+  return game.renderPlayers.get(player.id) || player;
+}
 function isVisibleWorld(x, y, pad = 0) {
   const sx = x - camera.x;
   const sy = y - camera.y;
@@ -198,10 +226,8 @@ joinForm.addEventListener('click', (e) => {
 joinForm.addEventListener('submit', (e) => {
   e.preventDefault();
   if (ws.readyState !== WebSocket.OPEN) return;
-  const name = nameInput.value.trim() || 'Fighter';
   const roomCode = joinMode === 'create' ? '' : roomCodeInput.value.trim();
-  ws.send(JSON.stringify({ type: 'join', name, roomCode }));
-  joinOverlay.style.display = 'none';
+  sendJoinRequest(roomCode);
 });
 
 
@@ -215,6 +241,7 @@ setInterval(() => {
 ws.addEventListener('open', () => {
   game.connected = true;
   statusEl.textContent = 'Connected. Create room or join code.';
+  requestRoomsList();
 });
 
 ws.addEventListener('close', () => {
@@ -235,6 +262,7 @@ ws.addEventListener('message', (ev) => {
   if (msg.type === 'joinError') {
     statusEl.textContent = msg.message;
     joinOverlay.style.display = 'grid';
+    requestRoomsList();
   }
 
   if (msg.type === 'system') statusEl.textContent = msg.message;
@@ -413,31 +441,33 @@ function drawTrees() {
   }
 }
 
-function drawPlayer(p, t, isMe) {
-  if (!isVisibleWorld(p.x, p.y, 50)) return;
-  const x = p.x - camera.x;
-  const y = p.y - camera.y;
+function drawPlayer(p, t, isMe, rx, ry) {
+  if (!isVisibleWorld(rx, ry, 50)) return;
+  const x = rx - camera.x;
+  const y = ry - camera.y;
 
   if (!p.alive) {
-    drawCircle(p.x, p.y, 18, '#6b7280');
+    drawCircle(rx, ry, 18, '#6b7280');
     return;
   }
 
   const fw = 32;
   const fh = 48;
-  if (isMe && sprites.player.complete && sprites.player.naturalWidth >= fw * 3) {
-    const moving = input.up || input.down || input.left || input.right;
-    const frame = moving ? Math.floor(t * 10) % 3 : 1;
+  if (sprites.player.complete && sprites.player.naturalWidth >= fw * 3) {
+    const moving = isMe ? (input.up || input.down || input.left || input.right) : true;
+    const phase = isMe ? 0 : (p.id.charCodeAt(0) % 3);
+    const frame = moving ? (Math.floor(t * 9 + phase) % 3) : 1;
+
     ctx.save();
     ctx.translate(x, y + 2);
-    if (input.pointerX < x) ctx.scale(-1, 1);
+    if (isMe && input.pointerX < x) ctx.scale(-1, 1);
     ctx.drawImage(sprites.player, frame * fw, 0, fw, fh, -18, -30, 36, 54);
     ctx.restore();
   } else {
-    drawCircle(p.x, p.y, 18, isMe ? '#22d3ee' : '#a78bfa');
+    drawCircle(rx, ry, 18, isMe ? '#22d3ee' : '#a78bfa');
   }
 
-  drawHpBar(p.x, p.y, Math.max(0, p.hp / p.maxHp));
+  drawHpBar(rx, ry, Math.max(0, p.hp / p.maxHp));
   ctx.fillStyle = '#f8fafc';
   ctx.font = '13px sans-serif';
   ctx.textAlign = 'center';
@@ -505,6 +535,7 @@ function render(ts) {
   }
 
   updateFx(dt);
+  updatePlayerInterpolation(dt);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   if (!game.state) {
@@ -517,8 +548,9 @@ function render(ts) {
 
   const me = game.state.players.find((p) => p.id === game.myId) || game.state.players[0];
   if (me) {
-    camera.x = Math.max(0, Math.min(me.x - canvas.width / 2, game.world.width - canvas.width));
-    camera.y = Math.max(0, Math.min(me.y - canvas.height / 2, game.world.height - canvas.height));
+    const m = getPlayerRenderPos(me);
+    camera.x = Math.max(0, Math.min(m.x - canvas.width / 2, game.world.width - canvas.width));
+    camera.y = Math.max(0, Math.min(m.y - canvas.height / 2, game.world.height - canvas.height));
   }
 
   drawGround();
@@ -547,7 +579,8 @@ function render(ts) {
   drawEnemies(game.state.enemies, ts / 1000);
 
   for (const p of game.state.players) {
-    drawPlayer(p, ts / 1000, p.id === game.myId);
+    const rp = getPlayerRenderPos(p);
+    drawPlayer(p, ts / 1000, p.id === game.myId, rp.x, rp.y);
   }
 
   drawFx();
@@ -561,6 +594,17 @@ function render(ts) {
 
 setInterval(sendInput, 1000 / 30);
 requestAnimationFrame(render);
+
+
+
+
+
+
+
+
+
+
+
 
 
 
