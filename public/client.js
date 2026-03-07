@@ -1011,7 +1011,7 @@ function drawEnemies(enemies, t) {
     const x = re.x - camera.x;
     const y = re.y - camera.y;
 
-    drawShadowAtScreen(x, y + 25, 12, 5, 0.28);
+    drawShadowAtScreen(x, y + 29, 14, 6, 0.3);
 
     if (sprites.enemy.complete && sprites.enemy.naturalWidth >= fw * 2) {
       const frame = Math.floor(t * 12) % frames;
