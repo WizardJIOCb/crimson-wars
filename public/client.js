@@ -897,7 +897,7 @@ function drawPlayer(p, t, isMe, rx, ry) {
     return;
   }
 
-  drawShadowAtScreen(x, y + 16, 13, 5, 0.3);
+  drawShadowAtScreen(x, y + 20, 13, 5, 0.3);
 
   const fw = 32;
   const fh = 48;
@@ -935,7 +935,7 @@ function drawEnemies(enemies, t) {
     const x = re.x - camera.x;
     const y = re.y - camera.y;
 
-    drawShadowAtScreen(x, y + 14, 12, 5, 0.28);
+    drawShadowAtScreen(x, y + 19, 12, 5, 0.28);
 
     if (sprites.enemy.complete && sprites.enemy.naturalWidth >= fw * 2) {
       const frame = Math.floor(t * 12) % frames;
