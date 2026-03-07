@@ -1,4 +1,4 @@
-﻿
+
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
@@ -38,6 +38,8 @@ const game = {
   renderPlayers: new Map(),
   renderEnemies: new Map(),
   renderBullets: new Map(),
+  netSnapshots: [],
+  sampledNet: null,
 };
 
 const camera = { x: 0, y: 0 };
@@ -47,6 +49,11 @@ let joinMode = 'create';
 let lastFrameTs = performance.now();
 let fpsFrameCount = 0;
 let fpsAccumSec = 0;
+
+const NET_RENDER_DELAY_MS = 90;
+const MAX_EXTRAPOLATION_MS = 80;
+const ENTITY_INTERP_RATE = 16;
+const BULLET_CORRECTION_RATE = 18;
 
 function loadImage(src) {
   const img = new Image();
@@ -163,20 +170,25 @@ async function requestRoomsList() {
 
 function updatePlayerInterpolation(dt) {
   if (!game.state) return;
-  const alpha = 1 - Math.exp(-14 * dt);
+  const targetMap = game.sampledNet?.players || mapById(game.state.players);
+  const alpha = 1 - Math.exp(-ENTITY_INTERP_RATE * dt);
   const alive = new Set();
 
-  for (const p of game.state.players) {
-    alive.add(p.id);
-    let r = game.renderPlayers.get(p.id);
+  for (const [id, p] of targetMap.entries()) {
+    alive.add(id);
+    let r = game.renderPlayers.get(id);
     if (!r) {
-      r = { x: p.x, y: p.y };
-      game.renderPlayers.set(p.id, r);
+      r = { x: p.x, y: p.y, vx: 0, vy: 0 };
+      game.renderPlayers.set(id, r);
       continue;
     }
 
-    r.x += (p.x - r.x) * alpha;
-    r.y += (p.y - r.y) * alpha;
+    const nx = r.x + (p.x - r.x) * alpha;
+    const ny = r.y + (p.y - r.y) * alpha;
+    r.vx = (nx - r.x) / Math.max(0.001, dt);
+    r.vy = (ny - r.y) / Math.max(0.001, dt);
+    r.x = nx;
+    r.y = ny;
   }
 
   for (const id of Array.from(game.renderPlayers.keys())) {
@@ -190,20 +202,25 @@ function getPlayerRenderPos(player) {
 
 function updateEnemyInterpolation(dt) {
   if (!game.state) return;
-  const alpha = 1 - Math.exp(-14 * dt);
+  const targetMap = game.sampledNet?.enemies || mapById(game.state.enemies);
+  const alpha = 1 - Math.exp(-ENTITY_INTERP_RATE * dt);
   const alive = new Set();
 
-  for (const e of game.state.enemies) {
-    alive.add(e.id);
-    let r = game.renderEnemies.get(e.id);
+  for (const [id, e] of targetMap.entries()) {
+    alive.add(id);
+    let r = game.renderEnemies.get(id);
     if (!r) {
-      r = { x: e.x, y: e.y };
-      game.renderEnemies.set(e.id, r);
+      r = { x: e.x, y: e.y, vx: 0, vy: 0 };
+      game.renderEnemies.set(id, r);
       continue;
     }
 
-    r.x += (e.x - r.x) * alpha;
-    r.y += (e.y - r.y) * alpha;
+    const nx = r.x + (e.x - r.x) * alpha;
+    const ny = r.y + (e.y - r.y) * alpha;
+    r.vx = (nx - r.x) / Math.max(0.001, dt);
+    r.vy = (ny - r.y) / Math.max(0.001, dt);
+    r.x = nx;
+    r.y = ny;
   }
 
   for (const id of Array.from(game.renderEnemies.keys())) {
@@ -211,13 +228,12 @@ function updateEnemyInterpolation(dt) {
   }
 }
 
-
 function syncBulletsFromState(nextState) {
-  const now = performance.now();
   const alive = new Set();
 
   for (const b of nextState.bullets) {
-    const id = b.id ?? `${b.x.toFixed(1)}:${b.y.toFixed(1)}`;
+    const id = b.id;
+    if (!id) continue;
     alive.add(id);
 
     let r = game.renderBullets.get(id);
@@ -227,37 +243,70 @@ function syncBulletsFromState(nextState) {
         y: b.y,
         serverX: b.x,
         serverY: b.y,
-        vx: 0,
-        vy: 0,
+        vx: b.vx || 0,
+        vy: b.vy || 0,
         color: b.color,
-        lastServerAt: now,
       };
       game.renderBullets.set(id, r);
       continue;
     }
 
-    const dt = Math.max(0.001, (now - r.lastServerAt) / 1000);
-    const svx = (b.x - r.serverX) / dt;
-    const svy = (b.y - r.serverY) / dt;
-
-    r.vx = svx;
-    r.vy = svy;
     r.serverX = b.x;
     r.serverY = b.y;
+    r.vx = (r.vx * 0.3) + ((b.vx || 0) * 0.7);
+    r.vy = (r.vy * 0.3) + ((b.vy || 0) * 0.7);
     r.color = b.color;
-    r.lastServerAt = now;
   }
 
   for (const id of Array.from(game.renderBullets.keys())) {
     if (!alive.has(id)) game.renderBullets.delete(id);
   }
 }
+
 function updateBulletInterpolation(dt) {
-  for (const r of game.renderBullets.values()) {
+  const targets = game.sampledNet?.bullets || mapById(game.state?.bullets || []);
+  const alive = new Set();
+
+  for (const [id, tb] of targets.entries()) {
+    alive.add(id);
+
+    let r = game.renderBullets.get(id);
+    if (!r) {
+      r = {
+        x: tb.x,
+        y: tb.y,
+        serverX: tb.x,
+        serverY: tb.y,
+        vx: tb.vx || 0,
+        vy: tb.vy || 0,
+        color: tb.color,
+      };
+      game.renderBullets.set(id, r);
+      continue;
+    }
+
+    r.serverX = tb.x;
+    r.serverY = tb.y;
+    r.vx = (r.vx * 0.35) + ((tb.vx || 0) * 0.65);
+    r.vy = (r.vy * 0.35) + ((tb.vy || 0) * 0.65);
+    r.color = tb.color;
+
     r.x += r.vx * dt;
     r.y += r.vy * dt;
-    r.x += (r.serverX - r.x) * 0.22;
-    r.y += (r.serverY - r.y) * 0.22;
+
+    const dx = r.serverX - r.x;
+    const dy = r.serverY - r.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > 0.001) {
+      const correction = Math.min(dist, Math.max(8, Math.hypot(r.vx, r.vy) * dt * 1.4));
+      const k = (correction / dist) * Math.min(1, BULLET_CORRECTION_RATE * dt);
+      r.x += dx * k;
+      r.y += dy * k;
+    }
+  }
+
+  for (const id of Array.from(game.renderBullets.keys())) {
+    if (!alive.has(id)) game.renderBullets.delete(id);
   }
 }
 
@@ -266,8 +315,102 @@ function getEnemyRenderPos(enemy) {
 }
 
 function getBulletRenderPos(bullet) {
-  const id = bullet.id ?? `${bullet.x.toFixed(1)}:${bullet.y.toFixed(1)}`;
-  return game.renderBullets.get(id) || bullet;
+  const id = bullet.id;
+  return (id && game.renderBullets.get(id)) || bullet;
+}
+function pushNetSnapshot(state) {
+  const snap = {
+    t: performance.now(),
+    players: state.players.map((p) => ({ id: p.id, x: p.x, y: p.y })),
+    enemies: state.enemies.map((e) => ({ id: e.id, x: e.x, y: e.y })),
+    bullets: state.bullets.map((b) => ({
+      id: b.id ?? `${b.x.toFixed(1)}:${b.y.toFixed(1)}`,
+      x: b.x,
+      y: b.y,
+      vx: b.vx || 0,
+      vy: b.vy || 0,
+      color: b.color,
+    })),
+  };
+
+  game.netSnapshots.push(snap);
+  if (game.netSnapshots.length > 30) game.netSnapshots.shift();
+}
+
+function mapById(list) {
+  const out = new Map();
+  for (const item of list) out.set(item.id, item);
+  return out;
+}
+
+function sampleBufferedState() {
+  const snaps = game.netSnapshots;
+  if (snaps.length === 0) return null;
+
+  const target = performance.now() - NET_RENDER_DELAY_MS;
+  let a = snaps[0];
+  let b = snaps[snaps.length - 1];
+
+  for (let i = 0; i < snaps.length - 1; i += 1) {
+    if (snaps[i].t <= target && target <= snaps[i + 1].t) {
+      a = snaps[i];
+      b = snaps[i + 1];
+      break;
+    }
+  }
+
+  if (target >= snaps[snaps.length - 1].t) {
+    const latest = snaps[snaps.length - 1];
+    const extraMs = Math.min(MAX_EXTRAPOLATION_MS, target - latest.t);
+    const extraSec = Math.max(0, extraMs / 1000);
+
+    const bullets = latest.bullets.map((x) => ({
+      ...x,
+      x: x.x + x.vx * extraSec,
+      y: x.y + x.vy * extraSec,
+    }));
+
+    return {
+      players: mapById(latest.players),
+      enemies: mapById(latest.enemies),
+      bullets: mapById(bullets),
+    };
+  }
+
+  const dt = Math.max(1, b.t - a.t);
+  const k = Math.max(0, Math.min(1, (target - a.t) / dt));
+
+  const lerpMap = (la, lb, withVel) => {
+    const ma = mapById(la);
+    const mb = mapById(lb);
+    const ids = new Set([...ma.keys(), ...mb.keys()]);
+    const out = new Map();
+
+    for (const id of ids) {
+      const pa = ma.get(id);
+      const pb = mb.get(id);
+      if (pa && pb) {
+        out.set(id, {
+          id,
+          x: pa.x + (pb.x - pa.x) * k,
+          y: pa.y + (pb.y - pa.y) * k,
+          vx: withVel ? (pb.vx ?? pa.vx ?? 0) : 0,
+          vy: withVel ? (pb.vy ?? pa.vy ?? 0) : 0,
+          color: pb.color ?? pa.color,
+        });
+      } else {
+        out.set(id, pb || pa);
+      }
+    }
+
+    return out;
+  };
+
+  return {
+    players: lerpMap(a.players, b.players, false),
+    enemies: lerpMap(a.enemies, b.enemies, false),
+    bullets: lerpMap(a.bullets, b.bullets, true),
+  };
 }
 function isVisibleWorld(x, y, pad = 0) {
   const sx = x - camera.x;
@@ -342,6 +485,8 @@ ws.addEventListener('message', (ev) => {
     game.renderPlayers.clear();
     game.renderEnemies.clear();
     game.renderBullets.clear();
+    game.netSnapshots = [];
+    game.sampledNet = null;
     roomMetaEl.textContent = `Room: ${msg.roomCode}`;
     statusEl.textContent = `Online as ${msg.id}`;
   }
@@ -356,6 +501,7 @@ ws.addEventListener('message', (ev) => {
 
   if (msg.type === 'state') {
     const s = msg.payload;
+    pushNetSnapshot(s);
     syncBulletsFromState(s);
     processStateFx(s);
     game.state = s;
@@ -625,6 +771,7 @@ function render(ts) {
     fpsAccumSec = 0;
   }
 
+  game.sampledNet = sampleBufferedState();
   updateFx(dt);
   updatePlayerInterpolation(dt);
   updateEnemyInterpolation(dt);
@@ -688,6 +835,13 @@ function render(ts) {
 
 setInterval(sendInput, 1000 / 30);
 requestAnimationFrame(render);
+
+
+
+
+
+
+
 
 
 

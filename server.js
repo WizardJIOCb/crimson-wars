@@ -1,4 +1,4 @@
-﻿const path = require('path');
+const path = require('path');
 const http = require('http');
 const express = require('express');
 const WebSocket = require('ws');
@@ -6,7 +6,7 @@ const WebSocket = require('ws');
 const { WebSocketServer } = WebSocket;
 
 const PORT = process.env.PORT || 8080;
-const TICK_RATE = 30;
+const TICK_RATE = 45;
 const TICK_MS = 1000 / TICK_RATE;
 const MAX_PLAYERS = 8;
 const WORLD_WIDTH = 2400;
@@ -217,6 +217,8 @@ function serializeRoom(room) {
       ownerId: b.ownerId,
       x: b.x,
       y: b.y,
+      vx: b.vx,
+      vy: b.vy,
       color: b.color,
     })),
     enemies: room.enemies.map((e) => ({
@@ -567,4 +569,5 @@ setInterval(() => {
 server.listen(PORT, () => {
   console.log(`Server started: http://localhost:${PORT}`);
 });
+
 
