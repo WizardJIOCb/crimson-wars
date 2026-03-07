@@ -929,7 +929,7 @@ function drawEnemies(enemies, t) {
   }
 }
 
-function drawFx() {
+function drawBloodPuddles() {
   for (const p of visuals.bloodPuddles) {
     if (!isVisibleWorld(p.x, p.y, 34)) continue;
     const a = Math.max(0, p.life / p.ttl);
@@ -938,7 +938,9 @@ function drawFx() {
     ctx.ellipse(p.x - camera.x, p.y - camera.y, p.r, p.r * 0.65, 0, 0, Math.PI * 2);
     ctx.fill();
   }
+}
 
+function drawFx() {
   for (const p of visuals.blood) {
     if (!isVisibleWorld(p.x, p.y, 20)) continue;
     const a = Math.max(0, p.life / p.ttl);
@@ -1000,6 +1002,7 @@ function render(ts) {
   }
 
   drawGround();
+  drawBloodPuddles();
 
   for (const d of game.state.drops || []) {
     if (!isVisibleWorld(d.x, d.y, 30)) continue;
