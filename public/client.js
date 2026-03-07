@@ -261,6 +261,10 @@ function updateBulletInterpolation(dt) {
   }
 }
 
+function getEnemyRenderPos(enemy) {
+  return game.renderEnemies.get(enemy.id) || enemy;
+}
+
 function getBulletRenderPos(bullet) {
   const id = bullet.id ?? `${bullet.x.toFixed(1)}:${bullet.y.toFixed(1)}`;
   return game.renderBullets.get(id) || bullet;
@@ -684,6 +688,7 @@ function render(ts) {
 
 setInterval(sendInput, 1000 / 30);
 requestAnimationFrame(render);
+
 
 
 
