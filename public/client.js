@@ -913,7 +913,14 @@ function drawEnemies(enemies, t) {
 
     if (sprites.enemy.complete && sprites.enemy.naturalWidth >= fw * 2) {
       const frame = Math.floor(t * 12) % frames;
-      ctx.drawImage(sprites.enemy, frame * fw, 0, fw, fh, x - 21, y - 24, 42, 50);
+      if (Math.abs(re.vx || 0) > 0.15) re.faceLeft = (re.vx || 0) < 0;
+      const faceLeft = Boolean(re.faceLeft);
+
+      ctx.save();
+      ctx.translate(x, y + 2);
+      if (faceLeft) ctx.scale(-1, 1);
+      ctx.drawImage(sprites.enemy, frame * fw, 0, fw, fh, -21, -24, 42, 50);
+      ctx.restore();
     } else {
       drawCircle(re.x, re.y, 18, '#ef4444');
     }
@@ -1008,8 +1015,6 @@ function render(ts) {
     ctx.fill();
   }
 
-  drawTrees();
-
   for (const b of game.state.bullets) {
     const rb = getBulletRenderPos(b);
     if (!isVisibleWorld(rb.x, rb.y, 12)) continue;
@@ -1023,6 +1028,7 @@ function render(ts) {
     drawPlayer(p, ts / 1000, p.id === game.myId, rp.x, rp.y);
   }
 
+  drawTrees();
   drawFx();
 
   ctx.strokeStyle = 'rgba(255,255,255,0.16)';
