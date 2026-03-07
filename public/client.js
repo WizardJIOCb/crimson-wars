@@ -829,10 +829,10 @@ function drawHpBar(x, y, ratio) {
 }
 function drawTrees() {
   for (const tr of game.sortedTrees) {
-    if (!isVisibleWorld(tr.x, tr.y - 20, 60)) continue;
+    if (!isVisibleWorld(tr.x, tr.y - 36, 90)) continue;
     const x = tr.x - camera.x;
     const y = tr.y - camera.y;
-    const s = tr.scale || 1;
+    const s = (tr.scale || 1) * 1.6;
 
     ctx.save();
     ctx.translate(x, y);
