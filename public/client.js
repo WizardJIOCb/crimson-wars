@@ -8,6 +8,7 @@ const weaponMetaEl = document.getElementById('weapon-meta');
 const fpsMetaEl = document.getElementById('fps-meta');
 const netMetaEl = document.getElementById('net-meta');
 const qualitySelect = document.getElementById('quality-select');
+const shadowToggleEl = document.getElementById('shadow-toggle');
 const scoreboardEl = document.getElementById('scoreboard');
 const joinOverlay = document.getElementById('join-overlay');
 const joinForm = document.getElementById('join-form');
@@ -38,6 +39,7 @@ const game = {
   state: null,
   sortedTrees: [],
   qualityKey: 'medium',
+  shadowsEnabled: localStorage.getItem('cw:shadowsEnabled') !== '0',
   renderPlayers: new Map(),
   renderEnemies: new Map(),
   renderBullets: new Map(),
@@ -218,6 +220,17 @@ qualitySelect?.addEventListener('change', () => {
   game.qualityKey = q;
   rebuildGroundTile();
 });
+
+function setShadowsEnabled(enabled) {
+  game.shadowsEnabled = Boolean(enabled);
+  if (shadowToggleEl) shadowToggleEl.checked = game.shadowsEnabled;
+  localStorage.setItem('cw:shadowsEnabled', game.shadowsEnabled ? '1' : '0');
+}
+
+shadowToggleEl?.addEventListener('change', () => {
+  setShadowsEnabled(shadowToggleEl.checked);
+});
+setShadowsEnabled(game.shadowsEnabled);
 
 function resizeCanvas() {
   canvas.width = window.innerWidth;
@@ -818,6 +831,13 @@ function drawCircle(x, y, r, fill) {
   ctx.fill();
 }
 
+function drawShadowAtScreen(sx, sy, rx, ry, alpha = 0.28) {
+  if (!game.shadowsEnabled) return;
+  ctx.fillStyle = `rgba(0,0,0,${alpha})`;
+  ctx.beginPath();
+  ctx.ellipse(sx, sy, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
 function drawHpBar(x, y, ratio) {
   const sx = x - camera.x - 19;
   const sy = y - camera.y - 36;
@@ -833,6 +853,8 @@ function drawTrees() {
     const x = tr.x - camera.x;
     const y = tr.y - camera.y;
     const s = (tr.scale || 1) * 1.6;
+
+    drawShadowAtScreen(x + 8 * s, y + 12 * s, 14 * s, 6 * s, 0.24);
 
     ctx.save();
     ctx.translate(x, y);
@@ -875,6 +897,8 @@ function drawPlayer(p, t, isMe, rx, ry) {
     return;
   }
 
+  drawShadowAtScreen(x, y + 16, 13, 5, 0.3);
+
   const fw = 32;
   const fh = 48;
   if (sprites.player.complete && sprites.player.naturalWidth >= fw * 3) {
@@ -910,6 +934,8 @@ function drawEnemies(enemies, t) {
     if (!isVisibleWorld(re.x, re.y, 60)) continue;
     const x = re.x - camera.x;
     const y = re.y - camera.y;
+
+    drawShadowAtScreen(x, y + 14, 12, 5, 0.28);
 
     if (sprites.enemy.complete && sprites.enemy.naturalWidth >= fw * 2) {
       const frame = Math.floor(t * 12) % frames;
@@ -1008,6 +1034,7 @@ function render(ts) {
     if (!isVisibleWorld(d.x, d.y, 30)) continue;
     const x = d.x - camera.x;
     const y = d.y - camera.y;
+    drawShadowAtScreen(x, y + 10, 9, 4, 0.24);
     ctx.beginPath();
     ctx.moveTo(x, y - 12);
     ctx.lineTo(x + 10, y);
@@ -1021,6 +1048,7 @@ function render(ts) {
   for (const b of game.state.bullets) {
     const rb = getBulletRenderPos(b);
     if (!isVisibleWorld(rb.x, rb.y, 12)) continue;
+    drawShadowAtScreen(rb.x - camera.x, rb.y - camera.y + 3, 3, 1.8, 0.18);
     drawCircle(rb.x, rb.y, 3, rb.color || b.color || '#f59e0b');
   }
 

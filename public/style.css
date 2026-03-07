@@ -237,3 +237,16 @@ body {
 #toggle-info:hover {
   background: rgba(20, 29, 43, 0.9);
 }
+.shadow-option {
+  pointer-events: auto;
+}
+
+.shadow-option label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#shadow-toggle {
+  pointer-events: auto;
+}
