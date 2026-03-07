@@ -6,6 +6,7 @@ const statusEl = document.getElementById('status');
 const roomMetaEl = document.getElementById('room-meta');
 const weaponMetaEl = document.getElementById('weapon-meta');
 const fpsMetaEl = document.getElementById('fps-meta');
+const netMetaEl = document.getElementById('net-meta');
 const qualitySelect = document.getElementById('quality-select');
 const scoreboardEl = document.getElementById('scoreboard');
 const joinOverlay = document.getElementById('join-overlay');
@@ -54,6 +55,123 @@ const NET_RENDER_DELAY_MS = 90;
 const MAX_EXTRAPOLATION_MS = 80;
 const ENTITY_INTERP_RATE = 16;
 const BULLET_CORRECTION_RATE = 18;
+
+const NET_PING_INTERVAL_MS = 1000;
+const NET_PING_TIMEOUT_MS = 4000;
+const NET_BYTES_WINDOW_MS = 2000;
+
+const netStats = {
+  pingSeq: 0,
+  pendingPings: new Map(),
+  sentPings: 0,
+  recvPings: 0,
+  lostPings: 0,
+  rttMs: 0,
+  jitterMs: 0,
+  stateHz: 0,
+  stateDelayMs: 0,
+  lastStateAt: 0,
+  stateIntervals: [],
+  rxSamples: [],
+  txSamples: [],
+  rxKBps: 0,
+  txKBps: 0,
+};
+
+function pruneBytesSamples(samples, nowMs) {
+  while (samples.length > 0 && nowMs - samples[0].t > NET_BYTES_WINDOW_MS) {
+    samples.shift();
+  }
+}
+
+function markRxBytes(bytes) {
+  const nowMs = performance.now();
+  netStats.rxSamples.push({ t: nowMs, bytes });
+  pruneBytesSamples(netStats.rxSamples, nowMs);
+}
+
+function markTxBytes(bytes) {
+  const nowMs = performance.now();
+  netStats.txSamples.push({ t: nowMs, bytes });
+  pruneBytesSamples(netStats.txSamples, nowMs);
+}
+
+function updateThroughputStats() {
+  const nowMs = performance.now();
+  pruneBytesSamples(netStats.rxSamples, nowMs);
+  pruneBytesSamples(netStats.txSamples, nowMs);
+
+  const rxBytes = netStats.rxSamples.reduce((sum, x) => sum + x.bytes, 0);
+  const txBytes = netStats.txSamples.reduce((sum, x) => sum + x.bytes, 0);
+  const sec = NET_BYTES_WINDOW_MS / 1000;
+  netStats.rxKBps = rxBytes / 1024 / sec;
+  netStats.txKBps = txBytes / 1024 / sec;
+}
+
+function sendJson(payload) {
+  if (ws.readyState !== WebSocket.OPEN) return false;
+  const raw = JSON.stringify(payload);
+  ws.send(raw);
+  markTxBytes(raw.length);
+  return true;
+}
+
+function sendNetPing() {
+  if (ws.readyState !== WebSocket.OPEN) return;
+  const nowMs = performance.now();
+  for (const [seq, sentAt] of Array.from(netStats.pendingPings.entries())) {
+    if (nowMs - sentAt > NET_PING_TIMEOUT_MS) {
+      netStats.pendingPings.delete(seq);
+      netStats.lostPings += 1;
+    }
+  }
+
+  netStats.pingSeq += 1;
+  netStats.sentPings += 1;
+  netStats.pendingPings.set(netStats.pingSeq, nowMs);
+  sendJson({ type: 'netPing', seq: netStats.pingSeq });
+}
+
+function handleNetPong(msg) {
+  const seq = Number(msg.seq) || 0;
+  const sentAt = netStats.pendingPings.get(seq);
+  if (!sentAt) return;
+
+  netStats.pendingPings.delete(seq);
+  netStats.recvPings += 1;
+  const rtt = performance.now() - sentAt;
+  const prevRtt = netStats.rttMs || rtt;
+  netStats.rttMs = rtt;
+  netStats.jitterMs = (netStats.jitterMs * 0.8) + (Math.abs(rtt - prevRtt) * 0.2);
+}
+
+function onStateNetSample(serverNow) {
+  const nowPerf = performance.now();
+  if (netStats.lastStateAt > 0) {
+    const dt = nowPerf - netStats.lastStateAt;
+    netStats.stateIntervals.push(dt);
+    if (netStats.stateIntervals.length > 50) netStats.stateIntervals.shift();
+    const avg = netStats.stateIntervals.reduce((sum, x) => sum + x, 0) / netStats.stateIntervals.length;
+    netStats.stateHz = avg > 0 ? 1000 / avg : 0;
+  }
+  netStats.lastStateAt = nowPerf;
+
+  if (typeof serverNow === 'number') {
+    const approxOneWay = netStats.rttMs > 0 ? netStats.rttMs * 0.5 : 0;
+    netStats.stateDelayMs = Math.max(0, Date.now() - serverNow - approxOneWay);
+  }
+}
+
+function updateNetMetaUi() {
+  if (!netMetaEl) return;
+  updateThroughputStats();
+
+  const delivered = netStats.recvPings + netStats.lostPings;
+  const lossPct = delivered > 0 ? (netStats.lostPings * 100) / delivered : 0;
+  const interpMs = game.netSnapshots.length > 0 ? NET_RENDER_DELAY_MS : 0;
+
+  netMetaEl.textContent = `NET: ping ${Math.round(netStats.rttMs)}ms | jitter ${Math.round(netStats.jitterMs)}ms | loss ${lossPct.toFixed(1)}% | state ${netStats.stateHz.toFixed(1)}Hz | delay ${Math.round(netStats.stateDelayMs)}ms | interp ${interpMs}ms | rx ${netStats.rxKBps.toFixed(1)}KB/s | tx ${netStats.txKBps.toFixed(1)}KB/s`;
+}
 
 function loadImage(src) {
   const img = new Image();
@@ -108,11 +226,11 @@ resizeCanvas();
 function sendJoinRequest(roomCode) {
   if (ws.readyState !== WebSocket.OPEN) return;
   const name = nameInput.value.trim() || 'Fighter';
-  ws.send(JSON.stringify({
+  sendJson({
     type: 'join',
     name,
     roomCode,
-  }));
+  });
   joinOverlay.style.display = 'none';
 }
 
@@ -440,7 +558,7 @@ function keyStateFromCode(code, isDown) {
 window.addEventListener('keydown', (e) => {
   keyStateFromCode(e.code, true);
   if (e.code === 'Digit1' && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: 'weaponSwitch', weaponKey: 'pistol' }));
+    sendJson({ type: 'weaponSwitch', weaponKey: 'pistol' });
   }
 });
 window.addEventListener('keyup', (e) => keyStateFromCode(e.code, false));
@@ -473,15 +591,25 @@ ws.addEventListener('open', () => {
   game.connected = true;
   statusEl.textContent = 'Connected. Create room or join code.';
   requestRoomsList();
+  sendNetPing();
 });
 
 ws.addEventListener('close', () => {
   game.connected = false;
+  netStats.pendingPings.clear();
   statusEl.textContent = 'Disconnected';
 });
 ws.addEventListener('message', (ev) => {
+  const rawSize = typeof ev.data === 'string' ? ev.data.length : 0;
+  if (rawSize > 0) markRxBytes(rawSize);
+
   let msg;
   try { msg = JSON.parse(ev.data); } catch { return; }
+
+  if (msg.type === 'netPong') {
+    handleNetPong(msg);
+    return;
+  }
 
   if (msg.type === 'welcome') {
     game.myId = msg.id;
@@ -505,6 +633,7 @@ ws.addEventListener('message', (ev) => {
 
   if (msg.type === 'state') {
     const s = msg.payload;
+    onStateNetSample(s.now);
     pushNetSnapshot(s);
     syncBulletsFromState(s);
     processStateFx(s);
@@ -530,14 +659,14 @@ function sendInput() {
 
   const moveX = (input.right ? 1 : 0) - (input.left ? 1 : 0);
   const moveY = (input.down ? 1 : 0) - (input.up ? 1 : 0);
-  ws.send(JSON.stringify({
+  sendJson({
     type: 'input',
     moveX,
     moveY,
     aimX: input.pointerX + camera.x,
     aimY: input.pointerY + camera.y,
     shooting: input.shooting,
-  }));
+  });
 }
 
 function spawnBlood(x, y, count) {
@@ -771,10 +900,10 @@ function render(ts) {
   fpsAccumSec += dt;
   if (fpsAccumSec >= 0.25) {
     if (fpsMetaEl) fpsMetaEl.textContent = `FPS: ${Math.round(fpsFrameCount / fpsAccumSec)}`;
+    updateNetMetaUi();
     fpsFrameCount = 0;
     fpsAccumSec = 0;
   }
-
   game.sampledNet = sampleBufferedState();
   updateFx(dt);
   updatePlayerInterpolation(dt);
@@ -838,6 +967,7 @@ function render(ts) {
 }
 
 setInterval(sendInput, 1000 / 30);
+setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 requestAnimationFrame(render);
 
 

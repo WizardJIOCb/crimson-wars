@@ -397,6 +397,10 @@ wss.on('connection', (ws) => {
     } catch {
       return;
     }
+    if (msg.type === 'netPing') {
+      sendTo(ws, { type: 'netPong', seq: Number(msg.seq) || 0, serverNow: Date.now() });
+      return;
+    }
 
     if (msg.type === 'join' && !player) {
       player = joinRoom(ws, msg);
