@@ -211,32 +211,54 @@ function updateEnemyInterpolation(dt) {
   }
 }
 
-function updateBulletInterpolation(dt) {
-  if (!game.state) return;
-  const alpha = 1 - Math.exp(-20 * dt);
+
+function syncBulletsFromState(nextState) {
+  const now = performance.now();
   const alive = new Set();
 
-  for (const b of game.state.bullets) {
+  for (const b of nextState.bullets) {
     const id = b.id ?? `${b.x.toFixed(1)}:${b.y.toFixed(1)}`;
     alive.add(id);
+
     let r = game.renderBullets.get(id);
     if (!r) {
-      r = { x: b.x, y: b.y };
+      r = {
+        x: b.x,
+        y: b.y,
+        serverX: b.x,
+        serverY: b.y,
+        vx: 0,
+        vy: 0,
+        color: b.color,
+        lastServerAt: now,
+      };
       game.renderBullets.set(id, r);
       continue;
     }
 
-    r.x += (b.x - r.x) * alpha;
-    r.y += (b.y - r.y) * alpha;
+    const dt = Math.max(0.001, (now - r.lastServerAt) / 1000);
+    const svx = (b.x - r.serverX) / dt;
+    const svy = (b.y - r.serverY) / dt;
+
+    r.vx = svx;
+    r.vy = svy;
+    r.serverX = b.x;
+    r.serverY = b.y;
+    r.color = b.color;
+    r.lastServerAt = now;
   }
 
   for (const id of Array.from(game.renderBullets.keys())) {
     if (!alive.has(id)) game.renderBullets.delete(id);
   }
 }
-
-function getEnemyRenderPos(enemy) {
-  return game.renderEnemies.get(enemy.id) || enemy;
+function updateBulletInterpolation(dt) {
+  for (const r of game.renderBullets.values()) {
+    r.x += r.vx * dt;
+    r.y += r.vy * dt;
+    r.x += (r.serverX - r.x) * 0.22;
+    r.y += (r.serverY - r.y) * 0.22;
+  }
 }
 
 function getBulletRenderPos(bullet) {
@@ -313,6 +335,9 @@ ws.addEventListener('message', (ev) => {
   if (msg.type === 'welcome') {
     game.myId = msg.id;
     game.roomCode = msg.roomCode;
+    game.renderPlayers.clear();
+    game.renderEnemies.clear();
+    game.renderBullets.clear();
     roomMetaEl.textContent = `Room: ${msg.roomCode}`;
     statusEl.textContent = `Online as ${msg.id}`;
   }
@@ -327,6 +352,7 @@ ws.addEventListener('message', (ev) => {
 
   if (msg.type === 'state') {
     const s = msg.payload;
+    syncBulletsFromState(s);
     processStateFx(s);
     game.state = s;
     game.world = s.world;
@@ -635,8 +661,9 @@ function render(ts) {
   drawTrees();
 
   for (const b of game.state.bullets) {
-    if (!isVisibleWorld(b.x, b.y, 12)) continue;
-    drawCircle(b.x, b.y, 3, b.color || '#f59e0b');
+    const rb = getBulletRenderPos(b);
+    if (!isVisibleWorld(rb.x, rb.y, 12)) continue;
+    drawCircle(rb.x, rb.y, 3, rb.color || b.color || '#f59e0b');
   }
 
   drawEnemies(game.state.enemies, ts / 1000);
@@ -657,6 +684,16 @@ function render(ts) {
 
 setInterval(sendInput, 1000 / 30);
 requestAnimationFrame(render);
+
+
+
+
+
+
+
+
+
+
 
 
 
