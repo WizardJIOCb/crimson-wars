@@ -167,6 +167,7 @@ function getOrCreateRoom(requestedCode) {
       enemies: [],
       drops: [],
       scores: new Map(),
+      kills: new Map(),
       nextEnemyId: 1,
       nextBulletId: 1,
       nextDropId: 1,
@@ -208,6 +209,7 @@ function serializeRoom(room) {
       maxHp: PLAYER_HP_MAX,
       alive: p.alive,
       score: room.scores.get(p.id) || 0,
+      kills: room.kills.get(p.id) || 0,
       weaponKey: p.weaponKey,
       weaponLabel: WEAPONS[p.weaponKey].label,
       ammo: p.weaponAmmo,
@@ -357,6 +359,7 @@ function joinRoom(ws, join) {
 
   room.players.set(id, player);
   room.scores.set(id, 0);
+  room.kills.set(id, 0);
 
   sendTo(ws, {
     type: 'welcome',
@@ -379,6 +382,7 @@ function removePlayer(player) {
   if (!room) return;
   room.players.delete(player.id);
   room.scores.delete(player.id);
+  room.kills.delete(player.id);
 
   broadcastRoom(room, { type: 'system', message: `${player.name} left room ${room.code}.` });
 
@@ -491,6 +495,7 @@ function tickRoom(room, dtSec, now) {
         if (e.hp <= 0) {
           room.enemies.splice(ei, 1);
           room.scores.set(b.ownerId, (room.scores.get(b.ownerId) || 0) + 10);
+          room.kills.set(b.ownerId, (room.kills.get(b.ownerId) || 0) + 1);
           maybeSpawnDrop(room, e.x, e.y);
         }
         break;

@@ -574,7 +574,7 @@ function isVisibleWorld(x, y, pad = 0) {
 function updateScoreboard(players) {
   const sorted = [...players].sort((a, b) => b.score - a.score);
   const rows = sorted.map((p) => {
-    const kills = Number(p.score) || 0;
+    const kills = Number(p.kills) || 0;
     const ammo = p.ammo === null ? 'inf' : p.ammo;
     const meClass = p.id === game.myId ? ' me' : '';
     return `<div class="score-row${meClass}">${p.name} - Kills: ${kills} (${p.weaponLabel} ${ammo})</div>`;
