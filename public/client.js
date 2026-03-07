@@ -15,6 +15,8 @@ const nameInput = document.getElementById('name');
 const roomCodeInput = document.getElementById('room-code');
 const refreshRoomsBtn = document.getElementById('refresh-rooms');
 const roomsListEl = document.getElementById('rooms-list');
+const infoPanelEl = document.getElementById('info-panel');
+const toggleInfoBtn = document.getElementById('toggle-info');
 
 ctx.imageSmoothingEnabled = false;
 
@@ -47,6 +49,7 @@ const camera = { x: 0, y: 0 };
 const visuals = { blood: [], muzzle: [], enemyHp: new Map(), bulletIds: new Set(), groundTileCanvas: null, groundTileSize: 0 };
 
 let joinMode = 'create';
+let infoPanelHidden = localStorage.getItem('cw:infoPanelHidden') === '1';
 let lastFrameTs = performance.now();
 let fpsFrameCount = 0;
 let fpsAccumSec = 0;
@@ -223,6 +226,21 @@ function resizeCanvas() {
 
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
+
+function setInfoPanelHidden(hidden) {
+  infoPanelHidden = Boolean(hidden);
+  if (infoPanelEl) infoPanelEl.classList.toggle('is-hidden', infoPanelHidden);
+  if (toggleInfoBtn) toggleInfoBtn.textContent = infoPanelHidden ? 'Show menu' : 'Hide menu';
+  localStorage.setItem('cw:infoPanelHidden', infoPanelHidden ? '1' : '0');
+}
+
+if (toggleInfoBtn) {
+  toggleInfoBtn.addEventListener('click', () => {
+    setInfoPanelHidden(!infoPanelHidden);
+  });
+}
+
+setInfoPanelHidden(infoPanelHidden);
 function sendJoinRequest(roomCode) {
   if (ws.readyState !== WebSocket.OPEN) return;
   const name = nameInput.value.trim() || 'Fighter';
@@ -556,6 +574,14 @@ function keyStateFromCode(code, isDown) {
 }
 
 window.addEventListener('keydown', (e) => {
+  const t = e.target;
+  const typing = t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement;
+
+  if (!typing && e.code === 'KeyH') {
+    setInfoPanelHidden(!infoPanelHidden);
+    return;
+  }
+
   keyStateFromCode(e.code, true);
   if (e.code === 'Digit1' && ws.readyState === WebSocket.OPEN) {
     sendJson({ type: 'weaponSwitch', weaponKey: 'pistol' });

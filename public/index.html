@@ -8,10 +8,10 @@
 </head>
 <body>
   <div id="hud">
-    <div class="panel">
+    <div class="panel" id="info-panel">
       <h1>Crimson Wars</h1>
       <p>WASD move, mouse aim, LMB fire</p>
-      <p>Press `1` for pistol</p>
+      <p>Press `1` for pistol, `H` hide menu</p>
       <p id="status">Connecting...</p>
       <p id="room-meta"></p>
       <p id="weapon-meta"></p>
@@ -26,6 +26,7 @@
         </select>
       </p>
     </div>
+    <button id="toggle-info" class="hud-toggle" type="button">Hide menu</button>
     <div class="panel" id="scoreboard"></div>
   </div>
 
