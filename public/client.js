@@ -1161,13 +1161,16 @@ function drawPlayer(p, t, isMe, rx, ry) {
   const fw = 32;
   const fh = 48;
   if (sprites.player.complete && sprites.player.naturalWidth >= fw * 3) {
-    const moving = isMe ? (input.up || input.down || input.left || input.right) : true;
+    const rv = game.renderPlayers.get(p.id);
+    const keyMoving = input.up || input.down || input.left || input.right;
+    const mobileMoving = mobile.enabled && mobile.moveStrength > 0.08;
+    const velMoving = Math.hypot(rv?.vx || 0, rv?.vy || 0) > 10;
+    const moving = isMe ? (keyMoving || mobileMoving || velMoving) : velMoving;
     const phase = isMe ? 0 : (p.id.charCodeAt(0) % 3);
     const frame = moving ? (Math.floor(t * 9 + phase) % 3) : 1;
 
     ctx.save();
     ctx.translate(x, y + 2);
-    const rv = game.renderPlayers.get(p.id);
     const faceLeft = isMe ? (input.pointerX > x) : ((rv?.vx || 0) < -0.2);
     if (faceLeft) ctx.scale(-1, 1);
     ctx.drawImage(sprites.player, frame * fw, 0, fw, fh, -18, -30, 36, 54);
