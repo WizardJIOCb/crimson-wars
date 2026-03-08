@@ -470,25 +470,25 @@ body {
 
   #bottom-hud {
     width: calc(100vw - 16px);
-    bottom: calc(env(safe-area-inset-bottom) + 132px);
+    bottom: calc(env(safe-area-inset-bottom) + 8px);
   }
 
   #fps-corner {
     left: 8px;
-    bottom: calc(env(safe-area-inset-bottom) + 110px);
+    bottom: calc(env(safe-area-inset-bottom) + 56px);
     font-size: 11px;
   }
 
   #stats-toggle {
     right: 8px;
-    bottom: calc(env(safe-area-inset-bottom) + 186px);
+    bottom: calc(env(safe-area-inset-bottom) + 126px);
     padding: 7px 10px;
     font-size: 12px;
   }
 
   #stats-panel {
     right: 8px;
-    bottom: calc(env(safe-area-inset-bottom) + 228px);
+    bottom: calc(env(safe-area-inset-bottom) + 168px);
     width: min(300px, calc(100vw - 16px));
     max-height: 40vh;
     padding: 9px;
@@ -676,7 +676,7 @@ body {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(env(safe-area-inset-bottom) + 16px);
+  bottom: calc(env(safe-area-inset-bottom) + 84px);
   padding: 0 12px;
   display: none;
   justify-content: center;
@@ -740,16 +740,19 @@ body {
 }
 
 #jump-btn {
+  --jump-progress: 1;
   pointer-events: auto;
   grid-column: 3;
   justify-self: end;
   align-self: end;
-  margin-bottom: 118px;
-  min-width: 94px;
-  height: 44px;
+  margin-bottom: 124px;
+  min-width: 104px;
+  height: 46px;
   border-radius: 999px;
   border: 1px solid rgba(255,255,255,0.34);
-  background: rgba(120, 8, 8, 0.7);
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(90deg, rgba(37,99,235,0.72) 0 calc(var(--jump-progress) * 100%), rgba(120, 8, 8, 0.78) calc(var(--jump-progress) * 100%) 100%);
   color: #fee2e2;
   font-weight: 700;
   letter-spacing: 0.6px;
@@ -1050,3 +1053,85 @@ body {
 }
 
 
+
+/* Keep mobile HUD layout overrides at the very end so base rules above don't override them. */
+@media (max-width: 720px) {
+  #bottom-hud {
+    width: calc(100vw - 14px);
+    bottom: calc(env(safe-area-inset-bottom) + 6px);
+  }
+
+  #fps-corner {
+    left: 8px;
+    bottom: calc(env(safe-area-inset-bottom) + 82px);
+    font-size: 12px;
+  }
+
+  #stats-toggle {
+    right: 8px;
+    bottom: calc(env(safe-area-inset-bottom) + 146px);
+    padding: 7px 10px;
+    font-size: 12px;
+  }
+
+  #stats-panel {
+    right: 8px;
+    bottom: calc(env(safe-area-inset-bottom) + 188px);
+    width: min(300px, calc(100vw - 16px));
+    max-height: 42vh;
+    padding: 9px;
+  }
+
+  #mobile-controls {
+    bottom: calc(env(safe-area-inset-bottom) + 120px);
+    padding: 0 10px;
+  }
+
+  #mobile-controls .stick {
+    width: 108px;
+    height: 108px;
+  }
+
+  #jump-btn {
+    min-width: 98px;
+    height: 44px;
+    margin-bottom: 128px;
+    font-size: 14px;
+  }
+
+  #levelup-overlay {
+    width: calc(100vw - 12px);
+    left: 6px;
+    right: 6px;
+    top: 56%;
+    transform: translateY(-50%);
+    max-height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 210px);
+    overflow: auto;
+    padding: 10px;
+  }
+
+  .levelup-title {
+    font-size: 16px;
+    margin-bottom: 8px;
+  }
+
+  .skill-option {
+    padding: 8px;
+  }
+
+  .skill-option .nm {
+    font-size: 14px;
+  }
+
+  .skill-option .meta,
+  .skill-option .desc {
+    font-size: 12px;
+  }
+
+  body.levelup-open #mobile-controls,
+  body.levelup-open #bottom-hud,
+  body.levelup-open #stats-toggle,
+  body.levelup-open #fps-corner {
+    display: none !important;
+  }
+}

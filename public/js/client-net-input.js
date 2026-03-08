@@ -798,6 +798,7 @@ function clearLocalSessionState() {
   updateTopCenterHud(Date.now());
   updateBottomHud();
   updateStatsPanel(null);
+  updateJumpButtonUi(null);
 }
 
 function leaveActiveRoom() {
@@ -971,6 +972,7 @@ ws.addEventListener('message', (ev) => {
     const me = s.players.find((p) => p.id === game.myId);
     if (me) {
       updateStatsPanel(me);
+      updateJumpButtonUi(me);
       const dodgeCdMeta = Math.max(0, Number(me.dodgeCooldownMs) || 0);
       const jumpMeta = dodgeCdMeta > 0 ? (dodgeCdMeta / 1000).toFixed(1) + 's' : 'ready';
       weaponMetaEl.textContent = `Weapon: ${me.weaponLabel} | Ammo: ${me.ammo === null ? 'inf' : me.ammo} | Jump: ${jumpMeta}`;
@@ -997,6 +999,7 @@ ws.addEventListener('message', (ev) => {
       prevMyAlive = Boolean(me.alive);
     } else {
       updateStatsPanel(null);
+      updateJumpButtonUi(null);
       prevMyAlive = null;
       if (movementMetaEl) movementMetaEl.textContent = '';
     }

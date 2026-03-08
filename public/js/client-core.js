@@ -311,7 +311,9 @@ function rarityColor(r) {
 function renderLevelupChoices() {
   if (!levelupOverlayEl || !levelupOptionsEl) return;
   const choices = Array.isArray(game.mySkillChoices) ? game.mySkillChoices : [];
-  if (choices.length === 0 || !game.state) {
+  const levelupOpen = choices.length > 0 && Boolean(game.state);
+  document.body.classList.toggle('levelup-open', levelupOpen);
+  if (!levelupOpen) {
     levelupOverlayEl.classList.add('hidden');
     if (lastLevelupHtml !== '') {
       levelupOptionsEl.innerHTML = '';
@@ -433,6 +435,35 @@ statsToggleBtn?.addEventListener('click', () => {
 });
 setStatsPanelOpen(statsPanelOpen);
 updateStatsPanel(null);
+
+function updateJumpButtonUi(me) {
+  if (!jumpBtnEl) return;
+  if (!me) {
+    jumpBtnEl.style.setProperty('--jump-progress', '1');
+    jumpBtnEl.textContent = 'JUMP';
+    return;
+  }
+
+  const maxCharges = Math.max(1, Number(me.dodgeChargesMax) || 1);
+  const charges = Math.max(0, Math.min(maxCharges, Number(me.dodgeCharges) || 0));
+  const cdMs = Math.max(0, Number(me.dodgeRechargeMs ?? me.dodgeCooldownMs) || 0);
+  const cdTotalMs = Math.max(1, Number(me.dodgeRechargeTotalMs) || 1200);
+
+  let fill = 1;
+  if (charges < maxCharges) {
+    const regen = 1 - Math.max(0, Math.min(1, cdMs / cdTotalMs));
+    fill = Math.max(0, Math.min(1, (charges + regen) / maxCharges));
+  }
+
+  jumpBtnEl.style.setProperty('--jump-progress', fill.toFixed(3));
+  if (charges > 0) {
+    jumpBtnEl.textContent = maxCharges > 1 ? `JUMP x${charges}` : 'JUMP';
+  } else {
+    jumpBtnEl.textContent = `JUMP ${(cdMs / 1000).toFixed(1)}s`;
+  }
+}
+
+updateJumpButtonUi(null);
 
 function normalizeRoomSync(raw) {
   return {
@@ -820,6 +851,7 @@ function updateHudVisibility(overlayOpen) {
     setStatsPanelOpen(statsPanelOpen);
   }
   if (overlayOpen && levelupOverlayEl) levelupOverlayEl.classList.add('hidden');
+  if (overlayOpen) document.body.classList.remove('levelup-open');
   updateFpsCornerVisibility(overlayOpen);
 }
 
@@ -831,6 +863,5 @@ function updateMobileControlsVisibility() {
     setMobileControlsVisible(false);
     return;
   }
-  setMobileControlsVisible(!overlayOpen);
+  setMobileControlsVisible(!overlayOpen && !document.body.classList.contains('levelup-open'));
 }
-
