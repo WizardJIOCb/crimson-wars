@@ -23,6 +23,7 @@ const recordsListEl = document.getElementById('records-list');
 const recordsPrevBtn = document.getElementById('records-prev');
 const recordsNextBtn = document.getElementById('records-next');
 const recordsPageEl = document.getElementById('records-page');
+const backToMenuBtn = document.getElementById('back-to-menu');
 const infoPanelEl = document.getElementById('info-panel');
 const toggleInfoBtn = document.getElementById('toggle-info');
 const mobileControlsEl = document.getElementById('mobile-controls');
@@ -57,6 +58,15 @@ const mobile = {
   lastAimY: 0,
 };
 
+function getToggleDefaultOn(key) {
+  const stored = localStorage.getItem(key);
+  if (stored === null) {
+    localStorage.setItem(key, '1');
+    return true;
+  }
+  return stored !== '0';
+}
+
 const game = {
   myId: null,
   roomCode: null,
@@ -65,9 +75,9 @@ const game = {
   state: null,
   sortedTrees: [],
   qualityKey: 'medium',
-  shadowsEnabled: localStorage.getItem('cw:shadowsEnabled') !== '0',
-  enemyHpBarsEnabled: localStorage.getItem('cw:enemyHpBarsEnabled') !== '0',
-  extraBloodEnabled: localStorage.getItem('cw:extraBloodEnabled') !== '0',
+  shadowsEnabled: getToggleDefaultOn('cw:shadowsEnabled'),
+  enemyHpBarsEnabled: getToggleDefaultOn('cw:enemyHpBarsEnabled'),
+  extraBloodEnabled: getToggleDefaultOn('cw:extraBloodEnabled'),
   renderPlayers: new Map(),
   renderEnemies: new Map(),
   renderBullets: new Map(),
@@ -86,6 +96,7 @@ let fpsFrameCount = 0;
 let fpsAccumSec = 0;
 
 const recordsUi = { page: 1, totalPages: 1, pageSize: 10 };
+let prevMyAlive = null;
 
 const NET_RENDER_DELAY_MS = 90;
 const MAX_EXTRAPOLATION_MS = 80;
@@ -451,6 +462,7 @@ function sendJoinRequest(roomCode) {
     roomCode,
   });
   joinOverlay.style.display = 'none';
+  joinOverlay.classList.remove('death-mode');
   updateMobileControlsVisibility();
 }
 
@@ -878,7 +890,8 @@ canvas.addEventListener('mousemove', (e) => { input.pointerX = e.clientX; input.
 joinForm.addEventListener('click', (e) => {
   const t = e.target;
   if (!(t instanceof HTMLButtonElement)) return;
-  joinMode = t.dataset.mode || 'create';
+  if (!t.dataset.mode) return;
+  joinMode = t.dataset.mode;
 });
 
 joinForm.addEventListener('submit', (e) => {
@@ -886,6 +899,52 @@ joinForm.addEventListener('submit', (e) => {
   if (ws.readyState !== WebSocket.OPEN) return;
   const roomCode = joinMode === 'create' ? '' : roomCodeInput.value.trim();
   sendJoinRequest(roomCode);
+});
+
+function clearLocalSessionState() {
+  game.myId = null;
+  game.roomCode = null;
+  game.state = null;
+  game.netSnapshots = [];
+  game.sampledNet = null;
+  game.renderPlayers.clear();
+  game.renderEnemies.clear();
+  game.renderBullets.clear();
+  prevMyAlive = null;
+  roomMetaEl.textContent = '';
+  weaponMetaEl.textContent = '';
+  scoreboardEl.innerHTML = '';
+}
+
+function leaveActiveRoom() {
+  if (ws.readyState === WebSocket.OPEN && game.myId) {
+    sendJson({ type: 'leave' });
+  }
+  clearLocalSessionState();
+}
+
+function returnToStartMenu() {
+  leaveActiveRoom();
+  statusEl.textContent = 'You returned to start menu.';
+  joinOverlay.style.display = 'grid';
+  joinOverlay.classList.remove('death-mode');
+  updateMobileControlsVisibility();
+  requestRoomsList();
+  requestRecordsList(1);
+}
+
+function openDeathOverlay() {
+  leaveActiveRoom();
+  joinOverlay.style.display = 'grid';
+  joinOverlay.classList.add('death-mode');
+  statusEl.textContent = 'You died. Check records and return to start.';
+  updateMobileControlsVisibility();
+  requestRoomsList();
+  requestRecordsList(1);
+}
+
+backToMenuBtn?.addEventListener('click', () => {
+  returnToStartMenu();
 });
 
 
@@ -935,6 +994,7 @@ ws.addEventListener('message', (ev) => {
 
   if (msg.type === 'welcome') {
     game.myId = msg.id;
+    prevMyAlive = true;
     game.roomCode = msg.roomCode;
     game.renderPlayers.clear();
     game.renderEnemies.clear();
@@ -953,6 +1013,7 @@ ws.addEventListener('message', (ev) => {
   if (msg.type === 'joinError') {
     statusEl.textContent = msg.message;
     joinOverlay.style.display = 'grid';
+    joinOverlay.classList.remove('death-mode');
     updateMobileControlsVisibility();
     requestRoomsList();
     requestRecordsList(1);
@@ -977,6 +1038,13 @@ ws.addEventListener('message', (ev) => {
     const me = s.players.find((p) => p.id === game.myId);
     if (me) {
       weaponMetaEl.textContent = `Weapon: ${me.weaponLabel} | Ammo: ${me.ammo === null ? 'inf' : me.ammo}`;
+      if (prevMyAlive === true && !me.alive) {
+        openDeathOverlay();
+        return;
+      }
+      prevMyAlive = Boolean(me.alive);
+    } else {
+      prevMyAlive = null;
     }
   }
 });
@@ -1446,50 +1514,3 @@ function render(ts) {
 setInterval(sendInput, 1000 / 30);
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 requestAnimationFrame(render);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -357,3 +357,15 @@ body {
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+.back-to-menu {
+  display: none;
+  width: 100%;
+  margin-top: 2px;
+  background: linear-gradient(135deg, #334155, #1f2937);
+  color: #e5e7eb;
+}
+
+#join-overlay.death-mode .back-to-menu {
+  display: block;
+}

@@ -474,6 +474,11 @@ wss.on('connection', (ws) => {
         setPlayerWeapon(current, key);
       }
     }
+
+    if (msg.type === 'leave') {
+      removePlayer(current);
+      player = null;
+    }
   });
 
   ws.on('close', () => {
