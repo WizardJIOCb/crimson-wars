@@ -187,6 +187,27 @@ const netStats = {
   rxTotalBytes: 0,
   txTotalBytes: 0,
 };
+
+function resetNetStats() {
+  netStats.pingSeq = 0;
+  netStats.pendingPings.clear();
+  netStats.sentPings = 0;
+  netStats.recvPings = 0;
+  netStats.lostPings = 0;
+  netStats.rttMs = 0;
+  netStats.jitterMs = 0;
+  netStats.stateHz = 0;
+  netStats.stateDelayMs = 0;
+  netStats.lastStateAt = 0;
+  netStats.stateIntervals.length = 0;
+  netStats.rttSamples.length = 0;
+  netStats.rxSamples.length = 0;
+  netStats.txSamples.length = 0;
+  netStats.rxKBps = 0;
+  netStats.txKBps = 0;
+  netStats.rxTotalBytes = 0;
+  netStats.txTotalBytes = 0;
+}
 function clampNum(value, min, max, fallback) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
@@ -792,6 +813,7 @@ function sendJoinRequest(roomCode, joinSync = null) {
   const name = nameInput.value.trim() || 'Fighter';
   localStorage.setItem(NICKNAME_STORAGE_KEY, name);
   waitingForFirstState = true;
+  resetNetStats();
   waitingForFirstStateSince = performance.now();
   sendJson({
     type: 'join',
@@ -1398,6 +1420,7 @@ ws.addEventListener('message', (ev) => {
 
   if (msg.type === 'welcome') {
     game.myId = msg.id;
+    resetNetStats();
     prevMyAlive = true;
     sessionStartedAt = Date.now();
     if (msg.sync) applyRoomSync(msg.sync);
