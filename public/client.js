@@ -1,4 +1,4 @@
-﻿
+
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
@@ -26,7 +26,7 @@ const recordsPrevBtn = document.getElementById('records-prev');
 const recordsNextBtn = document.getElementById('records-next');
 const recordsPageEl = document.getElementById('records-page');
 const recordsTotalEl = document.getElementById('records-total');
-const backToMenuBtn = document.getElementById('back-to-menu');
+const deathResultEl = document.getElementById('death-result');
 const syncSettingsEl = document.getElementById('sync-settings');
 const syncPresetEl = document.getElementById('sync-preset');
 const syncTickrateEl = document.getElementById('sync-tickrate');
@@ -109,6 +109,7 @@ let fpsAccumSec = 0;
 
 const recordsUi = { page: 1, totalPages: 1, pageSize: 10, total: 0 };
 let prevMyAlive = null;
+let sessionStartedAt = 0;
 
 const ROOM_SYNC_PRESETS = {
   normal: {
@@ -1064,6 +1065,7 @@ function clearLocalSessionState() {
   game.renderEnemies.clear();
   game.renderBullets.clear();
   prevMyAlive = null;
+  sessionStartedAt = 0;
   roomMetaEl.textContent = '';
   weaponMetaEl.textContent = '';
   scoreboardEl.innerHTML = '';
@@ -1076,29 +1078,25 @@ function leaveActiveRoom() {
   clearLocalSessionState();
 }
 
-function returnToStartMenu() {
-  leaveActiveRoom();
-  statusEl.textContent = 'You returned to start menu.';
-  joinOverlay.style.display = 'grid';
-  joinOverlay.classList.remove('death-mode');
-  updateMobileControlsVisibility();
-  requestRoomsList();
-  requestRecordsList(recordsUi.page);
+function renderDeathResult(result) {
+  if (!deathResultEl) return;
+  if (!result) {
+    deathResultEl.textContent = 'Last result: --';
+    return;
+  }
+  deathResultEl.textContent = `Last result: ${result.kills} kills | ${result.score} pts | ${result.survivalSec}s | room ${result.roomCode}`;
 }
 
-function openDeathOverlay() {
+function openDeathOverlay(result) {
   leaveActiveRoom();
   joinOverlay.style.display = 'grid';
   joinOverlay.classList.add('death-mode');
-  statusEl.textContent = 'You died. Check records and return to start.';
+  renderDeathResult(result);
+  statusEl.textContent = 'You died. Last result is shown below.';
   updateMobileControlsVisibility();
   requestRoomsList();
   requestRecordsList(recordsUi.page);
 }
-
-backToMenuBtn?.addEventListener('click', () => {
-  returnToStartMenu();
-});
 
 
 refreshRoomsBtn?.addEventListener('click', () => {
@@ -1148,6 +1146,7 @@ ws.addEventListener('message', (ev) => {
   if (msg.type === 'welcome') {
     game.myId = msg.id;
     prevMyAlive = true;
+    sessionStartedAt = Date.now();
     if (msg.sync) applyRoomSync(msg.sync);
     game.roomCode = msg.roomCode;
     game.renderPlayers.clear();
@@ -1194,7 +1193,13 @@ ws.addEventListener('message', (ev) => {
     if (me) {
       weaponMetaEl.textContent = `Weapon: ${me.weaponLabel} | Ammo: ${me.ammo === null ? 'inf' : me.ammo}`;
       if (prevMyAlive === true && !me.alive) {
-        openDeathOverlay();
+        const deathResult = {
+          kills: Number(me.kills) || 0,
+          score: Number(me.score) || 0,
+          roomCode: game.roomCode || s.roomCode || '-',
+          survivalSec: Math.max(1, Math.floor((Date.now() - (sessionStartedAt || Date.now())) / 1000)),
+        };
+        openDeathOverlay(deathResult);
         return;
       }
       prevMyAlive = Boolean(me.alive);
@@ -1669,5 +1674,3 @@ function render(ts) {
 startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 requestAnimationFrame(render);
-
-
