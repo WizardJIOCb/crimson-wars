@@ -6,8 +6,9 @@ const statusEl = document.getElementById('status');
 const roomMetaEl = document.getElementById('room-meta');
 const weaponMetaEl = document.getElementById('weapon-meta');
 const movementMetaEl = document.getElementById('movement-meta');
-const fpsMetaEl = document.getElementById('fps-meta');
 const netMetaEl = document.getElementById('net-meta');
+const showFpsToggleEl = document.getElementById('show-fps-toggle');
+const fpsCornerEl = document.getElementById('fps-corner');
 const qualitySelect = document.getElementById('quality-select');
 const shadowToggleEl = document.getElementById('shadow-toggle');
 const enemyHpToggleEl = document.getElementById('enemy-hp-toggle');
@@ -117,6 +118,7 @@ const game = {
   hitEffectsEnabled: getToggleDefaultOn('cw:hitEffectsEnabled'),
   autoFireEnabled: localStorage.getItem('cw:autoFireEnabled') === '1',
   connectionIndicatorEnabled: getToggleDefaultOn('cw:connectionIndicatorEnabled'),
+  showFpsEnabled: getToggleDefaultOn('cw:showFpsEnabled'),
   renderPlayers: new Map(),
   renderEnemies: new Map(),
   renderBullets: new Map(),
@@ -700,6 +702,18 @@ connIndicatorToggleEl?.addEventListener('change', () => {
 });
 setConnectionIndicatorEnabled(game.connectionIndicatorEnabled);
 
+function setShowFpsEnabled(enabled) {
+  game.showFpsEnabled = Boolean(enabled);
+  if (showFpsToggleEl) showFpsToggleEl.checked = game.showFpsEnabled;
+  localStorage.setItem('cw:showFpsEnabled', game.showFpsEnabled ? '1' : '0');
+  updateFpsCornerVisibility();
+}
+
+showFpsToggleEl?.addEventListener('change', () => {
+  setShowFpsEnabled(showFpsToggleEl.checked);
+});
+setShowFpsEnabled(game.showFpsEnabled);
+
 function resizeCanvas() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
@@ -714,11 +728,18 @@ function setMobileControlsVisible(visible) {
   mobileControlsEl.setAttribute('aria-hidden', visible ? 'false' : 'true');
 }
 
+function updateFpsCornerVisibility(overlayOpen = null) {
+  if (!fpsCornerEl) return;
+  const menuOpen = overlayOpen === null ? (getComputedStyle(joinOverlay).display !== 'none') : Boolean(overlayOpen);
+  fpsCornerEl.classList.toggle('hidden', menuOpen || !game.showFpsEnabled);
+}
+
 function updateHudVisibility(overlayOpen) {
   if (hudEl) hudEl.classList.toggle('menu-hidden', Boolean(overlayOpen));
   if (topCenterHudEl) topCenterHudEl.classList.toggle('hidden', Boolean(overlayOpen));
   if (bottomHudEl) bottomHudEl.classList.toggle('hidden', Boolean(overlayOpen));
   if (overlayOpen && levelupOverlayEl) levelupOverlayEl.classList.add('hidden');
+  updateFpsCornerVisibility(overlayOpen);
 }
 
 function updateMobileControlsVisibility() {
@@ -2393,7 +2414,7 @@ function render(ts) {
   fpsFrameCount += 1;
   fpsAccumSec += dt;
   if (fpsAccumSec >= 0.25) {
-    if (fpsMetaEl) fpsMetaEl.textContent = `FPS: ${Math.round(fpsFrameCount / fpsAccumSec)}`;
+    if (fpsCornerEl) fpsCornerEl.textContent = `FPS: ${Math.round(fpsFrameCount / fpsAccumSec)}`;
     updateNetMetaUi();
     fpsFrameCount = 0;
     fpsAccumSec = 0;

@@ -85,6 +85,27 @@ body {
   display: none;
 }
 
+#fps-corner {
+  position: fixed;
+  left: 12px;
+  bottom: 10px;
+  z-index: 12;
+  pointer-events: none;
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.2);
+  background: rgba(7, 12, 20, 0.8);
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  backdrop-filter: blur(6px);
+}
+
+#fps-corner.hidden {
+  display: none;
+}
+
 #skill-bar {
   display: flex;
   gap: 8px;
@@ -451,6 +472,12 @@ body {
     bottom: 6px;
   }
 
+  #fps-corner {
+    left: 8px;
+    bottom: calc(env(safe-area-inset-bottom) + 8px);
+    font-size: 11px;
+  }
+
   .levelup-options {
     grid-template-columns: 1fr;
   }
@@ -761,21 +788,22 @@ body {
 .death-drips {
   position: absolute;
   inset: 0;
-  background: repeating-linear-gradient(
-    90deg,
-    rgba(140, 4, 10, 0.95) 0 6px,
-    rgba(205, 20, 28, 0.9) 6px 11px,
-    rgba(150, 8, 14, 0.95) 11px 15px,
-    rgba(0, 0, 0, 0) 15px 54px
-  );
-  mask-image: linear-gradient(to bottom, rgba(0,0,0,0) 0 36%, rgba(0,0,0,0.95) 52% 66%, rgba(0,0,0,0) 94%);
-  -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,0) 0 36%, rgba(0,0,0,0.95) 52% 66%, rgba(0,0,0,0) 94%);
+  background:
+    radial-gradient(16px 34px at 10% 8%, rgba(170, 10, 14, 0.94) 0 55%, rgba(170, 10, 14, 0) 75%),
+    radial-gradient(18px 38px at 23% 10%, rgba(188, 14, 20, 0.9) 0 54%, rgba(188, 14, 20, 0) 76%),
+    radial-gradient(15px 30px at 37% 11%, rgba(156, 8, 14, 0.9) 0 58%, rgba(156, 8, 14, 0) 80%),
+    radial-gradient(17px 36px at 54% 9%, rgba(185, 18, 24, 0.88) 0 56%, rgba(185, 18, 24, 0) 78%),
+    radial-gradient(15px 32px at 69% 10%, rgba(168, 10, 16, 0.9) 0 56%, rgba(168, 10, 16, 0) 78%),
+    radial-gradient(16px 34px at 83% 8%, rgba(178, 12, 18, 0.9) 0 55%, rgba(178, 12, 18, 0) 76%),
+    radial-gradient(14px 28px at 93% 12%, rgba(145, 8, 13, 0.86) 0 58%, rgba(145, 8, 13, 0) 80%),
+    linear-gradient(to bottom, rgba(92, 6, 10, 0) 0 58%, rgba(130, 8, 14, 0.42) 72%, rgba(96, 5, 11, 0) 100%);
   opacity: 0;
-  transform: translateY(-16%);
+  transform: translateY(-12%);
+  filter: blur(0.35px);
 }
 
 #join-overlay.death-cinematic-active .death-drips {
-  animation: deathDrips 2.4s ease-out 0.75s forwards;
+  animation: deathDrips 2s ease-out 0.7s forwards;
 }
 
 .death-continue {
@@ -814,9 +842,9 @@ body {
 }
 
 @keyframes deathDrips {
-  0% { opacity: 0; transform: translateY(-14%); }
-  20% { opacity: 0.92; }
-  100% { opacity: 0.78; transform: translateY(36%); }
+  0% { opacity: 0; transform: translateY(-16%); }
+  25% { opacity: 0.78; }
+  100% { opacity: 0.46; transform: translateY(6%); }
 }
 
 @keyframes deathContinueIn {

@@ -17,7 +17,6 @@
       <p id="room-meta"></p>
       <p id="weapon-meta"></p>
       <p id="movement-meta"></p>
-      <p id="fps-meta">FPS: --</p>
       <p id="net-meta">NET: --</p>
       <p>
         Quality:
@@ -63,11 +62,18 @@
           Connection indicator
         </label>
       </p>
+      <p class="shadow-option">
+        <label>
+          <input id="show-fps-toggle" type="checkbox" checked />
+          Show FPS
+        </label>
+      </p>
     </div>
     <button id="toggle-info" class="hud-toggle" type="button">Hide menu</button>
     <div class="panel" id="scoreboard"></div>
   </div>
 
+  <div id="fps-corner" class="hidden" aria-live="polite">FPS: --</div>
   <div id="top-center-hud" aria-live="polite">
     <div class="top-center-row">
       <span id="match-timer">Time 00:00</span>
