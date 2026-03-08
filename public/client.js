@@ -24,6 +24,7 @@ const recordsListEl = document.getElementById('records-list');
 const recordsPrevBtn = document.getElementById('records-prev');
 const recordsNextBtn = document.getElementById('records-next');
 const recordsPageEl = document.getElementById('records-page');
+const recordsTotalEl = document.getElementById('records-total');
 const backToMenuBtn = document.getElementById('back-to-menu');
 const syncSettingsEl = document.getElementById('sync-settings');
 const syncPresetEl = document.getElementById('sync-preset');
@@ -105,7 +106,7 @@ let lastFrameTs = performance.now();
 let fpsFrameCount = 0;
 let fpsAccumSec = 0;
 
-const recordsUi = { page: 1, totalPages: 1, pageSize: 10 };
+const recordsUi = { page: 1, totalPages: 1, pageSize: 10, total: 0 };
 let prevMyAlive = null;
 
 const ROOM_SYNC_PRESETS = {
@@ -646,14 +647,16 @@ async function requestRoomsList() {
 
 function updateRecordsPager() {
   if (recordsPageEl) recordsPageEl.textContent = `Page ${recordsUi.page}/${recordsUi.totalPages}`;
+  if (recordsTotalEl) recordsTotalEl.textContent = `(Total: ${recordsUi.total})`;
   if (recordsPrevBtn) recordsPrevBtn.disabled = recordsUi.page <= 1;
   if (recordsNextBtn) recordsNextBtn.disabled = recordsUi.page >= recordsUi.totalPages;
 }
 
-function renderRecordsList(items, page = 1, totalPages = 1) {
+function renderRecordsList(items, page = 1, totalPages = 1, total = 0) {
   if (!recordsListEl) return;
   recordsUi.page = page;
   recordsUi.totalPages = totalPages;
+  recordsUi.total = total;
   updateRecordsPager();
 
   if (!items.length) {
@@ -716,8 +719,11 @@ async function requestRecordsList(page = recordsUi.page) {
       Array.isArray(payload.records) ? payload.records : [],
       Number(payload.page) || 1,
       Number(payload.totalPages) || 1,
+      Number(payload.total) || 0,
     );
   } catch {
+    recordsUi.total = 0;
+    updateRecordsPager();
     recordsListEl.textContent = 'Failed to load records.';
   }
 }

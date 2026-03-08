@@ -455,3 +455,8 @@ body {
 .sync-settings input {
   margin-top: 2px;
 }
+
+#records-total {
+  color: #cbd5e1;
+  font-weight: 500;
+}
