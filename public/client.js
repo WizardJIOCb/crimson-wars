@@ -149,6 +149,7 @@ let inputSendIntervalId = null;
 const NET_PING_INTERVAL_MS = 1000;
 const NET_PING_TIMEOUT_MS = 4000;
 const NET_BYTES_WINDOW_MS = 2000;
+const NET_RTT_SAMPLES_MAX = 9;
 
 const netStats = {
   pingSeq: 0,
@@ -162,6 +163,7 @@ const netStats = {
   stateDelayMs: 0,
   lastStateAt: 0,
   stateIntervals: [],
+  rttSamples: [],
   rxSamples: [],
   txSamples: [],
   rxKBps: 0,
@@ -292,9 +294,13 @@ function handleNetPong(msg) {
   netStats.pendingPings.delete(seq);
   netStats.recvPings += 1;
   const rtt = performance.now() - sentAt;
-  const prevRtt = netStats.rttMs || rtt;
-  netStats.rttMs = rtt;
-  netStats.jitterMs = (netStats.jitterMs * 0.8) + (Math.abs(rtt - prevRtt) * 0.2);
+  netStats.rttSamples.push(rtt);
+  if (netStats.rttSamples.length > NET_RTT_SAMPLES_MAX) netStats.rttSamples.shift();
+  const sorted = [...netStats.rttSamples].sort((a, b) => a - b);
+  const medianRtt = sorted[Math.floor(sorted.length / 2)] || rtt;
+  const prevRtt = netStats.rttMs || medianRtt;
+  netStats.rttMs = medianRtt;
+  netStats.jitterMs = (netStats.jitterMs * 0.8) + (Math.abs(medianRtt - prevRtt) * 0.2);
 }
 
 function onStateNetSample(serverNow) {
@@ -307,11 +313,19 @@ function onStateNetSample(serverNow) {
     netStats.stateHz = avg > 0 ? 1000 / avg : 0;
   }
   netStats.lastStateAt = nowPerf;
+  updateStateDelayEstimate();
+}
 
-  if (typeof serverNow === 'number') {
-    const approxOneWay = netStats.rttMs > 0 ? netStats.rttMs * 0.5 : 0;
-    netStats.stateDelayMs = Math.max(0, Date.now() - serverNow - approxOneWay);
+function updateStateDelayEstimate() {
+  if (netStats.lastStateAt <= 0) {
+    netStats.stateDelayMs = 0;
+    return;
   }
+  const nowPerf = performance.now();
+  const stalenessMs = Math.max(0, nowPerf - netStats.lastStateAt);
+  const expectedTickMs = 1000 / Math.max(1, roomSync.tickRate || 45);
+  const backlogMs = Math.max(0, stalenessMs - expectedTickMs * 1.2);
+  netStats.stateDelayMs = roomSync.netRenderDelayMs + backlogMs;
 }
 
 function formatBytesTotal(bytes) {
@@ -324,6 +338,7 @@ function formatBytesTotal(bytes) {
 function updateNetMetaUi() {
   if (!netMetaEl) return;
   updateThroughputStats();
+  updateStateDelayEstimate();
 
   const delivered = netStats.recvPings + netStats.lostPings;
   const lossPct = delivered > 0 ? (netStats.lostPings * 100) / delivered : 0;
@@ -1161,6 +1176,11 @@ function clearLocalSessionState() {
   sessionStartedAt = 0;
   waitingForFirstState = false;
   waitingForFirstStateSince = 0;
+  netStats.pendingPings.clear();
+  netStats.rttSamples = [];
+  netStats.rttMs = 0;
+  netStats.jitterMs = 0;
+  netStats.stateDelayMs = 0;
   roomMetaEl.textContent = '';
   weaponMetaEl.textContent = '';
   scoreboardEl.innerHTML = '';
@@ -1779,6 +1799,9 @@ startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 setInterval(sendNetStatsReport, 1500);
 requestAnimationFrame(render);
+
+
+
 
 
 
