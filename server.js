@@ -26,6 +26,9 @@ const ENEMY_HP_BASE = 22;
 const ENEMY_SPAWN_INTERVAL_MS = 760;
 const ENEMY_ATTACK_WINDUP_MS = 500;
 const ENEMY_ATTACK_DAMAGE = 16;
+const ENEMY_ATTACK_BASE_COOLDOWN_MS = 1000;
+const ENEMY_ATTACK_MIN_COOLDOWN_MS = 150;
+const ENEMY_ATTACK_CAST_FREQUENCY = 0;
 const DROP_LIFETIME_MS = 30000;
 const TREE_COUNT = 65;
 const LEADERBOARD_LIMIT = 500;
@@ -489,8 +492,15 @@ function spawnEnemy(room) {
     maxHp: hp,
     speed: ENEMY_SPEED_MIN + Math.random() * (ENEMY_SPEED_MAX - ENEMY_SPEED_MIN),
     attackWindupMs: 0,
+    attackCooldownMs: 0,
     attackTargetId: null,
   });
+}
+
+function getEnemyAttackCooldownMs() {
+  const castFrequency = Math.max(0, Number(ENEMY_ATTACK_CAST_FREQUENCY) || 0);
+  const effective = ENEMY_ATTACK_BASE_COOLDOWN_MS / (1 + castFrequency);
+  return Math.max(ENEMY_ATTACK_MIN_COOLDOWN_MS, Math.round(effective));
 }
 
 function maybeSpawnDrop(room, x, y) {
@@ -763,6 +773,8 @@ function tickRoom(room, dtSec, now) {
   }
 
   for (const e of room.enemies) {
+    if (e.attackCooldownMs > 0) e.attackCooldownMs = Math.max(0, e.attackCooldownMs - dtSec * 1000);
+
     const target = nearestAlivePlayer(room, e.x, e.y);
     if (!target) {
       e.vx = 0;
@@ -795,12 +807,13 @@ function tickRoom(room, dtSec, now) {
           }
         }
         e.attackWindupMs = 0;
+        e.attackCooldownMs = getEnemyAttackCooldownMs();
         e.attackTargetId = null;
       }
       continue;
     }
 
-    if ((e.x - target.x) ** 2 + (e.y - target.y) ** 2 <= rr * rr && target.alive) {
+    if (e.attackCooldownMs <= 0 && (e.x - target.x) ** 2 + (e.y - target.y) ** 2 <= rr * rr && target.alive) {
       e.vx = 0;
       e.vy = 0;
       e.attackWindupMs = ENEMY_ATTACK_WINDUP_MS;
