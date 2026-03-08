@@ -1083,7 +1083,7 @@ function returnToStartMenu() {
   joinOverlay.classList.remove('death-mode');
   updateMobileControlsVisibility();
   requestRoomsList();
-  requestRecordsList(1);
+  requestRecordsList(recordsUi.page);
 }
 
 function openDeathOverlay() {
@@ -1093,7 +1093,7 @@ function openDeathOverlay() {
   statusEl.textContent = 'You died. Check records and return to start.';
   updateMobileControlsVisibility();
   requestRoomsList();
-  requestRecordsList(1);
+  requestRecordsList(recordsUi.page);
 }
 
 backToMenuBtn?.addEventListener('click', () => {
@@ -1117,7 +1117,7 @@ recordsNextBtn?.addEventListener('click', () => {
 setInterval(() => {
   if (!game.myId && game.connected) {
     requestRoomsList();
-    requestRecordsList(1);
+    requestRecordsList(recordsUi.page);
   }
 }, 5000);
 ws.addEventListener('open', () => {
@@ -1170,7 +1170,7 @@ ws.addEventListener('message', (ev) => {
     joinOverlay.classList.remove('death-mode');
     updateMobileControlsVisibility();
     requestRoomsList();
-    requestRecordsList(1);
+    requestRecordsList(recordsUi.page);
   }
 
   if (msg.type === 'system') statusEl.textContent = msg.message;
@@ -1669,4 +1669,5 @@ function render(ts) {
 startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 requestAnimationFrame(render);
+
 
