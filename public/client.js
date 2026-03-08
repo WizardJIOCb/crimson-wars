@@ -2500,14 +2500,3 @@ setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 setInterval(sendNetStatsReport, 1500);
 requestAnimationFrame(render);
 
-
-
-
-
-
-
-
-
-
-
-
