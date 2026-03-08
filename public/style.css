@@ -788,22 +788,55 @@ body {
 .death-drips {
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(16px 34px at 10% 8%, rgba(170, 10, 14, 0.94) 0 55%, rgba(170, 10, 14, 0) 75%),
-    radial-gradient(18px 38px at 23% 10%, rgba(188, 14, 20, 0.9) 0 54%, rgba(188, 14, 20, 0) 76%),
-    radial-gradient(15px 30px at 37% 11%, rgba(156, 8, 14, 0.9) 0 58%, rgba(156, 8, 14, 0) 80%),
-    radial-gradient(17px 36px at 54% 9%, rgba(185, 18, 24, 0.88) 0 56%, rgba(185, 18, 24, 0) 78%),
-    radial-gradient(15px 32px at 69% 10%, rgba(168, 10, 16, 0.9) 0 56%, rgba(168, 10, 16, 0) 78%),
-    radial-gradient(16px 34px at 83% 8%, rgba(178, 12, 18, 0.9) 0 55%, rgba(178, 12, 18, 0) 76%),
-    radial-gradient(14px 28px at 93% 12%, rgba(145, 8, 13, 0.86) 0 58%, rgba(145, 8, 13, 0) 80%),
-    linear-gradient(to bottom, rgba(92, 6, 10, 0) 0 58%, rgba(130, 8, 14, 0.42) 72%, rgba(96, 5, 11, 0) 100%);
+  background: linear-gradient(to bottom, rgba(92, 6, 10, 0) 0 56%, rgba(130, 8, 14, 0.38) 74%, rgba(96, 5, 11, 0) 100%);
   opacity: 0;
-  transform: translateY(-12%);
+  transform: translateY(-16%);
   filter: blur(0.35px);
+  overflow: hidden;
+}
+
+.death-drips::before,
+.death-drips::after {
+  content: '';
+  position: absolute;
+  inset: -8% 0 0 0;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.death-drips::before {
+  background:
+    radial-gradient(8px 16px at 8% 6%, rgba(178, 10, 16, 0.92) 0 56%, rgba(178, 10, 16, 0) 75%),
+    radial-gradient(9px 18px at 17% 8%, rgba(198, 15, 22, 0.88) 0 55%, rgba(198, 15, 22, 0) 74%),
+    radial-gradient(7px 14px at 29% 7%, rgba(162, 8, 14, 0.9) 0 58%, rgba(162, 8, 14, 0) 76%),
+    radial-gradient(10px 20px at 42% 9%, rgba(188, 13, 20, 0.88) 0 54%, rgba(188, 13, 20, 0) 74%),
+    radial-gradient(8px 16px at 56% 7%, rgba(172, 10, 16, 0.9) 0 57%, rgba(172, 10, 16, 0) 76%),
+    radial-gradient(9px 18px at 72% 8%, rgba(192, 16, 22, 0.86) 0 54%, rgba(192, 16, 22, 0) 74%),
+    radial-gradient(8px 16px at 86% 6%, rgba(165, 9, 15, 0.88) 0 56%, rgba(165, 9, 15, 0) 76%),
+    radial-gradient(7px 14px at 95% 9%, rgba(142, 7, 12, 0.85) 0 58%, rgba(142, 7, 12, 0) 76%);
+}
+
+.death-drips::after {
+  background:
+    radial-gradient(7px 14px at 12% 4%, rgba(150, 8, 13, 0.82) 0 58%, rgba(150, 8, 13, 0) 78%),
+    radial-gradient(8px 16px at 24% 5%, rgba(175, 11, 17, 0.8) 0 56%, rgba(175, 11, 17, 0) 76%),
+    radial-gradient(6px 12px at 38% 4%, rgba(138, 7, 12, 0.8) 0 60%, rgba(138, 7, 12, 0) 79%),
+    radial-gradient(8px 16px at 51% 6%, rgba(170, 10, 16, 0.8) 0 56%, rgba(170, 10, 16, 0) 76%),
+    radial-gradient(7px 14px at 66% 4%, rgba(146, 8, 13, 0.78) 0 58%, rgba(146, 8, 13, 0) 78%),
+    radial-gradient(9px 17px at 81% 6%, rgba(176, 11, 17, 0.8) 0 55%, rgba(176, 11, 17, 0) 75%),
+    radial-gradient(7px 14px at 92% 5%, rgba(140, 8, 12, 0.78) 0 58%, rgba(140, 8, 12, 0) 78%);
 }
 
 #join-overlay.death-cinematic-active .death-drips {
   animation: deathDrips 2s ease-out 0.7s forwards;
+}
+
+#join-overlay.death-cinematic-active .death-drips::before {
+  animation: deathDripsFlowA 2.3s linear 0.7s forwards;
+}
+
+#join-overlay.death-cinematic-active .death-drips::after {
+  animation: deathDripsFlowB 2.8s linear 0.8s forwards;
 }
 
 .death-continue {
@@ -843,8 +876,20 @@ body {
 
 @keyframes deathDrips {
   0% { opacity: 0; transform: translateY(-16%); }
-  25% { opacity: 0.78; }
-  100% { opacity: 0.46; transform: translateY(6%); }
+  25% { opacity: 0.82; }
+  100% { opacity: 0.52; transform: translateY(2%); }
+}
+
+@keyframes deathDripsFlowA {
+  0% { opacity: 0; transform: translateY(-24%); }
+  20% { opacity: 0.92; }
+  100% { opacity: 0.54; transform: translateY(58%); }
+}
+
+@keyframes deathDripsFlowB {
+  0% { opacity: 0; transform: translateY(-30%); }
+  24% { opacity: 0.76; }
+  100% { opacity: 0.42; transform: translateY(74%); }
 }
 
 @keyframes deathContinueIn {
