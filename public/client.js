@@ -11,6 +11,7 @@ const qualitySelect = document.getElementById('quality-select');
 const shadowToggleEl = document.getElementById('shadow-toggle');
 const enemyHpToggleEl = document.getElementById('enemy-hp-toggle');
 const extraBloodToggleEl = document.getElementById('extra-blood-toggle');
+const hitEffectsToggleEl = document.getElementById('hit-effects-toggle');
 const connIndicatorToggleEl = document.getElementById('conn-indicator-toggle');
 const scoreboardEl = document.getElementById('scoreboard');
 const hudEl = document.getElementById('hud');
@@ -99,6 +100,7 @@ const game = {
   shadowsEnabled: getToggleDefaultOn('cw:shadowsEnabled'),
   enemyHpBarsEnabled: getToggleDefaultOn('cw:enemyHpBarsEnabled'),
   extraBloodEnabled: getToggleDefaultOn('cw:extraBloodEnabled'),
+  hitEffectsEnabled: getToggleDefaultOn('cw:hitEffectsEnabled'),
   connectionIndicatorEnabled: getToggleDefaultOn('cw:connectionIndicatorEnabled'),
   renderPlayers: new Map(),
   renderEnemies: new Map(),
@@ -108,7 +110,7 @@ const game = {
 };
 
 const camera = { x: 0, y: 0 };
-const visuals = { blood: [], bloodPuddles: [], gore: [], muzzle: [], enemyPrev: new Map(), bulletIds: new Set(), groundTileCanvas: null, groundTileSize: 0 };
+const visuals = { blood: [], bloodPuddles: [], gore: [], muzzle: [], hitFx: [], enemyPrev: new Map(), playerPrev: new Map(), bulletIds: new Set(), groundTileCanvas: null, groundTileSize: 0 };
 
 let joinMode = 'create';
 const NICKNAME_STORAGE_KEY = 'cw:nickname';
@@ -500,6 +502,17 @@ extraBloodToggleEl?.addEventListener('change', () => {
   setExtraBloodEnabled(extraBloodToggleEl.checked);
 });
 setExtraBloodEnabled(game.extraBloodEnabled);
+
+function setHitEffectsEnabled(enabled) {
+  game.hitEffectsEnabled = Boolean(enabled);
+  if (hitEffectsToggleEl) hitEffectsToggleEl.checked = game.hitEffectsEnabled;
+  localStorage.setItem('cw:hitEffectsEnabled', game.hitEffectsEnabled ? '1' : '0');
+}
+
+hitEffectsToggleEl?.addEventListener('change', () => {
+  setHitEffectsEnabled(hitEffectsToggleEl.checked);
+});
+setHitEffectsEnabled(game.hitEffectsEnabled);
 
 function setConnectionIndicatorEnabled(enabled) {
   game.connectionIndicatorEnabled = Boolean(enabled);
@@ -1395,9 +1408,11 @@ ws.addEventListener('message', (ev) => {
     game.netSnapshots = [];
     game.sampledNet = null;
     visuals.enemyPrev = new Map();
+    visuals.playerPrev = new Map();
     visuals.blood = [];
     visuals.bloodPuddles = [];
     visuals.gore = [];
+    visuals.hitFx = [];
     visuals.muzzle = [];
     roomMetaEl.textContent = `Room: ${msg.roomCode}`;
     statusEl.textContent = `Online as ${msg.id} | tick ${roomSync.tickRate}`;
@@ -1544,28 +1559,69 @@ function spawnGoreBurst(x, y, damage = 10) {
   if (visuals.gore.length > 260) visuals.gore.splice(0, visuals.gore.length - 260);
 }
 
+function spawnHitFx(x, y, severity = 1, isPlayerHit = false) {
+  if (!game.hitEffectsEnabled) return;
+  const count = Math.max(1, Math.min(6, Math.floor(1 + severity * 0.2 + (isPlayerHit ? 1.2 : 0))));
+  const color = isPlayerHit ? '#fb7185' : '#fca5a5';
+  for (let i = 0; i < count; i += 1) {
+    visuals.hitFx.push({
+      x: x + (Math.random() * 10 - 5),
+      y: y + (Math.random() * 10 - 5),
+      r: 5 + Math.random() * 5 + severity * 0.12,
+      life: 0.14 + Math.random() * 0.1,
+      ttl: 0.14 + Math.random() * 0.1,
+      color,
+    });
+  }
+  if (visuals.hitFx.length > 220) visuals.hitFx.splice(0, visuals.hitFx.length - 220);
+}
+
 function processStateFx(nextState) {
-  const prevMap = visuals.enemyPrev;
-  const nextMap = new Map();
+  const prevEnemyMap = visuals.enemyPrev;
+  const nextEnemyMap = new Map();
 
   for (const e of nextState.enemies) {
-    nextMap.set(e.id, { x: e.x, y: e.y, hp: e.hp });
-    const prev = prevMap.get(e.id);
+    nextEnemyMap.set(e.id, { x: e.x, y: e.y, hp: e.hp });
+    const prev = prevEnemyMap.get(e.id);
     if (prev && e.hp < prev.hp) {
       const hitDamage = Math.max(1, prev.hp - e.hp);
       spawnBlood(e.x, e.y, Math.max(2, Math.floor(hitDamage * 0.45)));
       spawnGoreBurst(e.x, e.y, hitDamage);
+      spawnHitFx(e.x, e.y, hitDamage, false);
     }
   }
 
-  for (const [id, prev] of prevMap.entries()) {
-    if (!nextMap.has(id)) {
+  for (const [id, prev] of prevEnemyMap.entries()) {
+    if (!nextEnemyMap.has(id)) {
       spawnBlood(prev.x, prev.y, 18);
       spawnGoreBurst(prev.x, prev.y, 18);
       spawnBloodPuddle(prev.x, prev.y, 1);
+      spawnHitFx(prev.x, prev.y, 14, false);
     }
   }
-  visuals.enemyPrev = nextMap;
+  visuals.enemyPrev = nextEnemyMap;
+
+  const prevPlayerMap = visuals.playerPrev;
+  const nextPlayerMap = new Map();
+  for (const p of nextState.players) {
+    nextPlayerMap.set(p.id, { x: p.x, y: p.y, hp: p.hp, alive: Boolean(p.alive) });
+    const prev = prevPlayerMap.get(p.id);
+    if (prev && p.hp < prev.hp) {
+      const hitDamage = Math.max(1, prev.hp - p.hp);
+      const meBonus = p.id === game.myId ? 1.45 : 1.2;
+      const bloodCount = Math.max(7, Math.floor(hitDamage * 0.95 * meBonus));
+      spawnBlood(p.x, p.y, bloodCount);
+      if (game.extraBloodEnabled) spawnGoreBurst(p.x, p.y, Math.max(6, hitDamage * 0.9));
+      spawnHitFx(p.x, p.y, hitDamage * meBonus, true);
+    }
+    if (prev && prev.alive && !p.alive) {
+      spawnBlood(p.x, p.y, 24);
+      spawnBloodPuddle(p.x, p.y, 1.15);
+      spawnGoreBurst(p.x, p.y, 20);
+      spawnHitFx(p.x, p.y, 18, true);
+    }
+  }
+  visuals.playerPrev = nextPlayerMap;
 
   const playersById = new Map(nextState.players.map((p) => [p.id, p]));
   const ids = new Set();
@@ -1625,6 +1681,11 @@ function updateFx(dt) {
   for (let i = visuals.muzzle.length - 1; i >= 0; i -= 1) {
     visuals.muzzle[i].life -= dt;
     if (visuals.muzzle[i].life <= 0) visuals.muzzle.splice(i, 1);
+  }
+
+  for (let i = visuals.hitFx.length - 1; i >= 0; i -= 1) {
+    visuals.hitFx[i].life -= dt;
+    if (visuals.hitFx[i].life <= 0) visuals.hitFx.splice(i, 1);
   }
 }
 function drawGround() {
@@ -1868,6 +1929,23 @@ function drawFx() {
     ctx.beginPath();
     ctx.arc(p.x - camera.x, p.y - camera.y, p.s, 0, Math.PI * 2);
     ctx.fill();
+  }
+
+
+  for (const h of visuals.hitFx) {
+    if (!isVisibleWorld(h.x, h.y, 24)) continue;
+    const a = Math.max(0, h.life / h.ttl);
+    const r = h.r + (1 - a) * 9;
+    ctx.strokeStyle = `rgba(255,230,230,${(a * 0.85).toFixed(3)})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(h.x - camera.x, h.y - camera.y, r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = h.color;
+    ctx.globalAlpha = Math.min(1, a + 0.15);
+    ctx.fillRect(h.x - camera.x - 2, h.y - camera.y - r * 0.45, 4, 4);
+    ctx.globalAlpha = 1;
   }
 
   for (const f of visuals.muzzle) {
