@@ -74,7 +74,8 @@ const camera = { x: 0, y: 0 };
 const visuals = { blood: [], bloodPuddles: [], gore: [], muzzle: [], enemyPrev: new Map(), bulletIds: new Set(), groundTileCanvas: null, groundTileSize: 0 };
 
 let joinMode = 'create';
-let infoPanelHidden = localStorage.getItem('cw:infoPanelHidden') === '1';
+const storedInfoPanelHidden = localStorage.getItem('cw:infoPanelHidden');
+let infoPanelHidden = storedInfoPanelHidden === null ? true : storedInfoPanelHidden === '1';
 let lastFrameTs = performance.now();
 let fpsFrameCount = 0;
 let fpsAccumSec = 0;
