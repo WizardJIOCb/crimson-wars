@@ -91,6 +91,18 @@ body {
   color: #f8fafc;
 }
 
+.conn-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.conn-meta {
+  font-size: 11px;
+  color: #cbd5e1;
+  line-height: 1;
+}
 .conn-indicator {
   width: 10px;
   height: 10px;

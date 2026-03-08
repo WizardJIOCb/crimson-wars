@@ -364,14 +364,15 @@ function getConnectionIndicatorData(player) {
     ? Math.round(reportedPing)
     : (player?.id === game.myId ? Math.round(Number(netStats.rttMs) || 0) : 0);
 
-  if (level <= 0) return { level: 0, title: 'Connection: no data yet' };
+  if (level <= 0) return { level: 0, title: 'Connection: no data yet', shortText: '--' };
   let label = 'Poor';
   if (level >= 9) label = 'Excellent';
   else if (level >= 7) label = 'Good';
   else if (level >= 5) label = 'Fair';
 
   const pingPart = pingMs > 0 ? ` | Ping: ${pingMs}ms` : '';
-  return { level, title: `Connection: ${label} (${level}/10)${pingPart}` };
+  const shortText = pingMs > 0 ? `${pingMs}ms` : `Q${level}`;
+  return { level, title: `Connection: ${label} (${level}/10)${pingPart}`, shortText };
 }
 
 function sendNetStatsReport() {
@@ -1085,7 +1086,7 @@ function updateScoreboard(players) {
     const meClass = p.id === game.myId ? ' me' : '';
     const conn = getConnectionIndicatorData(p);
     const connIcon = game.connectionIndicatorEnabled
-      ? `<span class="conn-indicator conn-lvl-${conn.level}" title="${conn.title}" aria-label="${conn.title}"></span>`
+      ? `<span class="conn-wrap" aria-label="${conn.title}"><span class="conn-indicator conn-lvl-${conn.level}"></span><span class="conn-meta">${conn.shortText}</span></span>`
       : '';
     return `<div class="score-row${meClass}">${connIcon}<span class="score-player-text">${p.name} - Kills: ${kills} (${p.weaponLabel} ${ammo})</span></div>`;
   });
