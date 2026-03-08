@@ -11,6 +11,7 @@ const qualitySelect = document.getElementById('quality-select');
 const shadowToggleEl = document.getElementById('shadow-toggle');
 const enemyHpToggleEl = document.getElementById('enemy-hp-toggle');
 const extraBloodToggleEl = document.getElementById('extra-blood-toggle');
+const connIndicatorToggleEl = document.getElementById('conn-indicator-toggle');
 const scoreboardEl = document.getElementById('scoreboard');
 const hudEl = document.getElementById('hud');
 const joinOverlay = document.getElementById('join-overlay');
@@ -89,6 +90,7 @@ const game = {
   shadowsEnabled: getToggleDefaultOn('cw:shadowsEnabled'),
   enemyHpBarsEnabled: getToggleDefaultOn('cw:enemyHpBarsEnabled'),
   extraBloodEnabled: getToggleDefaultOn('cw:extraBloodEnabled'),
+  connectionIndicatorEnabled: getToggleDefaultOn('cw:connectionIndicatorEnabled'),
   renderPlayers: new Map(),
   renderEnemies: new Map(),
   renderBullets: new Map(),
@@ -328,6 +330,56 @@ function updateNetMetaUi() {
 
   netMetaEl.textContent = 'NET: ping ' + Math.round(netStats.rttMs) + 'ms | jitter ' + Math.round(netStats.jitterMs) + 'ms | loss ' + lossPct.toFixed(1) + '% | state ' + netStats.stateHz.toFixed(1) + 'Hz | delay ' + Math.round(netStats.stateDelayMs) + 'ms | interp ' + interpMs + 'ms | rx ' + netStats.rxKBps.toFixed(1) + 'KB/s (' + formatBytesTotal(netStats.rxTotalBytes) + ') | tx ' + netStats.txKBps.toFixed(1) + 'KB/s (' + formatBytesTotal(netStats.txTotalBytes) + ')';
 }
+
+function computeConnectionQualityLevel(rttMs, jitterMs, lossPct, stateDelayMs) {
+  const rtt = Math.max(0, Number(rttMs) || 0);
+  const jitter = Math.max(0, Number(jitterMs) || 0);
+  const loss = Math.max(0, Number(lossPct) || 0);
+  const delay = Math.max(0, Number(stateDelayMs) || 0);
+
+  let score = 10;
+  score -= Math.min(4, Math.max(0, (rtt - 40) / 40));
+  score -= Math.min(2, Math.max(0, (jitter - 10) / 15));
+  score -= Math.min(3, loss / 4);
+  score -= Math.min(2, Math.max(0, (delay - 80) / 60));
+
+  return Math.max(1, Math.min(10, Math.round(score)));
+}
+
+function getLocalConnectionQualityLevel() {
+  const delivered = netStats.recvPings + netStats.lostPings;
+  const lossPct = delivered > 0 ? (netStats.lostPings * 100) / delivered : 0;
+  return computeConnectionQualityLevel(netStats.rttMs, netStats.jitterMs, lossPct, netStats.stateDelayMs);
+}
+
+function getConnectionIndicatorData(player) {
+  const reported = Number(player?.netQuality);
+  const level = Number.isFinite(reported) && reported > 0
+    ? Math.max(1, Math.min(10, Math.round(reported)))
+    : (player?.id === game.myId ? getLocalConnectionQualityLevel() : 0);
+
+  if (level <= 0) return { level: 0, title: 'Connection: no data yet' };
+  let label = 'Poor';
+  if (level >= 9) label = 'Excellent';
+  else if (level >= 7) label = 'Good';
+  else if (level >= 5) label = 'Fair';
+
+  return { level, title: `Connection: ${label} (${level}/10)` };
+}
+
+function sendNetStatsReport() {
+  if (!game.connected || !game.myId || ws.readyState !== WebSocket.OPEN || !game.state) return;
+  const delivered = netStats.recvPings + netStats.lostPings;
+  const lossPct = delivered > 0 ? (netStats.lostPings * 100) / delivered : 0;
+  sendJson({
+    type: 'netStats',
+    rttMs: Number(netStats.rttMs) || 0,
+    jitterMs: Number(netStats.jitterMs) || 0,
+    lossPct,
+    stateDelayMs: Number(netStats.stateDelayMs) || 0,
+  });
+}
+
 function loadImage(src) {
   const img = new Image();
   img.src = src;
@@ -403,6 +455,17 @@ extraBloodToggleEl?.addEventListener('change', () => {
   setExtraBloodEnabled(extraBloodToggleEl.checked);
 });
 setExtraBloodEnabled(game.extraBloodEnabled);
+
+function setConnectionIndicatorEnabled(enabled) {
+  game.connectionIndicatorEnabled = Boolean(enabled);
+  if (connIndicatorToggleEl) connIndicatorToggleEl.checked = game.connectionIndicatorEnabled;
+  localStorage.setItem('cw:connectionIndicatorEnabled', game.connectionIndicatorEnabled ? '1' : '0');
+}
+
+connIndicatorToggleEl?.addEventListener('change', () => {
+  setConnectionIndicatorEnabled(connIndicatorToggleEl.checked);
+});
+setConnectionIndicatorEnabled(game.connectionIndicatorEnabled);
 
 function resizeCanvas() {
   canvas.width = window.innerWidth;
@@ -1013,7 +1076,11 @@ function updateScoreboard(players) {
     const kills = Number(p.kills) || 0;
     const ammo = p.ammo === null ? 'inf' : p.ammo;
     const meClass = p.id === game.myId ? ' me' : '';
-    return `<div class="score-row${meClass}">${p.name} - Kills: ${kills} (${p.weaponLabel} ${ammo})</div>`;
+    const conn = getConnectionIndicatorData(p);
+    const connIcon = game.connectionIndicatorEnabled
+      ? `<span class="conn-indicator conn-lvl-${conn.level}" title="${conn.title}" aria-label="${conn.title}"></span>`
+      : '';
+    return `<div class="score-row${meClass}">${connIcon}<span class="score-player-text">${p.name} - Kills: ${kills} (${p.weaponLabel} ${ammo})</span></div>`;
   });
 
   scoreboardEl.innerHTML = `<div class="score-title">Players</div>${rows.join('')}`;
@@ -1697,7 +1764,11 @@ function render(ts) {
 
 startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
+setInterval(sendNetStatsReport, 1500);
 requestAnimationFrame(render);
+
+
+
 
 
 

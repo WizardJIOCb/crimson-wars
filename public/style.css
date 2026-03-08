@@ -73,6 +73,14 @@ body {
 
 #scoreboard .score-row {
   margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+#scoreboard .score-player-text {
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -82,6 +90,26 @@ body {
   font-weight: 700;
   color: #f8fafc;
 }
+
+.conn-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.2);
+}
+
+.conn-lvl-0 { background: #6b7280; }
+.conn-lvl-1 { background: #991b1b; }
+.conn-lvl-2 { background: #b91c1c; }
+.conn-lvl-3 { background: #dc2626; }
+.conn-lvl-4 { background: #ea580c; }
+.conn-lvl-5 { background: #f97316; }
+.conn-lvl-6 { background: #ca8a04; }
+.conn-lvl-7 { background: #84cc16; }
+.conn-lvl-8 { background: #22c55e; }
+.conn-lvl-9 { background: #16a34a; }
+.conn-lvl-10 { background: #15803d; }
 
 #hud.menu-hidden {
   display: none;
@@ -470,3 +498,4 @@ body {
   font-size: 12px;
   color: #cbd5e1;
 }
+

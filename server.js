@@ -120,6 +120,21 @@ function clampNum(value, min, max, fallback) {
   return Math.max(min, Math.min(max, n));
 }
 
+function parseNetQualityLevel(report) {
+  const rttMs = clampNum(report?.rttMs, 0, 2000, 0);
+  const jitterMs = clampNum(report?.jitterMs, 0, 1000, 0);
+  const lossPct = clampNum(report?.lossPct, 0, 100, 0);
+  const stateDelayMs = clampNum(report?.stateDelayMs, 0, 2000, 0);
+
+  let score = 10;
+  score -= Math.min(4, Math.max(0, (rttMs - 40) / 40));
+  score -= Math.min(2, Math.max(0, (jitterMs - 10) / 15));
+  score -= Math.min(3, lossPct / 4);
+  score -= Math.min(2, Math.max(0, (stateDelayMs - 80) / 60));
+
+  return Math.max(1, Math.min(10, Math.round(score)));
+}
+
 function normalizeRoomSync(raw) {
   return {
     tickRate: Math.round(clampNum(raw?.tickRate, 20, 120, DEFAULT_ROOM_SYNC.tickRate)),
@@ -400,6 +415,7 @@ function serializeRoom(room) {
       weaponKey: p.weaponKey,
       weaponLabel: WEAPONS[p.weaponKey].label,
       ammo: p.weaponAmmo,
+      netQuality: p.netQuality || 0,
     })),
     bullets: room.bullets.map((b) => ({
       id: b.id,
@@ -542,6 +558,7 @@ function joinRoom(ws, join) {
     respawnAt: 0,
     weaponKey: 'pistol',
     weaponAmmo: null,
+    netQuality: 0,
     joinedAt: Date.now(),
   };
 
@@ -606,6 +623,11 @@ wss.on('connection', (ws) => {
     if (!room) return;
     const current = room.players.get(player.id);
     if (!current) return;
+
+    if (msg.type === 'netStats') {
+      current.netQuality = parseNetQualityLevel(msg);
+      return;
+    }
 
     if (msg.type === 'input') {
       current.moveX = clamp(Number(msg.moveX) || 0, -1, 1);
@@ -793,3 +815,5 @@ setInterval(() => {
 server.listen(PORT, () => {
   console.log(`Server started: http://localhost:${PORT}`);
 });
+
+
