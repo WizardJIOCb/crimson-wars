@@ -17,6 +17,7 @@ const hudEl = document.getElementById('hud');
 const joinOverlay = document.getElementById('join-overlay');
 const joinForm = document.getElementById('join-form');
 const nameInput = document.getElementById('name');
+const characterSelectEl = document.getElementById('character-select');
 const roomCodeInput = document.getElementById('room-code');
 const refreshRoomsBtn = document.getElementById('refresh-rooms');
 const roomsListEl = document.getElementById('rooms-list');
@@ -73,6 +74,17 @@ const mobile = {
   lastAimY: 0,
 };
 
+const PLAYER_VARIANTS = [
+  { id: 'scout', name: 'Scout', tint: 'rgba(120,180,255,0.28)', accent: '#60a5fa', head: 'cap' },
+  { id: 'raider', name: 'Raider', tint: 'rgba(240,170,80,0.28)', accent: '#f59e0b', head: 'band' },
+  { id: 'medic', name: 'Medic', tint: 'rgba(120,230,160,0.28)', accent: '#22c55e', head: 'cross' },
+  { id: 'shadow', name: 'Shadow', tint: 'rgba(150,120,240,0.3)', accent: '#a78bfa', head: 'hood' },
+  { id: 'cyber', name: 'Cyber', tint: 'rgba(90,220,220,0.28)', accent: '#22d3ee', head: 'visor' },
+  { id: 'nomad', name: 'Nomad', tint: 'rgba(240,120,150,0.28)', accent: '#fb7185', head: 'wrap' },
+  { id: 'warden', name: 'Warden', tint: 'rgba(220,220,130,0.3)', accent: '#eab308', head: 'helm' },
+];
+
+
 function getToggleDefaultOn(key) {
   const stored = localStorage.getItem(key);
   if (stored === null) {
@@ -106,6 +118,8 @@ const visuals = { blood: [], bloodPuddles: [], gore: [], muzzle: [], enemyPrev: 
 
 let joinMode = 'create';
 const NICKNAME_STORAGE_KEY = 'cw:nickname';
+const PLAYER_CLASS_STORAGE_KEY = 'cw:playerClass';
+let selectedPlayerClass = 'scout';
 const storedInfoPanelHidden = localStorage.getItem('cw:infoPanelHidden');
 let infoPanelHidden = storedInfoPanelHidden === null ? true : storedInfoPanelHidden === '1';
 let lastFrameTs = performance.now();
@@ -448,6 +462,7 @@ function rebuildGroundTile() {
 }
 
 sprites.ground.addEventListener('load', rebuildGroundTile);
+sprites.player.addEventListener('load', renderCharacterPicker);
 
 qualitySelect?.addEventListener('change', () => {
   const q = qualitySelect.value;
@@ -666,10 +681,77 @@ if (toggleInfoBtn) {
 
 setInfoPanelHidden(infoPanelHidden);
 
+function getPlayerVariant(id) {
+  return PLAYER_VARIANTS.find((x) => x.id === id) || PLAYER_VARIANTS[0];
+}
+
+function sanitizePlayerClass(id) {
+  const key = (id || '').toString().trim();
+  return getPlayerVariant(key).id;
+}
+
+function drawCharacterPreview(previewCanvas, variant) {
+  const c = previewCanvas;
+  const g = c.getContext('2d');
+  g.clearRect(0, 0, c.width, c.height);
+  g.imageSmoothingEnabled = false;
+
+  if (!(sprites.player.complete && sprites.player.naturalWidth >= 32 * 3)) {
+    g.fillStyle = variant.accent;
+    g.beginPath();
+    g.arc(c.width / 2, c.height / 2, 12, 0, Math.PI * 2);
+    g.fill();
+    return;
+  }
+
+  g.drawImage(sprites.player, 32, 0, 32, 48, 8, 2, 32, 48);
+  g.globalCompositeOperation = 'source-atop';
+  g.fillStyle = variant.tint;
+  g.fillRect(8, 2, 32, 48);
+  g.globalCompositeOperation = 'source-over';
+  g.fillStyle = variant.accent;
+  g.fillRect(18, 4, 12, 3);
+}
+
+function renderCharacterPicker() {
+  if (!characterSelectEl) return;
+  characterSelectEl.innerHTML = '';
+  selectedPlayerClass = sanitizePlayerClass(localStorage.getItem(PLAYER_CLASS_STORAGE_KEY) || selectedPlayerClass);
+
+  for (const variant of PLAYER_VARIANTS) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'char-option' + (variant.id === selectedPlayerClass ? ' active' : '');
+    btn.dataset.classId = variant.id;
+
+    const preview = document.createElement('canvas');
+    preview.width = 48;
+    preview.height = 52;
+    preview.className = 'char-preview';
+    drawCharacterPreview(preview, variant);
+
+    const label = document.createElement('span');
+    label.className = 'char-label';
+    label.textContent = variant.name;
+
+    btn.appendChild(preview);
+    btn.appendChild(label);
+    btn.addEventListener('click', () => {
+      selectedPlayerClass = variant.id;
+      localStorage.setItem(PLAYER_CLASS_STORAGE_KEY, selectedPlayerClass);
+      renderCharacterPicker();
+    });
+    characterSelectEl.appendChild(btn);
+  }
+}
+
+
 const storedNickname = localStorage.getItem(NICKNAME_STORAGE_KEY);
 if (nameInput && storedNickname && storedNickname.trim()) {
   nameInput.value = storedNickname.trim().slice(0, 18);
 }
+selectedPlayerClass = sanitizePlayerClass(localStorage.getItem(PLAYER_CLASS_STORAGE_KEY) || selectedPlayerClass);
+renderCharacterPicker();
 
 applyPresetToUi('normal');
 applyRoomSync(configFromSyncUi());
@@ -697,6 +779,7 @@ function sendJoinRequest(roomCode, joinSync = null) {
   sendJson({
     type: 'join',
     name,
+    playerClass: selectedPlayerClass,
     roomCode,
     sync: joinSync || undefined,
   });
@@ -1631,6 +1714,57 @@ function drawTrees() {
   }
 }
 
+function drawVariantAccents(x, y, variant) {
+  ctx.fillStyle = variant.accent;
+  if (variant.head === 'cap' || variant.head === 'band') {
+    ctx.fillRect(x - 9, y - 24, 18, 4);
+  }
+  if (variant.head === 'helm' || variant.head === 'visor') {
+    ctx.fillRect(x - 10, y - 24, 20, 5);
+    ctx.fillStyle = 'rgba(20,30,40,0.8)';
+    ctx.fillRect(x - 6, y - 21, 12, 3);
+  }
+  if (variant.head === 'hood') {
+    ctx.strokeStyle = variant.accent;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y - 20, 9, Math.PI * 0.25, Math.PI * 0.75, true);
+    ctx.stroke();
+  }
+  if (variant.head === 'cross') {
+    ctx.fillRect(x - 1, y - 25, 2, 6);
+    ctx.fillRect(x - 3, y - 23, 6, 2);
+  }
+  if (variant.head === 'wrap') {
+    ctx.fillRect(x - 9, y - 24, 18, 3);
+    ctx.fillRect(x + 6, y - 21, 2, 4);
+  }
+}
+
+function drawWeaponIcon(sx, sy, weaponKey) {
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = '#f8fafc';
+  ctx.fillStyle = '#f8fafc';
+  if (weaponKey === 'smg') {
+    ctx.fillRect(-6, -1, 10, 2);
+    ctx.fillRect(2, -3, 2, 5);
+    ctx.fillRect(-1, 1, 2, 4);
+  } else if (weaponKey === 'shotgun') {
+    ctx.fillRect(-7, -1, 12, 2);
+    ctx.fillRect(-2, 1, 2, 5);
+  } else if (weaponKey === 'sniper') {
+    ctx.fillRect(-8, -1, 14, 2);
+    ctx.fillRect(-2, -4, 4, 2);
+    ctx.strokeRect(4, -2, 2, 3);
+  } else {
+    ctx.fillRect(-5, -1, 8, 2);
+    ctx.fillRect(1, -3, 2, 5);
+  }
+  ctx.restore();
+}
+
 function drawPlayer(p, t, isMe, rx, ry) {
   if (!isVisibleWorld(rx, ry, 50)) return;
   const x = rx - camera.x;
@@ -1654,11 +1788,18 @@ function drawPlayer(p, t, isMe, rx, ry) {
     const phase = isMe ? 0 : (p.id.charCodeAt(0) % 3);
     const frame = moving ? (Math.floor(t * 9 + phase) % 3) : 1;
 
+    const variant = getPlayerVariant(p.playerClass || (isMe ? selectedPlayerClass : 'scout'));
+
     ctx.save();
     ctx.translate(x, y + 2);
     const faceLeft = isMe ? (input.pointerX > x) : ((rv?.vx || 0) < -0.2);
     if (faceLeft) ctx.scale(-1, 1);
     ctx.drawImage(sprites.player, frame * fw, 0, fw, fh, -18, -30, 36, 54);
+    ctx.globalCompositeOperation = 'source-atop';
+    ctx.fillStyle = variant.tint;
+    ctx.fillRect(-18, -30, 36, 54);
+    ctx.globalCompositeOperation = 'source-over';
+    drawVariantAccents(0, 0, variant);
     ctx.restore();
   } else {
     drawCircle(rx, ry, 18, isMe ? '#22d3ee' : '#a78bfa');
@@ -1795,17 +1936,32 @@ function render(ts) {
   drawBloodPuddles();
 
   for (const d of game.state.drops || []) {
-    if (!isVisibleWorld(d.x, d.y, 30)) continue;
+    if (!isVisibleWorld(d.x, d.y, 50)) continue;
     const x = d.x - camera.x;
     const y = d.y - camera.y;
+    const glow = d.weaponKey === 'sniper' ? '#e5e7eb' : (d.weaponKey === 'shotgun' ? '#f97316' : (d.weaponKey === 'smg' ? '#38bdf8' : '#22c55e'));
+
     drawShadowAtScreen(x, y + 10, 9, 4, 0.24);
+
+    ctx.fillStyle = 'rgba(8,12,18,0.78)';
+    ctx.fillRect(x - 26, y - 28, 52, 12);
+    ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x - 26, y - 28, 52, 12);
+
+    drawWeaponIcon(x - 17, y - 22, d.weaponKey);
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(d.weaponLabel || 'Weapon', x - 10, y - 18);
+
     ctx.beginPath();
     ctx.moveTo(x, y - 12);
     ctx.lineTo(x + 10, y);
     ctx.lineTo(x, y + 12);
     ctx.lineTo(x - 10, y);
     ctx.closePath();
-    ctx.fillStyle = '#22c55e';
+    ctx.fillStyle = glow;
     ctx.fill();
   }
 
@@ -1837,3 +1993,8 @@ startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 setInterval(sendNetStatsReport, 1500);
 requestAnimationFrame(render);
+
+
+
+
+
