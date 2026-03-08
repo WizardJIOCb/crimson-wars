@@ -1,4 +1,4 @@
-
+﻿
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
@@ -89,6 +89,7 @@ const camera = { x: 0, y: 0 };
 const visuals = { blood: [], bloodPuddles: [], gore: [], muzzle: [], enemyPrev: new Map(), bulletIds: new Set(), groundTileCanvas: null, groundTileSize: 0 };
 
 let joinMode = 'create';
+const NICKNAME_STORAGE_KEY = 'cw:nickname';
 const storedInfoPanelHidden = localStorage.getItem('cw:infoPanelHidden');
 let infoPanelHidden = storedInfoPanelHidden === null ? true : storedInfoPanelHidden === '1';
 let lastFrameTs = performance.now();
@@ -453,9 +454,16 @@ if (toggleInfoBtn) {
 }
 
 setInfoPanelHidden(infoPanelHidden);
+
+const storedNickname = localStorage.getItem(NICKNAME_STORAGE_KEY);
+if (nameInput && storedNickname && storedNickname.trim()) {
+  nameInput.value = storedNickname.trim().slice(0, 18);
+}
+
 function sendJoinRequest(roomCode) {
   if (ws.readyState !== WebSocket.OPEN) return;
   const name = nameInput.value.trim() || 'Fighter';
+  localStorage.setItem(NICKNAME_STORAGE_KEY, name);
   sendJson({
     type: 'join',
     name,
@@ -1514,3 +1522,4 @@ function render(ts) {
 setInterval(sendInput, 1000 / 30);
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 requestAnimationFrame(render);
+
