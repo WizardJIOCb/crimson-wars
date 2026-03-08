@@ -1504,7 +1504,9 @@ ws.addEventListener('message', (ev) => {
 
     const me = s.players.find((p) => p.id === game.myId);
     if (me) {
-      weaponMetaEl.textContent = `Weapon: ${me.weaponLabel} | Ammo: ${me.ammo === null ? 'inf' : me.ammo}`;
+      const dodgeCdMeta = Math.max(0, Number(me.dodgeCooldownMs) || 0);
+      const jumpMeta = dodgeCdMeta > 0 ? (dodgeCdMeta / 1000).toFixed(1) + 's' : 'ready';
+      weaponMetaEl.textContent = `Weapon: ${me.weaponLabel} | Ammo: ${me.ammo === null ? 'inf' : me.ammo} | Jump: ${jumpMeta}`;
       if (movementMetaEl) {
         const nowMs = Date.now();
         const slowed = (Number(me.slowUntil) || 0) > nowMs;
