@@ -1,4 +1,4 @@
-
+﻿
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
@@ -75,13 +75,13 @@ const mobile = {
 };
 
 const PLAYER_VARIANTS = [
-  { id: 'scout', name: 'Scout', tint: 'rgba(120,180,255,0.28)', accent: '#60a5fa', head: 'cap' },
-  { id: 'raider', name: 'Raider', tint: 'rgba(240,170,80,0.28)', accent: '#f59e0b', head: 'band' },
-  { id: 'medic', name: 'Medic', tint: 'rgba(120,230,160,0.28)', accent: '#22c55e', head: 'cross' },
-  { id: 'shadow', name: 'Shadow', tint: 'rgba(150,120,240,0.3)', accent: '#a78bfa', head: 'hood' },
-  { id: 'cyber', name: 'Cyber', tint: 'rgba(90,220,220,0.28)', accent: '#22d3ee', head: 'visor' },
-  { id: 'nomad', name: 'Nomad', tint: 'rgba(240,120,150,0.28)', accent: '#fb7185', head: 'wrap' },
-  { id: 'warden', name: 'Warden', tint: 'rgba(220,220,130,0.3)', accent: '#eab308', head: 'helm' },
+  { id: 'scout', name: 'Scout', accent: '#60a5fa', sprite: '/assets/sprites/player_scout.png', frameW: 16, frameH: 16, rows: { down: 0, left: 1, right: 2, up: 3 }, scale: 2.4, fps: 9, idleFrame: 1 },
+  { id: 'raider', name: 'Raider', accent: '#f59e0b', sprite: '/assets/sprites/player_raider.png', frameW: 15, frameH: 15, rows: { down: 0, left: 1, right: 2, up: 3 }, scale: 2.55, fps: 9, idleFrame: 1 },
+  { id: 'medic', name: 'Medic', accent: '#22c55e', sprite: '/assets/sprites/player_medic.png', frameW: 32, frameH: 48, rows: { down: 0, left: 1, right: 2, up: 3 }, scale: 1.12, fps: 8.5, idleFrame: 1 },
+  { id: 'shadow', name: 'Shadow', accent: '#a78bfa', sprite: '/assets/sprites/player_shadow.png', frameW: 32, frameH: 32, rows: { down: 0, left: 1, right: 2, up: 3 }, scale: 1.72, fps: 9, idleFrame: 1 },
+  { id: 'cyber', name: 'Cyber', accent: '#22d3ee', sprite: '/assets/sprites/player_cyber.png', frameW: 64, frameH: 64, rows: { down: 3, left: 1, right: 2, up: 0 }, scale: 0.88, fps: 10, idleFrame: 1 },
+  { id: 'nomad', name: 'Nomad', accent: '#fb7185', sprite: '/assets/sprites/player_nomad.png', frameW: 24, frameH: 24, rows: { down: 0, left: 1, right: 2, up: 3 }, scale: 1.55, fps: 9, idleFrame: 1 },
+  { id: 'warden', name: 'Warden', accent: '#eab308', sprite: '/assets/sprites/player_warden.png', frameW: 64, frameH: 64, rows: { down: 3, left: 1, right: 2, up: 0 }, scale: 0.88, fps: 10, idleFrame: 1 },
 ];
 
 
@@ -433,8 +433,9 @@ function loadImage(src) {
   return img;
 }
 
+const playerSprites = Object.fromEntries(PLAYER_VARIANTS.map((v) => [v.id, loadImage(v.sprite)]));
 const sprites = {
-  player: loadImage('/assets/sprites/player_dude.png'),
+  players: playerSprites,
   enemy: loadImage('/assets/sprites/enemy_mummy.png'),
   ground: loadImage('/assets/tiles/ground_grass.jpg'),
 };
@@ -462,7 +463,9 @@ function rebuildGroundTile() {
 }
 
 sprites.ground.addEventListener('load', rebuildGroundTile);
-sprites.player.addEventListener('load', renderCharacterPicker);
+for (const v of PLAYER_VARIANTS) {
+  sprites.players[v.id].addEventListener('load', renderCharacterPicker);
+}
 
 qualitySelect?.addEventListener('change', () => {
   const q = qualitySelect.value;
@@ -696,7 +699,14 @@ function drawCharacterPreview(previewCanvas, variant) {
   g.clearRect(0, 0, c.width, c.height);
   g.imageSmoothingEnabled = false;
 
-  if (!(sprites.player.complete && sprites.player.naturalWidth >= 32 * 3)) {
+  const sprite = sprites.players[variant.id];
+  const fw = Math.max(8, Number(variant.frameW) || 32);
+  const fh = Math.max(8, Number(variant.frameH) || 48);
+  const scale = Math.max(0.5, Number(variant.scale) || 1);
+  const frameCount = sprite?.naturalWidth ? Math.max(1, Math.floor(sprite.naturalWidth / fw)) : 1;
+  const idleFrame = Math.max(0, Math.min(frameCount - 1, Number(variant.idleFrame) || 1));
+
+  if (!(sprite?.complete && sprite.naturalWidth >= fw && sprite.naturalHeight >= fh)) {
     g.fillStyle = variant.accent;
     g.beginPath();
     g.arc(c.width / 2, c.height / 2, 12, 0, Math.PI * 2);
@@ -704,15 +714,15 @@ function drawCharacterPreview(previewCanvas, variant) {
     return;
   }
 
-  g.drawImage(sprites.player, 32, 0, 32, 48, 8, 2, 32, 48);
-  g.globalCompositeOperation = 'source-atop';
-  g.fillStyle = variant.tint;
-  g.fillRect(8, 2, 32, 48);
-  g.globalCompositeOperation = 'source-over';
-  g.fillStyle = variant.accent;
-  g.fillRect(18, 4, 12, 3);
-}
+  const dw = fw * scale;
+  const dh = fh * scale;
+  const dx = Math.round((c.width - dw) / 2);
+  const dy = Math.round(c.height - dh - 1);
+  g.drawImage(sprite, idleFrame * fw, (variant.rows?.down || 0) * fh, fw, fh, dx, dy, dw, dh);
 
+  g.fillStyle = variant.accent;
+  g.fillRect(c.width - 14, 4, 10, 3);
+}
 function renderCharacterPicker() {
   if (!characterSelectEl) return;
   characterSelectEl.innerHTML = '';
@@ -1716,31 +1726,8 @@ function drawTrees() {
 
 function drawVariantAccents(x, y, variant) {
   ctx.fillStyle = variant.accent;
-  if (variant.head === 'cap' || variant.head === 'band') {
-    ctx.fillRect(x - 9, y - 24, 18, 4);
-  }
-  if (variant.head === 'helm' || variant.head === 'visor') {
-    ctx.fillRect(x - 10, y - 24, 20, 5);
-    ctx.fillStyle = 'rgba(20,30,40,0.8)';
-    ctx.fillRect(x - 6, y - 21, 12, 3);
-  }
-  if (variant.head === 'hood') {
-    ctx.strokeStyle = variant.accent;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(x, y - 20, 9, Math.PI * 0.25, Math.PI * 0.75, true);
-    ctx.stroke();
-  }
-  if (variant.head === 'cross') {
-    ctx.fillRect(x - 1, y - 25, 2, 6);
-    ctx.fillRect(x - 3, y - 23, 6, 2);
-  }
-  if (variant.head === 'wrap') {
-    ctx.fillRect(x - 9, y - 24, 18, 3);
-    ctx.fillRect(x + 6, y - 21, 2, 4);
-  }
+  ctx.fillRect(x - 7, y - 22, 14, 3);
 }
-
 function drawWeaponIcon(sx, sy, weaponKey) {
   ctx.save();
   ctx.translate(sx, sy);
@@ -1775,30 +1762,43 @@ function drawPlayer(p, t, isMe, rx, ry) {
     return;
   }
 
-  drawShadowAtScreen(x, y + 23, 13, 5, 0.3);
+  const variant = getPlayerVariant(p.playerClass || (isMe ? selectedPlayerClass : 'scout'));
+  const playerSprite = sprites.players[variant.id];
+  const fw = Math.max(8, Number(variant.frameW) || 32);
+  const fh = Math.max(8, Number(variant.frameH) || 48);
+  const scale = Math.max(0.5, Number(variant.scale) || 1);
 
-  const fw = 32;
-  const fh = 48;
-  if (sprites.player.complete && sprites.player.naturalWidth >= fw * 3) {
+  const dw = fw * scale;
+  const dh = fh * scale;
+  drawShadowAtScreen(x, y + dh * 0.34, Math.max(10, dw * 0.33), Math.max(4, dh * 0.1), 0.3);
+
+  if (playerSprite?.complete && playerSprite.naturalWidth >= fw && playerSprite.naturalHeight >= fh) {
     const rv = game.renderPlayers.get(p.id);
     const keyMoving = input.up || input.down || input.left || input.right;
     const mobileMoving = mobile.enabled && mobile.moveStrength > 0.08;
     const velMoving = Math.hypot(rv?.vx || 0, rv?.vy || 0) > 10;
     const moving = isMe ? (keyMoving || mobileMoving || velMoving) : velMoving;
     const phase = isMe ? 0 : (p.id.charCodeAt(0) % 3);
-    const frame = moving ? (Math.floor(t * 9 + phase) % 3) : 1;
 
-    const variant = getPlayerVariant(p.playerClass || (isMe ? selectedPlayerClass : 'scout'));
+    const frameCount = Math.max(1, Math.floor(playerSprite.naturalWidth / fw));
+    const rowCount = Math.max(1, Math.floor(playerSprite.naturalHeight / fh));
+    const fps = Math.max(2, Number(variant.fps) || 9);
+    const idleFrame = Math.max(0, Math.min(frameCount - 1, Number(variant.idleFrame) || 1));
+    const frame = moving ? (Math.floor(t * fps + phase) % frameCount) : idleFrame;
+
+    const lookDx = isMe ? (input.pointerX - x) : (rv?.vx || 0);
+    const lookDy = isMe ? (input.pointerY - y) : (rv?.vy || 0);
+    let dir = 'down';
+    if (Math.abs(lookDx) > Math.abs(lookDy)) dir = lookDx < 0 ? 'left' : 'right';
+    else if (Math.abs(lookDy) > 0.0001) dir = lookDy < 0 ? 'up' : 'down';
+
+    const rows = variant.rows || { down: 0, left: 1, right: 2, up: 3 };
+    const selectedRow = Number(rows[dir]);
+    const row = Number.isFinite(selectedRow) ? Math.max(0, Math.min(rowCount - 1, selectedRow)) : 0;
 
     ctx.save();
     ctx.translate(x, y + 2);
-    const faceLeft = isMe ? (input.pointerX > x) : ((rv?.vx || 0) < -0.2);
-    if (faceLeft) ctx.scale(-1, 1);
-    ctx.drawImage(sprites.player, frame * fw, 0, fw, fh, -18, -30, 36, 54);
-    ctx.globalCompositeOperation = 'source-atop';
-    ctx.fillStyle = variant.tint;
-    ctx.fillRect(-18, -30, 36, 54);
-    ctx.globalCompositeOperation = 'source-over';
+    ctx.drawImage(playerSprite, frame * fw, row * fh, fw, fh, -dw / 2, -dh * 0.6, dw, dh);
     drawVariantAccents(0, 0, variant);
     ctx.restore();
   } else {
@@ -1811,7 +1811,6 @@ function drawPlayer(p, t, isMe, rx, ry) {
   ctx.textAlign = 'center';
   ctx.fillText(p.name, x, y - 42);
 }
-
 function drawEnemies(enemies, t) {
   const fw = 37;
   const fh = 45;
@@ -1993,6 +1992,11 @@ startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 setInterval(sendNetStatsReport, 1500);
 requestAnimationFrame(render);
+
+
+
+
+
 
 
 
