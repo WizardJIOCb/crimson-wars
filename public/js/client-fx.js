@@ -20,7 +20,6 @@ function spawnBloodPuddle(x, y, intensity = 1) {
   if (visuals.bloodPuddles.length > 60) visuals.bloodPuddles.splice(0, visuals.bloodPuddles.length - 60);
 }
 
-
 function spawnGoreBurst(x, y, damage = 10) {
   if (!game.extraBloodEnabled) return;
   const chunks = Math.max(3, Math.min(14, Math.floor(damage * 0.45)));
@@ -43,7 +42,6 @@ function spawnGoreBurst(x, y, damage = 10) {
   }
   if (visuals.gore.length > 260) visuals.gore.splice(0, visuals.gore.length - 260);
 }
-
 
 function spawnBossDeathExplosion(x, y) {
   visuals.bossBlast.push({
@@ -119,6 +117,126 @@ function spawnHitFx(x, y, severity = 1, isPlayerHit = false) {
   if (visuals.hitFx.length > 220) visuals.hitFx.splice(0, visuals.hitFx.length - 220);
 }
 
+function spawnSkillLabel(skillName, x, y) {
+  visuals.skillLabels.push({
+    text: String(skillName || 'Skill'),
+    x,
+    y,
+    vy: -38,
+    life: 0.65,
+    ttl: 0.65,
+  });
+  if (visuals.skillLabels.length > 24) visuals.skillLabels.splice(0, visuals.skillLabels.length - 24);
+}
+
+function spawnSkillBurstFx(x, y, color = '#7dd3fc', radius = 100) {
+  visuals.skillBursts.push({
+    x,
+    y,
+    r: 18,
+    maxR: radius,
+    color,
+    life: 0.5,
+    ttl: 0.5,
+  });
+  if (visuals.skillBursts.length > 36) visuals.skillBursts.splice(0, visuals.skillBursts.length - 36);
+}
+
+function spawnBladeOrbitFx(x, y) {
+  for (let i = 0; i < 3; i += 1) {
+    visuals.skillArcs.push({
+      x,
+      y,
+      ang: (Math.PI * 2 * i) / 3,
+      spin: (4.5 + Math.random() * 2.4) * (Math.random() > 0.5 ? 1 : -1),
+      radius: 34 + Math.random() * 12,
+      life: 0.42 + Math.random() * 0.08,
+      ttl: 0.42 + Math.random() * 0.08,
+      color: '#fcd34d',
+    });
+  }
+  if (visuals.skillArcs.length > 90) visuals.skillArcs.splice(0, visuals.skillArcs.length - 90);
+}
+
+function spawnChainLightningFx(caster, nextState) {
+  const enemies = Array.isArray(nextState?.enemies) ? nextState.enemies : [];
+  const targets = enemies
+    .map((e) => {
+      const dx = e.x - caster.x;
+      const dy = e.y - caster.y;
+      return { e, d2: dx * dx + dy * dy };
+    })
+    .filter((it) => it.d2 <= 430 * 430)
+    .sort((a, b) => a.d2 - b.d2)
+    .slice(0, 5);
+
+  for (const t of targets) {
+    visuals.skillLinks.push({
+      x1: caster.x,
+      y1: caster.y - 8,
+      x2: t.e.x,
+      y2: t.e.y - 10,
+      life: 0.2,
+      ttl: 0.2,
+      color: '#67e8f9',
+      phase: Math.random() * Math.PI * 2,
+    });
+    spawnHitFx(t.e.x, t.e.y, 6, false);
+  }
+  spawnSkillBurstFx(caster.x, caster.y, '#67e8f9', 132);
+  if (visuals.skillLinks.length > 60) visuals.skillLinks.splice(0, visuals.skillLinks.length - 60);
+}
+
+function spawnSkillCastFx(skillId, caster, nextState) {
+  const sid = String(skillId || '').toLowerCase();
+  if (sid === 'shockwave') {
+    spawnSkillBurstFx(caster.x, caster.y, '#86efac', 190);
+    spawnHitFx(caster.x, caster.y, 12, caster.id === game.myId);
+    spawnSkillLabel('Shockwave', caster.x, caster.y - 12);
+    return;
+  }
+  if (sid === 'blade_orbit') {
+    spawnBladeOrbitFx(caster.x, caster.y);
+    spawnSkillLabel('Blade Orbit', caster.x, caster.y - 10);
+    return;
+  }
+  if (sid === 'chain_lightning') {
+    spawnChainLightningFx(caster, nextState);
+    spawnSkillLabel('Chain Lightning', caster.x, caster.y - 10);
+    return;
+  }
+
+  spawnSkillBurstFx(caster.x, caster.y, '#a5b4fc', 120);
+  const skillName = game.skillCatalog[sid]?.name || sid || 'Skill';
+  spawnSkillLabel(skillName, caster.x, caster.y - 10);
+}
+
+function processSkillCastFx(nextState) {
+  const seen = new Set();
+  for (const p of nextState.players || []) {
+    const skills = Array.isArray(p.skills) ? p.skills : [];
+    for (const s of skills) {
+      if ((s?.kind || '') !== 'active') continue;
+      const sid = String(s.id || '').toLowerCase();
+      if (!sid) continue;
+      const key = `${p.id}:${sid}`;
+      const cur = Math.max(0, Number(s.cooldownMs) || 0);
+      const prev = visuals.skillCdPrev.get(key);
+      seen.add(key);
+
+      if (Number.isFinite(prev)) {
+        const casted = cur > 180 && (prev <= 120 || (cur - prev) > 220);
+        if (casted) spawnSkillCastFx(sid, p, nextState);
+      }
+      visuals.skillCdPrev.set(key, cur);
+    }
+  }
+
+  for (const key of Array.from(visuals.skillCdPrev.keys())) {
+    if (!seen.has(key)) visuals.skillCdPrev.delete(key);
+  }
+}
+
 function processStateFx(nextState) {
   const prevEnemyMap = visuals.enemyPrev;
   const nextEnemyMap = new Map();
@@ -170,6 +288,8 @@ function processStateFx(nextState) {
   }
   visuals.playerPrev = nextPlayerMap;
 
+  processSkillCastFx(nextState);
+
   const playersById = new Map(nextState.players.map((p) => [p.id, p]));
   const ids = new Set();
   for (const b of nextState.bullets) {
@@ -187,6 +307,7 @@ function processStateFx(nextState) {
   const maxM = getQ().maxMuzzle;
   if (visuals.muzzle.length > maxM) visuals.muzzle.splice(0, visuals.muzzle.length - maxM);
 }
+
 function updateFx(dt) {
   for (let i = visuals.blood.length - 1; i >= 0; i -= 1) {
     const p = visuals.blood[i];
@@ -236,6 +357,33 @@ function updateFx(dt) {
     const grow = Math.max(0, b.maxR - b.r);
     b.r += Math.min(grow, 520 * dt);
     if (b.life <= 0 || b.r >= b.maxR - 1) visuals.bossBlast.splice(i, 1);
+  }
+
+  for (let i = visuals.skillBursts.length - 1; i >= 0; i -= 1) {
+    const s = visuals.skillBursts[i];
+    s.life -= dt;
+    const grow = Math.max(0, s.maxR - s.r);
+    s.r += Math.min(grow, 420 * dt);
+    if (s.life <= 0 || s.r >= s.maxR - 1) visuals.skillBursts.splice(i, 1);
+  }
+
+  for (let i = visuals.skillArcs.length - 1; i >= 0; i -= 1) {
+    const a = visuals.skillArcs[i];
+    a.life -= dt;
+    a.ang += a.spin * dt;
+    if (a.life <= 0) visuals.skillArcs.splice(i, 1);
+  }
+
+  for (let i = visuals.skillLinks.length - 1; i >= 0; i -= 1) {
+    visuals.skillLinks[i].life -= dt;
+    if (visuals.skillLinks[i].life <= 0) visuals.skillLinks.splice(i, 1);
+  }
+
+  for (let i = visuals.skillLabels.length - 1; i >= 0; i -= 1) {
+    const l = visuals.skillLabels[i];
+    l.life -= dt;
+    l.y += l.vy * dt;
+    if (l.life <= 0) visuals.skillLabels.splice(i, 1);
   }
 
   for (let i = visuals.bloodPuddles.length - 1; i >= 0; i -= 1) {

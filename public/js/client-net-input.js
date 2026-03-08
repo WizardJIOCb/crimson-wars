@@ -790,6 +790,11 @@ function clearLocalSessionState() {
   lastLevelupHtml = '';
   visuals.bossBlast = [];
   visuals.bloodMist = [];
+  visuals.skillBursts = [];
+  visuals.skillArcs = [];
+  visuals.skillLinks = [];
+  visuals.skillLabels = [];
+  visuals.skillCdPrev = new Map();
   updateTopCenterHud(Date.now());
   updateBottomHud();
 }
@@ -916,6 +921,11 @@ ws.addEventListener('message', (ev) => {
     visuals.muzzle = [];
     visuals.bossBlast = [];
     visuals.bloodMist = [];
+    visuals.skillBursts = [];
+    visuals.skillArcs = [];
+    visuals.skillLinks = [];
+    visuals.skillLabels = [];
+    visuals.skillCdPrev = new Map();
     roomMetaEl.textContent = `Room: ${msg.roomCode}`;
     statusEl.textContent = `Online as ${msg.id} | tick ${roomSync.tickRate}`;
   }

@@ -400,6 +400,83 @@ function drawFx() {
     ctx.fill();
   }
 
+  for (const s of visuals.skillBursts) {
+    if (!isVisibleWorld(s.x, s.y, s.maxR + 12)) continue;
+    const a = Math.max(0, s.life / s.ttl);
+    const sx = s.x - camera.x;
+    const sy = s.y - camera.y;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = Math.min(1, a * 0.85);
+    ctx.strokeStyle = s.color || '#7dd3fc';
+    ctx.beginPath();
+    ctx.lineWidth = 3 + (1 - a) * 4;
+    ctx.arc(sx, sy, s.r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  for (const a of visuals.skillArcs) {
+    if (!isVisibleWorld(a.x, a.y, a.radius + 24)) continue;
+    const t = Math.max(0, a.life / a.ttl);
+    const cx = a.x + Math.cos(a.ang) * a.radius;
+    const cy = a.y + Math.sin(a.ang) * a.radius;
+    const sx = cx - camera.x;
+    const sy = cy - camera.y;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = `rgba(252,211,77,${(t * 0.85).toFixed(3)})`;
+    ctx.beginPath();
+    ctx.moveTo(sx + 8, sy);
+    ctx.lineTo(sx - 6, sy - 4);
+    ctx.lineTo(sx - 2, sy + 7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  for (const l of visuals.skillLinks) {
+    if (!isVisibleWorld((l.x1 + l.x2) * 0.5, (l.y1 + l.y2) * 0.5, 220)) continue;
+    const t = Math.max(0, l.life / l.ttl);
+    const sx1 = l.x1 - camera.x;
+    const sy1 = l.y1 - camera.y;
+    const sx2 = l.x2 - camera.x;
+    const sy2 = l.y2 - camera.y;
+    const mx = (sx1 + sx2) * 0.5;
+    const my = (sy1 + sy2) * 0.5;
+    const nx = sy1 - sy2;
+    const ny = sx2 - sx1;
+    const nlen = Math.hypot(nx, ny) || 1;
+    const amp = (6 + Math.sin((performance.now() / 70) + l.phase) * 3) * t;
+    const kx = mx + (nx / nlen) * amp;
+    const ky = my + (ny / nlen) * amp;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = `rgba(103,232,249,${(t * 0.9).toFixed(3)})`;
+    ctx.lineWidth = 2 + t * 1.6;
+    ctx.beginPath();
+    ctx.moveTo(sx1, sy1);
+    ctx.lineTo(kx, ky);
+    ctx.lineTo(sx2, sy2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  for (const t of visuals.skillLabels) {
+    if (!isVisibleWorld(t.x, t.y, 70)) continue;
+    const a = Math.max(0, t.life / t.ttl);
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, a * 1.2);
+    ctx.font = 'bold 14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#c4f1ff';
+    ctx.strokeStyle = 'rgba(5, 15, 28, 0.85)';
+    ctx.lineWidth = 3;
+    ctx.strokeText(t.text, t.x - camera.x, t.y - camera.y - 26);
+    ctx.fillText(t.text, t.x - camera.x, t.y - camera.y - 26);
+    ctx.restore();
+  }
   for (const g of visuals.gore) {
     if (!isVisibleWorld(g.x, g.y, 26)) continue;
     if (game.shadowsEnabled && g.z > 0) {
