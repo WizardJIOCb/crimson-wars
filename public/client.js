@@ -31,6 +31,7 @@ const deathResultEl = document.getElementById('death-result');
 const syncSettingsEl = document.getElementById('sync-settings');
 const syncPresetEl = document.getElementById('sync-preset');
 const syncTickrateEl = document.getElementById('sync-tickrate');
+const syncStateRateEl = document.getElementById('sync-state-rate');
 const syncRenderDelayEl = document.getElementById('sync-render-delay');
 const syncMaxExtrapolationEl = document.getElementById('sync-max-extrapolation');
 const syncEntityInterpEl = document.getElementById('sync-entity-interp');
@@ -47,7 +48,7 @@ const aimKnobEl = document.getElementById('aim-knob');
 ctx.imageSmoothingEnabled = false;
 
 const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
-const ws = new WebSocket(`${wsProto}://${location.host}`);
+const ws = new WebSocket(`${wsProto}://${location.host}/ws`);
 
 const QUALITY = {
   low: { groundTexture: false, groundTileSize: 96, maxBlood: 120, maxMuzzle: 28, bloodMult: 0.55, overlays: false },
@@ -119,6 +120,7 @@ let lastScoreboardHtml = '';
 const ROOM_SYNC_PRESETS = {
   normal: {
     tickRate: 45,
+    stateSendHz: 30,
     netRenderDelayMs: 90,
     maxExtrapolationMs: 80,
     entityInterpRate: 16,
@@ -127,6 +129,7 @@ const ROOM_SYNC_PRESETS = {
   },
   better: {
     tickRate: 55,
+    stateSendHz: 40,
     netRenderDelayMs: 75,
     maxExtrapolationMs: 90,
     entityInterpRate: 20,
@@ -135,6 +138,7 @@ const ROOM_SYNC_PRESETS = {
   },
   best: {
     tickRate: 60,
+    stateSendHz: 50,
     netRenderDelayMs: 65,
     maxExtrapolationMs: 100,
     entityInterpRate: 24,
@@ -180,6 +184,7 @@ function clampNum(value, min, max, fallback) {
 function normalizeRoomSync(raw) {
   return {
     tickRate: Math.round(clampNum(raw?.tickRate, 20, 120, ROOM_SYNC_PRESETS.normal.tickRate)),
+    stateSendHz: Math.round(clampNum(raw?.stateSendHz, 10, 120, ROOM_SYNC_PRESETS.normal.stateSendHz)),
     netRenderDelayMs: Math.round(clampNum(raw?.netRenderDelayMs, 20, 250, ROOM_SYNC_PRESETS.normal.netRenderDelayMs)),
     maxExtrapolationMs: Math.round(clampNum(raw?.maxExtrapolationMs, 20, 250, ROOM_SYNC_PRESETS.normal.maxExtrapolationMs)),
     entityInterpRate: clampNum(raw?.entityInterpRate, 4, 50, ROOM_SYNC_PRESETS.normal.entityInterpRate),
@@ -191,6 +196,7 @@ function normalizeRoomSync(raw) {
 function applyRoomSync(config) {
   const next = normalizeRoomSync(config);
   roomSync.tickRate = next.tickRate;
+  roomSync.stateSendHz = next.stateSendHz;
   roomSync.netRenderDelayMs = next.netRenderDelayMs;
   roomSync.maxExtrapolationMs = next.maxExtrapolationMs;
   roomSync.entityInterpRate = next.entityInterpRate;
@@ -201,6 +207,7 @@ function applyRoomSync(config) {
 
 function syncUiFromConfig(config) {
   if (syncTickrateEl) syncTickrateEl.value = String(config.tickRate);
+  if (syncStateRateEl) syncStateRateEl.value = String(config.stateSendHz);
   if (syncRenderDelayEl) syncRenderDelayEl.value = String(config.netRenderDelayMs);
   if (syncMaxExtrapolationEl) syncMaxExtrapolationEl.value = String(config.maxExtrapolationMs);
   if (syncEntityInterpEl) syncEntityInterpEl.value = String(config.entityInterpRate);
@@ -211,6 +218,7 @@ function syncUiFromConfig(config) {
 function configFromSyncUi() {
   return normalizeRoomSync({
     tickRate: syncTickrateEl?.value,
+    stateSendHz: syncStateRateEl?.value,
     netRenderDelayMs: syncRenderDelayEl?.value,
     maxExtrapolationMs: syncMaxExtrapolationEl?.value,
     entityInterpRate: syncEntityInterpEl?.value,
@@ -671,7 +679,7 @@ syncPresetEl?.addEventListener('change', () => {
   applyRoomSync(configFromSyncUi());
 });
 
-for (const el of [syncTickrateEl, syncRenderDelayEl, syncMaxExtrapolationEl, syncEntityInterpEl, syncBulletCorrectionEl, syncInputRateEl]) {
+for (const el of [syncTickrateEl, syncStateRateEl, syncRenderDelayEl, syncMaxExtrapolationEl, syncEntityInterpEl, syncBulletCorrectionEl, syncInputRateEl]) {
   el?.addEventListener('change', () => {
     if (syncPresetEl) syncPresetEl.value = 'custom';
     applyRoomSync(configFromSyncUi());
@@ -1799,6 +1807,9 @@ startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 setInterval(sendNetStatsReport, 1500);
 requestAnimationFrame(render);
+
+
+
 
 
 

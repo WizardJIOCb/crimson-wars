@@ -33,6 +33,7 @@ const RECORDS_DB_PATH = path.join(DATA_DIR, 'records.db');
 
 const DEFAULT_ROOM_SYNC = {
   tickRate: 45,
+  stateSendHz: 30,
   netRenderDelayMs: 90,
   maxExtrapolationMs: 80,
   entityInterpRate: 16,
@@ -93,7 +94,7 @@ const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
 
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ server, path: '/ws' });
 
 const rooms = new Map();
 const activeSockets = new Set();
@@ -142,6 +143,7 @@ function parseNetPingMs(report) {
 function normalizeRoomSync(raw) {
   return {
     tickRate: Math.round(clampNum(raw?.tickRate, 20, 120, DEFAULT_ROOM_SYNC.tickRate)),
+    stateSendHz: Math.round(clampNum(raw?.stateSendHz, 10, 120, DEFAULT_ROOM_SYNC.stateSendHz)),
     netRenderDelayMs: Math.round(clampNum(raw?.netRenderDelayMs, 20, 250, DEFAULT_ROOM_SYNC.netRenderDelayMs)),
     maxExtrapolationMs: Math.round(clampNum(raw?.maxExtrapolationMs, 20, 250, DEFAULT_ROOM_SYNC.maxExtrapolationMs)),
     entityInterpRate: clampNum(raw?.entityInterpRate, 4, 50, DEFAULT_ROOM_SYNC.entityInterpRate),
@@ -367,6 +369,8 @@ function getOrCreateRoom(requestedCode, requestedSync) {
       code,
       sync,
       tickMs: 1000 / sync.tickRate,
+      stateIntervalMs: 1000 / sync.stateSendHz,
+      stateAccumulatorMs: 0,
       accumulatorMs: 0,
       players: new Map(),
       bullets: [],
@@ -794,7 +798,6 @@ function tickRoom(room, dtSec, now) {
     if (picked) continue;
   }
 
-  broadcastRoom(room, { type: 'state', payload: serializeRoom(room) });
 }
 
 let lastLoopAt = Date.now();
@@ -817,11 +820,20 @@ setInterval(() => {
     if (room.accumulatorMs > tickMs * 8) {
       room.accumulatorMs = tickMs * 2;
     }
+
+    room.stateAccumulatorMs = (room.stateAccumulatorMs || 0) + elapsedMs;
+    const stateIntervalMs = room.stateIntervalMs || (1000 / DEFAULT_ROOM_SYNC.stateSendHz);
+    if (room.players.size > 0 && room.stateAccumulatorMs >= stateIntervalMs) {
+      room.stateAccumulatorMs %= stateIntervalMs;
+      broadcastRoom(room, { type: 'state', payload: serializeRoom(room) });
+    }
   }
 }, MAIN_LOOP_MS);
 server.listen(PORT, () => {
   console.log(`Server started: http://localhost:${PORT}`);
 });
+
+
 
 
 
