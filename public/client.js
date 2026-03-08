@@ -55,6 +55,13 @@ const topCenterHudEl = document.getElementById('top-center-hud');
 const matchTimerEl = document.getElementById('match-timer');
 const bossProgressEl = document.getElementById('boss-progress');
 const difficultyMetaEl = document.getElementById('difficulty-meta');
+const bottomHudEl = document.getElementById('bottom-hud');
+const skillBarEl = document.getElementById('skill-bar');
+const xpLevelEl = document.getElementById('xp-level');
+const xpFillEl = document.getElementById('xp-fill');
+const xpTextEl = document.getElementById('xp-text');
+const levelupOverlayEl = document.getElementById('levelup-overlay');
+const levelupOptionsEl = document.getElementById('levelup-options');
 
 ctx.imageSmoothingEnabled = false;
 
@@ -121,6 +128,8 @@ const game = {
   nextBossSpawnAt: 0,
   bossAlive: false,
   roomDifficulty: { level: 1, hpMul: 1, speedMul: 1, damageMul: 1, attackRateMul: 1, spawnIntervalMs: 760 },
+  skillCatalog: {},
+  mySkillChoices: [],
 };
 
 const camera = { x: 0, y: 0 };
@@ -265,6 +274,70 @@ function updateTopCenterHud(nowMs = Date.now()) {
   difficultyMetaEl.textContent = `Threat Lv${level} x${hpMul.toFixed(2)}`;
 }
 
+
+
+function rarityColor(r) {
+  if (r === 'epic') return '#f0abfc';
+  if (r === 'rare') return '#93c5fd';
+  return '#d1d5db';
+}
+
+function renderLevelupChoices() {
+  if (!levelupOverlayEl || !levelupOptionsEl) return;
+  const choices = Array.isArray(game.mySkillChoices) ? game.mySkillChoices : [];
+  if (choices.length === 0 || !game.state) {
+    levelupOverlayEl.classList.add('hidden');
+    levelupOptionsEl.innerHTML = '';
+    return;
+  }
+
+  levelupOverlayEl.classList.remove('hidden');
+  const cards = choices.map((id) => {
+    const def = game.skillCatalog[id] || { id, name: id, kind: 'passive', rarity: 'common', desc: '' };
+    const me = game.state.players.find((p) => p.id === game.myId);
+    const existing = (me?.skills || []).find((s) => s.id === id);
+    const nextLvl = (Number(existing?.level) || 0) + 1;
+    const rarity = (def.rarity || 'common').toLowerCase();
+    return `<button class="skill-option" data-skill-id="${id}" style="border-color:${rarityColor(rarity)}55"><div class="nm" style="color:${rarityColor(rarity)}">${def.name}</div><div class="meta">${def.kind.toUpperCase()} | ${rarity.toUpperCase()} | Lv ${nextLvl}</div><div class="desc">${def.desc || 'No description'}</div></button>`;
+  });
+  levelupOptionsEl.innerHTML = cards.join('');
+}
+
+function updateBottomHud() {
+  if (!bottomHudEl) return;
+  const me = game.state?.players?.find((p) => p.id === game.myId);
+  const inMenu = !game.state;
+  bottomHudEl.classList.toggle('hidden', inMenu);
+  if (inMenu || !me) {
+    if (xpLevelEl) xpLevelEl.textContent = 'Lv1';
+    if (xpFillEl) xpFillEl.style.width = '0%';
+    if (xpTextEl) xpTextEl.textContent = '0 / 0 XP';
+    if (skillBarEl) skillBarEl.innerHTML = '';
+    renderLevelupChoices();
+    return;
+  }
+
+  const lvl = Math.max(1, Number(me.level) || 1);
+  const xp = Math.max(0, Number(me.xp) || 0);
+  const xpToNext = Math.max(1, Number(me.xpToNext) || 1);
+  if (xpLevelEl) xpLevelEl.textContent = `Lv${lvl}`;
+  if (xpFillEl) xpFillEl.style.width = `${Math.max(0, Math.min(100, (xp / xpToNext) * 100)).toFixed(1)}%`;
+  if (xpTextEl) xpTextEl.textContent = `${xp} / ${xpToNext} XP`;
+
+  const skills = Array.isArray(me.skills) ? me.skills : [];
+  if (skillBarEl) {
+    const chips = skills.map((s) => {
+      const cd = Math.max(0, Number(s.cooldownMs) || 0);
+      const rarity = (s.rarity || 'common').toLowerCase();
+      const cdText = s.kind === 'active' ? (cd > 0 ? `${(cd / 1000).toFixed(1)}s` : 'ready') : `Lv${s.level}`;
+      return `<div class="skill-chip" style="border-color:${rarityColor(rarity)}66"><div>${s.name} Lv${s.level}</div><div class="cd">${cdText}</div></div>`;
+    });
+    skillBarEl.innerHTML = chips.join('');
+  }
+
+  game.mySkillChoices = Array.isArray(me.pendingSkillChoices) ? me.pendingSkillChoices : [];
+  renderLevelupChoices();
+}
 
 function normalizeRoomSync(raw) {
   return {
@@ -626,6 +699,8 @@ function setMobileControlsVisible(visible) {
 function updateHudVisibility(overlayOpen) {
   if (hudEl) hudEl.classList.toggle('menu-hidden', Boolean(overlayOpen));
   if (topCenterHudEl) topCenterHudEl.classList.toggle('hidden', Boolean(overlayOpen));
+  if (bottomHudEl) bottomHudEl.classList.toggle('hidden', Boolean(overlayOpen));
+  if (overlayOpen && levelupOverlayEl) levelupOverlayEl.classList.add('hidden');
 }
 
 function updateMobileControlsVisibility() {
@@ -1372,6 +1447,17 @@ joinForm.addEventListener('submit', (e) => {
   sendJoinRequest(roomCode, joinSync);
 });
 
+levelupOptionsEl?.addEventListener('click', (e) => {
+  const t = e.target;
+  if (!(t instanceof HTMLElement)) return;
+  const card = t.closest('.skill-option');
+  if (!(card instanceof HTMLElement)) return;
+  const sid = card.dataset.skillId;
+  if (!sid || ws.readyState !== WebSocket.OPEN || !game.myId) return;
+  sendJson({ type: 'skillPick', skillId: sid });
+});
+
+
 function clearLocalSessionState() {
   game.myId = null;
   game.roomCode = null;
@@ -1387,6 +1473,7 @@ function clearLocalSessionState() {
   game.nextBossSpawnAt = 0;
   game.bossAlive = false;
   game.roomDifficulty = { level: 1, hpMul: 1, speedMul: 1, damageMul: 1, attackRateMul: 1, spawnIntervalMs: 760 };
+  game.mySkillChoices = [];
   prevMyAlive = null;
   sessionStartedAt = 0;
   waitingForFirstState = false;
@@ -1403,6 +1490,7 @@ function clearLocalSessionState() {
   scoreboardEl.innerHTML = '';
   lastScoreboardHtml = '';
   updateTopCenterHud(Date.now());
+  updateBottomHud();
 }
 
 function leaveActiveRoom() {
@@ -1510,6 +1598,9 @@ ws.addEventListener('message', (ev) => {
     sessionStartedAt = Date.now();
     if (msg.sync) applyRoomSync(msg.sync);
     game.roomCode = msg.roomCode;
+    game.skillCatalog = {};
+    const catalog = Array.isArray(msg.skillCatalog) ? msg.skillCatalog : [];
+    for (const sk of catalog) { if (sk && sk.id) game.skillCatalog[sk.id] = sk; }
     game.renderPlayers.clear();
     game.renderEnemies.clear();
     game.renderBullets.clear();
@@ -2161,6 +2252,39 @@ function drawEnemies(enemies, t) {
   }
 }
 
+
+function drawXpOrbs(orbs, nowMs) {
+  if (!Array.isArray(orbs)) return;
+  for (const o of orbs) {
+    if (!isVisibleWorld(o.x, o.y, 20)) continue;
+    const x = o.x - camera.x;
+    const y = o.y - camera.y;
+    const ttl = Math.max(1, Number(o.ttlMaxMs) || 22000);
+    const left = Math.max(0, Number(o.ttlMs) || 0);
+    const blink = left < 3000 && Math.sin(nowMs / 80) < 0;
+    if (blink) continue;
+    const pulse = 1 + Math.sin(nowMs / 140 + o.id) * 0.2;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.35)';
+    ctx.beginPath();
+    ctx.arc(x, y, 7 * pulse, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#22d3ee';
+    ctx.beginPath();
+    ctx.moveTo(x, y - 6);
+    ctx.lineTo(x + 5, y);
+    ctx.lineTo(x, y + 6);
+    ctx.lineTo(x - 5, y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
 function drawBloodPuddles() {
   for (const p of visuals.bloodPuddles) {
     if (!isVisibleWorld(p.x, p.y, 34)) continue;
@@ -2250,6 +2374,7 @@ function render(ts) {
 
   if (!game.state) {
     updateTopCenterHud(Date.now());
+    updateBottomHud();
     const overlayOpen = getComputedStyle(joinOverlay).display !== 'none';
     const waitingElapsed = performance.now() - waitingForFirstStateSince;
     if (waitingForFirstState && !overlayOpen && waitingElapsed >= 250) {
@@ -2262,6 +2387,7 @@ function render(ts) {
   }
 
   updateTopCenterHud(Number(game.state.now) || Date.now());
+  updateBottomHud();
 
   const me = game.state.players.find((p) => p.id === game.myId) || game.state.players[0];
   if (me) {
@@ -2272,6 +2398,7 @@ function render(ts) {
 
   drawGround();
   drawBloodPuddles();
+  drawXpOrbs(game.state.xpOrbs || [], Number(game.state.now) || Date.now());
   drawBossPortals(game.state.bossPortals || [], Number(game.state.now) || Date.now());
 
   for (const d of game.state.drops || []) {
@@ -2338,4 +2465,13 @@ startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 setInterval(sendNetStatsReport, 1500);
 requestAnimationFrame(render);
+
+
+
+
+
+
+
+
+
 

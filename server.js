@@ -57,6 +57,10 @@ const DIFFICULTY_SPEED_PER_LEVEL = 0.045;
 const DIFFICULTY_DAMAGE_PER_LEVEL = 0.08;
 const DIFFICULTY_ATTACK_RATE_PER_LEVEL = 0.04;
 const DIFFICULTY_SPAWN_REDUCTION_MS = 24;
+const XP_ORB_LIFETIME_MS = 22000;
+const XP_ORB_PULL_SPEED = 520;
+const PLAYER_PICKUP_RADIUS_BASE = 74;
+const SKILL_PICK_OPTIONS = 3;
 const PLAYER_SLOW_FACTOR = 0.8;
 const PLAYER_SLOW_DURATION_MS = 600;
 const DROP_LIFETIME_MS = 30000;
@@ -65,6 +69,9 @@ const LEADERBOARD_LIMIT = 500;
 const LEADERBOARD_PAGE_SIZE = 10;
 const DATA_DIR = path.join(__dirname, 'data');
 const RECORDS_DB_PATH = path.join(DATA_DIR, 'records.db');
+const SKILLS_CONFIG_PATH = path.join(DATA_DIR, 'skills.json');
+const SKILLS_ADMIN_TOKEN = process.env.SKILLS_ADMIN_TOKEN || '';
+
 
 const DEFAULT_ROOM_SYNC = {
   tickRate: 45,
@@ -125,7 +132,24 @@ const WEAPONS = {
 
 const DROP_WEAPON_KEYS = ['smg', 'shotgun', 'sniper'];
 
+
+const DEFAULT_SKILL_DEFS = {
+  weapon_mastery: { id: 'weapon_mastery', name: 'Weapon Mastery', kind: 'passive', rarity: 'common', maxLevel: 8, weight: 1.35, damageMulPerLevel: 0.11, desc: '+damage' },
+  rapid_reload: { id: 'rapid_reload', name: 'Rapid Reload', kind: 'passive', rarity: 'common', maxLevel: 8, weight: 1.3, fireRateMulPerLevel: 0.1, desc: '+fire rate' },
+  vitality: { id: 'vitality', name: 'Vitality', kind: 'passive', rarity: 'common', maxLevel: 8, weight: 1.25, maxHpFlatPerLevel: 20, desc: '+max HP' },
+  haste: { id: 'haste', name: 'Haste', kind: 'passive', rarity: 'common', maxLevel: 7, weight: 1.2, moveSpeedMulPerLevel: 0.075, desc: '+move speed' },
+  magnetism: { id: 'magnetism', name: 'Magnetism', kind: 'passive', rarity: 'common', maxLevel: 6, weight: 1.12, pickupRadiusPerLevel: 22, desc: '+XP pickup radius' },
+  bloodlust: { id: 'bloodlust', name: 'Bloodlust', kind: 'passive', rarity: 'rare', maxLevel: 6, weight: 0.86, damageMulPerLevel: 0.16, fireRateMulPerLevel: 0.05, desc: '+damage +fire rate' },
+  regeneration: { id: 'regeneration', name: 'Regeneration', kind: 'passive', rarity: 'rare', maxLevel: 6, weight: 0.85, hpRegenPerSecPerLevel: 1.15, desc: 'HP regen/sec' },
+  dodge_instinct: { id: 'dodge_instinct', name: 'Dodge Instinct', kind: 'passive', rarity: 'rare', maxLevel: 3, weight: 0.62, extraDodgeChargesPerLevel: 1, desc: '+jump charges' },
+  shockwave: { id: 'shockwave', name: 'Shockwave', kind: 'active', rarity: 'rare', maxLevel: 8, weight: 0.84, cooldownMs: 5400, cooldownMulPerLevel: 0.08, radius: 170, radiusPerLevel: 14, damage: 38, damagePerLevel: 16, desc: 'AoE blast around hero' },
+  blade_orbit: { id: 'blade_orbit', name: 'Blade Orbit', kind: 'active', rarity: 'common', maxLevel: 8, weight: 1.02, cooldownMs: 1450, cooldownMulPerLevel: 0.05, radius: 190, radiusPerLevel: 12, damage: 23, damagePerLevel: 10, targets: 2, targetsPerLevel: 1, desc: 'Hits nearest enemies' },
+  chain_lightning: { id: 'chain_lightning', name: 'Chain Lightning', kind: 'active', rarity: 'epic', maxLevel: 7, weight: 0.52, cooldownMs: 6200, cooldownMulPerLevel: 0.08, radius: 330, radiusPerLevel: 18, damage: 52, damagePerLevel: 19, targets: 3, targetsPerLevel: 1, desc: 'Chains to nearest enemies' },
+};
+let skillDefs = null;
+
 const app = express();
+app.use(express.json({ limit: '256kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const server = http.createServer(app);
@@ -293,6 +317,82 @@ function pushRecord(entry) {
 
 initRecordsStore();
 
+function cloneJson(obj) {
+  return JSON.parse(JSON.stringify(obj));
+}
+
+function normalizeSkillDef(raw, fallbackId = '') {
+  const id = ((raw?.id || fallbackId || '').toString().trim().toLowerCase().replace(/[^a-z0-9_]/g, '')).slice(0, 40);
+  if (!id) return null;
+  const base = DEFAULT_SKILL_DEFS[id] || {};
+  return {
+    ...base,
+    ...raw,
+    id,
+    name: (raw?.name || base.name || id).toString().slice(0, 40),
+    kind: (raw?.kind || base.kind || 'passive') === 'active' ? 'active' : 'passive',
+    rarity: (raw?.rarity || base.rarity || 'common').toString().slice(0, 12),
+    maxLevel: Math.max(1, Math.min(12, Math.floor(Number(raw?.maxLevel ?? base.maxLevel ?? 5) || 5))),
+    weight: Math.max(0.05, Number(raw?.weight ?? base.weight ?? 1) || 1),
+    desc: (raw?.desc || base.desc || '').toString().slice(0, 80),
+  };
+}
+
+function loadSkillDefs() {
+  const merged = cloneJson(DEFAULT_SKILL_DEFS);
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    if (fs.existsSync(SKILLS_CONFIG_PATH)) {
+      const raw = fs.readFileSync(SKILLS_CONFIG_PATH, 'utf8');
+      const parsed = JSON.parse(raw);
+      const list = Array.isArray(parsed) ? parsed : Object.values(parsed || {});
+      for (const item of list) {
+        const norm = normalizeSkillDef(item, item?.id);
+        if (!norm) continue;
+        merged[norm.id] = { ...(merged[norm.id] || {}), ...norm };
+      }
+    } else {
+      fs.writeFileSync(SKILLS_CONFIG_PATH, JSON.stringify(Object.values(merged), null, 2), 'utf8');
+    }
+  } catch (err) {
+    console.error('Skills config load failed, using defaults:', err.message);
+  }
+  skillDefs = merged;
+}
+
+function saveSkillDefs() {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(SKILLS_CONFIG_PATH, JSON.stringify(Object.values(skillDefs || {}), null, 2), 'utf8');
+    return true;
+  } catch (err) {
+    console.error('Skills config write failed:', err.message);
+    return false;
+  }
+}
+
+function getSkillDefsMap() {
+  if (!skillDefs) loadSkillDefs();
+  return skillDefs;
+}
+
+function getSkillDefsList() {
+  return Object.values(getSkillDefsMap());
+}
+
+function pickSkillData(id) {
+  return getSkillDefsMap()[id] || null;
+}
+
+function checkAdminToken(req) {
+  if (!SKILLS_ADMIN_TOKEN) return false;
+  const token = (req.query.token || req.headers['x-admin-token'] || '').toString();
+  return token && token === SKILLS_ADMIN_TOKEN;
+}
+
+loadSkillDefs();
+
+
 
 function getPresenceStats() {
   let inGame = 0;
@@ -318,6 +418,10 @@ function listRoomsForLobby() {
     }));
 }
 
+app.get('/admin/skills', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin-skills.html'));
+});
+
 app.get('/api/rooms', (_req, res) => {
   res.json({
     rooms: listRoomsForLobby(),
@@ -340,6 +444,44 @@ app.get('/api/records', (req, res) => {
     now: Date.now(),
   });
 });
+
+app.get('/api/skills', (_req, res) => {
+  res.json({ skills: getSkillDefsList(), now: Date.now() });
+});
+
+app.get('/api/admin/skills', (req, res) => {
+  if (!checkAdminToken(req)) {
+    res.status(403).json({ ok: false, message: 'Forbidden' });
+    return;
+  }
+  res.json({ ok: true, skills: getSkillDefsList() });
+});
+
+app.put('/api/admin/skills/:id', (req, res) => {
+  if (!checkAdminToken(req)) {
+    res.status(403).json({ ok: false, message: 'Forbidden' });
+    return;
+  }
+  const id = (req.params.id || '').toString().trim().toLowerCase();
+  const existing = pickSkillData(id);
+  if (!existing) {
+    res.status(404).json({ ok: false, message: 'Skill not found' });
+    return;
+  }
+  const patch = req.body && typeof req.body === 'object' ? req.body : {};
+  const merged = normalizeSkillDef({ ...existing, ...patch, id }, id);
+  if (!merged) {
+    res.status(400).json({ ok: false, message: 'Invalid payload' });
+    return;
+  }
+  skillDefs[id] = merged;
+  if (!saveSkillDefs()) {
+    res.status(500).json({ ok: false, message: 'Save failed' });
+    return;
+  }
+  res.json({ ok: true, skill: merged });
+});
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -411,11 +553,13 @@ function getOrCreateRoom(requestedCode, requestedSync) {
       bullets: [],
       enemies: [],
       drops: [],
+      xpOrbs: [],
       scores: new Map(),
       kills: new Map(),
       nextEnemyId: 1,
       nextBulletId: 1,
       nextDropId: 1,
+      nextXpOrbId: 1,
       nextPortalId: 1,
       bossPortals: [],
       totalEnemyKills: 0,
@@ -471,7 +615,7 @@ function serializeRoom(room) {
       x: p.x,
       y: p.y,
       hp: p.hp,
-      maxHp: PLAYER_HP_MAX,
+      maxHp: Math.max(1, Math.round(Number(p.maxHp) || PLAYER_HP_MAX)),
       alive: p.alive,
       score: room.scores.get(p.id) || 0,
       kills: room.kills.get(p.id) || 0,
@@ -488,6 +632,24 @@ function serializeRoom(room) {
       dodgeRechargeMs: Math.max(0, Math.round(p.dodgeRechargeMs || 0)),
       dodgeRechargeTotalMs: PLAYER_DODGE_COOLDOWN_MS,
       dodgeInvulnUntil: Number(p.dodgeInvulnUntil) || 0,
+      level: Math.max(1, Math.floor(Number(p.level) || 1)),
+      xp: Math.max(0, Math.floor(Number(p.xp) || 0)),
+      xpToNext: Math.max(1, Math.floor(Number(p.xpToNext) || getXpToNextLevel(p.level || 1))),
+      pendingSkillChoices: Array.isArray(p.pendingSkillChoices) ? p.pendingSkillChoices.slice(0, SKILL_PICK_OPTIONS) : [],
+      skills: (p.skillOrder || []).map((sid) => {
+        const st = p.skills?.[sid] || { level: 0, cooldownMs: 0, maxCooldownMs: 0 };
+        const def = pickSkillData(sid) || { id: sid, name: sid, kind: 'passive', rarity: 'common', desc: '' };
+        return {
+          id: sid,
+          name: def.name,
+          kind: def.kind,
+          rarity: def.rarity,
+          desc: def.desc || '',
+          level: Math.max(0, Math.floor(Number(st.level) || 0)),
+          cooldownMs: Math.max(0, Math.round(Number(st.cooldownMs) || 0)),
+          maxCooldownMs: Math.max(0, Math.round(Number(st.maxCooldownMs) || 0)),
+        };
+      }),
     })),
     bullets: room.bullets.map((b) => ({
       id: b.id,
@@ -524,6 +686,14 @@ function serializeRoom(room) {
       weaponLabel: WEAPONS[d.weaponKey].label,
       ttlMs: Math.max(0, Math.round(d.ttlMs || 0)),
       ttlMaxMs: DROP_LIFETIME_MS,
+    })),
+    xpOrbs: room.xpOrbs.map((o) => ({
+      id: o.id,
+      x: o.x,
+      y: o.y,
+      xp: o.xp,
+      ttlMs: Math.max(0, Math.round(o.ttlMs || 0)),
+      ttlMaxMs: XP_ORB_LIFETIME_MS,
     })),
     decor: {
       trees: room.trees,
@@ -686,6 +856,9 @@ function fireFromPlayer(room, player) {
   const dy = player.aimY - player.y;
   const baseAngle = Math.atan2(dy, dx);
 
+  const damageMul = Math.max(0.2, Number(player.damageMul) || 1);
+  const fireRateMul = Math.max(0.2, Number(player.fireRateMul) || 1);
+
   for (let i = 0; i < weapon.pellets; i += 1) {
     const spread = (Math.random() - 0.5) * (weapon.spreadDeg * Math.PI / 180);
     const angle = baseAngle + spread;
@@ -698,12 +871,12 @@ function fireFromPlayer(room, player) {
       vx: Math.cos(angle) * weapon.bulletSpeed,
       vy: Math.sin(angle) * weapon.bulletSpeed,
       lifeMs: weapon.bulletLifeMs,
-      damage: weapon.bulletDamage,
+      damage: Math.max(1, Math.round(weapon.bulletDamage * damageMul)),
       color: weapon.color,
     });
   }
 
-  player.fireCooldownLeft = weapon.cooldownMs;
+  player.fireCooldownLeft = Math.max(35, weapon.cooldownMs / fireRateMul);
 
   if (weapon.ammo !== null) {
     player.weaponAmmo -= 1;
@@ -792,6 +965,218 @@ function applyEnemyHitToPlayer(room, target, damage, now, applySlow = true) {
   }
 }
 
+
+function getXpToNextLevel(level) {
+  const lv = Math.max(1, Math.floor(Number(level) || 1));
+  return Math.round(28 + (lv - 1) * 14 + ((lv - 1) ** 2) * 3);
+}
+
+function getSkillRank(player, skillId) {
+  const st = player.skills?.[skillId];
+  return Math.max(0, Math.floor(Number(st?.level) || 0));
+}
+
+function ensureSkillState(player, skillId) {
+  if (!player.skills) player.skills = {};
+  if (!player.skills[skillId]) player.skills[skillId] = { level: 0, cooldownMs: 0, maxCooldownMs: 0 };
+  return player.skills[skillId];
+}
+
+function rebuildPlayerDerivedStats(player) {
+  player.damageMul = 1;
+  player.fireRateMul = 1;
+  player.moveSpeedMul = 1;
+  player.maxHpBonus = 0;
+  player.hpRegenPerSec = 0;
+  player.pickupRadius = PLAYER_PICKUP_RADIUS_BASE;
+  player.extraDodgeCharges = 0;
+
+  for (const def of getSkillDefsList()) {
+    const lvl = getSkillRank(player, def.id);
+    if (lvl <= 0) continue;
+    player.damageMul += (Number(def.damageMulPerLevel) || 0) * lvl;
+    player.fireRateMul += (Number(def.fireRateMulPerLevel) || 0) * lvl;
+    player.moveSpeedMul += (Number(def.moveSpeedMulPerLevel) || 0) * lvl;
+    player.maxHpBonus += (Number(def.maxHpFlatPerLevel) || 0) * lvl;
+    player.hpRegenPerSec += (Number(def.hpRegenPerSecPerLevel) || 0) * lvl;
+    player.pickupRadius += (Number(def.pickupRadiusPerLevel) || 0) * lvl;
+    player.extraDodgeCharges += (Number(def.extraDodgeChargesPerLevel) || 0) * lvl;
+  }
+
+  const nextMaxHp = PLAYER_HP_MAX + Math.max(0, Math.round(player.maxHpBonus));
+  if (!Number.isFinite(player.maxHp) || player.maxHp <= 0) player.maxHp = PLAYER_HP_MAX;
+  if (nextMaxHp !== player.maxHp) {
+    const ratio = player.maxHp > 0 ? (player.hp / player.maxHp) : 1;
+    player.maxHp = nextMaxHp;
+    player.hp = clamp(Math.round(player.maxHp * ratio), 0, player.maxHp);
+  } else {
+    player.maxHp = nextMaxHp;
+    player.hp = clamp(Number(player.hp) || player.maxHp, 0, player.maxHp);
+  }
+
+  const baseCharges = PLAYER_DODGE_MAX_CHARGES + Math.max(0, Math.floor(player.extraDodgeCharges || 0));
+  player.dodgeChargesMax = baseCharges;
+  player.dodgeCharges = Math.max(0, Math.min(player.dodgeChargesMax, Number(player.dodgeCharges) || player.dodgeChargesMax));
+}
+
+function weightedSkillPick(pool) {
+  let total = 0;
+  for (const s of pool) total += Math.max(0.01, Number(s.weight) || 1);
+  let r = Math.random() * total;
+  for (const s of pool) {
+    r -= Math.max(0.01, Number(s.weight) || 1);
+    if (r <= 0) return s;
+  }
+  return pool[pool.length - 1] || null;
+}
+
+function rollSkillChoices(player, count = SKILL_PICK_OPTIONS) {
+  const defs = getSkillDefsList();
+  const candidates = defs.filter((def) => getSkillRank(player, def.id) < (Number(def.maxLevel) || 1));
+  if (candidates.length === 0) return [];
+  const out = [];
+  const tmp = [...candidates];
+  while (tmp.length > 0 && out.length < count) {
+    const picked = weightedSkillPick(tmp);
+    if (!picked) break;
+    out.push(picked.id);
+    const idx = tmp.findIndex((x) => x.id === picked.id);
+    if (idx >= 0) tmp.splice(idx, 1);
+  }
+  return out;
+}
+
+function queueSkillChoices(player) {
+  if ((player.pendingSkillChoices?.length || 0) > 0) return;
+  const picks = rollSkillChoices(player, SKILL_PICK_OPTIONS);
+  player.pendingSkillChoices = picks;
+}
+
+function gainPlayerXp(room, player, amount, now) {
+  if (!player || !player.alive) return;
+  let xp = Math.max(0, Math.round(Number(amount) || 0));
+  if (xp <= 0) return;
+  if (!Number.isFinite(player.xp)) player.xp = 0;
+  if (!Number.isFinite(player.xpToNext) || player.xpToNext <= 0) player.xpToNext = getXpToNextLevel(player.level || 1);
+
+  player.xp += xp;
+  while (player.xp >= player.xpToNext) {
+    player.xp -= player.xpToNext;
+    player.level = Math.max(1, Math.floor(Number(player.level) || 1) + 1);
+    player.unspentLevelUps = Math.max(0, Math.floor(Number(player.unspentLevelUps) || 0) + 1);
+    player.xpToNext = getXpToNextLevel(player.level);
+    queueSkillChoices(player);
+    sendTo(player.ws, { type: 'system', message: `Level up ${player.level}! Choose a skill.` });
+  }
+}
+
+function spawnXpOrbs(room, x, y, amount) {
+  const total = Math.max(0, Math.round(Number(amount) || 0));
+  if (total <= 0) return;
+  let left = total;
+  while (left > 0) {
+    const chunk = Math.max(1, Math.min(left, 3 + Math.floor(Math.random() * 6)));
+    left -= chunk;
+    room.xpOrbs.push({
+      id: room.nextXpOrbId++,
+      x: x + (Math.random() - 0.5) * 20,
+      y: y + (Math.random() - 0.5) * 20,
+      xp: chunk,
+      ttlMs: XP_ORB_LIFETIME_MS,
+    });
+  }
+}
+
+function getEnemyXpValue(enemy) {
+  if (!enemy) return 6;
+  if (enemy.type === 'boss') return 130;
+  if (enemy.type === 'charger') return 12;
+  if (enemy.type === 'ranged') return 10;
+  return 8;
+}
+
+function enemyTakeDamage(room, enemy, damage, ownerId, now) {
+  if (!enemy) return false;
+  enemy.hp -= Math.max(1, Math.round(Number(damage) || 1));
+  if (enemy.hp > 0) return false;
+
+  const idx = room.enemies.findIndex((e) => e.id === enemy.id);
+  if (idx >= 0) room.enemies.splice(idx, 1);
+
+  if (ownerId && room.players.has(ownerId)) {
+    room.scores.set(ownerId, (room.scores.get(ownerId) || 0) + 10);
+    room.kills.set(ownerId, (room.kills.get(ownerId) || 0) + 1);
+    const killer = room.players.get(ownerId);
+    if (killer) gainPlayerXp(room, killer, getEnemyXpValue(enemy), now);
+  }
+
+  room.totalEnemyKills = (room.totalEnemyKills || 0) + 1;
+  maybeScheduleBossSpawn(room, now);
+  spawnXpOrbs(room, enemy.x, enemy.y, getEnemyXpValue(enemy));
+  maybeSpawnDrop(room, enemy.x, enemy.y);
+  return true;
+}
+
+function tickPlayerSkills(room, player, dtSec, now) {
+  if (!player || !player.alive || !player.skills) return;
+  if (player.hpRegenPerSec > 0) {
+    player.hp = clamp(player.hp + player.hpRegenPerSec * dtSec, 0, player.maxHp || PLAYER_HP_MAX);
+  }
+
+  const defs = getSkillDefsMap();
+  for (const skillId of player.skillOrder || []) {
+    const st = player.skills[skillId];
+    if (!st || st.level <= 0) continue;
+    const def = defs[skillId];
+    if (!def || def.kind !== 'active') continue;
+    st.cooldownMs = Math.max(0, (Number(st.cooldownMs) || 0) - dtSec * 1000);
+    if (st.cooldownMs > 0) continue;
+
+    const lvl = st.level;
+    const radius = Math.max(40, (Number(def.radius) || 120) + (Number(def.radiusPerLevel) || 0) * (lvl - 1));
+    const damage = Math.max(1, (Number(def.damage) || 10) + (Number(def.damagePerLevel) || 0) * (lvl - 1));
+    const maxTargets = Math.max(1, Math.round((Number(def.targets) || 1) + (Number(def.targetsPerLevel) || 0) * (lvl - 1)));
+
+    const targets = room.enemies
+      .map((e) => ({ e, d2: (e.x - player.x) ** 2 + (e.y - player.y) ** 2 }))
+      .filter((x) => x.d2 <= radius * radius)
+      .sort((a, b) => a.d2 - b.d2)
+      .slice(0, maxTargets)
+      .map((x) => x.e);
+
+    for (const enemy of targets) {
+      enemyTakeDamage(room, enemy, damage * player.damageMul, player.id, now);
+    }
+
+    const baseCd = Math.max(300, Number(def.cooldownMs) || 1000);
+    const cdMul = Math.max(0, Number(def.cooldownMulPerLevel) || 0);
+    const lvlCdMul = Math.max(0.2, 1 - cdMul * (lvl - 1));
+    st.maxCooldownMs = Math.max(220, Math.round(baseCd * lvlCdMul));
+    st.cooldownMs = st.maxCooldownMs;
+  }
+}
+
+
+function playerSelectSkill(player, skillId) {
+  const pickId = (skillId || '').toString().trim().toLowerCase();
+  if (!pickId) return false;
+  const options = Array.isArray(player.pendingSkillChoices) ? player.pendingSkillChoices : [];
+  if (!options.includes(pickId)) return false;
+  const def = pickSkillData(pickId);
+  if (!def) return false;
+  const st = ensureSkillState(player, pickId);
+  const nextLevel = Math.min(Number(def.maxLevel) || 1, (Number(st.level) || 0) + 1);
+  st.level = nextLevel;
+  st.maxCooldownMs = Math.max(0, Number(st.maxCooldownMs) || 0);
+  if (!Array.isArray(player.skillOrder)) player.skillOrder = [];
+  if (!player.skillOrder.includes(pickId)) player.skillOrder.push(pickId);
+  player.pendingSkillChoices = [];
+  player.unspentLevelUps = Math.max(0, (Number(player.unspentLevelUps) || 0) - 1);
+  if (player.unspentLevelUps > 0) queueSkillChoices(player);
+  rebuildPlayerDerivedStats(player);
+  return true;
+}
+
 function downPlayer(room, target, now) {
   target.hp = 0;
   target.alive = false;
@@ -841,6 +1226,7 @@ function joinRoom(ws, join) {
     moveY: 0,
     shooting: false,
     hp: PLAYER_HP_MAX,
+    maxHp: PLAYER_HP_MAX,
     alive: true,
     fireCooldownLeft: 0,
     respawnAt: 0,
@@ -856,9 +1242,23 @@ function joinRoom(ws, join) {
     playerClass,
     netQuality: 0,
     netPingMs: 0,
+    level: 1,
+    xp: 0,
+    xpToNext: getXpToNextLevel(1),
+    unspentLevelUps: 0,
+    pendingSkillChoices: [],
+    skills: {},
+    skillOrder: [],
+    damageMul: 1,
+    fireRateMul: 1,
+    moveSpeedMul: 1,
+    hpRegenPerSec: 0,
+    pickupRadius: PLAYER_PICKUP_RADIUS_BASE,
+    extraDodgeCharges: 0,
     joinedAt: Date.now(),
   };
 
+  rebuildPlayerDerivedStats(player);
   room.players.set(id, player);
   room.scores.set(id, 0);
   room.kills.set(id, 0);
@@ -870,6 +1270,7 @@ function joinRoom(ws, join) {
     tickRate: room.sync.tickRate,
     sync: room.sync,
     maxPlayers: MAX_PLAYERS,
+    skillCatalog: getSkillDefsList(),
   });
 
   broadcastRoom(room, {
@@ -944,6 +1345,12 @@ wss.on('connection', (ws) => {
       }
     }
 
+    if (msg.type === 'skillPick') {
+      const picked = playerSelectSkill(current, msg.skillId);
+      if (picked) sendTo(current.ws, { type: 'system', message: 'Skill upgraded.' });
+      return;
+    }
+
     if (msg.type === 'leave') {
       removePlayer(current);
       player = null;
@@ -982,7 +1389,7 @@ function tickRoom(room, dtSec, now) {
         const spawn = randomPlayerSpawn();
         p.x = spawn.x;
         p.y = spawn.y;
-        p.hp = PLAYER_HP_MAX;
+        p.hp = p.maxHp || PLAYER_HP_MAX;
         p.alive = true;
         p.slowUntil = 0;
         p.dodgeCooldownMs = 0;
@@ -1004,7 +1411,7 @@ function tickRoom(room, dtSec, now) {
     const nx = moveLen > 0 ? p.moveX / moveLen : 0;
     const ny = moveLen > 0 ? p.moveY / moveLen : 0;
     const slowed = Number(p.slowUntil) > now;
-    const speedMul = slowed ? PLAYER_SLOW_FACTOR : 1;
+    const speedMul = (slowed ? PLAYER_SLOW_FACTOR : 1) * Math.max(0.2, Number(p.moveSpeedMul) || 1);
 
     p.x = clamp(p.x + nx * PLAYER_SPEED * speedMul * dtSec, PLAYER_RADIUS, WORLD_WIDTH - PLAYER_RADIUS);
     p.y = clamp(p.y + ny * PLAYER_SPEED * speedMul * dtSec, PLAYER_RADIUS, WORLD_HEIGHT - PLAYER_RADIUS);
@@ -1014,6 +1421,8 @@ function tickRoom(room, dtSec, now) {
     if (p.shooting && p.fireCooldownLeft <= 0) {
       fireFromPlayer(room, p);
     }
+
+    tickPlayerSkills(room, p, dtSec, now);
   }
 
   for (let i = room.bullets.length - 1; i >= 0; i -= 1) {
@@ -1047,16 +1456,8 @@ function tickRoom(room, dtSec, now) {
         const dy = e.y - b.y;
         const rr = (Number(e.radius) || ENEMY_RADIUS) + BULLET_RADIUS;
         if (dx * dx + dy * dy <= rr * rr) {
-          e.hp -= b.damage;
           hit = true;
-          if (e.hp <= 0) {
-            room.enemies.splice(ei, 1);
-            room.scores.set(b.ownerId, (room.scores.get(b.ownerId) || 0) + 10);
-            room.kills.set(b.ownerId, (room.kills.get(b.ownerId) || 0) + 1);
-            room.totalEnemyKills = (room.totalEnemyKills || 0) + 1;
-            maybeScheduleBossSpawn(room, now);
-            maybeSpawnDrop(room, e.x, e.y);
-          }
+          enemyTakeDamage(room, e, b.damage, b.ownerId, now);
           break;
         }
       }
@@ -1158,6 +1559,45 @@ function tickRoom(room, dtSec, now) {
     e.y = clamp(e.y + e.vy * dtSec, er, WORLD_HEIGHT - er);
   }
 
+
+  for (let i = room.xpOrbs.length - 1; i >= 0; i -= 1) {
+    const orb = room.xpOrbs[i];
+    orb.ttlMs -= dtSec * 1000;
+    if (orb.ttlMs <= 0) {
+      room.xpOrbs.splice(i, 1);
+      continue;
+    }
+
+    let target = null;
+    let bestD2 = Infinity;
+    for (const p of room.players.values()) {
+      if (!p.alive) continue;
+      const dx = p.x - orb.x;
+      const dy = p.y - orb.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        target = p;
+      }
+    }
+    if (!target) continue;
+
+    const pickupR = Math.max(30, Number(target.pickupRadius) || PLAYER_PICKUP_RADIUS_BASE);
+    const dist = Math.sqrt(bestD2);
+    if (dist <= PLAYER_RADIUS + 8) {
+      gainPlayerXp(room, target, orb.xp, now);
+      room.xpOrbs.splice(i, 1);
+      continue;
+    }
+
+    if (dist <= pickupR) {
+      const nx = dist > 0.001 ? (target.x - orb.x) / dist : 0;
+      const ny = dist > 0.001 ? (target.y - orb.y) / dist : 0;
+      orb.x += nx * XP_ORB_PULL_SPEED * dtSec;
+      orb.y += ny * XP_ORB_PULL_SPEED * dtSec;
+    }
+  }
+
   for (let i = room.drops.length - 1; i >= 0; i -= 1) {
     const drop = room.drops[i];
     drop.ttlMs -= dtSec * 1000;
@@ -1218,5 +1658,23 @@ setInterval(() => {
 server.listen(PORT, () => {
   console.log(`Server started: http://localhost:${PORT}`);
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
