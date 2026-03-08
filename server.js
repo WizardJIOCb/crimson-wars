@@ -24,6 +24,8 @@ const ENEMY_SPEED_MIN = 75;
 const ENEMY_SPEED_MAX = 135;
 const ENEMY_HP_BASE = 22;
 const ENEMY_SPAWN_INTERVAL_MS = 760;
+const ENEMY_ATTACK_WINDUP_MS = 500;
+const ENEMY_ATTACK_DAMAGE = 16;
 const DROP_LIFETIME_MS = 30000;
 const TREE_COUNT = 65;
 const LEADERBOARD_LIMIT = 500;
@@ -486,6 +488,8 @@ function spawnEnemy(room) {
     hp,
     maxHp: hp,
     speed: ENEMY_SPEED_MIN + Math.random() * (ENEMY_SPEED_MAX - ENEMY_SPEED_MIN),
+    attackWindupMs: 0,
+    attackTargetId: null,
   });
 }
 
@@ -538,6 +542,23 @@ function fireFromPlayer(room, player) {
       sendTo(player.ws, { type: 'system', message: 'Ammo ended. Back to pistol.' });
     }
   }
+}
+
+function downPlayer(room, target, now) {
+  target.hp = 0;
+  target.alive = false;
+  target.respawnAt = now + 3000;
+  target.shooting = false;
+  setPlayerWeapon(target, 'pistol');
+  pushRecord({
+    name: target.name,
+    kills: room.kills.get(target.id) || 0,
+    score: room.scores.get(target.id) || 0,
+    roomCode: room.code,
+    durationSec: Math.max(1, Math.floor((now - (target.joinedAt || now)) / 1000)),
+    at: now,
+  });
+  broadcastRoom(room, { type: 'system', message: `${target.name} was downed.` });
 }
 
 function joinRoom(ws, join) {
@@ -743,39 +764,55 @@ function tickRoom(room, dtSec, now) {
 
   for (const e of room.enemies) {
     const target = nearestAlivePlayer(room, e.x, e.y);
-    if (!target) continue;
+    if (!target) {
+      e.vx = 0;
+      e.vy = 0;
+      e.attackWindupMs = 0;
+      e.attackTargetId = null;
+      continue;
+    }
 
     const dx = target.x - e.x;
     const dy = target.y - e.y;
     const d = Math.hypot(dx, dy) || 1;
+    const rr = ENEMY_RADIUS + PLAYER_RADIUS;
+
+    if (e.attackWindupMs > 0) {
+      e.vx = 0;
+      e.vy = 0;
+      e.attackWindupMs -= dtSec * 1000;
+
+      if (e.attackWindupMs <= 0) {
+        const lockedTarget = room.players.get(e.attackTargetId);
+        if (lockedTarget && lockedTarget.alive) {
+          const adx = e.x - lockedTarget.x;
+          const ady = e.y - lockedTarget.y;
+          if (adx * adx + ady * ady <= rr * rr) {
+            lockedTarget.hp -= ENEMY_ATTACK_DAMAGE;
+            if (lockedTarget.hp <= 0) {
+              downPlayer(room, lockedTarget, now);
+            }
+          }
+        }
+        e.attackWindupMs = 0;
+        e.attackTargetId = null;
+      }
+      continue;
+    }
+
+    if ((e.x - target.x) ** 2 + (e.y - target.y) ** 2 <= rr * rr && target.alive) {
+      e.vx = 0;
+      e.vy = 0;
+      e.attackWindupMs = ENEMY_ATTACK_WINDUP_MS;
+      e.attackTargetId = target.id;
+      continue;
+    }
 
     e.vx = (dx / d) * e.speed;
     e.vy = (dy / d) * e.speed;
     e.x = clamp(e.x + e.vx * dtSec, ENEMY_RADIUS, WORLD_WIDTH - ENEMY_RADIUS);
     e.y = clamp(e.y + e.vy * dtSec, ENEMY_RADIUS, WORLD_HEIGHT - ENEMY_RADIUS);
-
-    const rr = ENEMY_RADIUS + PLAYER_RADIUS;
-    if ((e.x - target.x) ** 2 + (e.y - target.y) ** 2 <= rr * rr && target.alive) {
-      target.hp -= 30 * dtSec;
-      if (target.hp <= 0) {
-        target.hp = 0;
-        target.alive = false;
-        target.respawnAt = now + 3000;
-        target.shooting = false;
-        setPlayerWeapon(target, 'pistol');
-        pushRecord({
-          name: target.name,
-          kills: room.kills.get(target.id) || 0,
-          score: room.scores.get(target.id) || 0,
-          roomCode: room.code,
-          durationSec: Math.max(1, Math.floor((now - (target.joinedAt || now)) / 1000)),
-          at: now,
-        });
-        broadcastRoom(room, { type: 'system', message: `${target.name} was downed.` });
-      }
-    }
   }
-
   for (let i = room.drops.length - 1; i >= 0; i -= 1) {
     const drop = room.drops[i];
     drop.ttlMs -= dtSec * 1000;
