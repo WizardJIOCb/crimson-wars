@@ -151,6 +151,8 @@ let sessionStartedAt = 0;
 let waitingForFirstState = false;
 let waitingForFirstStateSince = 0;
 let lastScoreboardHtml = '';
+let lastLevelupHtml = '';
+let lastLevelupHtml = '';
 
 const ROOM_SYNC_PRESETS = {
   normal: {
@@ -287,22 +289,39 @@ function renderLevelupChoices() {
   const choices = Array.isArray(game.mySkillChoices) ? game.mySkillChoices : [];
   if (choices.length === 0 || !game.state) {
     levelupOverlayEl.classList.add('hidden');
-    levelupOptionsEl.innerHTML = '';
+    if (lastLevelupHtml !== '') {
+      levelupOptionsEl.innerHTML = '';
+      lastLevelupHtml = '';
+    }
     return;
   }
 
   levelupOverlayEl.classList.remove('hidden');
-  const cards = choices.map((id) => {
+  const cards = choices.map((id, idx) => {
     const def = game.skillCatalog[id] || { id, name: id, kind: 'passive', rarity: 'common', desc: '' };
     const me = game.state.players.find((p) => p.id === game.myId);
     const existing = (me?.skills || []).find((s) => s.id === id);
     const nextLvl = (Number(existing?.level) || 0) + 1;
     const rarity = (def.rarity || 'common').toLowerCase();
-    return `<button class="skill-option" data-skill-id="${id}" style="border-color:${rarityColor(rarity)}55"><div class="nm" style="color:${rarityColor(rarity)}">${def.name}</div><div class="meta">${def.kind.toUpperCase()} | ${rarity.toUpperCase()} | Lv ${nextLvl}</div><div class="desc">${def.desc || 'No description'}</div></button>`;
+    const hotkey = idx + 1;
+    return `<button class="skill-option" data-skill-id="${id}" data-hotkey="${hotkey}" style="border-color:${rarityColor(rarity)}55"><div class="nm" style="color:${rarityColor(rarity)}">[${hotkey}] ${def.name}</div><div class="meta">Press ${hotkey} | ${def.kind.toUpperCase()} | ${rarity.toUpperCase()} | Lv ${nextLvl}</div><div class="desc">${def.desc || 'No description'}</div></button>`;
   });
-  levelupOptionsEl.innerHTML = cards.join('');
+  const nextHtml = cards.join('');
+  if (nextHtml !== lastLevelupHtml) {
+    levelupOptionsEl.innerHTML = nextHtml;
+    lastLevelupHtml = nextHtml;
+  }
 }
 
+
+function chooseSkillByIndex(idx) {
+  const choices = Array.isArray(game.mySkillChoices) ? game.mySkillChoices : [];
+  if (idx < 1 || idx > choices.length) return false;
+  const sid = choices[idx - 1];
+  if (!sid || ws.readyState !== WebSocket.OPEN || !game.myId) return false;
+  sendJson({ type: 'skillPick', skillId: sid });
+  return true;
+}
 function updateBottomHud() {
   if (!bottomHudEl) return;
   const me = game.state?.players?.find((p) => p.id === game.myId);
@@ -1419,6 +1438,15 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
+  const digitMatch = !typing ? /^Digit([1-3])$/.exec(e.code) : null;
+  if (digitMatch) {
+    const idx = Number(digitMatch[1]);
+    if (chooseSkillByIndex(idx)) {
+      e.preventDefault();
+      return;
+    }
+  }
+
   keyStateFromCode(e.code, true);
   if (e.code === 'Digit1' && ws.readyState === WebSocket.OPEN) {
     sendJson({ type: 'weaponSwitch', weaponKey: 'pistol' });
@@ -1447,15 +1475,20 @@ joinForm.addEventListener('submit', (e) => {
   sendJoinRequest(roomCode, joinSync);
 });
 
-levelupOptionsEl?.addEventListener('click', (e) => {
+function handleSkillOptionInteract(e) {
   const t = e.target;
   if (!(t instanceof HTMLElement)) return;
   const card = t.closest('.skill-option');
   if (!(card instanceof HTMLElement)) return;
   const sid = card.dataset.skillId;
   if (!sid || ws.readyState !== WebSocket.OPEN || !game.myId) return;
+  if (typeof e.preventDefault === 'function') e.preventDefault();
   sendJson({ type: 'skillPick', skillId: sid });
-});
+}
+
+levelupOptionsEl?.addEventListener('pointerdown', handleSkillOptionInteract);
+levelupOptionsEl?.addEventListener('click', handleSkillOptionInteract);
+
 
 
 function clearLocalSessionState() {
@@ -1489,6 +1522,7 @@ function clearLocalSessionState() {
   input.jumpQueued = false;
   scoreboardEl.innerHTML = '';
   lastScoreboardHtml = '';
+  lastLevelupHtml = '';
   updateTopCenterHud(Date.now());
   updateBottomHud();
 }
@@ -2465,6 +2499,8 @@ startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 setInterval(sendNetStatsReport, 1500);
 requestAnimationFrame(render);
+
+
 
 
 
