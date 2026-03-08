@@ -20,6 +20,9 @@ const DROP_RADIUS = 16;
 
 const PLAYER_SPEED = 340;
 const PLAYER_HP_MAX = 100;
+const PLAYER_DODGE_DISTANCE = 165;
+const PLAYER_DODGE_COOLDOWN_MS = 1200;
+const PLAYER_DODGE_INVULN_MS = 220;
 const ENEMY_SPEED_MIN = 75;
 const ENEMY_SPEED_MAX = 135;
 const ENEMY_HP_BASE = 22;
@@ -440,6 +443,9 @@ function serializeRoom(room) {
       playerClass: p.playerClass || 'cyber',
       netQuality: p.netQuality || 0,
       netPingMs: p.netPingMs || 0,
+      slowUntil: Number(p.slowUntil) || 0,
+      dodgeCooldownMs: Math.max(0, Math.round(p.dodgeCooldownMs || 0)),
+      dodgeInvulnUntil: Number(p.dodgeInvulnUntil) || 0,
     })),
     bullets: room.bullets.map((b) => ({
       id: b.id,
@@ -593,8 +599,29 @@ function fireEnemyProjectile(room, enemy, target) {
   });
 }
 
+function performPlayerDodge(player, now) {
+  if (!player.alive) return;
+  if ((player.dodgeCooldownMs || 0) > 0) return;
+
+  let dx = Number(player.moveX) || 0;
+  let dy = Number(player.moveY) || 0;
+  if (Math.hypot(dx, dy) < 0.05) {
+    dx = (Number(player.aimX) || player.x) - player.x;
+    dy = (Number(player.aimY) || player.y) - player.y;
+  }
+  const d = Math.hypot(dx, dy) || 1;
+  const nx = dx / d;
+  const ny = dy / d;
+
+  player.x = clamp(player.x + nx * PLAYER_DODGE_DISTANCE, PLAYER_RADIUS, WORLD_WIDTH - PLAYER_RADIUS);
+  player.y = clamp(player.y + ny * PLAYER_DODGE_DISTANCE, PLAYER_RADIUS, WORLD_HEIGHT - PLAYER_RADIUS);
+  player.dodgeCooldownMs = PLAYER_DODGE_COOLDOWN_MS;
+  player.dodgeInvulnUntil = now + PLAYER_DODGE_INVULN_MS;
+}
+
 function applyEnemyHitToPlayer(room, target, damage, now, applySlow = true) {
   if (!target || !target.alive) return;
+  if ((Number(target.dodgeInvulnUntil) || 0) > now) return;
   target.hp -= damage;
   if (applySlow) target.slowUntil = Math.max(target.slowUntil || 0, now + PLAYER_SLOW_DURATION_MS);
   if (target.hp <= 0) {
@@ -608,6 +635,9 @@ function downPlayer(room, target, now) {
   target.respawnAt = now + 3000;
   target.shooting = false;
   target.slowUntil = 0;
+  target.dodgeCooldownMs = 0;
+  target.dodgeInvulnUntil = 0;
+  target.jumpQueued = false;
   setPlayerWeapon(target, 'pistol');
   pushRecord({
     name: target.name,
@@ -650,6 +680,9 @@ function joinRoom(ws, join) {
     fireCooldownLeft: 0,
     respawnAt: 0,
     slowUntil: 0,
+    dodgeCooldownMs: 0,
+    dodgeInvulnUntil: 0,
+    jumpQueued: false,
     weaponKey: 'pistol',
     weaponAmmo: null,
     playerClass,
@@ -732,6 +765,7 @@ wss.on('connection', (ws) => {
       current.aimX = clamp(Number(msg.aimX) || current.x, 0, WORLD_WIDTH);
       current.aimY = clamp(Number(msg.aimY) || current.y, 0, WORLD_HEIGHT);
       current.shooting = Boolean(msg.shooting);
+      if (msg.jump) current.jumpQueued = true;
     }
 
     if (msg.type === 'weaponSwitch') {
@@ -770,8 +804,17 @@ function tickRoom(room, dtSec, now) {
         p.hp = PLAYER_HP_MAX;
         p.alive = true;
         p.slowUntil = 0;
+        p.dodgeCooldownMs = 0;
+        p.dodgeInvulnUntil = 0;
+        p.jumpQueued = false;
       }
       continue;
+    }
+
+    p.dodgeCooldownMs = Math.max(0, (p.dodgeCooldownMs || 0) - dtSec * 1000);
+    if (p.jumpQueued) {
+      performPlayerDodge(p, now);
+      p.jumpQueued = false;
     }
 
     const moveLen = Math.hypot(p.moveX, p.moveY);

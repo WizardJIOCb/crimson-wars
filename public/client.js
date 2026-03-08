@@ -5,6 +5,7 @@ const ctx = canvas.getContext('2d');
 const statusEl = document.getElementById('status');
 const roomMetaEl = document.getElementById('room-meta');
 const weaponMetaEl = document.getElementById('weapon-meta');
+const movementMetaEl = document.getElementById('movement-meta');
 const fpsMetaEl = document.getElementById('fps-meta');
 const netMetaEl = document.getElementById('net-meta');
 const qualitySelect = document.getElementById('quality-select');
@@ -48,6 +49,7 @@ const moveStickEl = document.getElementById('move-stick');
 const moveKnobEl = document.getElementById('move-knob');
 const aimStickEl = document.getElementById('aim-stick');
 const aimKnobEl = document.getElementById('aim-knob');
+const jumpBtnEl = document.getElementById('jump-btn');
 
 ctx.imageSmoothingEnabled = false;
 
@@ -60,7 +62,7 @@ const QUALITY = {
   high: { groundTexture: true, groundTileSize: 160, maxBlood: 360, maxMuzzle: 90, bloodMult: 1, overlays: true },
 };
 
-const input = { up: false, down: false, left: false, right: false, shooting: false, pointerX: 0, pointerY: 0 };
+const input = { up: false, down: false, left: false, right: false, shooting: false, jumpQueued: false, pointerX: 0, pointerY: 0 };
 const mobile = {
   enabled: ('ontouchstart' in window) || (navigator.maxTouchPoints > 0),
   moveId: null,
@@ -697,6 +699,9 @@ function initMobileControls() {
 initMobileControls();
 updateMobileControlsVisibility();
 
+jumpBtnEl?.addEventListener('touchstart', (e) => { e.preventDefault(); queueJump(); }, { passive: false });
+jumpBtnEl?.addEventListener('mousedown', (e) => { e.preventDefault(); queueJump(); });
+
 function setInfoPanelHidden(hidden) {
   infoPanelHidden = Boolean(hidden);
   if (infoPanelEl) infoPanelEl.classList.toggle('is-hidden', infoPanelHidden);
@@ -1253,6 +1258,10 @@ function keyStateFromCode(code, isDown) {
   if (code === 'KeyD' || code === 'ArrowRight') input.right = isDown;
 }
 
+function queueJump() {
+  input.jumpQueued = true;
+}
+
 function updateSyncSettingsVisibility() {
   if (!syncSettingsEl) return;
   syncSettingsEl.style.display = joinMode === 'create' ? '' : 'none';
@@ -1265,6 +1274,12 @@ window.addEventListener('keydown', (e) => {
 
   if (!typing && e.code === 'KeyH') {
     setInfoPanelHidden(!infoPanelHidden);
+    return;
+  }
+
+  if (!typing && e.code === 'Space') {
+    e.preventDefault();
+    queueJump();
     return;
   }
 
@@ -1316,6 +1331,8 @@ function clearLocalSessionState() {
   netStats.stateDelayMs = 0;
   roomMetaEl.textContent = '';
   weaponMetaEl.textContent = '';
+  if (movementMetaEl) movementMetaEl.textContent = '';
+  input.jumpQueued = false;
   scoreboardEl.innerHTML = '';
   lastScoreboardHtml = '';
 }
@@ -1475,6 +1492,16 @@ ws.addEventListener('message', (ev) => {
     const me = s.players.find((p) => p.id === game.myId);
     if (me) {
       weaponMetaEl.textContent = `Weapon: ${me.weaponLabel} | Ammo: ${me.ammo === null ? 'inf' : me.ammo}`;
+      if (movementMetaEl) {
+        const nowMs = Date.now();
+        const slowed = (Number(me.slowUntil) || 0) > nowMs;
+        const slowLeft = Math.max(0, (Number(me.slowUntil) || 0) - nowMs);
+        const dodgeCd = Math.max(0, Number(me.dodgeCooldownMs) || 0);
+        const invuln = (Number(me.dodgeInvulnUntil) || 0) > nowMs;
+        const dodgeText = dodgeCd > 0 ? (dodgeCd / 1000).toFixed(1) + 's' : 'ready';
+        const slowText = slowed ? ('SLOWED ' + (slowLeft / 1000).toFixed(1) + 's') : 'normal';
+        movementMetaEl.textContent = `Move: ${slowText} | Jump: ${dodgeText}${invuln ? ' | i-frames' : ''}`;
+      }
       if (prevMyAlive === true && !me.alive) {
         const deathResult = {
           kills: Number(me.kills) || 0,
@@ -1488,6 +1515,7 @@ ws.addEventListener('message', (ev) => {
       prevMyAlive = Boolean(me.alive);
     } else {
       prevMyAlive = null;
+      if (movementMetaEl) movementMetaEl.textContent = '';
     }
   }
 });
@@ -1527,6 +1555,8 @@ function sendInput() {
     }
   }
 
+  const jump = input.jumpQueued;
+
   sendJson({
     type: 'input',
     moveX,
@@ -1534,7 +1564,10 @@ function sendInput() {
     aimX,
     aimY,
     shooting,
+    jump,
   });
+
+  input.jumpQueued = false;
 }
 function spawnBlood(x, y, count) {
   const q = getQ();
