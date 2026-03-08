@@ -309,3 +309,34 @@ body {
     touch-action: none;
   }
 }
+.records-browser .rooms-list {
+  max-height: 170px;
+}
+
+.record-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px;
+  border-radius: 8px;
+  background: rgba(30, 41, 59, 0.55);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.record-rank {
+  width: 24px;
+  color: #facc15;
+  font-weight: 700;
+}
+
+.record-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.record-meta {
+  color: #cbd5e1;
+  font-size: 12px;
+}

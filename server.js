@@ -24,6 +24,7 @@ const ENEMY_HP_BASE = 22;
 const ENEMY_SPAWN_INTERVAL_MS = 760;
 const DROP_LIFETIME_MS = 15000;
 const TREE_COUNT = 65;
+const LEADERBOARD_LIMIT = 40;
 
 const WEAPONS = {
   pistol: {
@@ -81,6 +82,18 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 const rooms = new Map();
+const records = [];
+
+function listRecordsForLobby() {
+  return records.slice(0, LEADERBOARD_LIMIT);
+}
+
+function pushRecord(entry) {
+  records.push(entry);
+  records.sort((a, b) => (b.kills - a.kills) || (b.score - a.score) || (b.at - a.at));
+  if (records.length > LEADERBOARD_LIMIT) records.length = LEADERBOARD_LIMIT;
+}
+
 function listRoomsForLobby() {
   return Array.from(rooms.values())
     .filter((room) => room.players.size > 0)
@@ -94,9 +107,11 @@ function listRoomsForLobby() {
     }));
 }
 
-app.get('/api/rooms', (_req, res) => {
+
+
+app.get('/api/records', (_req, res) => {
   res.json({
-    rooms: listRoomsForLobby(),
+    records: listRecordsForLobby(),
     now: Date.now(),
   });
 });
@@ -355,6 +370,7 @@ function joinRoom(ws, join) {
     respawnAt: 0,
     weaponKey: 'pistol',
     weaponAmmo: null,
+    joinedAt: Date.now(),
   };
 
   room.players.set(id, player);
@@ -529,6 +545,14 @@ function tickRoom(room, dtSec, now) {
         target.respawnAt = now + 3000;
         target.shooting = false;
         setPlayerWeapon(target, 'pistol');
+        pushRecord({
+          name: target.name,
+          kills: room.kills.get(target.id) || 0,
+          score: room.scores.get(target.id) || 0,
+          roomCode: room.code,
+          durationSec: Math.max(1, Math.floor((now - (target.joinedAt || now)) / 1000)),
+          at: now,
+        });
         broadcastRoom(room, { type: 'system', message: `${target.name} was downed.` });
       }
     }

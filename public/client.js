@@ -18,6 +18,8 @@ const nameInput = document.getElementById('name');
 const roomCodeInput = document.getElementById('room-code');
 const refreshRoomsBtn = document.getElementById('refresh-rooms');
 const roomsListEl = document.getElementById('rooms-list');
+const refreshRecordsBtn = document.getElementById('refresh-records');
+const recordsListEl = document.getElementById('records-list');
 const infoPanelEl = document.getElementById('info-panel');
 const toggleInfoBtn = document.getElementById('toggle-info');
 const mobileControlsEl = document.getElementById('mobile-controls');
@@ -499,6 +501,50 @@ async function requestRoomsList() {
 }
 
 
+function renderRecordsList(items) {
+  if (!recordsListEl) return;
+  if (!items.length) {
+    recordsListEl.textContent = 'No records yet.';
+    return;
+  }
+
+  recordsListEl.innerHTML = '';
+  for (let i = 0; i < items.length; i += 1) {
+    const r = items[i];
+    const row = document.createElement('div');
+    row.className = 'record-row';
+
+    const rank = document.createElement('div');
+    rank.className = 'record-rank';
+    rank.textContent = `#${i + 1}`;
+
+    const name = document.createElement('div');
+    name.className = 'record-name';
+    name.textContent = r.name || 'Unknown';
+
+    const meta = document.createElement('div');
+    meta.className = 'record-meta';
+    meta.textContent = `${r.kills || 0}K / ${r.score || 0}pts`;
+
+    row.appendChild(rank);
+    row.appendChild(name);
+    row.appendChild(meta);
+    recordsListEl.appendChild(row);
+  }
+}
+
+async function requestRecordsList() {
+  if (!recordsListEl) return;
+  try {
+    const res = await fetch('/api/records', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const payload = await res.json();
+    renderRecordsList(Array.isArray(payload.records) ? payload.records : []);
+  } catch {
+    recordsListEl.textContent = 'Failed to load records.';
+  }
+}
+
 function updatePlayerInterpolation(dt) {
   if (!game.state) return;
   const liveMap = mapById(game.state.players);
@@ -808,14 +854,21 @@ joinForm.addEventListener('submit', (e) => {
 refreshRoomsBtn?.addEventListener('click', () => {
   requestRoomsList();
 });
+refreshRecordsBtn?.addEventListener('click', () => {
+  requestRecordsList();
+});
 
 setInterval(() => {
-  if (!game.myId && game.connected) requestRoomsList();
+  if (!game.myId && game.connected) {
+    requestRoomsList();
+    requestRecordsList();
+  }
 }, 5000);
 ws.addEventListener('open', () => {
   game.connected = true;
   statusEl.textContent = 'Connected. Create room or join code.';
   requestRoomsList();
+  requestRecordsList();
   sendNetPing();
 });
 
@@ -858,6 +911,7 @@ ws.addEventListener('message', (ev) => {
     joinOverlay.style.display = 'grid';
     updateMobileControlsVisibility();
     requestRoomsList();
+    requestRecordsList();
   }
 
   if (msg.type === 'system') statusEl.textContent = msg.message;
