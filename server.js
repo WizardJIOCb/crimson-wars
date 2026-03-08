@@ -29,6 +29,15 @@ const ENEMY_ATTACK_DAMAGE = 16;
 const ENEMY_ATTACK_BASE_COOLDOWN_MS = 1000;
 const ENEMY_ATTACK_MIN_COOLDOWN_MS = 150;
 const ENEMY_ATTACK_CAST_FREQUENCY = 0;
+const ENEMY_CHARGER_DASH_DISTANCE = 120;
+const ENEMY_RANGED_DAMAGE = 10;
+const ENEMY_RANGED_BULLET_SPEED = 520;
+const ENEMY_RANGED_BULLET_LIFE_MS = 1300;
+const ENEMY_RANGED_FIRE_COOLDOWN_MS = 900;
+const ENEMY_RANGED_MIN_RANGE = 170;
+const ENEMY_RANGED_MAX_RANGE = 280;
+const PLAYER_SLOW_FACTOR = 0.8;
+const PLAYER_SLOW_DURATION_MS = 600;
 const DROP_LIFETIME_MS = 30000;
 const TREE_COUNT = 65;
 const LEADERBOARD_LIMIT = 500;
@@ -440,6 +449,7 @@ function serializeRoom(room) {
       vx: b.vx,
       vy: b.vy,
       color: b.color,
+      fromEnemy: Boolean(b.fromEnemy),
     })),
     enemies: room.enemies.map((e) => ({
       id: e.id,
@@ -479,18 +489,28 @@ function nearestAlivePlayer(room, x, y) {
   return target;
 }
 
+function chooseEnemyType() {
+  const roll = Math.random();
+  if (roll < 0.16) return 'ranged';
+  if (roll < 0.38) return 'charger';
+  return 'normal';
+}
+
 function spawnEnemy(room) {
   const pos = randomSpawnEdge();
   const hp = ENEMY_HP_BASE + Math.floor((Date.now() - room.startedAt) / 25000) * 2;
+  const enemyType = chooseEnemyType();
+  const speedMul = enemyType === 'charger' ? 1.22 : (enemyType === 'ranged' ? 0.9 : 1);
   room.enemies.push({
     id: room.nextEnemyId++,
+    type: enemyType,
     x: pos.x,
     y: pos.y,
     vx: 0,
     vy: 0,
     hp,
     maxHp: hp,
-    speed: ENEMY_SPEED_MIN + Math.random() * (ENEMY_SPEED_MAX - ENEMY_SPEED_MIN),
+    speed: (ENEMY_SPEED_MIN + Math.random() * (ENEMY_SPEED_MAX - ENEMY_SPEED_MIN)) * speedMul,
     attackWindupMs: 0,
     attackCooldownMs: 0,
     attackTargetId: null,
@@ -533,6 +553,7 @@ function fireFromPlayer(room, player) {
     room.bullets.push({
       id: room.nextBulletId++,
       ownerId: player.id,
+      fromEnemy: false,
       x: player.x,
       y: player.y,
       vx: Math.cos(angle) * weapon.bulletSpeed,
@@ -554,11 +575,39 @@ function fireFromPlayer(room, player) {
   }
 }
 
+function fireEnemyProjectile(room, enemy, target) {
+  const dx = target.x - enemy.x;
+  const dy = target.y - enemy.y;
+  const d = Math.hypot(dx, dy) || 1;
+  room.bullets.push({
+    id: room.nextBulletId++,
+    ownerId: null,
+    fromEnemy: true,
+    x: enemy.x,
+    y: enemy.y,
+    vx: (dx / d) * ENEMY_RANGED_BULLET_SPEED,
+    vy: (dy / d) * ENEMY_RANGED_BULLET_SPEED,
+    lifeMs: ENEMY_RANGED_BULLET_LIFE_MS,
+    damage: ENEMY_RANGED_DAMAGE,
+    color: '#f87171',
+  });
+}
+
+function applyEnemyHitToPlayer(room, target, damage, now, applySlow = true) {
+  if (!target || !target.alive) return;
+  target.hp -= damage;
+  if (applySlow) target.slowUntil = Math.max(target.slowUntil || 0, now + PLAYER_SLOW_DURATION_MS);
+  if (target.hp <= 0) {
+    downPlayer(room, target, now);
+  }
+}
+
 function downPlayer(room, target, now) {
   target.hp = 0;
   target.alive = false;
   target.respawnAt = now + 3000;
   target.shooting = false;
+  target.slowUntil = 0;
   setPlayerWeapon(target, 'pistol');
   pushRecord({
     name: target.name,
@@ -600,6 +649,7 @@ function joinRoom(ws, join) {
     alive: true,
     fireCooldownLeft: 0,
     respawnAt: 0,
+    slowUntil: 0,
     weaponKey: 'pistol',
     weaponAmmo: null,
     playerClass,
@@ -719,6 +769,7 @@ function tickRoom(room, dtSec, now) {
         p.y = spawn.y;
         p.hp = PLAYER_HP_MAX;
         p.alive = true;
+        p.slowUntil = 0;
       }
       continue;
     }
@@ -726,9 +777,11 @@ function tickRoom(room, dtSec, now) {
     const moveLen = Math.hypot(p.moveX, p.moveY);
     const nx = moveLen > 0 ? p.moveX / moveLen : 0;
     const ny = moveLen > 0 ? p.moveY / moveLen : 0;
+    const slowed = Number(p.slowUntil) > now;
+    const speedMul = slowed ? PLAYER_SLOW_FACTOR : 1;
 
-    p.x = clamp(p.x + nx * PLAYER_SPEED * dtSec, PLAYER_RADIUS, WORLD_WIDTH - PLAYER_RADIUS);
-    p.y = clamp(p.y + ny * PLAYER_SPEED * dtSec, PLAYER_RADIUS, WORLD_HEIGHT - PLAYER_RADIUS);
+    p.x = clamp(p.x + nx * PLAYER_SPEED * speedMul * dtSec, PLAYER_RADIUS, WORLD_WIDTH - PLAYER_RADIUS);
+    p.y = clamp(p.y + ny * PLAYER_SPEED * speedMul * dtSec, PLAYER_RADIUS, WORLD_HEIGHT - PLAYER_RADIUS);
 
     p.fireCooldownLeft = Math.max(0, p.fireCooldownLeft - dtSec * 1000);
 
@@ -749,21 +802,35 @@ function tickRoom(room, dtSec, now) {
     }
 
     let hit = false;
-    for (let ei = room.enemies.length - 1; ei >= 0; ei -= 1) {
-      const e = room.enemies[ei];
-      const dx = e.x - b.x;
-      const dy = e.y - b.y;
-      const rr = ENEMY_RADIUS + BULLET_RADIUS;
-      if (dx * dx + dy * dy <= rr * rr) {
-        e.hp -= b.damage;
-        hit = true;
-        if (e.hp <= 0) {
-          room.enemies.splice(ei, 1);
-          room.scores.set(b.ownerId, (room.scores.get(b.ownerId) || 0) + 10);
-          room.kills.set(b.ownerId, (room.kills.get(b.ownerId) || 0) + 1);
-          maybeSpawnDrop(room, e.x, e.y);
+    if (b.fromEnemy) {
+      for (const p of room.players.values()) {
+        if (!p.alive) continue;
+        const dx = p.x - b.x;
+        const dy = p.y - b.y;
+        const rr = PLAYER_RADIUS + BULLET_RADIUS;
+        if (dx * dx + dy * dy <= rr * rr) {
+          applyEnemyHitToPlayer(room, p, Math.max(1, Number(b.damage) || ENEMY_RANGED_DAMAGE), now, true);
+          hit = true;
+          break;
         }
-        break;
+      }
+    } else {
+      for (let ei = room.enemies.length - 1; ei >= 0; ei -= 1) {
+        const e = room.enemies[ei];
+        const dx = e.x - b.x;
+        const dy = e.y - b.y;
+        const rr = ENEMY_RADIUS + BULLET_RADIUS;
+        if (dx * dx + dy * dy <= rr * rr) {
+          e.hp -= b.damage;
+          hit = true;
+          if (e.hp <= 0) {
+            room.enemies.splice(ei, 1);
+            room.scores.set(b.ownerId, (room.scores.get(b.ownerId) || 0) + 10);
+            room.kills.set(b.ownerId, (room.kills.get(b.ownerId) || 0) + 1);
+            maybeSpawnDrop(room, e.x, e.y);
+          }
+          break;
+        }
       }
     }
 
@@ -789,6 +856,29 @@ function tickRoom(room, dtSec, now) {
     const d = Math.hypot(dx, dy) || 1;
     const rr = ENEMY_RADIUS + PLAYER_RADIUS;
 
+    if (e.type === 'ranged') {
+      const targetDist = d;
+      if (targetDist < ENEMY_RANGED_MIN_RANGE) {
+        e.vx = -(dx / d) * e.speed;
+        e.vy = -(dy / d) * e.speed;
+      } else if (targetDist > ENEMY_RANGED_MAX_RANGE) {
+        e.vx = (dx / d) * e.speed;
+        e.vy = (dy / d) * e.speed;
+      } else {
+        e.vx = 0;
+        e.vy = 0;
+      }
+
+      e.x = clamp(e.x + e.vx * dtSec, ENEMY_RADIUS, WORLD_WIDTH - ENEMY_RADIUS);
+      e.y = clamp(e.y + e.vy * dtSec, ENEMY_RADIUS, WORLD_HEIGHT - ENEMY_RADIUS);
+
+      if (e.attackCooldownMs <= 0 && target.alive && targetDist <= ENEMY_RANGED_MAX_RANGE * 1.1) {
+        fireEnemyProjectile(room, e, target);
+        e.attackCooldownMs = ENEMY_RANGED_FIRE_COOLDOWN_MS;
+      }
+      continue;
+    }
+
     if (e.attackWindupMs > 0) {
       e.vx = 0;
       e.vy = 0;
@@ -797,13 +887,20 @@ function tickRoom(room, dtSec, now) {
       if (e.attackWindupMs <= 0) {
         const lockedTarget = room.players.get(e.attackTargetId);
         if (lockedTarget && lockedTarget.alive) {
+          if (e.type === 'charger') {
+            const cdx = lockedTarget.x - e.x;
+            const cdy = lockedTarget.y - e.y;
+            const cd = Math.hypot(cdx, cdy) || 1;
+            const dash = Math.min(ENEMY_CHARGER_DASH_DISTANCE, Math.max(0, cd - 1));
+            e.x = clamp(e.x + (cdx / cd) * dash, ENEMY_RADIUS, WORLD_WIDTH - ENEMY_RADIUS);
+            e.y = clamp(e.y + (cdy / cd) * dash, ENEMY_RADIUS, WORLD_HEIGHT - ENEMY_RADIUS);
+          }
+
           const adx = e.x - lockedTarget.x;
           const ady = e.y - lockedTarget.y;
-          if (adx * adx + ady * ady <= rr * rr) {
-            lockedTarget.hp -= ENEMY_ATTACK_DAMAGE;
-            if (lockedTarget.hp <= 0) {
-              downPlayer(room, lockedTarget, now);
-            }
+          const hitRange = rr + (e.type === 'charger' ? 8 : 0);
+          if (adx * adx + ady * ady <= hitRange * hitRange) {
+            applyEnemyHitToPlayer(room, lockedTarget, ENEMY_ATTACK_DAMAGE, now, true);
           }
         }
         e.attackWindupMs = 0;
@@ -826,6 +923,7 @@ function tickRoom(room, dtSec, now) {
     e.x = clamp(e.x + e.vx * dtSec, ENEMY_RADIUS, WORLD_WIDTH - ENEMY_RADIUS);
     e.y = clamp(e.y + e.vy * dtSec, ENEMY_RADIUS, WORLD_HEIGHT - ENEMY_RADIUS);
   }
+
   for (let i = room.drops.length - 1; i >= 0; i -= 1) {
     const drop = room.drops[i];
     drop.ttlMs -= dtSec * 1000;
@@ -852,7 +950,6 @@ function tickRoom(room, dtSec, now) {
 
     if (picked) continue;
   }
-
 }
 
 let lastLoopAt = Date.now();
