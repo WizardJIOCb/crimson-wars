@@ -1934,19 +1934,26 @@ function render(ts) {
     const y = d.y - camera.y;
     const glow = d.weaponKey === 'sniper' ? '#e5e7eb' : (d.weaponKey === 'shotgun' ? '#f97316' : (d.weaponKey === 'smg' ? '#38bdf8' : '#22c55e'));
 
-    drawShadowAtScreen(x, y + 10, 9, 4, 0.24);
+    const ttlMs = Math.max(0, Number(d.ttlMs) || 0);
+    const blink = ttlMs > 0 && ttlMs <= 5000;
+    const blinkOn = !blink || (Math.sin(ts / 90) > 0);
+    if (!blinkOn) continue;
 
-    ctx.fillStyle = 'rgba(8,12,18,0.78)';
+    drawShadowAtScreen(x, y + 10, 9, 4, blink ? 0.14 : 0.24);
+
+    ctx.fillStyle = blink ? 'rgba(40,10,10,0.84)' : 'rgba(8,12,18,0.78)';
     ctx.fillRect(x - 26, y - 28, 52, 12);
-    ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+    ctx.strokeStyle = blink ? 'rgba(248,113,113,0.9)' : 'rgba(255,255,255,0.22)';
     ctx.lineWidth = 1;
     ctx.strokeRect(x - 26, y - 28, 52, 12);
 
     drawWeaponIcon(x - 17, y - 22, d.weaponKey);
-    ctx.fillStyle = '#e2e8f0';
+    ctx.fillStyle = blink ? '#fecaca' : '#e2e8f0';
     ctx.font = '10px sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(d.weaponLabel || 'Weapon', x - 10, y - 18);
+    const label = d.weaponLabel || 'Weapon';
+    const warnSec = blink ? Math.max(0, Math.ceil(ttlMs / 1000)) : 0;
+    ctx.fillText(blink ? `${label} ${warnSec}s` : label, x - 10, y - 18);
 
     ctx.beginPath();
     ctx.moveTo(x, y - 12);
@@ -1954,10 +1961,9 @@ function render(ts) {
     ctx.lineTo(x, y + 12);
     ctx.lineTo(x - 10, y);
     ctx.closePath();
-    ctx.fillStyle = glow;
+    ctx.fillStyle = blink ? '#ef4444' : glow;
     ctx.fill();
   }
-
   for (const b of game.state.bullets) {
     const rb = getBulletRenderPos(b);
     if (!isVisibleWorld(rb.x, rb.y, 12)) continue;

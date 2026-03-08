@@ -24,7 +24,7 @@ const ENEMY_SPEED_MIN = 75;
 const ENEMY_SPEED_MAX = 135;
 const ENEMY_HP_BASE = 22;
 const ENEMY_SPAWN_INTERVAL_MS = 760;
-const DROP_LIFETIME_MS = 15000;
+const DROP_LIFETIME_MS = 30000;
 const TREE_COUNT = 65;
 const LEADERBOARD_LIMIT = 500;
 const LEADERBOARD_PAGE_SIZE = 10;
@@ -449,6 +449,8 @@ function serializeRoom(room) {
       y: d.y,
       weaponKey: d.weaponKey,
       weaponLabel: WEAPONS[d.weaponKey].label,
+      ttlMs: Math.max(0, Math.round(d.ttlMs || 0)),
+      ttlMaxMs: DROP_LIFETIME_MS,
     })),
     decor: {
       trees: room.trees,
