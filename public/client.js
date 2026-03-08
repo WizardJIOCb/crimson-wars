@@ -20,6 +20,9 @@ const refreshRoomsBtn = document.getElementById('refresh-rooms');
 const roomsListEl = document.getElementById('rooms-list');
 const refreshRecordsBtn = document.getElementById('refresh-records');
 const recordsListEl = document.getElementById('records-list');
+const recordsPrevBtn = document.getElementById('records-prev');
+const recordsNextBtn = document.getElementById('records-next');
+const recordsPageEl = document.getElementById('records-page');
 const infoPanelEl = document.getElementById('info-panel');
 const toggleInfoBtn = document.getElementById('toggle-info');
 const mobileControlsEl = document.getElementById('mobile-controls');
@@ -81,6 +84,8 @@ let infoPanelHidden = storedInfoPanelHidden === null ? true : storedInfoPanelHid
 let lastFrameTs = performance.now();
 let fpsFrameCount = 0;
 let fpsAccumSec = 0;
+
+const recordsUi = { page: 1, totalPages: 1, pageSize: 10 };
 
 const NET_RENDER_DELAY_MS = 90;
 const MAX_EXTRAPOLATION_MS = 80;
@@ -501,13 +506,24 @@ async function requestRoomsList() {
 }
 
 
-function renderRecordsList(items) {
+function updateRecordsPager() {
+  if (recordsPageEl) recordsPageEl.textContent = `Page ${recordsUi.page}/${recordsUi.totalPages}`;
+  if (recordsPrevBtn) recordsPrevBtn.disabled = recordsUi.page <= 1;
+  if (recordsNextBtn) recordsNextBtn.disabled = recordsUi.page >= recordsUi.totalPages;
+}
+
+function renderRecordsList(items, page = 1, totalPages = 1) {
   if (!recordsListEl) return;
+  recordsUi.page = page;
+  recordsUi.totalPages = totalPages;
+  updateRecordsPager();
+
   if (!items.length) {
     recordsListEl.textContent = 'No records yet.';
     return;
   }
 
+  const rankOffset = (recordsUi.page - 1) * recordsUi.pageSize;
   recordsListEl.innerHTML = '';
   for (let i = 0; i < items.length; i += 1) {
     const r = items[i];
@@ -516,11 +532,13 @@ function renderRecordsList(items) {
 
     const rank = document.createElement('div');
     rank.className = 'record-rank';
-    rank.textContent = `#${i + 1}`;
+    rank.textContent = `#${rankOffset + i + 1}`;
 
     const name = document.createElement('div');
     name.className = 'record-name';
-    name.textContent = r.name || 'Unknown';    const kills = Number(r.kills) || 0;
+    name.textContent = r.name || 'Unknown';
+
+    const kills = Number(r.kills) || 0;
     const score = Number(r.score) || 0;
     const durationSec = Number(r.durationSec) || 0;
     const roomCode = (r.roomCode || '-').toString();
@@ -546,18 +564,25 @@ function renderRecordsList(items) {
   }
 }
 
-async function requestRecordsList() {
+async function requestRecordsList(page = recordsUi.page) {
   if (!recordsListEl) return;
   try {
-    const res = await fetch('/api/records', { cache: 'no-store' });
+    const params = new URLSearchParams({
+      page: String(Math.max(1, page)),
+      page_size: String(recordsUi.pageSize),
+    });
+    const res = await fetch(`/api/records?${params.toString()}`, { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const payload = await res.json();
-    renderRecordsList(Array.isArray(payload.records) ? payload.records : []);
+    renderRecordsList(
+      Array.isArray(payload.records) ? payload.records : [],
+      Number(payload.page) || 1,
+      Number(payload.totalPages) || 1,
+    );
   } catch {
     recordsListEl.textContent = 'Failed to load records.';
   }
 }
-
 function updatePlayerInterpolation(dt) {
   if (!game.state) return;
   const liveMap = mapById(game.state.players);
@@ -868,20 +893,26 @@ refreshRoomsBtn?.addEventListener('click', () => {
   requestRoomsList();
 });
 refreshRecordsBtn?.addEventListener('click', () => {
-  requestRecordsList();
+  requestRecordsList(recordsUi.page);
+});
+recordsPrevBtn?.addEventListener('click', () => {
+  if (recordsUi.page > 1) requestRecordsList(recordsUi.page - 1);
+});
+recordsNextBtn?.addEventListener('click', () => {
+  if (recordsUi.page < recordsUi.totalPages) requestRecordsList(recordsUi.page + 1);
 });
 
 setInterval(() => {
   if (!game.myId && game.connected) {
     requestRoomsList();
-    requestRecordsList();
+    requestRecordsList(1);
   }
 }, 5000);
 ws.addEventListener('open', () => {
   game.connected = true;
   statusEl.textContent = 'Connected. Create room or join code.';
   requestRoomsList();
-  requestRecordsList();
+  requestRecordsList(1);
   sendNetPing();
 });
 
@@ -924,7 +955,7 @@ ws.addEventListener('message', (ev) => {
     joinOverlay.style.display = 'grid';
     updateMobileControlsVisibility();
     requestRoomsList();
-    requestRecordsList();
+    requestRecordsList(1);
   }
 
   if (msg.type === 'system') statusEl.textContent = msg.message;

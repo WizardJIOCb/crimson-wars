@@ -24,7 +24,8 @@ const ENEMY_HP_BASE = 22;
 const ENEMY_SPAWN_INTERVAL_MS = 760;
 const DROP_LIFETIME_MS = 15000;
 const TREE_COUNT = 65;
-const LEADERBOARD_LIMIT = 40;
+const LEADERBOARD_LIMIT = 500;
+const LEADERBOARD_PAGE_SIZE = 10;
 
 const WEAPONS = {
   pistol: {
@@ -84,8 +85,21 @@ const wss = new WebSocketServer({ server });
 const rooms = new Map();
 const records = [];
 
-function listRecordsForLobby() {
-  return records.slice(0, LEADERBOARD_LIMIT);
+function listRecordsForLobby(page = 1, pageSize = LEADERBOARD_PAGE_SIZE) {
+  const total = records.length;
+  const size = Math.max(1, Math.min(50, Math.floor(pageSize) || LEADERBOARD_PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(total / size));
+  const currentPage = Math.max(1, Math.min(totalPages, Math.floor(page) || 1));
+  const start = (currentPage - 1) * size;
+  const items = records.slice(start, start + size);
+
+  return {
+    page: currentPage,
+    pageSize: size,
+    total,
+    totalPages,
+    items,
+  };
 }
 
 function pushRecord(entry) {
@@ -107,15 +121,27 @@ function listRoomsForLobby() {
     }));
 }
 
-
-
-app.get('/api/records', (_req, res) => {
+app.get('/api/rooms', (_req, res) => {
   res.json({
-    records: listRecordsForLobby(),
+    rooms: listRoomsForLobby(),
     now: Date.now(),
   });
 });
 
+app.get('/api/records', (req, res) => {
+  const page = Number(req.query.page) || 1;
+  const pageSize = Number(req.query.page_size) || LEADERBOARD_PAGE_SIZE;
+  const payload = listRecordsForLobby(page, pageSize);
+
+  res.json({
+    records: payload.items,
+    page: payload.page,
+    pageSize: payload.pageSize,
+    total: payload.total,
+    totalPages: payload.totalPages,
+    now: Date.now(),
+  });
+});
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -602,5 +628,3 @@ setInterval(() => {
 server.listen(PORT, () => {
   console.log(`Server started: http://localhost:${PORT}`);
 });
-
-
