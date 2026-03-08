@@ -1302,7 +1302,7 @@ window.addEventListener('keydown', (e) => {
   }
 });
 window.addEventListener('keyup', (e) => keyStateFromCode(e.code, false));
-canvas.addEventListener('mousedown', (e) => { if (e.button === 0) input.shooting = true; });
+canvas.addEventListener('mousedown', (e) => { if (e.button === 0) { input.shooting = true; input.pointerX = e.clientX; input.pointerY = e.clientY; } });
 window.addEventListener('mouseup', () => { input.shooting = false; });
 canvas.addEventListener('mousemove', (e) => { input.pointerX = e.clientX; input.pointerY = e.clientY; });
 
@@ -1570,7 +1570,9 @@ function sendInput() {
     }
   }
 
-  if (game.autoFireEnabled) {
+  const manualAimOverride = Boolean(input.shooting || (mobile.enabled && mobile.aimStrength > 0.2));
+
+  if (game.autoFireEnabled && !manualAimOverride) {
     let nearest = null;
     let bestD2 = Infinity;
     for (const e of game.state.enemies || []) {
@@ -1831,6 +1833,52 @@ function drawHpBar(x, y, ratio) {
   ctx.fillStyle = ratio > 0.35 ? '#84cc16' : '#ef4444';
   ctx.fillRect(sx, sy, 38 * ratio, 5);
 }
+function drawJumpChargesIndicator(p, sx, sy) {
+  if (!p || !p.alive) return;
+  const maxCharges = Math.max(1, Number(p.dodgeChargesMax) || 1);
+  const charges = Math.max(0, Math.min(maxCharges, Number(p.dodgeCharges) || 0));
+  const cdMs = Math.max(0, Number(p.dodgeRechargeMs ?? p.dodgeCooldownMs) || 0);
+  const cdTotalMs = Math.max(1, Number(p.dodgeRechargeTotalMs) || 1200);
+  const recharging = charges < maxCharges && cdMs > 0;
+  const recoveringIndex = recharging ? charges : -1;
+
+  const radius = 7;
+  const gap = 6;
+  const y = sy - 56;
+  const totalWidth = maxCharges * (radius * 2) + (maxCharges - 1) * gap;
+  const startX = sx - totalWidth / 2 + radius;
+
+  ctx.save();
+  ctx.lineWidth = 2;
+  for (let i = 0; i < maxCharges; i += 1) {
+    const cx = startX + i * (radius * 2 + gap);
+    ctx.fillStyle = i < charges ? 'rgba(34,197,94,0.95)' : 'rgba(17,24,39,0.85)';
+    ctx.beginPath();
+    ctx.arc(cx, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = i < charges ? 'rgba(187,247,208,0.95)' : 'rgba(148,163,184,0.7)';
+    ctx.beginPath();
+    ctx.arc(cx, y, radius + 1, 0, Math.PI * 2);
+    ctx.stroke();
+
+    if (i === recoveringIndex) {
+      const progress = 1 - Math.max(0, Math.min(1, cdMs / cdTotalMs));
+      ctx.strokeStyle = '#facc15';
+      ctx.beginPath();
+      ctx.arc(cx, y, radius + 3, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * progress));
+      ctx.stroke();
+    }
+  }
+
+  if (recharging) {
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText((cdMs / 1000).toFixed(1) + 's', sx, y - 13);
+  }
+  ctx.restore();
+}
 function drawTrees() {
   for (const tr of game.sortedTrees) {
     if (!isVisibleWorld(tr.x, tr.y - 36, 90)) continue;
@@ -1952,6 +2000,7 @@ function drawPlayer(p, t, isMe, rx, ry) {
     drawCircle(rx, ry, 18, isMe ? '#22d3ee' : '#a78bfa');
   }
 
+  if (isMe) drawJumpChargesIndicator(p, x, y);
   drawHpBar(rx, ry, Math.max(0, p.hp / p.maxHp));
   ctx.fillStyle = '#f8fafc';
   ctx.font = '13px sans-serif';
@@ -2162,3 +2211,4 @@ startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 setInterval(sendNetStatsReport, 1500);
 requestAnimationFrame(render);
+

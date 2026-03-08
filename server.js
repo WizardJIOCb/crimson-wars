@@ -22,6 +22,7 @@ const PLAYER_SPEED = 340;
 const PLAYER_HP_MAX = 100;
 const PLAYER_DODGE_DISTANCE = 165;
 const PLAYER_DODGE_COOLDOWN_MS = 1200;
+const PLAYER_DODGE_MAX_CHARGES = 2;
 const PLAYER_DODGE_INVULN_MS = 220;
 const ENEMY_SPEED_MIN = 75;
 const ENEMY_SPEED_MAX = 135;
@@ -445,6 +446,10 @@ function serializeRoom(room) {
       netPingMs: p.netPingMs || 0,
       slowUntil: Number(p.slowUntil) || 0,
       dodgeCooldownMs: Math.max(0, Math.round(p.dodgeCooldownMs || 0)),
+      dodgeCharges: Math.max(0, Math.round(p.dodgeCharges || 0)),
+      dodgeChargesMax: Math.max(1, Math.round(p.dodgeChargesMax || PLAYER_DODGE_MAX_CHARGES)),
+      dodgeRechargeMs: Math.max(0, Math.round(p.dodgeRechargeMs || 0)),
+      dodgeRechargeTotalMs: PLAYER_DODGE_COOLDOWN_MS,
       dodgeInvulnUntil: Number(p.dodgeInvulnUntil) || 0,
     })),
     bullets: room.bullets.map((b) => ({
@@ -601,7 +606,8 @@ function fireEnemyProjectile(room, enemy, target) {
 
 function performPlayerDodge(player, now) {
   if (!player.alive) return;
-  if ((player.dodgeCooldownMs || 0) > 0) return;
+  const charges = Math.max(0, Number(player.dodgeCharges) || 0);
+  if (charges <= 0) return;
 
   let dx = Number(player.moveX) || 0;
   let dy = Number(player.moveY) || 0;
@@ -615,8 +621,36 @@ function performPlayerDodge(player, now) {
 
   player.x = clamp(player.x + nx * PLAYER_DODGE_DISTANCE, PLAYER_RADIUS, WORLD_WIDTH - PLAYER_RADIUS);
   player.y = clamp(player.y + ny * PLAYER_DODGE_DISTANCE, PLAYER_RADIUS, WORLD_HEIGHT - PLAYER_RADIUS);
-  player.dodgeCooldownMs = PLAYER_DODGE_COOLDOWN_MS;
+  player.dodgeCharges = Math.max(0, charges - 1);
+  if (player.dodgeCharges < (player.dodgeChargesMax || PLAYER_DODGE_MAX_CHARGES) && (player.dodgeRechargeMs || 0) <= 0) {
+    player.dodgeRechargeMs = PLAYER_DODGE_COOLDOWN_MS;
+  }
+  player.dodgeCooldownMs = Math.max(0, player.dodgeRechargeMs || 0);
   player.dodgeInvulnUntil = now + PLAYER_DODGE_INVULN_MS;
+}
+
+function updatePlayerDodgeRecharge(player, dtMs) {
+  const maxCharges = Math.max(1, Number(player.dodgeChargesMax) || PLAYER_DODGE_MAX_CHARGES);
+  player.dodgeCharges = Math.max(0, Math.min(maxCharges, Number(player.dodgeCharges) || 0));
+  player.dodgeRechargeMs = Math.max(0, Number(player.dodgeRechargeMs) || 0);
+
+  if (player.dodgeCharges >= maxCharges) {
+    player.dodgeRechargeMs = 0;
+    player.dodgeCooldownMs = 0;
+    return;
+  }
+
+  player.dodgeRechargeMs -= dtMs;
+  while (player.dodgeRechargeMs <= 0 && player.dodgeCharges < maxCharges) {
+    player.dodgeCharges += 1;
+    if (player.dodgeCharges < maxCharges) {
+      player.dodgeRechargeMs += PLAYER_DODGE_COOLDOWN_MS;
+    } else {
+      player.dodgeRechargeMs = 0;
+    }
+  }
+
+  player.dodgeCooldownMs = Math.max(0, player.dodgeRechargeMs);
 }
 
 function applyEnemyHitToPlayer(room, target, damage, now, applySlow = true) {
@@ -636,6 +670,8 @@ function downPlayer(room, target, now) {
   target.shooting = false;
   target.slowUntil = 0;
   target.dodgeCooldownMs = 0;
+  target.dodgeCharges = target.dodgeChargesMax || PLAYER_DODGE_MAX_CHARGES;
+  target.dodgeRechargeMs = 0;
   target.dodgeInvulnUntil = 0;
   target.jumpQueued = false;
   setPlayerWeapon(target, 'pistol');
@@ -681,6 +717,9 @@ function joinRoom(ws, join) {
     respawnAt: 0,
     slowUntil: 0,
     dodgeCooldownMs: 0,
+    dodgeChargesMax: PLAYER_DODGE_MAX_CHARGES,
+    dodgeCharges: PLAYER_DODGE_MAX_CHARGES,
+    dodgeRechargeMs: 0,
     dodgeInvulnUntil: 0,
     jumpQueued: false,
     weaponKey: 'pistol',
@@ -805,13 +844,15 @@ function tickRoom(room, dtSec, now) {
         p.alive = true;
         p.slowUntil = 0;
         p.dodgeCooldownMs = 0;
+        p.dodgeCharges = p.dodgeChargesMax || PLAYER_DODGE_MAX_CHARGES;
+        p.dodgeRechargeMs = 0;
         p.dodgeInvulnUntil = 0;
         p.jumpQueued = false;
       }
       continue;
     }
 
-    p.dodgeCooldownMs = Math.max(0, (p.dodgeCooldownMs || 0) - dtSec * 1000);
+    updatePlayerDodgeRecharge(p, dtSec * 1000);
     if (p.jumpQueued) {
       performPlayerDodge(p, now);
       p.jumpQueued = false;
@@ -1027,3 +1068,4 @@ setInterval(() => {
 server.listen(PORT, () => {
   console.log(`Server started: http://localhost:${PORT}`);
 });
+
