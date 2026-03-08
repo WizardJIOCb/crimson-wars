@@ -82,16 +82,63 @@ body {
   font-weight: 700;
   color: #f8fafc;
 }
+
+#hud.menu-hidden {
+  display: none;
+}
+
 #join-overlay {
   position: fixed;
   inset: 0;
   display: grid;
   place-items: center;
-  background: rgba(0, 0, 0, 0.65);
+  background:
+    radial-gradient(circle at 20% 10%, rgba(128, 4, 18, 0.35), transparent 45%),
+    radial-gradient(circle at 80% 70%, rgba(109, 10, 22, 0.25), transparent 42%),
+    linear-gradient(160deg, rgba(9, 2, 5, 0.92), rgba(25, 4, 8, 0.9));
   z-index: 20;
+  overflow: hidden;
+}
+
+#join-overlay::before,
+#join-overlay::after {
+  content: '';
+  position: absolute;
+  inset: -20%;
+  pointer-events: none;
+}
+
+#join-overlay::before {
+  background:
+    radial-gradient(circle at 12% 20%, rgba(220, 30, 40, 0.23) 0 10%, transparent 35%),
+    radial-gradient(circle at 78% 14%, rgba(170, 16, 36, 0.2) 0 9%, transparent 33%),
+    radial-gradient(circle at 65% 82%, rgba(200, 18, 34, 0.16) 0 8%, transparent 32%);
+  animation: bloodPulse 6.5s ease-in-out infinite;
+}
+
+#join-overlay::after {
+  background: repeating-linear-gradient(
+    118deg,
+    rgba(120, 16, 22, 0.06) 0 14px,
+    rgba(30, 5, 8, 0.02) 14px 28px
+  );
+  mix-blend-mode: screen;
+  animation: bloodDrift 14s linear infinite;
+}
+
+@keyframes bloodPulse {
+  0%, 100% { transform: scale(1); opacity: 0.75; }
+  50% { transform: scale(1.07); opacity: 1; }
+}
+
+@keyframes bloodDrift {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-8%, -6%, 0); }
 }
 
 #join-form {
+  position: relative;
+  z-index: 1;
   background: #10151d;
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 12px;
@@ -100,7 +147,6 @@ body {
   gap: 8px;
   min-width: 300px;
 }
-
 #join-form input,
 #join-form button {
   font: inherit;

@@ -12,6 +12,7 @@ const shadowToggleEl = document.getElementById('shadow-toggle');
 const enemyHpToggleEl = document.getElementById('enemy-hp-toggle');
 const extraBloodToggleEl = document.getElementById('extra-blood-toggle');
 const scoreboardEl = document.getElementById('scoreboard');
+const hudEl = document.getElementById('hud');
 const joinOverlay = document.getElementById('join-overlay');
 const joinForm = document.getElementById('join-form');
 const nameInput = document.getElementById('name');
@@ -402,12 +403,19 @@ function setMobileControlsVisible(visible) {
   mobileControlsEl.setAttribute('aria-hidden', visible ? 'false' : 'true');
 }
 
+function updateHudVisibility(overlayOpen) {
+  if (!hudEl) return;
+  hudEl.classList.toggle('menu-hidden', Boolean(overlayOpen));
+}
+
 function updateMobileControlsVisibility() {
+  const overlayOpen = getComputedStyle(joinOverlay).display !== 'none';
+  updateHudVisibility(overlayOpen);
+
   if (!mobile.enabled) {
     setMobileControlsVisible(false);
     return;
   }
-  const overlayOpen = getComputedStyle(joinOverlay).display !== 'none';
   setMobileControlsVisible(!overlayOpen);
 }
 
@@ -530,6 +538,7 @@ function initMobileControls() {
 }
 
 initMobileControls();
+updateMobileControlsVisibility();
 
 function setInfoPanelHidden(hidden) {
   infoPanelHidden = Boolean(hidden);
