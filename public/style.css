@@ -369,3 +369,43 @@ body {
 #join-overlay.death-mode .back-to-menu {
   display: block;
 }
+
+#join-form select {
+  font: inherit;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: #0b0f15;
+  color: var(--text);
+}
+
+.sync-settings {
+  margin-top: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  padding: 8px;
+  background: rgba(8, 12, 18, 0.45);
+}
+
+.sync-settings > summary {
+  cursor: pointer;
+  color: #dbeafe;
+  font-size: 13px;
+  margin-bottom: 8px;
+  user-select: none;
+}
+
+.sync-settings .sync-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+
+.sync-settings label {
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+.sync-settings input {
+  margin-top: 2px;
+}

@@ -1,4 +1,4 @@
-﻿
+
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
@@ -24,6 +24,14 @@ const recordsPrevBtn = document.getElementById('records-prev');
 const recordsNextBtn = document.getElementById('records-next');
 const recordsPageEl = document.getElementById('records-page');
 const backToMenuBtn = document.getElementById('back-to-menu');
+const syncSettingsEl = document.getElementById('sync-settings');
+const syncPresetEl = document.getElementById('sync-preset');
+const syncTickrateEl = document.getElementById('sync-tickrate');
+const syncRenderDelayEl = document.getElementById('sync-render-delay');
+const syncMaxExtrapolationEl = document.getElementById('sync-max-extrapolation');
+const syncEntityInterpEl = document.getElementById('sync-entity-interp');
+const syncBulletCorrectionEl = document.getElementById('sync-bullet-correction');
+const syncInputRateEl = document.getElementById('sync-input-rate');
 const infoPanelEl = document.getElementById('info-panel');
 const toggleInfoBtn = document.getElementById('toggle-info');
 const mobileControlsEl = document.getElementById('mobile-controls');
@@ -99,10 +107,35 @@ let fpsAccumSec = 0;
 const recordsUi = { page: 1, totalPages: 1, pageSize: 10 };
 let prevMyAlive = null;
 
-const NET_RENDER_DELAY_MS = 90;
-const MAX_EXTRAPOLATION_MS = 80;
-const ENTITY_INTERP_RATE = 16;
-const BULLET_CORRECTION_RATE = 18;
+const ROOM_SYNC_PRESETS = {
+  normal: {
+    tickRate: 45,
+    netRenderDelayMs: 90,
+    maxExtrapolationMs: 80,
+    entityInterpRate: 16,
+    bulletCorrectionRate: 18,
+    inputSendHz: 30,
+  },
+  better: {
+    tickRate: 55,
+    netRenderDelayMs: 75,
+    maxExtrapolationMs: 90,
+    entityInterpRate: 20,
+    bulletCorrectionRate: 22,
+    inputSendHz: 40,
+  },
+  best: {
+    tickRate: 60,
+    netRenderDelayMs: 65,
+    maxExtrapolationMs: 100,
+    entityInterpRate: 24,
+    bulletCorrectionRate: 26,
+    inputSendHz: 50,
+  },
+};
+
+const roomSync = { ...ROOM_SYNC_PRESETS.normal };
+let inputSendIntervalId = null;
 
 const NET_PING_INTERVAL_MS = 1000;
 const NET_PING_TIMEOUT_MS = 4000;
@@ -125,6 +158,64 @@ const netStats = {
   rxKBps: 0,
   txKBps: 0,
 };
+function clampNum(value, min, max, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
+function normalizeRoomSync(raw) {
+  return {
+    tickRate: Math.round(clampNum(raw?.tickRate, 20, 120, ROOM_SYNC_PRESETS.normal.tickRate)),
+    netRenderDelayMs: Math.round(clampNum(raw?.netRenderDelayMs, 20, 250, ROOM_SYNC_PRESETS.normal.netRenderDelayMs)),
+    maxExtrapolationMs: Math.round(clampNum(raw?.maxExtrapolationMs, 20, 250, ROOM_SYNC_PRESETS.normal.maxExtrapolationMs)),
+    entityInterpRate: clampNum(raw?.entityInterpRate, 4, 50, ROOM_SYNC_PRESETS.normal.entityInterpRate),
+    bulletCorrectionRate: clampNum(raw?.bulletCorrectionRate, 4, 60, ROOM_SYNC_PRESETS.normal.bulletCorrectionRate),
+    inputSendHz: Math.round(clampNum(raw?.inputSendHz, 10, 120, ROOM_SYNC_PRESETS.normal.inputSendHz)),
+  };
+}
+
+function applyRoomSync(config) {
+  const next = normalizeRoomSync(config);
+  roomSync.tickRate = next.tickRate;
+  roomSync.netRenderDelayMs = next.netRenderDelayMs;
+  roomSync.maxExtrapolationMs = next.maxExtrapolationMs;
+  roomSync.entityInterpRate = next.entityInterpRate;
+  roomSync.bulletCorrectionRate = next.bulletCorrectionRate;
+  roomSync.inputSendHz = next.inputSendHz;
+  startInputSender();
+}
+
+function syncUiFromConfig(config) {
+  if (syncTickrateEl) syncTickrateEl.value = String(config.tickRate);
+  if (syncRenderDelayEl) syncRenderDelayEl.value = String(config.netRenderDelayMs);
+  if (syncMaxExtrapolationEl) syncMaxExtrapolationEl.value = String(config.maxExtrapolationMs);
+  if (syncEntityInterpEl) syncEntityInterpEl.value = String(config.entityInterpRate);
+  if (syncBulletCorrectionEl) syncBulletCorrectionEl.value = String(config.bulletCorrectionRate);
+  if (syncInputRateEl) syncInputRateEl.value = String(config.inputSendHz);
+}
+
+function configFromSyncUi() {
+  return normalizeRoomSync({
+    tickRate: syncTickrateEl?.value,
+    netRenderDelayMs: syncRenderDelayEl?.value,
+    maxExtrapolationMs: syncMaxExtrapolationEl?.value,
+    entityInterpRate: syncEntityInterpEl?.value,
+    bulletCorrectionRate: syncBulletCorrectionEl?.value,
+    inputSendHz: syncInputRateEl?.value,
+  });
+}
+
+function applyPresetToUi(presetKey) {
+  const preset = ROOM_SYNC_PRESETS[presetKey] || ROOM_SYNC_PRESETS.normal;
+  syncUiFromConfig(preset);
+}
+
+function startInputSender() {
+  if (inputSendIntervalId) clearInterval(inputSendIntervalId);
+  const hz = Math.max(10, Math.min(120, roomSync.inputSendHz || 30));
+  inputSendIntervalId = setInterval(sendInput, 1000 / hz);
+}
 
 function pruneBytesSamples(samples, nowMs) {
   while (samples.length > 0 && nowMs - samples[0].t > NET_BYTES_WINDOW_MS) {
@@ -216,7 +307,7 @@ function updateNetMetaUi() {
 
   const delivered = netStats.recvPings + netStats.lostPings;
   const lossPct = delivered > 0 ? (netStats.lostPings * 100) / delivered : 0;
-  const interpMs = game.netSnapshots.length > 0 ? NET_RENDER_DELAY_MS : 0;
+  const interpMs = game.netSnapshots.length > 0 ? roomSync.netRenderDelayMs : 0;
 
   netMetaEl.textContent = `NET: ping ${Math.round(netStats.rttMs)}ms | jitter ${Math.round(netStats.jitterMs)}ms | loss ${lossPct.toFixed(1)}% | state ${netStats.stateHz.toFixed(1)}Hz | delay ${Math.round(netStats.stateDelayMs)}ms | interp ${interpMs}ms | rx ${netStats.rxKBps.toFixed(1)}KB/s | tx ${netStats.txKBps.toFixed(1)}KB/s`;
 }
@@ -460,7 +551,24 @@ if (nameInput && storedNickname && storedNickname.trim()) {
   nameInput.value = storedNickname.trim().slice(0, 18);
 }
 
-function sendJoinRequest(roomCode) {
+applyPresetToUi('normal');
+applyRoomSync(configFromSyncUi());
+
+syncPresetEl?.addEventListener('change', () => {
+  const key = syncPresetEl.value;
+  if (key === 'custom') return;
+  applyPresetToUi(key);
+  applyRoomSync(configFromSyncUi());
+});
+
+for (const el of [syncTickrateEl, syncRenderDelayEl, syncMaxExtrapolationEl, syncEntityInterpEl, syncBulletCorrectionEl, syncInputRateEl]) {
+  el?.addEventListener('change', () => {
+    if (syncPresetEl) syncPresetEl.value = 'custom';
+    applyRoomSync(configFromSyncUi());
+  });
+}
+
+function sendJoinRequest(roomCode, joinSync = null) {
   if (ws.readyState !== WebSocket.OPEN) return;
   const name = nameInput.value.trim() || 'Fighter';
   localStorage.setItem(NICKNAME_STORAGE_KEY, name);
@@ -468,6 +576,7 @@ function sendJoinRequest(roomCode) {
     type: 'join',
     name,
     roomCode,
+    sync: joinSync || undefined,
   });
   joinOverlay.style.display = 'none';
   joinOverlay.classList.remove('death-mode');
@@ -503,7 +612,7 @@ function renderRoomsList(rooms) {
     joinBtn.addEventListener('click', () => {
       roomCodeInput.value = room.code;
       joinMode = 'join';
-      sendJoinRequest(room.code);
+      sendJoinRequest(room.code, null);
     });
 
     row.appendChild(code);
@@ -610,7 +719,7 @@ function updatePlayerInterpolation(dt) {
   if (game.myId && liveMap.has(game.myId)) {
     targetMap.set(game.myId, liveMap.get(game.myId));
   }
-  const alpha = 1 - Math.exp(-ENTITY_INTERP_RATE * dt);
+  const alpha = 1 - Math.exp(-roomSync.entityInterpRate * dt);
   const alive = new Set();
 
   for (const [id, p] of targetMap.entries()) {
@@ -642,7 +751,7 @@ function getPlayerRenderPos(player) {
 function updateEnemyInterpolation(dt) {
   if (!game.state) return;
   const targetMap = game.sampledNet?.enemies || mapById(game.state.enemies);
-  const alpha = 1 - Math.exp(-ENTITY_INTERP_RATE * dt);
+  const alpha = 1 - Math.exp(-roomSync.entityInterpRate * dt);
   const alive = new Set();
 
   for (const [id, e] of targetMap.entries()) {
@@ -738,7 +847,7 @@ function updateBulletInterpolation(dt) {
     const dist = Math.hypot(dx, dy);
     if (dist > 0.001) {
       const correction = Math.min(dist, Math.max(8, Math.hypot(r.vx, r.vy) * dt * 1.4));
-      const k = (correction / dist) * Math.min(1, BULLET_CORRECTION_RATE * dt);
+      const k = (correction / dist) * Math.min(1, roomSync.bulletCorrectionRate * dt);
       r.x += dx * k;
       r.y += dy * k;
     }
@@ -786,7 +895,7 @@ function sampleBufferedState() {
   const snaps = game.netSnapshots;
   if (snaps.length === 0) return null;
 
-  const target = performance.now() - NET_RENDER_DELAY_MS;
+  const target = performance.now() - roomSync.netRenderDelayMs;
   let a = snaps[0];
   let b = snaps[snaps.length - 1];
 
@@ -800,7 +909,7 @@ function sampleBufferedState() {
 
   if (target >= snaps[snaps.length - 1].t) {
     const latest = snaps[snaps.length - 1];
-    const extraMs = Math.min(MAX_EXTRAPOLATION_MS, target - latest.t);
+    const extraMs = Math.min(roomSync.maxExtrapolationMs, target - latest.t);
     const extraSec = Math.max(0, extraMs / 1000);
 
     const bullets = latest.bullets.map((x) => ({
@@ -876,6 +985,12 @@ function keyStateFromCode(code, isDown) {
   if (code === 'KeyD' || code === 'ArrowRight') input.right = isDown;
 }
 
+function updateSyncSettingsVisibility() {
+  if (!syncSettingsEl) return;
+  syncSettingsEl.style.display = joinMode === 'create' ? '' : 'none';
+}
+
+
 window.addEventListener('keydown', (e) => {
   const t = e.target;
   const typing = t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement;
@@ -900,13 +1015,17 @@ joinForm.addEventListener('click', (e) => {
   if (!(t instanceof HTMLButtonElement)) return;
   if (!t.dataset.mode) return;
   joinMode = t.dataset.mode;
+  updateSyncSettingsVisibility();
 });
+
+updateSyncSettingsVisibility();
 
 joinForm.addEventListener('submit', (e) => {
   e.preventDefault();
   if (ws.readyState !== WebSocket.OPEN) return;
   const roomCode = joinMode === 'create' ? '' : roomCodeInput.value.trim();
-  sendJoinRequest(roomCode);
+  const joinSync = joinMode === 'create' ? configFromSyncUi() : null;
+  sendJoinRequest(roomCode, joinSync);
 });
 
 function clearLocalSessionState() {
@@ -1003,6 +1122,7 @@ ws.addEventListener('message', (ev) => {
   if (msg.type === 'welcome') {
     game.myId = msg.id;
     prevMyAlive = true;
+    if (msg.sync) applyRoomSync(msg.sync);
     game.roomCode = msg.roomCode;
     game.renderPlayers.clear();
     game.renderEnemies.clear();
@@ -1015,7 +1135,7 @@ ws.addEventListener('message', (ev) => {
     visuals.gore = [];
     visuals.muzzle = [];
     roomMetaEl.textContent = `Room: ${msg.roomCode}`;
-    statusEl.textContent = `Online as ${msg.id}`;
+    statusEl.textContent = `Online as ${msg.id} | tick ${roomSync.tickRate}`;
   }
 
   if (msg.type === 'joinError') {
@@ -1038,6 +1158,7 @@ ws.addEventListener('message', (ev) => {
     game.state = s;
     game.world = s.world;
     game.roomCode = s.roomCode;
+    if (s.sync) applyRoomSync(s.sync);
     roomMetaEl.textContent = `Room: ${s.roomCode}`;
 
     game.sortedTrees = (s.decor?.trees || []).slice().sort((a, b) => a.y - b.y);
@@ -1519,7 +1640,6 @@ function render(ts) {
   requestAnimationFrame(render);
 }
 
-setInterval(sendInput, 1000 / 30);
+startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 requestAnimationFrame(render);
-

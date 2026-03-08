@@ -8,8 +8,8 @@ const Database = require('better-sqlite3');
 const { WebSocketServer } = WebSocket;
 
 const PORT = process.env.PORT || 8080;
-const TICK_RATE = 45;
-const TICK_MS = 1000 / TICK_RATE;
+const MAIN_LOOP_RATE = 120;
+const MAIN_LOOP_MS = 1000 / MAIN_LOOP_RATE;
 const MAX_PLAYERS = 8;
 const WORLD_WIDTH = 2400;
 const WORLD_HEIGHT = 1400;
@@ -30,6 +30,15 @@ const LEADERBOARD_LIMIT = 500;
 const LEADERBOARD_PAGE_SIZE = 10;
 const DATA_DIR = path.join(__dirname, 'data');
 const RECORDS_DB_PATH = path.join(DATA_DIR, 'records.db');
+
+const DEFAULT_ROOM_SYNC = {
+  tickRate: 45,
+  netRenderDelayMs: 90,
+  maxExtrapolationMs: 80,
+  entityInterpRate: 16,
+  bulletCorrectionRate: 18,
+  inputSendHz: 30,
+};
 
 const WEAPONS = {
   pistol: {
@@ -104,6 +113,22 @@ function normalizeRecordEntry(entry) {
   };
 }
 
+function clampNum(value, min, max, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
+function normalizeRoomSync(raw) {
+  return {
+    tickRate: Math.round(clampNum(raw?.tickRate, 20, 120, DEFAULT_ROOM_SYNC.tickRate)),
+    netRenderDelayMs: Math.round(clampNum(raw?.netRenderDelayMs, 20, 250, DEFAULT_ROOM_SYNC.netRenderDelayMs)),
+    maxExtrapolationMs: Math.round(clampNum(raw?.maxExtrapolationMs, 20, 250, DEFAULT_ROOM_SYNC.maxExtrapolationMs)),
+    entityInterpRate: clampNum(raw?.entityInterpRate, 4, 50, DEFAULT_ROOM_SYNC.entityInterpRate),
+    bulletCorrectionRate: clampNum(raw?.bulletCorrectionRate, 4, 60, DEFAULT_ROOM_SYNC.bulletCorrectionRate),
+    inputSendHz: Math.round(clampNum(raw?.inputSendHz, 10, 120, DEFAULT_ROOM_SYNC.inputSendHz)),
+  };
+}
 function loadRecordsFromDb() {
   if (!recordsDb || !stmtTopRecords) return;
   const rows = stmtTopRecords.all(LEADERBOARD_LIMIT);
@@ -293,7 +318,7 @@ function cleanRoomCode(raw) {
   return code;
 }
 
-function getOrCreateRoom(requestedCode) {
+function getOrCreateRoom(requestedCode, requestedSync) {
   const provided = cleanRoomCode(requestedCode);
   let code = provided;
 
@@ -304,8 +329,12 @@ function getOrCreateRoom(requestedCode) {
   }
 
   if (!rooms.has(code)) {
+    const sync = normalizeRoomSync(requestedSync || DEFAULT_ROOM_SYNC);
     rooms.set(code, {
       code,
+      sync,
+      tickMs: 1000 / sync.tickRate,
+      accumulatorMs: 0,
       players: new Map(),
       bullets: [],
       enemies: [],
@@ -323,7 +352,6 @@ function getOrCreateRoom(requestedCode) {
 
   return rooms.get(code);
 }
-
 function sendTo(ws, payload) {
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(payload));
@@ -344,6 +372,7 @@ function serializeRoom(room) {
     now: Date.now(),
     roomCode: room.code,
     world: { width: WORLD_WIDTH, height: WORLD_HEIGHT },
+    sync: room.sync,
     players: Array.from(room.players.values()).map((p) => ({
       id: p.id,
       name: p.name,
@@ -470,7 +499,7 @@ function fireFromPlayer(room, player) {
 }
 
 function joinRoom(ws, join) {
-  const room = getOrCreateRoom(join?.roomCode);
+  const room = getOrCreateRoom(join?.roomCode, join?.sync);
 
   if (room.players.size >= MAX_PLAYERS) {
     sendTo(ws, { type: 'joinError', message: `Room ${room.code} is full (8/8).` });
@@ -510,7 +539,8 @@ function joinRoom(ws, join) {
     type: 'welcome',
     id,
     roomCode: room.code,
-    tickRate: TICK_RATE,
+    tickRate: room.sync.tickRate,
+    sync: room.sync,
     maxPlayers: MAX_PLAYERS,
   });
 
@@ -722,17 +752,28 @@ function tickRoom(room, dtSec, now) {
   broadcastRoom(room, { type: 'state', payload: serializeRoom(room) });
 }
 
-let lastTick = Date.now();
+let lastLoopAt = Date.now();
 setInterval(() => {
   const now = Date.now();
-  const dtSec = Math.min(0.05, (now - lastTick) / 1000);
-  lastTick = now;
+  const elapsedMs = Math.min(150, now - lastLoopAt);
+  lastLoopAt = now;
 
   for (const room of rooms.values()) {
-    tickRoom(room, dtSec, now);
-  }
-}, TICK_MS);
+    room.accumulatorMs = (room.accumulatorMs || 0) + elapsedMs;
+    const tickMs = room.tickMs || (1000 / DEFAULT_ROOM_SYNC.tickRate);
 
+    let steps = 0;
+    while (room.accumulatorMs >= tickMs && steps < 8) {
+      tickRoom(room, tickMs / 1000, now);
+      room.accumulatorMs -= tickMs;
+      steps += 1;
+    }
+
+    if (room.accumulatorMs > tickMs * 8) {
+      room.accumulatorMs = tickMs * 2;
+    }
+  }
+}, MAIN_LOOP_MS);
 server.listen(PORT, () => {
   console.log(`Server started: http://localhost:${PORT}`);
 });

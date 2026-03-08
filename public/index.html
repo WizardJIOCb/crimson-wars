@@ -58,6 +58,36 @@
       <label for="room-code">Room code (optional)</label>
       <input id="room-code" maxlength="10" placeholder="AUTO or e.g. ABC123" />
 
+      <details id="sync-settings" class="sync-settings">
+        <summary>Sync settings (Create room)</summary>
+        <label for="sync-preset">Preset</label>
+        <select id="sync-preset">
+          <option value="normal" selected>Normal (default)</option>
+          <option value="better">Better</option>
+          <option value="best">Best</option>
+          <option value="custom">Custom</option>
+        </select>
+        <div class="sync-grid">
+          <label for="sync-tickrate">Tickrate</label>
+          <input id="sync-tickrate" type="number" min="20" max="120" step="1" />
+
+          <label for="sync-render-delay">Interp delay (ms)</label>
+          <input id="sync-render-delay" type="number" min="20" max="250" step="1" />
+
+          <label for="sync-max-extrapolation">Max extrapolation (ms)</label>
+          <input id="sync-max-extrapolation" type="number" min="20" max="250" step="1" />
+
+          <label for="sync-entity-interp">Entity interp rate</label>
+          <input id="sync-entity-interp" type="number" min="4" max="50" step="1" />
+
+          <label for="sync-bullet-correction">Bullet correction rate</label>
+          <input id="sync-bullet-correction" type="number" min="4" max="60" step="1" />
+
+          <label for="sync-input-rate">Input send rate (Hz)</label>
+          <input id="sync-input-rate" type="number" min="10" max="120" step="1" />
+        </div>
+      </details>
+
       <div class="actions">
         <button type="submit" data-mode="create">Create room</button>
         <button type="submit" data-mode="join" class="secondary">Join code</button>
