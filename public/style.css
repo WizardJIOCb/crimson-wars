@@ -254,7 +254,7 @@ body {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: max(14px, env(safe-area-inset-bottom));
+  bottom: max(42px, calc(env(safe-area-inset-bottom) + 24px));
   padding: 0 14px;
   display: none;
   justify-content: space-between;
