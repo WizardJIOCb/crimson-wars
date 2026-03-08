@@ -114,6 +114,7 @@ let prevMyAlive = null;
 let sessionStartedAt = 0;
 let waitingForFirstState = false;
 let waitingForFirstStateSince = 0;
+let lastScoreboardHtml = '';
 
 const ROOM_SYNC_PRESETS = {
   normal: {
@@ -1089,7 +1090,11 @@ function updateScoreboard(players) {
     return `<div class="score-row${meClass}">${connIcon}<span class="score-player-text">${p.name} - Kills: ${kills} (${p.weaponLabel} ${ammo})</span></div>`;
   });
 
-  scoreboardEl.innerHTML = `<div class="score-title">Players</div>${rows.join('')}`;
+  const nextHtml = `<div class="score-title">Players</div>${rows.join('')}`;
+  if (scoreboardEl.matches(':hover')) return;
+  if (nextHtml === lastScoreboardHtml) return;
+  lastScoreboardHtml = nextHtml;
+  scoreboardEl.innerHTML = nextHtml;
 }
 
 function keyStateFromCode(code, isDown) {
@@ -1158,6 +1163,7 @@ function clearLocalSessionState() {
   roomMetaEl.textContent = '';
   weaponMetaEl.textContent = '';
   scoreboardEl.innerHTML = '';
+  lastScoreboardHtml = '';
 }
 
 function leaveActiveRoom() {
@@ -1772,6 +1778,8 @@ startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 setInterval(sendNetStatsReport, 1500);
 requestAnimationFrame(render);
+
+
 
 
 
