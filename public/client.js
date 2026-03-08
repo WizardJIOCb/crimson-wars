@@ -13,6 +13,7 @@ const shadowToggleEl = document.getElementById('shadow-toggle');
 const enemyHpToggleEl = document.getElementById('enemy-hp-toggle');
 const extraBloodToggleEl = document.getElementById('extra-blood-toggle');
 const hitEffectsToggleEl = document.getElementById('hit-effects-toggle');
+const autoFireToggleEl = document.getElementById('auto-fire-toggle');
 const connIndicatorToggleEl = document.getElementById('conn-indicator-toggle');
 const scoreboardEl = document.getElementById('scoreboard');
 const hudEl = document.getElementById('hud');
@@ -103,6 +104,7 @@ const game = {
   enemyHpBarsEnabled: getToggleDefaultOn('cw:enemyHpBarsEnabled'),
   extraBloodEnabled: getToggleDefaultOn('cw:extraBloodEnabled'),
   hitEffectsEnabled: getToggleDefaultOn('cw:hitEffectsEnabled'),
+  autoFireEnabled: localStorage.getItem('cw:autoFireEnabled') === '1',
   connectionIndicatorEnabled: getToggleDefaultOn('cw:connectionIndicatorEnabled'),
   renderPlayers: new Map(),
   renderEnemies: new Map(),
@@ -537,6 +539,17 @@ hitEffectsToggleEl?.addEventListener('change', () => {
 });
 setHitEffectsEnabled(game.hitEffectsEnabled);
 
+
+function setAutoFireEnabled(enabled) {
+  game.autoFireEnabled = Boolean(enabled);
+  if (autoFireToggleEl) autoFireToggleEl.checked = game.autoFireEnabled;
+  localStorage.setItem('cw:autoFireEnabled', game.autoFireEnabled ? '1' : '0');
+}
+
+autoFireToggleEl?.addEventListener('change', () => {
+  setAutoFireEnabled(autoFireToggleEl.checked);
+});
+setAutoFireEnabled(game.autoFireEnabled);
 function setConnectionIndicatorEnabled(enabled) {
   game.connectionIndicatorEnabled = Boolean(enabled);
   if (connIndicatorToggleEl) connIndicatorToggleEl.checked = game.connectionIndicatorEnabled;
@@ -1552,6 +1565,27 @@ function sendInput() {
       shooting = false;
       input.pointerX = sx + mobile.lastAimX * aimDistScreen;
       input.pointerY = sy + mobile.lastAimY * aimDistScreen;
+    }
+  }
+
+  if (game.autoFireEnabled) {
+    let nearest = null;
+    let bestD2 = Infinity;
+    for (const e of game.state.enemies || []) {
+      const dx = e.x - me.x;
+      const dy = e.y - me.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        nearest = e;
+      }
+    }
+    if (nearest) {
+      aimX = nearest.x;
+      aimY = nearest.y;
+      shooting = true;
+    } else {
+      shooting = false;
     }
   }
 
