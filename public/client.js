@@ -520,11 +520,24 @@ function renderRecordsList(items) {
 
     const name = document.createElement('div');
     name.className = 'record-name';
-    name.textContent = r.name || 'Unknown';
+    name.textContent = r.name || 'Unknown';    const kills = Number(r.kills) || 0;
+    const score = Number(r.score) || 0;
+    const durationSec = Number(r.durationSec) || 0;
+    const roomCode = (r.roomCode || '-').toString();
 
     const meta = document.createElement('div');
     meta.className = 'record-meta';
-    meta.textContent = `${r.kills || 0}K / ${r.score || 0}pts`;
+    meta.textContent = `${kills}K / ${score}pts`;
+
+    const details = [
+      `Name: ${r.name || 'Unknown'}`,
+      `Kills: ${kills}`,
+      `Score (points): ${score}`,
+      `Room: ${roomCode}`,
+      `Match time: ${durationSec}s`,
+    ].join('\n');
+    row.title = details;
+    meta.title = details;
 
     row.appendChild(rank);
     row.appendChild(name);
