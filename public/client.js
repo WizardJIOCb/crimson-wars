@@ -152,7 +152,6 @@ let waitingForFirstState = false;
 let waitingForFirstStateSince = 0;
 let lastScoreboardHtml = '';
 let lastLevelupHtml = '';
-let lastLevelupHtml = '';
 
 const ROOM_SYNC_PRESETS = {
   normal: {
