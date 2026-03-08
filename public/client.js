@@ -79,9 +79,9 @@ const PLAYER_VARIANTS = [
   { id: 'raider', name: 'Raider', accent: '#f59e0b', sprite: '/assets/sprites/player_raider.png', frameW: 15, frameH: 15, rows: { down: 0, left: 1, right: 2, up: 3 }, scale: 2.55, fps: 9, idleFrame: 1 },
   { id: 'medic', name: 'Medic', accent: '#22c55e', sprite: '/assets/sprites/player_medic.png', frameW: 32, frameH: 48, rows: { down: 0, left: 1, right: 2, up: 3 }, scale: 1.12, fps: 8.5, idleFrame: 1 },
   { id: 'shadow', name: 'Shadow', accent: '#a78bfa', sprite: '/assets/sprites/player_shadow.png', frameW: 32, frameH: 32, rows: { down: 0, left: 1, right: 2, up: 3 }, scale: 1.72, fps: 9, idleFrame: 1 },
-  { id: 'cyber', name: 'Cyber', accent: '#22d3ee', sprite: '/assets/sprites/player_cyber.png', frameW: 64, frameH: 64, rows: { down: 3, left: 1, right: 2, up: 0 }, scale: 0.88, fps: 10, idleFrame: 1 },
+  { id: 'cyber', name: 'Cyber', accent: '#22d3ee', sprite: '/assets/sprites/player_cyber.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.88, fps: 10, idleFrame: 1 },
   { id: 'nomad', name: 'Nomad', accent: '#fb7185', sprite: '/assets/sprites/player_nomad.png', frameW: 24, frameH: 24, rows: { down: 0, left: 1, right: 2, up: 3 }, scale: 1.55, fps: 9, idleFrame: 1 },
-  { id: 'warden', name: 'Warden', accent: '#eab308', sprite: '/assets/sprites/player_warden.png', frameW: 64, frameH: 64, rows: { down: 3, left: 1, right: 2, up: 0 }, scale: 0.88, fps: 10, idleFrame: 1 },
+  { id: 'warden', name: 'Warden', accent: '#eab308', sprite: '/assets/sprites/player_warden.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.88, fps: 10, idleFrame: 1 },
 ];
 
 
@@ -1992,6 +1992,7 @@ startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 setInterval(sendNetStatsReport, 1500);
 requestAnimationFrame(render);
+
 
 
 
