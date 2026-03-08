@@ -197,8 +197,11 @@ function drawPlayer(p, t, isMe, rx, ry) {
     const idleFrame = Math.max(0, Math.min(frameCount - 1, Number(variant.idleFrame) || 1));
     const frame = moving ? (Math.floor(t * fps + phase) % frameCount) : idleFrame;
 
-    const lookDx = isMe ? (input.pointerX - x) : (rv?.vx || 0);
-    const lookDy = isMe ? (input.pointerY - y) : (rv?.vy || 0);
+    const aimDx = (Number(p.aimX) || rx) - rx;
+    const aimDy = (Number(p.aimY) || ry) - ry;
+    const hasAim = Math.hypot(aimDx, aimDy) > 0.001;
+    const lookDx = hasAim ? aimDx : (isMe ? (input.pointerX - x) : (rv?.vx || 0));
+    const lookDy = hasAim ? aimDy : (isMe ? (input.pointerY - y) : (rv?.vy || 0));
     let dir = 'down';
     if (Math.abs(lookDx) > Math.abs(lookDy)) dir = lookDx < 0 ? 'left' : 'right';
     else if (Math.abs(lookDy) > 0.0001) dir = lookDy < 0 ? 'up' : 'down';

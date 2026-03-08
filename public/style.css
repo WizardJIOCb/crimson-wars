@@ -741,10 +741,10 @@ body {
 
 #jump-btn {
   pointer-events: auto;
-  grid-column: 2;
-  justify-self: center;
+  grid-column: 3;
+  justify-self: end;
   align-self: end;
-  margin-bottom: 6px;
+  margin-bottom: 118px;
   min-width: 94px;
   height: 44px;
   border-radius: 999px;
@@ -972,21 +972,24 @@ body {
 }
 
 @keyframes deathDrips {
-  0% { opacity: 0; transform: translateY(-16%); }
-  25% { opacity: 0.82; }
-  100% { opacity: 0.52; transform: translateY(2%); }
+  0% { opacity: 0; transform: translateY(-18%); }
+  22% { opacity: 0.84; }
+  70% { opacity: 0.52; }
+  100% { opacity: 0; transform: translateY(8%); }
 }
 
 @keyframes deathDripsFlowA {
-  0% { opacity: 0; transform: translateY(-24%); }
-  20% { opacity: 0.92; }
-  100% { opacity: 0.54; transform: translateY(58%); }
+  0% { opacity: 0; transform: translate3d(0,-24%,0) scaleY(0.92); }
+  18% { opacity: 0.92; }
+  72% { opacity: 0.58; }
+  100% { opacity: 0; transform: translate3d(6%,72%,0) scaleY(1.06); }
 }
 
 @keyframes deathDripsFlowB {
-  0% { opacity: 0; transform: translateY(-30%); }
-  24% { opacity: 0.76; }
-  100% { opacity: 0.42; transform: translateY(74%); }
+  0% { opacity: 0; transform: translate3d(0,-30%,0) scaleY(0.9); }
+  24% { opacity: 0.78; }
+  70% { opacity: 0.46; }
+  100% { opacity: 0; transform: translate3d(-4%,90%,0) scaleY(1.08); }
 }
 
 @keyframes deathContinueIn {
