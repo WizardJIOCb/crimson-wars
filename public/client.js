@@ -358,13 +358,19 @@ function getConnectionIndicatorData(player) {
     ? Math.max(1, Math.min(10, Math.round(reported)))
     : (player?.id === game.myId ? getLocalConnectionQualityLevel() : 0);
 
+  const reportedPing = Number(player?.netPingMs);
+  const pingMs = Number.isFinite(reportedPing) && reportedPing > 0
+    ? Math.round(reportedPing)
+    : (player?.id === game.myId ? Math.round(Number(netStats.rttMs) || 0) : 0);
+
   if (level <= 0) return { level: 0, title: 'Connection: no data yet' };
   let label = 'Poor';
   if (level >= 9) label = 'Excellent';
   else if (level >= 7) label = 'Good';
   else if (level >= 5) label = 'Fair';
 
-  return { level, title: `Connection: ${label} (${level}/10)` };
+  const pingPart = pingMs > 0 ? ` | Ping: ${pingMs}ms` : '';
+  return { level, title: `Connection: ${label} (${level}/10)${pingPart}` };
 }
 
 function sendNetStatsReport() {

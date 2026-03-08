@@ -135,6 +135,10 @@ function parseNetQualityLevel(report) {
   return Math.max(1, Math.min(10, Math.round(score)));
 }
 
+function parseNetPingMs(report) {
+  return Math.round(clampNum(report?.rttMs, 0, 2000, 0));
+}
+
 function normalizeRoomSync(raw) {
   return {
     tickRate: Math.round(clampNum(raw?.tickRate, 20, 120, DEFAULT_ROOM_SYNC.tickRate)),
@@ -416,6 +420,7 @@ function serializeRoom(room) {
       weaponLabel: WEAPONS[p.weaponKey].label,
       ammo: p.weaponAmmo,
       netQuality: p.netQuality || 0,
+      netPingMs: p.netPingMs || 0,
     })),
     bullets: room.bullets.map((b) => ({
       id: b.id,
@@ -559,6 +564,7 @@ function joinRoom(ws, join) {
     weaponKey: 'pistol',
     weaponAmmo: null,
     netQuality: 0,
+    netPingMs: 0,
     joinedAt: Date.now(),
   };
 
@@ -626,6 +632,7 @@ wss.on('connection', (ws) => {
 
     if (msg.type === 'netStats') {
       current.netQuality = parseNetQualityLevel(msg);
+      current.netPingMs = parseNetPingMs(msg);
       return;
     }
 
@@ -815,5 +822,8 @@ setInterval(() => {
 server.listen(PORT, () => {
   console.log(`Server started: http://localhost:${PORT}`);
 });
+
+
+
 
 
