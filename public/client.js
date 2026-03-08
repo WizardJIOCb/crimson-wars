@@ -51,6 +51,10 @@ const moveKnobEl = document.getElementById('move-knob');
 const aimStickEl = document.getElementById('aim-stick');
 const aimKnobEl = document.getElementById('aim-knob');
 const jumpBtnEl = document.getElementById('jump-btn');
+const topCenterHudEl = document.getElementById('top-center-hud');
+const matchTimerEl = document.getElementById('match-timer');
+const bossProgressEl = document.getElementById('boss-progress');
+const difficultyMetaEl = document.getElementById('difficulty-meta');
 
 ctx.imageSmoothingEnabled = false;
 
@@ -111,6 +115,12 @@ const game = {
   renderBullets: new Map(),
   netSnapshots: [],
   sampledNet: null,
+  roomStartedAt: 0,
+  totalEnemyKills: 0,
+  nextBossAtKills: 50,
+  nextBossSpawnAt: 0,
+  bossAlive: false,
+  roomDifficulty: { level: 1, hpMul: 1, speedMul: 1, damageMul: 1, attackRateMul: 1, spawnIntervalMs: 760 },
 };
 
 const camera = { x: 0, y: 0 };
@@ -217,6 +227,44 @@ function clampNum(value, min, max, fallback) {
   if (!Number.isFinite(n)) return fallback;
   return Math.max(min, Math.min(max, n));
 }
+
+function formatClock(secTotal) {
+  const s = Math.max(0, Math.floor(secTotal));
+  const m = Math.floor(s / 60);
+  const rs = s % 60;
+  return `${m.toString().padStart(2, '0')}:${rs.toString().padStart(2, '0')}`;
+}
+
+function updateTopCenterHud(nowMs = Date.now()) {
+  if (!matchTimerEl || !bossProgressEl || !difficultyMetaEl) return;
+  if (!game.state) {
+    matchTimerEl.textContent = 'Time 00:00';
+    bossProgressEl.textContent = 'Boss in -- kills';
+    difficultyMetaEl.textContent = 'Threat Lv1';
+    return;
+  }
+
+  const startedAt = Number(game.roomStartedAt) || Number(game.state.roomStartedAt) || nowMs;
+  const elapsedSec = Math.max(0, (nowMs - startedAt) / 1000);
+  matchTimerEl.textContent = `Time ${formatClock(elapsedSec)}`;
+
+  const nextSpawnAt = Number(game.nextBossSpawnAt) || 0;
+  const bossAlive = Boolean(game.bossAlive);
+  if (bossAlive) {
+    bossProgressEl.textContent = 'Boss: ACTIVE';
+  } else if (nextSpawnAt > nowMs) {
+    bossProgressEl.textContent = `Boss in ${(Math.max(0, nextSpawnAt - nowMs) / 1000).toFixed(1)}s`;
+  } else {
+    const leftKills = Math.max(0, (Number(game.nextBossAtKills) || 0) - (Number(game.totalEnemyKills) || 0));
+    bossProgressEl.textContent = `Boss in ${leftKills} kills`;
+  }
+
+  const diff = game.roomDifficulty || {};
+  const level = Math.max(1, Number(diff.level) || 1);
+  const hpMul = Math.max(1, Number(diff.hpMul) || 1);
+  difficultyMetaEl.textContent = `Threat Lv${level} x${hpMul.toFixed(2)}`;
+}
+
 
 function normalizeRoomSync(raw) {
   return {
@@ -576,8 +624,8 @@ function setMobileControlsVisible(visible) {
 }
 
 function updateHudVisibility(overlayOpen) {
-  if (!hudEl) return;
-  hudEl.classList.toggle('menu-hidden', Boolean(overlayOpen));
+  if (hudEl) hudEl.classList.toggle('menu-hidden', Boolean(overlayOpen));
+  if (topCenterHudEl) topCenterHudEl.classList.toggle('hidden', Boolean(overlayOpen));
 }
 
 function updateMobileControlsVisibility() {
@@ -1333,6 +1381,12 @@ function clearLocalSessionState() {
   game.renderPlayers.clear();
   game.renderEnemies.clear();
   game.renderBullets.clear();
+  game.roomStartedAt = 0;
+  game.totalEnemyKills = 0;
+  game.nextBossAtKills = 50;
+  game.nextBossSpawnAt = 0;
+  game.bossAlive = false;
+  game.roomDifficulty = { level: 1, hpMul: 1, speedMul: 1, damageMul: 1, attackRateMul: 1, spawnIntervalMs: 760 };
   prevMyAlive = null;
   sessionStartedAt = 0;
   waitingForFirstState = false;
@@ -1348,6 +1402,7 @@ function clearLocalSessionState() {
   input.jumpQueued = false;
   scoreboardEl.innerHTML = '';
   lastScoreboardHtml = '';
+  updateTopCenterHud(Date.now());
 }
 
 function leaveActiveRoom() {
@@ -1496,6 +1551,12 @@ ws.addEventListener('message', (ev) => {
     game.state = s;
     game.world = s.world;
     game.roomCode = s.roomCode;
+    game.roomStartedAt = Number(s.roomStartedAt) || game.roomStartedAt || Date.now();
+    game.totalEnemyKills = Number(s.totalEnemyKills) || 0;
+    game.nextBossAtKills = Number(s.nextBossAtKills) || game.nextBossAtKills || 50;
+    game.nextBossSpawnAt = Number(s.nextBossSpawnAt) || 0;
+    game.bossAlive = Boolean(s.bossAlive);
+    game.roomDifficulty = s.roomDifficulty || game.roomDifficulty;
     if (s.sync) applyRoomSync(s.sync);
     roomMetaEl.textContent = `Room: ${s.roomCode}`;
 
@@ -2188,6 +2249,7 @@ function render(ts) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   if (!game.state) {
+    updateTopCenterHud(Date.now());
     const overlayOpen = getComputedStyle(joinOverlay).display !== 'none';
     const waitingElapsed = performance.now() - waitingForFirstStateSince;
     if (waitingForFirstState && !overlayOpen && waitingElapsed >= 250) {
@@ -2198,6 +2260,8 @@ function render(ts) {
     requestAnimationFrame(render);
     return;
   }
+
+  updateTopCenterHud(Number(game.state.now) || Date.now());
 
   const me = game.state.players.find((p) => p.id === game.myId) || game.state.players[0];
   if (me) {

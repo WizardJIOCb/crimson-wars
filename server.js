@@ -50,6 +50,13 @@ const BOSS_ATTACK_DAMAGE = 30;
 const BOSS_ATTACK_WINDUP_MS = 820;
 const BOSS_ATTACK_COOLDOWN_MS = 1300;
 const BOSS_DASH_DISTANCE = 180;
+const DIFFICULTY_STEP_SEC = 45;
+const DIFFICULTY_SPAWN_MIN_MS = 260;
+const DIFFICULTY_HP_PER_LEVEL = 0.11;
+const DIFFICULTY_SPEED_PER_LEVEL = 0.045;
+const DIFFICULTY_DAMAGE_PER_LEVEL = 0.08;
+const DIFFICULTY_ATTACK_RATE_PER_LEVEL = 0.04;
+const DIFFICULTY_SPAWN_REDUCTION_MS = 24;
 const PLAYER_SLOW_FACTOR = 0.8;
 const PLAYER_SLOW_DURATION_MS = 600;
 const DROP_LIFETIME_MS = 30000;
@@ -437,9 +444,25 @@ function broadcastRoom(room, payload) {
 }
 
 function serializeRoom(room) {
+  const now = Date.now();
+  const difficulty = getRoomDifficulty(room, now);
+  const nextPortal = room.bossPortals.length > 0 ? room.bossPortals[0] : null;
   return {
-    now: Date.now(),
+    now,
     roomCode: room.code,
+    roomStartedAt: room.startedAt,
+    totalEnemyKills: room.totalEnemyKills || 0,
+    nextBossAtKills: room.nextBossAtKills || BOSS_KILL_INTERVAL,
+    bossAlive: hasAliveBoss(room),
+    nextBossSpawnAt: nextPortal ? nextPortal.spawnAt : 0,
+    roomDifficulty: {
+      level: difficulty.level,
+      hpMul: Number(difficulty.hpMul.toFixed(3)),
+      speedMul: Number(difficulty.speedMul.toFixed(3)),
+      damageMul: Number(difficulty.damageMul.toFixed(3)),
+      attackRateMul: Number(difficulty.attackRateMul.toFixed(3)),
+      spawnIntervalMs: Math.round(difficulty.spawnIntervalMs),
+    },
     world: { width: WORLD_WIDTH, height: WORLD_HEIGHT },
     sync: room.sync,
     players: Array.from(room.players.values()).map((p) => ({
@@ -491,7 +514,7 @@ function serializeRoom(room) {
       x: bp.x,
       y: bp.y,
       spawnAt: bp.spawnAt,
-      ttlMs: Math.max(0, bp.spawnAt - Date.now()),
+      ttlMs: Math.max(0, bp.spawnAt - now),
     })),
     drops: room.drops.map((d) => ({
       id: d.id,
@@ -508,6 +531,27 @@ function serializeRoom(room) {
   };
 }
 
+function getRoomDifficulty(room, now) {
+  const elapsedSec = Math.max(0, (now - room.startedAt) / 1000);
+  const level = Math.max(1, 1 + Math.floor(elapsedSec / DIFFICULTY_STEP_SEC));
+  const hpMul = 1 + (level - 1) * DIFFICULTY_HP_PER_LEVEL;
+  const speedMul = 1 + (level - 1) * DIFFICULTY_SPEED_PER_LEVEL;
+  const damageMul = 1 + (level - 1) * DIFFICULTY_DAMAGE_PER_LEVEL;
+  const attackRateMul = 1 + (level - 1) * DIFFICULTY_ATTACK_RATE_PER_LEVEL;
+  const spawnIntervalMs = Math.max(
+    DIFFICULTY_SPAWN_MIN_MS,
+    ENEMY_SPAWN_INTERVAL_MS - (level - 1) * DIFFICULTY_SPAWN_REDUCTION_MS,
+  );
+  return {
+    elapsedSec,
+    level,
+    hpMul,
+    speedMul,
+    damageMul,
+    attackRateMul,
+    spawnIntervalMs,
+  };
+}
 function nearestAlivePlayer(room, x, y) {
   let target = null;
   let bestDistSq = Infinity;
@@ -549,9 +593,11 @@ function scheduleBossPortal(room, now, spawnPos) {
   return true;
 }
 
-function spawnEnemy(room) {
+function spawnEnemy(room, now, difficulty = null) {
   const pos = randomSpawnEdge();
-  const hp = ENEMY_HP_BASE + Math.floor((Date.now() - room.startedAt) / 25000) * 2;
+  const diff = difficulty || getRoomDifficulty(room, now || Date.now());
+  const hpBase = ENEMY_HP_BASE + Math.floor(((now || Date.now()) - room.startedAt) / 25000) * 2;
+  const hp = Math.max(10, Math.round(hpBase * diff.hpMul));
   const enemyType = chooseEnemyType();
   const speedMul = enemyType === 'charger' ? 1.22 : (enemyType === 'ranged' ? 0.9 : 1);
   room.enemies.push({
@@ -565,16 +611,18 @@ function spawnEnemy(room) {
     maxHp: hp,
     radius: ENEMY_RADIUS,
     spriteScale: 1,
-    speed: (ENEMY_SPEED_MIN + Math.random() * (ENEMY_SPEED_MAX - ENEMY_SPEED_MIN)) * speedMul,
+    speed: (ENEMY_SPEED_MIN + Math.random() * (ENEMY_SPEED_MAX - ENEMY_SPEED_MIN)) * speedMul * diff.speedMul,
+    damageMul: diff.damageMul,
+    attackRateMul: diff.attackRateMul,
     attackWindupMs: 0,
     attackCooldownMs: 0,
     attackTargetId: null,
   });
 }
-
-function spawnBossEnemy(room, x, y, now) {
+function spawnBossEnemy(room, x, y, now, difficulty = null) {
+  const diff = difficulty || getRoomDifficulty(room, now);
   const elapsedMul = 1 + Math.floor((now - room.startedAt) / 60000) * 0.18;
-  const hp = Math.round(BOSS_HP_BASE * elapsedMul);
+  const hp = Math.round(BOSS_HP_BASE * elapsedMul * (0.95 + diff.hpMul * 0.7));
   room.enemies.push({
     id: room.nextEnemyId++,
     type: 'boss',
@@ -586,13 +634,16 @@ function spawnBossEnemy(room, x, y, now) {
     maxHp: hp,
     radius: BOSS_RADIUS,
     spriteScale: BOSS_SPRITE_SCALE,
-    speed: BOSS_SPEED,
+    speed: BOSS_SPEED * Math.max(1, diff.speedMul * 0.85),
+    damageMul: Math.max(1, diff.damageMul * 1.1),
+    attackRateMul: Math.max(1, diff.attackRateMul * 1.05),
     attackWindupMs: 0,
     attackCooldownMs: 500,
     attackTargetId: null,
   });
   broadcastRoom(room, { type: 'system', message: 'BOSS arrived. Keep moving.' });
 }
+
 
 function maybeScheduleBossSpawn(room, now) {
   if (room.totalEnemyKills < room.nextBossAtKills) return;
@@ -604,10 +655,11 @@ function maybeScheduleBossSpawn(room, now) {
 }
 
 function getEnemyAttackCooldownMs(enemy) {
-  if (enemy?.type === 'boss') return BOSS_ATTACK_COOLDOWN_MS;
+  const rateMul = Math.max(0.35, Number(enemy?.attackRateMul) || 1);
+  if (enemy?.type === 'boss') return Math.max(220, Math.round(BOSS_ATTACK_COOLDOWN_MS / rateMul));
   const castFrequency = Math.max(0, Number(ENEMY_ATTACK_CAST_FREQUENCY) || 0);
   const effective = ENEMY_ATTACK_BASE_COOLDOWN_MS / (1 + castFrequency);
-  return Math.max(ENEMY_ATTACK_MIN_COOLDOWN_MS, Math.round(effective));
+  return Math.max(ENEMY_ATTACK_MIN_COOLDOWN_MS, Math.round(effective / rateMul));
 }
 
 function maybeSpawnDrop(room, x, y) {
@@ -666,6 +718,7 @@ function fireEnemyProjectile(room, enemy, target) {
   const dx = target.x - enemy.x;
   const dy = target.y - enemy.y;
   const d = Math.hypot(dx, dy) || 1;
+  const damageMul = Math.max(1, Number(enemy?.damageMul) || 1);
   room.bullets.push({
     id: room.nextBulletId++,
     ownerId: null,
@@ -675,7 +728,7 @@ function fireEnemyProjectile(room, enemy, target) {
     vx: (dx / d) * ENEMY_RANGED_BULLET_SPEED,
     vy: (dy / d) * ENEMY_RANGED_BULLET_SPEED,
     lifeMs: ENEMY_RANGED_BULLET_LIFE_MS,
-    damage: ENEMY_RANGED_DAMAGE,
+    damage: Math.max(1, Math.round(ENEMY_RANGED_DAMAGE * damageMul)),
     color: '#f87171',
   });
 }
@@ -905,9 +958,10 @@ wss.on('connection', (ws) => {
 });
 
 function tickRoom(room, dtSec, now) {
-  if (room.players.size > 0 && now - room.lastEnemySpawnAt >= ENEMY_SPAWN_INTERVAL_MS) {
+  const roomDifficulty = getRoomDifficulty(room, now);
+  if (room.players.size > 0 && now - room.lastEnemySpawnAt >= roomDifficulty.spawnIntervalMs) {
     room.lastEnemySpawnAt = now;
-    spawnEnemy(room);
+    spawnEnemy(room, now, roomDifficulty);
   }
 
   if (room.players.size > 0) {
@@ -917,7 +971,7 @@ function tickRoom(room, dtSec, now) {
   for (let i = room.bossPortals.length - 1; i >= 0; i -= 1) {
     const portal = room.bossPortals[i];
     if (now >= portal.spawnAt) {
-      spawnBossEnemy(room, portal.x, portal.y, now);
+      spawnBossEnemy(room, portal.x, portal.y, now, roomDifficulty);
       room.bossPortals.splice(i, 1);
     }
   }
@@ -1077,7 +1131,8 @@ function tickRoom(room, dtSec, now) {
           const ady = e.y - lockedTarget.y;
           const bonusRange = e.type === 'boss' ? 20 : (e.type === 'charger' ? 8 : 0);
           const hitRange = rr + bonusRange;
-          const damage = e.type === 'boss' ? BOSS_ATTACK_DAMAGE : ENEMY_ATTACK_DAMAGE;
+          const baseDamage = e.type === 'boss' ? BOSS_ATTACK_DAMAGE : ENEMY_ATTACK_DAMAGE;
+          const damage = Math.max(1, Math.round(baseDamage * Math.max(1, Number(e.damageMul) || 1)));
           if (adx * adx + ady * ady <= hitRange * hitRange) {
             applyEnemyHitToPlayer(room, lockedTarget, damage, now, true);
           }
@@ -1163,4 +1218,5 @@ setInterval(() => {
 server.listen(PORT, () => {
   console.log(`Server started: http://localhost:${PORT}`);
 });
+
 
