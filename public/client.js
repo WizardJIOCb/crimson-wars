@@ -20,6 +20,11 @@ const refreshRoomsBtn = document.getElementById('refresh-rooms');
 const roomsListEl = document.getElementById('rooms-list');
 const infoPanelEl = document.getElementById('info-panel');
 const toggleInfoBtn = document.getElementById('toggle-info');
+const mobileControlsEl = document.getElementById('mobile-controls');
+const moveStickEl = document.getElementById('move-stick');
+const moveKnobEl = document.getElementById('move-knob');
+const aimStickEl = document.getElementById('aim-stick');
+const aimKnobEl = document.getElementById('aim-knob');
 
 ctx.imageSmoothingEnabled = false;
 
@@ -33,6 +38,20 @@ const QUALITY = {
 };
 
 const input = { up: false, down: false, left: false, right: false, shooting: false, pointerX: 0, pointerY: 0 };
+const mobile = {
+  enabled: ('ontouchstart' in window) || (navigator.maxTouchPoints > 0),
+  moveId: null,
+  aimId: null,
+  moveX: 0,
+  moveY: 0,
+  moveStrength: 0,
+  aimX: 1,
+  aimY: 0,
+  aimStrength: 0,
+  lastAimX: 1,
+  lastAimY: 0,
+};
+
 const game = {
   myId: null,
   roomCode: null,
@@ -266,6 +285,141 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
+function setMobileControlsVisible(visible) {
+  if (!mobileControlsEl) return;
+  mobileControlsEl.classList.toggle('active', Boolean(visible));
+  mobileControlsEl.setAttribute('aria-hidden', visible ? 'false' : 'true');
+}
+
+function updateMobileControlsVisibility() {
+  if (!mobile.enabled) {
+    setMobileControlsVisible(false);
+    return;
+  }
+  const overlayOpen = getComputedStyle(joinOverlay).display !== 'none';
+  setMobileControlsVisible(!overlayOpen);
+}
+
+function resetMobileStick(kind) {
+  if (kind === 'move') {
+    mobile.moveId = null;
+    mobile.moveX = 0;
+    mobile.moveY = 0;
+    mobile.moveStrength = 0;
+    if (moveKnobEl) moveKnobEl.style.transform = 'translate(-50%, -50%)';
+    return;
+  }
+  mobile.aimId = null;
+  mobile.aimStrength = 0;
+  if (aimKnobEl) aimKnobEl.style.transform = 'translate(-50%, -50%)';
+}
+
+function updateMobileStick(kind, clientX, clientY) {
+  const stickEl = kind === 'move' ? moveStickEl : aimStickEl;
+  const knobEl = kind === 'move' ? moveKnobEl : aimKnobEl;
+  if (!stickEl || !knobEl) return;
+
+  const rect = stickEl.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const radius = Math.max(20, rect.width * 0.38);
+
+  let dx = clientX - cx;
+  let dy = clientY - cy;
+  const dist = Math.hypot(dx, dy);
+  if (dist > radius) {
+    dx = (dx / dist) * radius;
+    dy = (dy / dist) * radius;
+  }
+
+  knobEl.style.transform = `translate(calc(-50% + ${dx.toFixed(1)}px), calc(-50% + ${dy.toFixed(1)}px))`;
+
+  const nx = dx / radius;
+  const ny = dy / radius;
+  const strength = Math.min(1, Math.hypot(nx, ny));
+
+  if (kind === 'move') {
+    mobile.moveX = nx;
+    mobile.moveY = ny;
+    mobile.moveStrength = strength;
+  } else {
+    if (strength > 0.02) {
+      const len = Math.hypot(nx, ny) || 1;
+      mobile.aimX = nx / len;
+      mobile.aimY = ny / len;
+      mobile.lastAimX = mobile.aimX;
+      mobile.lastAimY = mobile.aimY;
+    }
+    mobile.aimStrength = strength;
+  }
+}
+
+function getTouchById(touchList, id) {
+  for (let i = 0; i < touchList.length; i += 1) {
+    if (touchList[i].identifier === id) return touchList[i];
+  }
+  return null;
+}
+
+function initMobileControls() {
+  if (!mobile.enabled || !moveStickEl || !aimStickEl) {
+    setMobileControlsVisible(false);
+    return;
+  }
+
+  const onStart = (kind, e) => {
+    e.preventDefault();
+    const touch = e.changedTouches[0];
+    if (!touch) return;
+
+    if (kind === 'move' && mobile.moveId === null) {
+      mobile.moveId = touch.identifier;
+      updateMobileStick('move', touch.clientX, touch.clientY);
+    }
+    if (kind === 'aim' && mobile.aimId === null) {
+      mobile.aimId = touch.identifier;
+      updateMobileStick('aim', touch.clientX, touch.clientY);
+    }
+  };
+
+  moveStickEl.addEventListener('touchstart', (e) => onStart('move', e), { passive: false });
+  aimStickEl.addEventListener('touchstart', (e) => onStart('aim', e), { passive: false });
+
+  const onMove = (e) => {
+    if (mobile.moveId === null && mobile.aimId === null) return;
+    const mt = mobile.moveId === null ? null : getTouchById(e.touches, mobile.moveId);
+    const at = mobile.aimId === null ? null : getTouchById(e.touches, mobile.aimId);
+
+    if (mt || at) e.preventDefault();
+    if (mt) updateMobileStick('move', mt.clientX, mt.clientY);
+    if (at) updateMobileStick('aim', at.clientX, at.clientY);
+  };
+
+  const onEnd = (e) => {
+    let changed = false;
+    for (let i = 0; i < e.changedTouches.length; i += 1) {
+      const t = e.changedTouches[i];
+      if (mobile.moveId === t.identifier) {
+        resetMobileStick('move');
+        changed = true;
+      }
+      if (mobile.aimId === t.identifier) {
+        resetMobileStick('aim');
+        changed = true;
+      }
+    }
+    if (changed) e.preventDefault();
+  };
+
+  window.addEventListener('touchmove', onMove, { passive: false });
+  window.addEventListener('touchend', onEnd, { passive: false });
+  window.addEventListener('touchcancel', onEnd, { passive: false });
+
+  updateMobileControlsVisibility();
+}
+
+initMobileControls();
+
 function setInfoPanelHidden(hidden) {
   infoPanelHidden = Boolean(hidden);
   if (infoPanelEl) infoPanelEl.classList.toggle('is-hidden', infoPanelHidden);
@@ -289,6 +443,7 @@ function sendJoinRequest(roomCode) {
     roomCode,
   });
   joinOverlay.style.display = 'none';
+  updateMobileControlsVisibility();
 }
 
 function renderRoomsList(rooms) {
@@ -700,6 +855,7 @@ ws.addEventListener('message', (ev) => {
   if (msg.type === 'joinError') {
     statusEl.textContent = msg.message;
     joinOverlay.style.display = 'grid';
+    updateMobileControlsVisibility();
     requestRoomsList();
   }
 
@@ -731,18 +887,45 @@ function sendInput() {
   const me = game.state.players.find((p) => p.id === game.myId);
   if (!me) return;
 
-  const moveX = (input.right ? 1 : 0) - (input.left ? 1 : 0);
-  const moveY = (input.down ? 1 : 0) - (input.up ? 1 : 0);
+  let moveX = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+  let moveY = (input.down ? 1 : 0) - (input.up ? 1 : 0);
+  let aimX = input.pointerX + camera.x;
+  let aimY = input.pointerY + camera.y;
+  let shooting = input.shooting;
+
+  if (mobile.enabled) {
+    moveX = mobile.moveX * Math.min(1, mobile.moveStrength * 1.15);
+    moveY = mobile.moveY * Math.min(1, mobile.moveStrength * 1.15);
+
+    const sx = me.x - camera.x;
+    const sy = me.y - camera.y;
+    const aimDistWorld = 240;
+    const aimDistScreen = 120;
+
+    if (mobile.aimStrength > 0.08) {
+      aimX = me.x + mobile.aimX * aimDistWorld;
+      aimY = me.y + mobile.aimY * aimDistWorld;
+      shooting = mobile.aimStrength > 0.2;
+      input.pointerX = sx + mobile.aimX * aimDistScreen;
+      input.pointerY = sy + mobile.aimY * aimDistScreen;
+    } else {
+      aimX = me.x + mobile.lastAimX * aimDistWorld;
+      aimY = me.y + mobile.lastAimY * aimDistWorld;
+      shooting = false;
+      input.pointerX = sx + mobile.lastAimX * aimDistScreen;
+      input.pointerY = sy + mobile.lastAimY * aimDistScreen;
+    }
+  }
+
   sendJson({
     type: 'input',
     moveX,
     moveY,
-    aimX: input.pointerX + camera.x,
-    aimY: input.pointerY + camera.y,
-    shooting: input.shooting,
+    aimX,
+    aimY,
+    shooting,
   });
 }
-
 function spawnBlood(x, y, count) {
   const q = getQ();
   const n = Math.floor(count * q.bloodMult);

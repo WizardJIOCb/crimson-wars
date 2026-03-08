@@ -250,3 +250,62 @@ body {
 #shadow-toggle {
   pointer-events: auto;
 }
+#mobile-controls {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  padding: 0 14px;
+  display: none;
+  justify-content: space-between;
+  align-items: flex-end;
+  pointer-events: none;
+  z-index: 30;
+}
+
+#mobile-controls.active {
+  display: flex;
+}
+
+#mobile-controls .stick {
+  width: 118px;
+  height: 118px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.25);
+  background: rgba(8, 12, 18, 0.38);
+  backdrop-filter: blur(4px);
+  position: relative;
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+}
+
+#mobile-controls .stick-knob {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(236, 241, 249, 0.4);
+  border: 1px solid rgba(255,255,255,0.45);
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+#mobile-controls .stick-label {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -20px;
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.8px;
+  color: rgba(226,232,240,0.9);
+  pointer-events: none;
+}
+
+@media (pointer: coarse) {
+  #game {
+    touch-action: none;
+  }
+}
