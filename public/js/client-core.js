@@ -63,6 +63,9 @@ const xpFillEl = document.getElementById('xp-fill');
 const xpTextEl = document.getElementById('xp-text');
 const levelupOverlayEl = document.getElementById('levelup-overlay');
 const levelupOptionsEl = document.getElementById('levelup-options');
+const statsToggleBtn = document.getElementById('stats-toggle');
+const statsPanelEl = document.getElementById('stats-panel');
+const statsContentEl = document.getElementById('stats-content');
 
 ctx.imageSmoothingEnabled = false;
 
@@ -161,6 +164,8 @@ const PLAYER_CLASS_STORAGE_KEY = 'cw:playerClass';
 let selectedPlayerClass = 'cyber';
 const storedInfoPanelHidden = localStorage.getItem('cw:infoPanelHidden');
 let infoPanelHidden = storedInfoPanelHidden === null ? true : storedInfoPanelHidden === '1';
+const storedStatsPanelOpen = localStorage.getItem('cw:statsPanelOpen');
+let statsPanelOpen = storedStatsPanelOpen === '1';
 let lastFrameTs = performance.now();
 let fpsFrameCount = 0;
 let fpsAccumSec = 0;
@@ -376,6 +381,58 @@ function updateBottomHud() {
   game.mySkillChoices = Array.isArray(me.pendingSkillChoices) ? me.pendingSkillChoices : [];
   renderLevelupChoices();
 }
+
+function setStatsPanelOpen(open) {
+  statsPanelOpen = Boolean(open);
+  localStorage.setItem('cw:statsPanelOpen', statsPanelOpen ? '1' : '0');
+  if (statsPanelEl) statsPanelEl.classList.toggle('hidden', !statsPanelOpen);
+  if (statsToggleBtn) statsToggleBtn.setAttribute('aria-expanded', statsPanelOpen ? 'true' : 'false');
+}
+
+function fmtStatNum(v, digits = 1) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '--';
+  return Number(n.toFixed(digits)).toString();
+}
+
+function updateStatsPanel(me) {
+  if (!statsContentEl) return;
+  if (!me) {
+    statsContentEl.innerHTML = 'No data yet.';
+    return;
+  }
+
+  const shotIntervalMs = Math.max(1, Number(me.shotIntervalMs) || 1);
+  const shotsPerSec = 1000 / shotIntervalMs;
+  const hp = Math.max(0, Number(me.hp) || 0);
+  const maxHp = Math.max(1, Number(me.maxHp) || 1);
+  const hpRegen = Math.max(0, Number(me.hpRegenPerSec) || 0);
+  const dodgeMax = Math.max(1, Number(me.dodgeChargesMax) || 1);
+  const pickupRadius = Math.max(0, Number(me.pickupRadius) || 0);
+  const moveSpeed = Math.max(0, Number(me.moveSpeed) || 0);
+  const damageMul = Math.max(0.2, Number(me.damageMul) || 1);
+  const fireRateMul = Math.max(0.2, Number(me.fireRateMul) || 1);
+  const moveSpeedMul = Math.max(0.2, Number(me.moveSpeedMul) || 1);
+
+  statsContentEl.innerHTML = [
+    `<div class="stats-row"><span>HP</span><b>${Math.round(hp)} / ${Math.round(maxHp)}</b></div>`,
+    `<div class="stats-row"><span>Damage / shot</span><b>${Math.round(Math.max(1, Number(me.shotDamage) || 1))}</b></div>`,
+    `<div class="stats-row"><span>Fire rate</span><b>${fmtStatNum(shotsPerSec, 2)} shots/s</b></div>`,
+    `<div class="stats-row"><span>Move speed</span><b>${Math.round(moveSpeed)}</b></div>`,
+    `<div class="stats-row"><span>Pickup radius</span><b>${Math.round(pickupRadius)}</b></div>`,
+    `<div class="stats-row"><span>HP regen</span><b>${fmtStatNum(hpRegen, 2)}/s</b></div>`,
+    `<div class="stats-row"><span>Jump charges</span><b>${dodgeMax}</b></div>`,
+    `<div class="stats-row"><span>Damage multiplier</span><b>x${fmtStatNum(damageMul, 2)}</b></div>`,
+    `<div class="stats-row"><span>Fire-rate multiplier</span><b>x${fmtStatNum(fireRateMul, 2)}</b></div>`,
+    `<div class="stats-row"><span>Speed multiplier</span><b>x${fmtStatNum(moveSpeedMul, 2)}</b></div>`,
+  ].join('');
+}
+
+statsToggleBtn?.addEventListener('click', () => {
+  setStatsPanelOpen(!statsPanelOpen);
+});
+setStatsPanelOpen(statsPanelOpen);
+updateStatsPanel(null);
 
 function normalizeRoomSync(raw) {
   return {
@@ -756,6 +813,12 @@ function updateHudVisibility(overlayOpen) {
   if (hudEl) hudEl.classList.toggle('menu-hidden', Boolean(overlayOpen));
   if (topCenterHudEl) topCenterHudEl.classList.toggle('hidden', Boolean(overlayOpen));
   if (bottomHudEl) bottomHudEl.classList.toggle('hidden', Boolean(overlayOpen));
+  if (statsToggleBtn) statsToggleBtn.classList.toggle('hidden', Boolean(overlayOpen));
+  if (overlayOpen) {
+    if (statsPanelEl) statsPanelEl.classList.add('hidden');
+  } else {
+    setStatsPanelOpen(statsPanelOpen);
+  }
   if (overlayOpen && levelupOverlayEl) levelupOverlayEl.classList.add('hidden');
   updateFpsCornerVisibility(overlayOpen);
 }
