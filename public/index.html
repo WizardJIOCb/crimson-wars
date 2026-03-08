@@ -58,6 +58,12 @@
   <canvas id="game" width="1280" height="720"></canvas>
 
   <div id="join-overlay">
+    <div id="death-cinematic" class="death-cinematic" aria-hidden="true">
+      <div id="death-text" class="death-text">YOU DIE!!!</div>
+      <div class="death-impact"></div>
+      <div class="death-drips"></div>
+      <button id="death-continue" type="button" class="death-continue">Show menu</button>
+    </div>
     <form id="join-form" autocomplete="off">
       <label for="name">Nickname</label>
       <input id="name" maxlength="18" value="Fighter" />

@@ -460,6 +460,123 @@ body {
   display: block;
 }
 
+#join-overlay.death-cinematic-active #join-form {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.96);
+}
+
+.death-cinematic {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+  pointer-events: auto;
+  overflow: hidden;
+}
+
+#join-overlay.death-cinematic-active .death-cinematic {
+  display: flex;
+}
+
+.death-text {
+  font-family: Impact, "Arial Black", sans-serif;
+  font-size: clamp(52px, 11vw, 156px);
+  letter-spacing: 2px;
+  color: #ffd4d4;
+  text-shadow: 0 2px 0 #5c0000, 0 10px 36px rgba(180,0,0,0.75);
+  transform: translateZ(0) scale(0.06);
+  opacity: 0;
+}
+
+#join-overlay.death-cinematic-active .death-text {
+  animation: deathSlam 1.2s cubic-bezier(0.08, 0.78, 0.12, 1) forwards;
+}
+
+.death-impact {
+  position: absolute;
+  width: min(80vw, 900px);
+  height: min(42vw, 520px);
+  background: radial-gradient(circle at center, rgba(190, 10, 16, 0.65) 0%, rgba(70, 6, 10, 0.45) 48%, rgba(16, 4, 8, 0) 74%);
+  filter: blur(0.5px);
+  border-radius: 50%;
+  opacity: 0;
+  transform: scale(0.2);
+}
+
+#join-overlay.death-cinematic-active .death-impact {
+  animation: deathImpact 1.4s ease-out forwards;
+}
+
+.death-drips {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(140, 4, 10, 0.95) 0 6px,
+    rgba(205, 20, 28, 0.9) 6px 11px,
+    rgba(150, 8, 14, 0.95) 11px 15px,
+    rgba(0, 0, 0, 0) 15px 54px
+  );
+  mask-image: linear-gradient(to bottom, rgba(0,0,0,0) 0 36%, rgba(0,0,0,0.95) 52% 66%, rgba(0,0,0,0) 94%);
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,0) 0 36%, rgba(0,0,0,0.95) 52% 66%, rgba(0,0,0,0) 94%);
+  opacity: 0;
+  transform: translateY(-16%);
+}
+
+#join-overlay.death-cinematic-active .death-drips {
+  animation: deathDrips 2.4s ease-out 0.75s forwards;
+}
+
+.death-continue {
+  position: absolute;
+  bottom: 14vh;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.35);
+  background: rgba(10, 16, 24, 0.88);
+  color: #f8fafc;
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(16px);
+  pointer-events: none;
+}
+
+#join-overlay.death-cinematic-active .death-continue {
+  animation: deathContinueIn 0.35s ease-out 1.55s forwards;
+  pointer-events: auto;
+}
+
+@keyframes deathSlam {
+  0% { opacity: 0; transform: perspective(900px) translateZ(-1000px) scale(0.05); }
+  62% { opacity: 1; transform: perspective(900px) translateZ(0) scale(1.14); }
+  76% { transform: perspective(900px) translateZ(0) scale(0.96) rotate(-1.1deg); }
+  100% { opacity: 1; transform: perspective(900px) translateZ(0) scale(1) rotate(0deg); }
+}
+
+@keyframes deathImpact {
+  0% { opacity: 0; transform: scale(0.12); }
+  58% { opacity: 0.75; transform: scale(1.08); }
+  100% { opacity: 0.2; transform: scale(1.42); }
+}
+
+@keyframes deathDrips {
+  0% { opacity: 0; transform: translateY(-14%); }
+  20% { opacity: 0.92; }
+  100% { opacity: 0.78; transform: translateY(36%); }
+}
+
+@keyframes deathContinueIn {
+  0% { opacity: 0; transform: translateY(16px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+
 #join-form select {
   font: inherit;
   padding: 8px 10px;
@@ -510,5 +627,3 @@ body {
   font-size: 12px;
   color: #cbd5e1;
 }
-
-

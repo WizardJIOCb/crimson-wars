@@ -28,6 +28,8 @@ const recordsNextBtn = document.getElementById('records-next');
 const recordsPageEl = document.getElementById('records-page');
 const recordsTotalEl = document.getElementById('records-total');
 const deathResultEl = document.getElementById('death-result');
+const deathCinematicEl = document.getElementById('death-cinematic');
+const deathContinueBtn = document.getElementById('death-continue');
 const syncSettingsEl = document.getElementById('sync-settings');
 const syncPresetEl = document.getElementById('sync-preset');
 const syncTickrateEl = document.getElementById('sync-tickrate');
@@ -700,6 +702,7 @@ function sendJoinRequest(roomCode, joinSync = null) {
   });
   joinOverlay.style.display = 'none';
   joinOverlay.classList.remove('death-mode');
+  setDeathCinematicActive(false);
   updateMobileControlsVisibility();
 }
 
@@ -1211,16 +1214,42 @@ function renderDeathResult(result) {
   deathResultEl.textContent = `Last result: ${result.kills} kills | ${result.score} pts | ${result.survivalSec}s | room ${result.roomCode}`;
 }
 
-function openDeathOverlay(result) {
-  leaveActiveRoom();
-  joinOverlay.style.display = 'grid';
+function setDeathCinematicActive(active) {
+  const on = Boolean(active);
+  if (on) {
+    joinOverlay.classList.remove('death-cinematic-active');
+    if (deathCinematicEl) {
+      deathCinematicEl.setAttribute('aria-hidden', 'true');
+      void deathCinematicEl.offsetWidth;
+      deathCinematicEl.setAttribute('aria-hidden', 'false');
+    }
+    joinOverlay.classList.add('death-cinematic-active');
+    return;
+  }
+  joinOverlay.classList.remove('death-cinematic-active');
+  if (deathCinematicEl) deathCinematicEl.setAttribute('aria-hidden', 'true');
+}
+
+function openDeathMenuAfterCinematic() {
+  setDeathCinematicActive(false);
   joinOverlay.classList.add('death-mode');
-  renderDeathResult(result);
   statusEl.textContent = 'You died. Last result is shown below.';
   updateMobileControlsVisibility();
   requestRoomsList();
   requestRecordsList(recordsUi.page);
 }
+
+function openDeathOverlay(result) {
+  leaveActiveRoom();
+  joinOverlay.style.display = 'grid';
+  joinOverlay.classList.add('death-mode');
+  renderDeathResult(result);
+  setDeathCinematicActive(true);
+}
+
+deathContinueBtn?.addEventListener('click', () => {
+  openDeathMenuAfterCinematic();
+});
 
 
 refreshRoomsBtn?.addEventListener('click', () => {
@@ -1293,6 +1322,7 @@ ws.addEventListener('message', (ev) => {
     statusEl.textContent = msg.message;
     joinOverlay.style.display = 'grid';
     joinOverlay.classList.remove('death-mode');
+    setDeathCinematicActive(false);
     updateMobileControlsVisibility();
     requestRoomsList();
     requestRecordsList(recordsUi.page);
@@ -1807,22 +1837,3 @@ startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 setInterval(sendNetStatsReport, 1500);
 requestAnimationFrame(render);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
