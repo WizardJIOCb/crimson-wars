@@ -2007,6 +2007,51 @@ function drawPlayer(p, t, isMe, rx, ry) {
   ctx.textAlign = 'center';
   ctx.fillText(p.name, x, y - 42);
 }
+function drawBossPortals(portals, nowMs) {
+  if (!Array.isArray(portals)) return;
+  for (const bp of portals) {
+    if (!isVisibleWorld(bp.x, bp.y, 120)) continue;
+    const x = bp.x - camera.x;
+    const y = bp.y - camera.y;
+    const leftMs = Math.max(0, Number(bp.spawnAt) - nowMs);
+    const ttl = Math.max(1, Number(bp.ttlMs) || leftMs || 1);
+    const progress = 1 - Math.max(0, Math.min(1, leftMs / ttl));
+    const pulse = 0.8 + Math.sin(nowMs * 0.012 + bp.id) * 0.2;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = `rgba(220, 38, 38, ${(0.5 + progress * 0.4).toFixed(3)})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, 30 + pulse * 6, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.strokeStyle = `rgba(248, 113, 113, ${(0.35 + progress * 0.35).toFixed(3)})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, 46 + pulse * 9, 0, Math.PI * 2);
+    ctx.stroke();
+
+    for (let i = 0; i < 12; i += 1) {
+      const ang = nowMs * 0.003 + i * (Math.PI * 2 / 12);
+      const pr = 24 + ((i % 3) * 8) + Math.sin(nowMs * 0.006 + i) * 4;
+      const px = x + Math.cos(ang) * pr;
+      const py = y + Math.sin(ang) * pr;
+      ctx.fillStyle = i % 2 === 0 ? 'rgba(239,68,68,0.82)' : 'rgba(251,113,133,0.75)';
+      ctx.beginPath();
+      ctx.arc(px, py, 2.2 + (i % 3) * 0.45, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#fecaca';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`BOSS in ${(leftMs / 1000).toFixed(1)}s`, x, y - 54);
+    ctx.restore();
+  }
+}
+
 function drawEnemies(enemies, t) {
   const fw = 37;
   const fh = 45;
@@ -2014,27 +2059,44 @@ function drawEnemies(enemies, t) {
 
   for (const e of enemies) {
     const re = getEnemyRenderPos(e);
-    if (!isVisibleWorld(re.x, re.y, 60)) continue;
+    const er = Math.max(18, Number(e.radius) || 18);
+    if (!isVisibleWorld(re.x, re.y, Math.max(60, er + 24))) continue;
     const x = re.x - camera.x;
     const y = re.y - camera.y;
+    const isBoss = e.type === 'boss';
+    const scale = isBoss ? Math.max(2.2, Number(e.spriteScale) || 2.6) : Math.max(0.9, Number(e.spriteScale) || 1);
+    const sw = 42 * scale;
+    const sh = 50 * scale;
 
-    drawShadowAtScreen(x, y + 29, 14, 6, 0.3);
+    drawShadowAtScreen(x, y + (isBoss ? 48 : 29), 14 * scale, 6 * scale, isBoss ? 0.42 : 0.3);
 
     if (sprites.enemy.complete && sprites.enemy.naturalWidth >= fw * 2) {
-      const frame = Math.floor(t * 12) % frames;
+      const frame = Math.floor(t * (isBoss ? 9 : 12)) % frames;
       if (Math.abs(re.vx || 0) > 0.15) re.faceLeft = (re.vx || 0) < 0;
       const faceLeft = Boolean(re.faceLeft);
 
       ctx.save();
-      ctx.translate(x, y + 2);
+      ctx.translate(x, y + (isBoss ? 6 : 2));
       if (faceLeft) ctx.scale(-1, 1);
-      ctx.drawImage(sprites.enemy, frame * fw, 0, fw, fh, -21, -24, 42, 50);
+      if (isBoss) ctx.filter = 'contrast(1.12) saturate(0.82)';
+      ctx.drawImage(sprites.enemy, frame * fw, 0, fw, fh, -sw * 0.5, -sh * 0.52, sw, sh);
       ctx.restore();
+
+      if (isBoss) {
+        ctx.fillStyle = '#fca5a5';
+        ctx.font = 'bold 13px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('BOSS', x, y - sh * 0.62 - 10);
+      }
     } else {
-      drawCircle(re.x, re.y, 18, '#ef4444');
+      drawCircle(re.x, re.y, isBoss ? 34 : 18, isBoss ? '#b91c1c' : '#ef4444');
     }
 
-    if (game.enemyHpBarsEnabled) drawHpBar(re.x, re.y, Math.max(0, e.hp / e.maxHp));
+    if (game.enemyHpBarsEnabled) {
+      const ratio = Math.max(0, e.hp / e.maxHp);
+      const hpY = isBoss ? (re.y - 20) : re.y;
+      drawHpBar(re.x, hpY, ratio);
+    }
   }
 }
 
@@ -2146,6 +2208,7 @@ function render(ts) {
 
   drawGround();
   drawBloodPuddles();
+  drawBossPortals(game.state.bossPortals || [], Number(game.state.now) || Date.now());
 
   for (const d of game.state.drops || []) {
     if (!isVisibleWorld(d.x, d.y, 50)) continue;
@@ -2211,5 +2274,4 @@ startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 setInterval(sendNetStatsReport, 1500);
 requestAnimationFrame(render);
-
 

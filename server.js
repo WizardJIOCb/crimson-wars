@@ -40,6 +40,16 @@ const ENEMY_RANGED_BULLET_LIFE_MS = 1300;
 const ENEMY_RANGED_FIRE_COOLDOWN_MS = 900;
 const ENEMY_RANGED_MIN_RANGE = 170;
 const ENEMY_RANGED_MAX_RANGE = 280;
+const BOSS_KILL_INTERVAL = 50;
+const BOSS_PORTAL_WARN_MS = 4200;
+const BOSS_RADIUS = 42;
+const BOSS_SPRITE_SCALE = 2.6;
+const BOSS_HP_BASE = 520;
+const BOSS_SPEED = 88;
+const BOSS_ATTACK_DAMAGE = 30;
+const BOSS_ATTACK_WINDUP_MS = 820;
+const BOSS_ATTACK_COOLDOWN_MS = 1300;
+const BOSS_DASH_DISTANCE = 180;
 const PLAYER_SLOW_FACTOR = 0.8;
 const PLAYER_SLOW_DURATION_MS = 600;
 const DROP_LIFETIME_MS = 30000;
@@ -399,6 +409,10 @@ function getOrCreateRoom(requestedCode, requestedSync) {
       nextEnemyId: 1,
       nextBulletId: 1,
       nextDropId: 1,
+      nextPortalId: 1,
+      bossPortals: [],
+      totalEnemyKills: 0,
+      nextBossAtKills: BOSS_KILL_INTERVAL,
       lastEnemySpawnAt: 0,
       startedAt: Date.now(),
       trees: generateTrees(),
@@ -464,10 +478,20 @@ function serializeRoom(room) {
     })),
     enemies: room.enemies.map((e) => ({
       id: e.id,
+      type: e.type || 'normal',
       x: e.x,
       y: e.y,
       hp: e.hp,
       maxHp: e.maxHp,
+      radius: Math.max(ENEMY_RADIUS, Number(e.radius) || ENEMY_RADIUS),
+      spriteScale: Number(e.spriteScale) || 1,
+    })),
+    bossPortals: room.bossPortals.map((bp) => ({
+      id: bp.id,
+      x: bp.x,
+      y: bp.y,
+      spawnAt: bp.spawnAt,
+      ttlMs: Math.max(0, bp.spawnAt - Date.now()),
     })),
     drops: room.drops.map((d) => ({
       id: d.id,
@@ -507,6 +531,24 @@ function chooseEnemyType() {
   return 'normal';
 }
 
+function hasAliveBoss(room) {
+  return room.enemies.some((e) => e.type === 'boss' && e.hp > 0);
+}
+
+function scheduleBossPortal(room, now, spawnPos) {
+  if (room.bossPortals.length > 0) return false;
+  if (hasAliveBoss(room)) return false;
+  const pos = spawnPos || randomSpawnEdge();
+  room.bossPortals.push({
+    id: room.nextPortalId++,
+    x: pos.x,
+    y: pos.y,
+    spawnAt: now + BOSS_PORTAL_WARN_MS,
+  });
+  broadcastRoom(room, { type: 'system', message: 'A boss is approaching. Portal opened.' });
+  return true;
+}
+
 function spawnEnemy(room) {
   const pos = randomSpawnEdge();
   const hp = ENEMY_HP_BASE + Math.floor((Date.now() - room.startedAt) / 25000) * 2;
@@ -521,6 +563,8 @@ function spawnEnemy(room) {
     vy: 0,
     hp,
     maxHp: hp,
+    radius: ENEMY_RADIUS,
+    spriteScale: 1,
     speed: (ENEMY_SPEED_MIN + Math.random() * (ENEMY_SPEED_MAX - ENEMY_SPEED_MIN)) * speedMul,
     attackWindupMs: 0,
     attackCooldownMs: 0,
@@ -528,7 +572,39 @@ function spawnEnemy(room) {
   });
 }
 
-function getEnemyAttackCooldownMs() {
+function spawnBossEnemy(room, x, y, now) {
+  const elapsedMul = 1 + Math.floor((now - room.startedAt) / 60000) * 0.18;
+  const hp = Math.round(BOSS_HP_BASE * elapsedMul);
+  room.enemies.push({
+    id: room.nextEnemyId++,
+    type: 'boss',
+    x,
+    y,
+    vx: 0,
+    vy: 0,
+    hp,
+    maxHp: hp,
+    radius: BOSS_RADIUS,
+    spriteScale: BOSS_SPRITE_SCALE,
+    speed: BOSS_SPEED,
+    attackWindupMs: 0,
+    attackCooldownMs: 500,
+    attackTargetId: null,
+  });
+  broadcastRoom(room, { type: 'system', message: 'BOSS arrived. Keep moving.' });
+}
+
+function maybeScheduleBossSpawn(room, now) {
+  if (room.totalEnemyKills < room.nextBossAtKills) return;
+  if (room.bossPortals.length > 0) return;
+  if (hasAliveBoss(room)) return;
+  if (scheduleBossPortal(room, now)) {
+    room.nextBossAtKills += BOSS_KILL_INTERVAL;
+  }
+}
+
+function getEnemyAttackCooldownMs(enemy) {
+  if (enemy?.type === 'boss') return BOSS_ATTACK_COOLDOWN_MS;
   const castFrequency = Math.max(0, Number(ENEMY_ATTACK_CAST_FREQUENCY) || 0);
   const effective = ENEMY_ATTACK_BASE_COOLDOWN_MS / (1 + castFrequency);
   return Math.max(ENEMY_ATTACK_MIN_COOLDOWN_MS, Math.round(effective));
@@ -834,6 +910,18 @@ function tickRoom(room, dtSec, now) {
     spawnEnemy(room);
   }
 
+  if (room.players.size > 0) {
+    maybeScheduleBossSpawn(room, now);
+  }
+
+  for (let i = room.bossPortals.length - 1; i >= 0; i -= 1) {
+    const portal = room.bossPortals[i];
+    if (now >= portal.spawnAt) {
+      spawnBossEnemy(room, portal.x, portal.y, now);
+      room.bossPortals.splice(i, 1);
+    }
+  }
+
   for (const p of room.players.values()) {
     if (!p.alive) {
       if (now >= p.respawnAt) {
@@ -903,7 +991,7 @@ function tickRoom(room, dtSec, now) {
         const e = room.enemies[ei];
         const dx = e.x - b.x;
         const dy = e.y - b.y;
-        const rr = ENEMY_RADIUS + BULLET_RADIUS;
+        const rr = (Number(e.radius) || ENEMY_RADIUS) + BULLET_RADIUS;
         if (dx * dx + dy * dy <= rr * rr) {
           e.hp -= b.damage;
           hit = true;
@@ -911,6 +999,8 @@ function tickRoom(room, dtSec, now) {
             room.enemies.splice(ei, 1);
             room.scores.set(b.ownerId, (room.scores.get(b.ownerId) || 0) + 10);
             room.kills.set(b.ownerId, (room.kills.get(b.ownerId) || 0) + 1);
+            room.totalEnemyKills = (room.totalEnemyKills || 0) + 1;
+            maybeScheduleBossSpawn(room, now);
             maybeSpawnDrop(room, e.x, e.y);
           }
           break;
@@ -926,6 +1016,8 @@ function tickRoom(room, dtSec, now) {
   for (const e of room.enemies) {
     if (e.attackCooldownMs > 0) e.attackCooldownMs = Math.max(0, e.attackCooldownMs - dtSec * 1000);
 
+    const er = Math.max(ENEMY_RADIUS, Number(e.radius) || ENEMY_RADIUS);
+    const speed = Number(e.speed) || ENEMY_SPEED_MIN;
     const target = nearestAlivePlayer(room, e.x, e.y);
     if (!target) {
       e.vx = 0;
@@ -938,23 +1030,23 @@ function tickRoom(room, dtSec, now) {
     const dx = target.x - e.x;
     const dy = target.y - e.y;
     const d = Math.hypot(dx, dy) || 1;
-    const rr = ENEMY_RADIUS + PLAYER_RADIUS;
+    const rr = er + PLAYER_RADIUS;
 
     if (e.type === 'ranged') {
       const targetDist = d;
       if (targetDist < ENEMY_RANGED_MIN_RANGE) {
-        e.vx = -(dx / d) * e.speed;
-        e.vy = -(dy / d) * e.speed;
+        e.vx = -(dx / d) * speed;
+        e.vy = -(dy / d) * speed;
       } else if (targetDist > ENEMY_RANGED_MAX_RANGE) {
-        e.vx = (dx / d) * e.speed;
-        e.vy = (dy / d) * e.speed;
+        e.vx = (dx / d) * speed;
+        e.vy = (dy / d) * speed;
       } else {
         e.vx = 0;
         e.vy = 0;
       }
 
-      e.x = clamp(e.x + e.vx * dtSec, ENEMY_RADIUS, WORLD_WIDTH - ENEMY_RADIUS);
-      e.y = clamp(e.y + e.vy * dtSec, ENEMY_RADIUS, WORLD_HEIGHT - ENEMY_RADIUS);
+      e.x = clamp(e.x + e.vx * dtSec, er, WORLD_WIDTH - er);
+      e.y = clamp(e.y + e.vy * dtSec, er, WORLD_HEIGHT - er);
 
       if (e.attackCooldownMs <= 0 && target.alive && targetDist <= ENEMY_RANGED_MAX_RANGE * 1.1) {
         fireEnemyProjectile(room, e, target);
@@ -971,24 +1063,27 @@ function tickRoom(room, dtSec, now) {
       if (e.attackWindupMs <= 0) {
         const lockedTarget = room.players.get(e.attackTargetId);
         if (lockedTarget && lockedTarget.alive) {
-          if (e.type === 'charger') {
+          if (e.type === 'charger' || e.type === 'boss') {
             const cdx = lockedTarget.x - e.x;
             const cdy = lockedTarget.y - e.y;
             const cd = Math.hypot(cdx, cdy) || 1;
-            const dash = Math.min(ENEMY_CHARGER_DASH_DISTANCE, Math.max(0, cd - 1));
-            e.x = clamp(e.x + (cdx / cd) * dash, ENEMY_RADIUS, WORLD_WIDTH - ENEMY_RADIUS);
-            e.y = clamp(e.y + (cdy / cd) * dash, ENEMY_RADIUS, WORLD_HEIGHT - ENEMY_RADIUS);
+            const dashBase = e.type === 'boss' ? BOSS_DASH_DISTANCE : ENEMY_CHARGER_DASH_DISTANCE;
+            const dash = Math.min(dashBase, Math.max(0, cd - 1));
+            e.x = clamp(e.x + (cdx / cd) * dash, er, WORLD_WIDTH - er);
+            e.y = clamp(e.y + (cdy / cd) * dash, er, WORLD_HEIGHT - er);
           }
 
           const adx = e.x - lockedTarget.x;
           const ady = e.y - lockedTarget.y;
-          const hitRange = rr + (e.type === 'charger' ? 8 : 0);
+          const bonusRange = e.type === 'boss' ? 20 : (e.type === 'charger' ? 8 : 0);
+          const hitRange = rr + bonusRange;
+          const damage = e.type === 'boss' ? BOSS_ATTACK_DAMAGE : ENEMY_ATTACK_DAMAGE;
           if (adx * adx + ady * ady <= hitRange * hitRange) {
-            applyEnemyHitToPlayer(room, lockedTarget, ENEMY_ATTACK_DAMAGE, now, true);
+            applyEnemyHitToPlayer(room, lockedTarget, damage, now, true);
           }
         }
         e.attackWindupMs = 0;
-        e.attackCooldownMs = getEnemyAttackCooldownMs();
+        e.attackCooldownMs = getEnemyAttackCooldownMs(e);
         e.attackTargetId = null;
       }
       continue;
@@ -997,15 +1092,15 @@ function tickRoom(room, dtSec, now) {
     if (e.attackCooldownMs <= 0 && (e.x - target.x) ** 2 + (e.y - target.y) ** 2 <= rr * rr && target.alive) {
       e.vx = 0;
       e.vy = 0;
-      e.attackWindupMs = ENEMY_ATTACK_WINDUP_MS;
+      e.attackWindupMs = e.type === 'boss' ? BOSS_ATTACK_WINDUP_MS : ENEMY_ATTACK_WINDUP_MS;
       e.attackTargetId = target.id;
       continue;
     }
 
-    e.vx = (dx / d) * e.speed;
-    e.vy = (dy / d) * e.speed;
-    e.x = clamp(e.x + e.vx * dtSec, ENEMY_RADIUS, WORLD_WIDTH - ENEMY_RADIUS);
-    e.y = clamp(e.y + e.vy * dtSec, ENEMY_RADIUS, WORLD_HEIGHT - ENEMY_RADIUS);
+    e.vx = (dx / d) * speed;
+    e.vy = (dy / d) * speed;
+    e.x = clamp(e.x + e.vx * dtSec, er, WORLD_WIDTH - er);
+    e.y = clamp(e.y + e.vy * dtSec, er, WORLD_HEIGHT - er);
   }
 
   for (let i = room.drops.length - 1; i >= 0; i -= 1) {
