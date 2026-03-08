@@ -1,7 +1,9 @@
 const path = require('path');
 const http = require('http');
+const fs = require('fs');
 const express = require('express');
 const WebSocket = require('ws');
+const Database = require('better-sqlite3');
 
 const { WebSocketServer } = WebSocket;
 
@@ -26,6 +28,8 @@ const DROP_LIFETIME_MS = 15000;
 const TREE_COUNT = 65;
 const LEADERBOARD_LIMIT = 500;
 const LEADERBOARD_PAGE_SIZE = 10;
+const DATA_DIR = path.join(__dirname, 'data');
+const RECORDS_DB_PATH = path.join(DATA_DIR, 'records.db');
 
 const WEAPONS = {
   pistol: {
@@ -84,7 +88,95 @@ const wss = new WebSocketServer({ server });
 
 const rooms = new Map();
 const records = [];
+let recordsDb = null;
+let stmtInsertRecord = null;
+let stmtPruneRecords = null;
+let stmtTopRecords = null;
 
+function normalizeRecordEntry(entry) {
+  return {
+    name: (entry?.name || 'Unknown').toString().slice(0, 18),
+    kills: Math.max(0, Number(entry?.kills) || 0),
+    score: Math.max(0, Number(entry?.score) || 0),
+    roomCode: (entry?.roomCode || '-').toString().slice(0, 12),
+    durationSec: Math.max(1, Number(entry?.durationSec) || 1),
+    at: Math.max(0, Number(entry?.at) || Date.now()),
+  };
+}
+
+function loadRecordsFromDb() {
+  if (!recordsDb || !stmtTopRecords) return;
+  const rows = stmtTopRecords.all(LEADERBOARD_LIMIT);
+  records.length = 0;
+  for (const row of rows) {
+    records.push({
+      name: row.name,
+      kills: row.kills,
+      score: row.score,
+      roomCode: row.roomCode,
+      durationSec: row.durationSec,
+      at: row.at,
+    });
+  }
+}
+
+function initRecordsStore() {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    recordsDb = new Database(RECORDS_DB_PATH);
+    recordsDb.pragma('journal_mode = WAL');
+    recordsDb.pragma('synchronous = NORMAL');
+
+    recordsDb.exec([
+      'CREATE TABLE IF NOT EXISTS records (',
+      '  id INTEGER PRIMARY KEY AUTOINCREMENT,',
+      '  name TEXT NOT NULL,',
+      '  kills INTEGER NOT NULL,',
+      '  score INTEGER NOT NULL,',
+      '  room_code TEXT NOT NULL,',
+      '  duration_sec INTEGER NOT NULL,',
+      '  at INTEGER NOT NULL',
+      ');',
+      'CREATE INDEX IF NOT EXISTS idx_records_rank ON records (kills DESC, score DESC, at DESC);',
+    ].join('\n'));
+
+    stmtInsertRecord = recordsDb.prepare([
+      'INSERT INTO records (name, kills, score, room_code, duration_sec, at)',
+      'VALUES (@name, @kills, @score, @roomCode, @durationSec, @at)',
+    ].join('\n'));
+
+    stmtPruneRecords = recordsDb.prepare([
+      'DELETE FROM records',
+      'WHERE id NOT IN (',
+      '  SELECT id FROM records',
+      '  ORDER BY kills DESC, score DESC, at DESC',
+      '  LIMIT ?',
+      ')',
+    ].join('\n'));
+
+    stmtTopRecords = recordsDb.prepare([
+      'SELECT',
+      '  name,',
+      '  kills,',
+      '  score,',
+      '  room_code AS roomCode,',
+      '  duration_sec AS durationSec,',
+      '  at',
+      'FROM records',
+      'ORDER BY kills DESC, score DESC, at DESC',
+      'LIMIT ?',
+    ].join('\n'));
+
+    loadRecordsFromDb();
+    console.log(`Records DB ready: ${RECORDS_DB_PATH} (loaded ${records.length})`);
+  } catch (err) {
+    recordsDb = null;
+    stmtInsertRecord = null;
+    stmtPruneRecords = null;
+    stmtTopRecords = null;
+    console.error('Records DB init failed, using in-memory records only:', err.message);
+  }
+}
 function listRecordsForLobby(page = 1, pageSize = LEADERBOARD_PAGE_SIZE) {
   const total = records.length;
   const size = Math.max(1, Math.min(50, Math.floor(pageSize) || LEADERBOARD_PAGE_SIZE));
@@ -103,10 +195,21 @@ function listRecordsForLobby(page = 1, pageSize = LEADERBOARD_PAGE_SIZE) {
 }
 
 function pushRecord(entry) {
-  records.push(entry);
+  const normalized = normalizeRecordEntry(entry);
+  records.push(normalized);
   records.sort((a, b) => (b.kills - a.kills) || (b.score - a.score) || (b.at - a.at));
   if (records.length > LEADERBOARD_LIMIT) records.length = LEADERBOARD_LIMIT;
+
+  if (!recordsDb || !stmtInsertRecord || !stmtPruneRecords) return;
+  try {
+    stmtInsertRecord.run(normalized);
+    stmtPruneRecords.run(LEADERBOARD_LIMIT);
+  } catch (err) {
+    console.error('Records DB write failed:', err.message);
+  }
 }
+
+initRecordsStore();
 
 function listRoomsForLobby() {
   return Array.from(rooms.values())
