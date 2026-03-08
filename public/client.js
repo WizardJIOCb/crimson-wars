@@ -19,6 +19,7 @@ const nameInput = document.getElementById('name');
 const roomCodeInput = document.getElementById('room-code');
 const refreshRoomsBtn = document.getElementById('refresh-rooms');
 const roomsListEl = document.getElementById('rooms-list');
+const presenceMetaEl = document.getElementById('presence-meta');
 const refreshRecordsBtn = document.getElementById('refresh-records');
 const recordsListEl = document.getElementById('records-list');
 const recordsPrevBtn = document.getElementById('records-prev');
@@ -593,6 +594,14 @@ function sendJoinRequest(roomCode, joinSync = null) {
   updateMobileControlsVisibility();
 }
 
+function renderPresence(presence) {
+  if (!presenceMetaEl) return;
+  const online = Number(presence?.online) || 0;
+  const inGame = Number(presence?.inGame) || 0;
+  const inMenu = Number(presence?.inMenu) || 0;
+  presenceMetaEl.textContent = `Online: ${online} | In game: ${inGame} | In menu: ${inMenu}`;
+}
+
 function renderRoomsList(rooms) {
   if (!roomsListEl) return;
 
@@ -638,8 +647,10 @@ async function requestRoomsList() {
     const res = await fetch('/api/rooms', { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const payload = await res.json();
+    renderPresence(payload.presence);
     renderRoomsList(Array.isArray(payload.rooms) ? payload.rooms : []);
   } catch {
+    if (presenceMetaEl) presenceMetaEl.textContent = 'Online: -- | In game: -- | In menu: --';
     roomsListEl.textContent = 'Failed to load rooms.';
   }
 }

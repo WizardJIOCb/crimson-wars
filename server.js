@@ -96,6 +96,7 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 const rooms = new Map();
+const activeSockets = new Set();
 const records = [];
 let recordsDb = null;
 let stmtInsertRecord = null;
@@ -236,6 +237,18 @@ function pushRecord(entry) {
 
 initRecordsStore();
 
+
+function getPresenceStats() {
+  let inGame = 0;
+  for (const room of rooms.values()) {
+    inGame += room.players.size;
+  }
+
+  const online = activeSockets.size;
+  const inMenu = Math.max(0, online - inGame);
+  return { online, inGame, inMenu };
+}
+
 function listRoomsForLobby() {
   return Array.from(rooms.values())
     .filter((room) => room.players.size > 0)
@@ -252,6 +265,7 @@ function listRoomsForLobby() {
 app.get('/api/rooms', (_req, res) => {
   res.json({
     rooms: listRoomsForLobby(),
+    presence: getPresenceStats(),
     now: Date.now(),
   });
 });
@@ -567,6 +581,7 @@ function removePlayer(player) {
 }
 
 wss.on('connection', (ws) => {
+  activeSockets.add(ws);
   let player = null;
 
   ws.on('message', (msgRaw) => {
@@ -615,6 +630,7 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
+    activeSockets.delete(ws);
     if (!player) return;
     removePlayer(player);
   });

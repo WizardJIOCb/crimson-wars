@@ -460,3 +460,9 @@ body {
   color: #cbd5e1;
   font-weight: 500;
 }
+
+.presence-meta {
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: #cbd5e1;
+}
