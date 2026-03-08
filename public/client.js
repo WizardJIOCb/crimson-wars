@@ -1,4 +1,4 @@
-﻿
+
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
@@ -75,13 +75,7 @@ const mobile = {
 };
 
 const PLAYER_VARIANTS = [
-  { id: 'scout', name: 'Scout', accent: '#60a5fa', sprite: '/assets/sprites/player_scout.png', frameW: 16, frameH: 16, rows: { down: 0, left: 1, right: 2, up: 3 }, scale: 2.4, fps: 9, idleFrame: 1 },
-  { id: 'raider', name: 'Raider', accent: '#f59e0b', sprite: '/assets/sprites/player_raider.png', frameW: 15, frameH: 15, rows: { down: 0, left: 1, right: 2, up: 3 }, scale: 2.55, fps: 9, idleFrame: 1 },
-  { id: 'medic', name: 'Medic', accent: '#22c55e', sprite: '/assets/sprites/player_medic.png', frameW: 32, frameH: 48, rows: { down: 0, left: 1, right: 2, up: 3 }, scale: 1.12, fps: 8.5, idleFrame: 1 },
-  { id: 'shadow', name: 'Shadow', accent: '#a78bfa', sprite: '/assets/sprites/player_shadow.png', frameW: 32, frameH: 32, rows: { down: 0, left: 1, right: 2, up: 3 }, scale: 1.72, fps: 9, idleFrame: 1 },
   { id: 'cyber', name: 'Cyber', accent: '#22d3ee', sprite: '/assets/sprites/player_cyber.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.88, fps: 10, idleFrame: 1 },
-  { id: 'nomad', name: 'Nomad', accent: '#fb7185', sprite: '/assets/sprites/player_nomad.png', frameW: 24, frameH: 24, rows: { down: 0, left: 1, right: 2, up: 3 }, scale: 1.55, fps: 9, idleFrame: 1 },
-  { id: 'warden', name: 'Warden', accent: '#eab308', sprite: '/assets/sprites/player_warden.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.88, fps: 10, idleFrame: 1 },
 ];
 
 
@@ -119,7 +113,7 @@ const visuals = { blood: [], bloodPuddles: [], gore: [], muzzle: [], enemyPrev: 
 let joinMode = 'create';
 const NICKNAME_STORAGE_KEY = 'cw:nickname';
 const PLAYER_CLASS_STORAGE_KEY = 'cw:playerClass';
-let selectedPlayerClass = 'scout';
+let selectedPlayerClass = 'cyber';
 const storedInfoPanelHidden = localStorage.getItem('cw:infoPanelHidden');
 let infoPanelHidden = storedInfoPanelHidden === null ? true : storedInfoPanelHidden === '1';
 let lastFrameTs = performance.now();
@@ -1762,7 +1756,7 @@ function drawPlayer(p, t, isMe, rx, ry) {
     return;
   }
 
-  const variant = getPlayerVariant(p.playerClass || (isMe ? selectedPlayerClass : 'scout'));
+  const variant = getPlayerVariant(p.playerClass || (isMe ? selectedPlayerClass : 'cyber'));
   const playerSprite = sprites.players[variant.id];
   const fw = Math.max(8, Number(variant.frameW) || 32);
   const fh = Math.max(8, Number(variant.frameH) || 48);
@@ -1992,14 +1986,3 @@ startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 setInterval(sendNetStatsReport, 1500);
 requestAnimationFrame(render);
-
-
-
-
-
-
-
-
-
-
-

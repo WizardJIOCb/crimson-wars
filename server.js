@@ -423,7 +423,7 @@ function serializeRoom(room) {
       weaponKey: p.weaponKey,
       weaponLabel: WEAPONS[p.weaponKey].label,
       ammo: p.weaponAmmo,
-      playerClass: p.playerClass || 'scout',
+      playerClass: p.playerClass || 'cyber',
       netQuality: p.netQuality || 0,
       netPingMs: p.netPingMs || 0,
     })),
@@ -548,7 +548,7 @@ function joinRoom(ws, join) {
 
   const id = Math.random().toString(36).slice(2, 10);
   const name = (join?.name || 'Fighter').toString().trim().slice(0, 18) || 'Fighter';
-  const playerClass = (join?.playerClass || 'scout').toString().trim().slice(0, 24) || 'scout';
+  const playerClass = (join?.playerClass || 'cyber').toString().trim().slice(0, 24) || 'cyber';
   const spawn = randomPlayerSpawn();
 
   const player = {
@@ -835,11 +835,3 @@ setInterval(() => {
 server.listen(PORT, () => {
   console.log(`Server started: http://localhost:${PORT}`);
 });
-
-
-
-
-
-
-
-
