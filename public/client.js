@@ -1,4 +1,4 @@
-
+﻿
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
@@ -1669,3 +1669,4 @@ function render(ts) {
 startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 requestAnimationFrame(render);
+
