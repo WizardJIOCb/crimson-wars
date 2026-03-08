@@ -446,6 +446,7 @@ body {
   #hud {
     flex-direction: column;
     right: auto;
+    top: 8px;
   }
 
   #top-center-hud {
@@ -469,12 +470,12 @@ body {
 
   #bottom-hud {
     width: calc(100vw - 16px);
-    bottom: 6px;
+    bottom: calc(env(safe-area-inset-bottom) + 132px);
   }
 
   #fps-corner {
     left: 8px;
-    bottom: calc(env(safe-area-inset-bottom) + 8px);
+    bottom: calc(env(safe-area-inset-bottom) + 110px);
     font-size: 11px;
   }
 
@@ -594,22 +595,25 @@ body {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: max(42px, calc(env(safe-area-inset-bottom) + 24px));
-  padding: 0 14px;
+  bottom: calc(env(safe-area-inset-bottom) + 16px);
+  padding: 0 12px;
   display: none;
-  justify-content: space-between;
+  justify-content: center;
   align-items: flex-end;
   pointer-events: none;
   z-index: 30;
 }
 
 #mobile-controls.active {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 10px;
+  align-items: end;
 }
 
 #mobile-controls .stick {
-  width: 118px;
-  height: 118px;
+  width: 112px;
+  height: 112px;
   border-radius: 50%;
   border: 1px solid rgba(255,255,255,0.25);
   background: rgba(8, 12, 18, 0.38);
@@ -618,6 +622,16 @@ body {
   pointer-events: auto;
   touch-action: none;
   user-select: none;
+}
+
+#move-stick {
+  grid-column: 1;
+  justify-self: start;
+}
+
+#aim-stick {
+  grid-column: 3;
+  justify-self: end;
 }
 
 #mobile-controls .stick-knob {
@@ -636,7 +650,7 @@ body {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: -20px;
+  bottom: -16px;
   text-align: center;
   font-size: 11px;
   letter-spacing: 0.8px;
@@ -646,9 +660,11 @@ body {
 
 #jump-btn {
   pointer-events: auto;
-  align-self: flex-end;
-  margin-bottom: 14px;
-  min-width: 86px;
+  grid-column: 2;
+  justify-self: center;
+  align-self: end;
+  margin-bottom: 6px;
+  min-width: 94px;
   height: 44px;
   border-radius: 999px;
   border: 1px solid rgba(255,255,255,0.34);
