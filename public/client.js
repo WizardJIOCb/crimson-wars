@@ -110,6 +110,8 @@ let fpsAccumSec = 0;
 const recordsUi = { page: 1, totalPages: 1, pageSize: 10, total: 0 };
 let prevMyAlive = null;
 let sessionStartedAt = 0;
+let waitingForFirstState = false;
+let waitingForFirstStateSince = 0;
 
 const ROOM_SYNC_PRESETS = {
   normal: {
@@ -161,6 +163,8 @@ const netStats = {
   txSamples: [],
   rxKBps: 0,
   txKBps: 0,
+  rxTotalBytes: 0,
+  txTotalBytes: 0,
 };
 function clampNum(value, min, max, fallback) {
   const n = Number(value);
@@ -229,12 +233,14 @@ function pruneBytesSamples(samples, nowMs) {
 
 function markRxBytes(bytes) {
   const nowMs = performance.now();
+  netStats.rxTotalBytes += bytes;
   netStats.rxSamples.push({ t: nowMs, bytes });
   pruneBytesSamples(netStats.rxSamples, nowMs);
 }
 
 function markTxBytes(bytes) {
   const nowMs = performance.now();
+  netStats.txTotalBytes += bytes;
   netStats.txSamples.push({ t: nowMs, bytes });
   pruneBytesSamples(netStats.txSamples, nowMs);
 }
@@ -305,6 +311,13 @@ function onStateNetSample(serverNow) {
   }
 }
 
+function formatBytesTotal(bytes) {
+  const b = Math.max(0, Number(bytes) || 0);
+  if (b >= 1024 * 1024 * 1024) return (b / (1024 * 1024 * 1024)).toFixed(2) + 'GB';
+  if (b >= 1024 * 1024) return (b / (1024 * 1024)).toFixed(2) + 'MB';
+  if (b >= 1024) return (b / 1024).toFixed(1) + 'KB';
+  return Math.round(b) + 'B';
+}
 function updateNetMetaUi() {
   if (!netMetaEl) return;
   updateThroughputStats();
@@ -313,9 +326,8 @@ function updateNetMetaUi() {
   const lossPct = delivered > 0 ? (netStats.lostPings * 100) / delivered : 0;
   const interpMs = game.netSnapshots.length > 0 ? roomSync.netRenderDelayMs : 0;
 
-  netMetaEl.textContent = `NET: ping ${Math.round(netStats.rttMs)}ms | jitter ${Math.round(netStats.jitterMs)}ms | loss ${lossPct.toFixed(1)}% | state ${netStats.stateHz.toFixed(1)}Hz | delay ${Math.round(netStats.stateDelayMs)}ms | interp ${interpMs}ms | rx ${netStats.rxKBps.toFixed(1)}KB/s | tx ${netStats.txKBps.toFixed(1)}KB/s`;
+  netMetaEl.textContent = 'NET: ping ' + Math.round(netStats.rttMs) + 'ms | jitter ' + Math.round(netStats.jitterMs) + 'ms | loss ' + lossPct.toFixed(1) + '% | state ' + netStats.stateHz.toFixed(1) + 'Hz | delay ' + Math.round(netStats.stateDelayMs) + 'ms | interp ' + interpMs + 'ms | rx ' + netStats.rxKBps.toFixed(1) + 'KB/s (' + formatBytesTotal(netStats.rxTotalBytes) + ') | tx ' + netStats.txKBps.toFixed(1) + 'KB/s (' + formatBytesTotal(netStats.txTotalBytes) + ')';
 }
-
 function loadImage(src) {
   const img = new Image();
   img.src = src;
@@ -584,6 +596,8 @@ function sendJoinRequest(roomCode, joinSync = null) {
   if (ws.readyState !== WebSocket.OPEN) return;
   const name = nameInput.value.trim() || 'Fighter';
   localStorage.setItem(NICKNAME_STORAGE_KEY, name);
+  waitingForFirstState = true;
+  waitingForFirstStateSince = performance.now();
   sendJson({
     type: 'join',
     name,
@@ -1066,6 +1080,8 @@ function clearLocalSessionState() {
   game.renderBullets.clear();
   prevMyAlive = null;
   sessionStartedAt = 0;
+  waitingForFirstState = false;
+  waitingForFirstStateSince = 0;
   roomMetaEl.textContent = '';
   weaponMetaEl.textContent = '';
   scoreboardEl.innerHTML = '';
@@ -1164,6 +1180,8 @@ ws.addEventListener('message', (ev) => {
   }
 
   if (msg.type === 'joinError') {
+    waitingForFirstState = false;
+    waitingForFirstStateSince = 0;
     statusEl.textContent = msg.message;
     joinOverlay.style.display = 'grid';
     joinOverlay.classList.remove('death-mode');
@@ -1175,6 +1193,8 @@ ws.addEventListener('message', (ev) => {
   if (msg.type === 'system') statusEl.textContent = msg.message;
 
   if (msg.type === 'state') {
+    waitingForFirstState = false;
+    waitingForFirstStateSince = 0;
     const s = msg.payload;
     onStateNetSample(s.now);
     pushNetSnapshot(s);
@@ -1615,9 +1635,13 @@ function render(ts) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   if (!game.state) {
-    ctx.fillStyle = '#fff';
-    ctx.font = '16px sans-serif';
-    ctx.fillText('Waiting for state from server...', 24, 40);
+    const overlayOpen = getComputedStyle(joinOverlay).display !== 'none';
+    const waitingElapsed = performance.now() - waitingForFirstStateSince;
+    if (waitingForFirstState && !overlayOpen && waitingElapsed >= 250) {
+      ctx.fillStyle = '#fff';
+      ctx.font = '16px sans-serif';
+      ctx.fillText('Waiting for state from server...', 24, 40);
+    }
     requestAnimationFrame(render);
     return;
   }
@@ -1674,3 +1698,11 @@ function render(ts) {
 startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 requestAnimationFrame(render);
+
+
+
+
+
+
+
+
