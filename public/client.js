@@ -1844,7 +1844,7 @@ function drawJumpChargesIndicator(p, sx, sy) {
 
   const radius = 7;
   const gap = 6;
-  const y = sy - 56;
+  const y = sy - 72;
   const totalWidth = maxCharges * (radius * 2) + (maxCharges - 1) * gap;
   const startX = sx - totalWidth / 2 + radius;
 
@@ -2211,4 +2211,5 @@ startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 setInterval(sendNetStatsReport, 1500);
 requestAnimationFrame(render);
+
 
