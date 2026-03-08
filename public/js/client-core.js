@@ -639,7 +639,7 @@ function rebuildGroundTile() {
 
 sprites.ground.addEventListener('load', rebuildGroundTile);
 for (const v of PLAYER_VARIANTS) {
-  sprites.players[v.id].addEventListener('load', renderCharacterPicker);
+  sprites.players[v.id].addEventListener('load', () => { if (typeof globalThis.renderCharacterPicker === 'function') globalThis.renderCharacterPicker(); });
 }
 
 qualitySelect?.addEventListener('change', () => {
