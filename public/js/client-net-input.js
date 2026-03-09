@@ -1074,8 +1074,10 @@ function sendInput() {
   let shooting = input.shooting;
 
   if (mobile.enabled) {
-    moveX = mobile.moveX * Math.min(1, mobile.moveStrength * 1.15);
-    moveY = mobile.moveY * Math.min(1, mobile.moveStrength * 1.15);
+    if (mobile.moveStrength > 0.05) {
+      moveX = mobile.moveX * Math.min(1, mobile.moveStrength * 1.15);
+      moveY = mobile.moveY * Math.min(1, mobile.moveStrength * 1.15);
+    }
 
     const sx = me.x - camera.x;
     const sy = me.y - camera.y;
@@ -1088,15 +1090,8 @@ function sendInput() {
       shooting = mobile.aimStrength > 0.2;
       input.pointerX = sx + mobile.aimX * aimDistScreen;
       input.pointerY = sy + mobile.aimY * aimDistScreen;
-    } else {
-      aimX = me.x + mobile.lastAimX * aimDistWorld;
-      aimY = me.y + mobile.lastAimY * aimDistWorld;
-      shooting = false;
-      input.pointerX = sx + mobile.lastAimX * aimDistScreen;
-      input.pointerY = sy + mobile.lastAimY * aimDistScreen;
     }
   }
-
   const manualAimOverride = Boolean(input.shooting || (mobile.enabled && mobile.aimStrength > 0.2));
 
   if (game.autoFireEnabled && !manualAimOverride) {

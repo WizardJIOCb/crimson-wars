@@ -37,7 +37,7 @@ body {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  z-index: 10;
+  z-index: 41;
 }
 
 #top-center-hud {
@@ -1146,11 +1146,17 @@ body {
 }
 
 .record-row {
+  appearance: none;
+  -webkit-appearance: none;
   width: 100%;
   text-align: left;
   font: inherit;
   color: inherit;
   cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  background: rgba(30, 41, 59, 0.55);
+  padding: 6px;
 }
 
 .record-row:hover {
