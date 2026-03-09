@@ -867,5 +867,5 @@ function updateMobileControlsVisibility() {
     setMobileControlsVisible(false);
     return;
   }
-  setMobileControlsVisible(!overlayOpen && !document.body.classList.contains('levelup-open'));
+  setMobileControlsVisible(!overlayOpen);
 }

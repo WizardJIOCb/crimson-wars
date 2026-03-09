@@ -1128,11 +1128,14 @@ body {
     font-size: 12px;
   }
 
-  body.levelup-open #mobile-controls,
   body.levelup-open #bottom-hud,
   body.levelup-open #stats-toggle,
   body.levelup-open #fps-corner {
     display: none !important;
+  }
+
+  body.levelup-open #mobile-controls.active {
+    opacity: 0;
   }
 }
 
