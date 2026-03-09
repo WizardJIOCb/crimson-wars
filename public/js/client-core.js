@@ -70,6 +70,10 @@ const levelupOptionsEl = document.getElementById('levelup-options');
 const statsToggleBtn = document.getElementById('stats-toggle');
 const statsPanelEl = document.getElementById('stats-panel');
 const statsContentEl = document.getElementById('stats-content');
+const devConsoleEl = document.getElementById('dev-console');
+const devConsoleLogEl = document.getElementById('dev-console-log');
+const devConsoleFormEl = document.getElementById('dev-console-form');
+const devConsoleInputEl = document.getElementById('dev-console-input');
 
 ctx.imageSmoothingEnabled = false;
 
@@ -181,6 +185,7 @@ let waitingForFirstState = false;
 let waitingForFirstStateSince = 0;
 let lastScoreboardHtml = '';
 let lastLevelupHtml = '';
+let devConsoleOpen = false;
 
 const ROOM_SYNC_PRESETS = {
   normal: {
@@ -838,6 +843,67 @@ function setMobileControlsVisible(visible) {
   mobileControlsEl.setAttribute('aria-hidden', visible ? 'false' : 'true');
 }
 
+
+function isDevConsoleOpen() {
+  return Boolean(devConsoleOpen);
+}
+
+function appendDevConsoleLine(text, kind = '') {
+  if (!devConsoleLogEl) return;
+  const line = document.createElement('div');
+  line.className = `dev-console-line${kind ? ` ${kind}` : ''}`;
+  line.textContent = String(text || '');
+  devConsoleLogEl.appendChild(line);
+  while (devConsoleLogEl.childNodes.length > 80) {
+    devConsoleLogEl.removeChild(devConsoleLogEl.firstChild);
+  }
+  devConsoleLogEl.scrollTop = devConsoleLogEl.scrollHeight;
+}
+
+function setDevConsoleOpen(open) {
+  if (!devConsoleEl) return;
+  const next = Boolean(open);
+  devConsoleOpen = next;
+  devConsoleEl.classList.toggle('hidden', !next);
+  if (next) {
+    input.up = false;
+    input.down = false;
+    input.left = false;
+    input.right = false;
+    input.shooting = false;
+    if (devConsoleInputEl) {
+      devConsoleInputEl.focus();
+      devConsoleInputEl.select();
+    }
+  } else if (devConsoleInputEl) {
+    devConsoleInputEl.blur();
+  }
+}
+
+function toggleDevConsole(force) {
+  if (!devConsoleEl) return false;
+  setDevConsoleOpen(typeof force === 'boolean' ? force : !devConsoleOpen);
+  return devConsoleOpen;
+}
+
+function submitDevConsoleCommand(rawCommand) {
+  const cmd = String(rawCommand || '').trim();
+  if (!cmd) return;
+  appendDevConsoleLine(`> ${cmd}`);
+  if (cmd.toLowerCase() === 'clear') {
+    if (devConsoleLogEl) devConsoleLogEl.innerHTML = '';
+    return;
+  }
+  if (!sendJson({ type: 'devCheat', command: cmd })) {
+    appendDevConsoleLine('Not connected.', 'err');
+  }
+}
+
+function onDevConsoleServerMessage(msg) {
+  const text = String(msg?.text || '').trim();
+  if (!text) return;
+  appendDevConsoleLine(text, msg?.ok === false ? 'err' : 'ok');
+}
 function updateFpsCornerVisibility(overlayOpen = null) {
   if (!fpsCornerEl) return;
   const menuOpen = overlayOpen === null ? (getComputedStyle(joinOverlay).display !== 'none') : Boolean(overlayOpen);
@@ -860,6 +926,21 @@ function updateHudVisibility(overlayOpen) {
   updateFpsCornerVisibility(overlayOpen);
 }
 
+
+devConsoleFormEl?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  submitDevConsoleCommand(devConsoleInputEl?.value || '');
+  if (devConsoleInputEl) devConsoleInputEl.value = '';
+});
+
+devConsoleInputEl?.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' || e.code === 'Backquote') {
+    e.preventDefault();
+    toggleDevConsole(false);
+  }
+});
+
+appendDevConsoleLine('Console ready. Type help.');
 function updateMobileControlsVisibility() {
   const overlayOpen = getComputedStyle(joinOverlay).display !== 'none';
   updateHudVisibility(overlayOpen);

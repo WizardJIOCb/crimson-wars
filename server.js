@@ -71,6 +71,8 @@ const DATA_DIR = path.join(__dirname, 'data');
 const RECORDS_DB_PATH = path.join(DATA_DIR, 'records.db');
 const SKILLS_CONFIG_PATH = path.join(DATA_DIR, 'skills.json');
 const SKILLS_ADMIN_TOKEN = process.env.SKILLS_ADMIN_TOKEN || '';
+const DEV_CHEATS_ENABLED = (process.env.DEV_CHEATS_ENABLED || '1') !== '0';
+const DEV_CHEAT_SECRET = (process.env.DEV_CHEAT_SECRET || 'bloodmoon').toString().trim();
 
 
 const DEFAULT_ROOM_SYNC = {
@@ -1029,6 +1031,7 @@ function updatePlayerDodgeRecharge(player, dtMs) {
 
 function applyEnemyHitToPlayer(room, target, damage, now, applySlow = true) {
   if (!target || !target.alive) return;
+  if (target.godMode) return;
   if ((Number(target.dodgeInvulnUntil) || 0) > now) return;
   target.hp -= damage;
   if (applySlow) target.slowUntil = Math.max(target.slowUntil || 0, now + PLAYER_SLOW_DURATION_MS);
@@ -1316,6 +1319,188 @@ function downPlayer(room, target, now) {
   });
   broadcastRoom(room, { type: 'system', message: `${target.name} was downed.` });
 }
+
+function sendDevConsole(player, text, ok = true) {
+  if (!player?.ws) return;
+  sendTo(player.ws, { type: 'devConsole', ok: Boolean(ok), text: String(text || '') });
+}
+
+function grantPlayerSkillLevels(player, skillId, levels = 1) {
+  const sid = (skillId || '').toString().trim().toLowerCase();
+  const def = pickSkillData(sid);
+  if (!def) return 0;
+  const st = ensureSkillState(player, sid);
+  const before = st.level;
+  const maxLevel = Math.max(1, Number(def.maxLevel) || 1);
+  st.level = Math.min(maxLevel, st.level + Math.max(1, Math.floor(Number(levels) || 1)));
+  if (!Array.isArray(player.skillOrder)) player.skillOrder = [];
+  if (!player.skillOrder.includes(sid)) player.skillOrder.push(sid);
+  rebuildPlayerDerivedStats(player);
+  return Math.max(0, st.level - before);
+}
+
+function applyDevCheatCommand(room, player, rawCommand, now = Date.now()) {
+  const command = String(rawCommand || '').trim();
+  if (!command) {
+    sendDevConsole(player, 'Empty command.', false);
+    return;
+  }
+
+  const parts = command.split(/\s+/);
+  const cmd = (parts.shift() || '').toLowerCase();
+  const args = parts;
+
+  if (cmd === 'help') {
+    sendDevConsole(player, 'Commands: unlock <room-secret>, lock, god [on|off], weapon <pistol|smg|shotgun|sniper> [ammo], ammo <n>, heal [n], hp <n>, xp <n>, levelup [n], skill <id> [levels], spawn <normal|charger|ranged|boss> [count], killall, status');
+    return;
+  }
+
+  if (cmd === 'unlock') {
+    if (!DEV_CHEATS_ENABLED) {
+      sendDevConsole(player, 'Cheats disabled on server.', false);
+      return;
+    }
+    if (!DEV_CHEAT_SECRET) {
+      sendDevConsole(player, 'Cheat secret is not configured.', false);
+      return;
+    }
+    const provided = String(args[0] || '').trim().toLowerCase();
+    const expected = `${String(room.code || '').toLowerCase()}-${DEV_CHEAT_SECRET.toLowerCase()}`;
+    if (!provided || provided !== expected) {
+      sendDevConsole(player, 'Unlock failed.', false);
+      return;
+    }
+    player.devUnlocked = true;
+    sendDevConsole(player, `Dev cheats unlocked for room ${room.code}.`);
+    return;
+  }
+
+  if (cmd === 'lock') {
+    player.devUnlocked = false;
+    player.godMode = false;
+    sendDevConsole(player, 'Dev cheats locked.');
+    return;
+  }
+
+  if (!player.devUnlocked) {
+    sendDevConsole(player, 'Cheats are locked. Use: unlock <roomCode-secret>', false);
+    return;
+  }
+
+  if (cmd === 'god') {
+    const mode = String(args[0] || '').toLowerCase();
+    if (mode === 'on' || mode === '1' || mode === 'true') player.godMode = true;
+    else if (mode === 'off' || mode === '0' || mode === 'false') player.godMode = false;
+    else player.godMode = !player.godMode;
+    sendDevConsole(player, `God mode: ${player.godMode ? 'ON' : 'OFF'}`);
+    return;
+  }
+
+  if (cmd === 'weapon') {
+    const key = String(args[0] || '').toLowerCase();
+    if (!WEAPONS[key]) {
+      sendDevConsole(player, 'Unknown weapon key.', false);
+      return;
+    }
+    setPlayerWeapon(player, key);
+    if (player.weaponAmmo !== null && args[1] !== undefined) {
+      player.weaponAmmo = Math.max(0, Math.floor(Number(args[1]) || 0));
+    }
+    sendDevConsole(player, `Weapon set: ${WEAPONS[key].label}${player.weaponAmmo === null ? ' (inf)' : ` (${player.weaponAmmo})`}`);
+    return;
+  }
+
+  if (cmd === 'ammo') {
+    if (player.weaponAmmo === null) {
+      sendDevConsole(player, 'Current weapon has infinite ammo.', false);
+      return;
+    }
+    const ammo = Math.max(0, Math.floor(Number(args[0]) || 0));
+    player.weaponAmmo = ammo;
+    sendDevConsole(player, `Ammo: ${ammo}`);
+    return;
+  }
+
+  if (cmd === 'heal') {
+    const add = Math.max(1, Math.floor(Number(args[0]) || 30));
+    player.hp = Math.min(player.maxHp, Math.max(0, Number(player.hp) || 0) + add);
+    sendDevConsole(player, `HP: ${Math.round(player.hp)}/${Math.round(player.maxHp)}`);
+    return;
+  }
+
+  if (cmd === 'hp') {
+    const hp = Math.max(1, Math.floor(Number(args[0]) || player.maxHp));
+    player.hp = Math.min(hp, player.maxHp);
+    sendDevConsole(player, `HP set: ${Math.round(player.hp)}/${Math.round(player.maxHp)}`);
+    return;
+  }
+
+  if (cmd === 'xp') {
+    const amount = Math.max(0, Math.floor(Number(args[0]) || 0));
+    if (amount <= 0) {
+      sendDevConsole(player, 'Usage: xp <amount>', false);
+      return;
+    }
+    addXpAndMaybeLevel(player, amount, now);
+    sendDevConsole(player, `XP +${amount} -> Lv ${player.level} (${player.xp}/${player.xpToNext})`);
+    return;
+  }
+
+  if (cmd === 'levelup') {
+    const count = Math.max(1, Math.min(50, Math.floor(Number(args[0]) || 1)));
+    for (let i = 0; i < count; i += 1) {
+      const need = Math.max(1, Number(player.xpToNext) - Number(player.xp) + 1);
+      addXpAndMaybeLevel(player, need, now);
+    }
+    sendDevConsole(player, `Level up x${count} -> Lv ${player.level}`);
+    return;
+  }
+
+  if (cmd === 'skill') {
+    const sid = String(args[0] || '').toLowerCase();
+    const lv = Math.max(1, Math.min(20, Math.floor(Number(args[1]) || 1)));
+    if (!sid) {
+      sendDevConsole(player, 'Usage: skill <id> [levels]', false);
+      return;
+    }
+    const gained = grantPlayerSkillLevels(player, sid, lv);
+    if (gained <= 0) {
+      sendDevConsole(player, 'Skill not changed (already max or unknown).', false);
+      return;
+    }
+    sendDevConsole(player, `Skill ${sid} +${gained}`);
+    return;
+  }
+
+  if (cmd === 'spawn') {
+    const typeRaw = String(args[0] || 'normal').toLowerCase();
+    const type = typeRaw === 'boss' ? 'boss' : (typeRaw === 'charger' ? 'charger' : (typeRaw === 'ranged' ? 'ranged' : 'normal'));
+    const count = Math.max(1, Math.min(type === 'boss' ? 2 : 40, Math.floor(Number(args[1]) || 1)));
+    for (let i = 0; i < count; i += 1) spawnEnemy(room, type, now);
+    sendDevConsole(player, `Spawned ${count} ${type}.`);
+    return;
+  }
+
+  if (cmd === 'killall') {
+    let killed = 0;
+    for (const e of room.enemies) {
+      if (e.hp > 0) {
+        enemyTakeDamage(room, e, e.hp + 9999, player.id, now);
+        killed += 1;
+      }
+    }
+    sendDevConsole(player, `Killed ${killed} enemies.`);
+    return;
+  }
+
+  if (cmd === 'status') {
+    const txt = `God:${player.godMode ? 'ON' : 'OFF'} | Weapon:${player.weaponKey} | HP:${Math.round(player.hp)}/${Math.round(player.maxHp)} | Lv:${player.level} | XP:${player.xp}/${player.xpToNext}`;
+    sendDevConsole(player, txt);
+    return;
+  }
+
+  sendDevConsole(player, 'Unknown command. Type help', false);
+}
 function joinRoom(ws, join) {
   const room = getOrCreateRoom(join?.roomCode, join?.sync);
 
@@ -1372,6 +1557,8 @@ function joinRoom(ws, join) {
     pickupRadius: PLAYER_PICKUP_RADIUS_BASE,
     extraDodgeCharges: 0,
     joinedAt: Date.now(),
+    devUnlocked: false,
+    godMode: false,
   };
 
   rebuildPlayerDerivedStats(player);
@@ -1464,6 +1651,11 @@ wss.on('connection', (ws) => {
     if (msg.type === 'skillPick') {
       const picked = playerSelectSkill(current, msg.skillId);
       if (picked) sendTo(current.ws, { type: 'system', message: 'Skill upgraded.' });
+      return;
+    }
+
+    if (msg.type === 'devCheat') {
+      applyDevCheatCommand(room, current, msg.command, Date.now());
       return;
     }
 

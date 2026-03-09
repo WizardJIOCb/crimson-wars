@@ -203,6 +203,17 @@
     </div>
     <button id="jump-btn" type="button">JUMP</button>
   </div>
+
+  <div id="dev-console" class="hidden" aria-live="polite">
+    <div class="dev-console-head">
+      <b>Dev Console</b>
+      <span class="dev-console-hint">~ toggle, Esc close</span>
+    </div>
+    <div id="dev-console-log"></div>
+    <form id="dev-console-form" autocomplete="off">
+      <input id="dev-console-input" maxlength="180" placeholder="type command..." />
+    </form>
+  </div>
   <script src="/js/client-core.js"></script>
   <script src="/js/client-net-input.js"></script>
   <script src="/js/client-fx.js"></script>

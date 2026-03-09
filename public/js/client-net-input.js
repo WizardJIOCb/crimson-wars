@@ -755,6 +755,14 @@ function updateSyncSettingsVisibility() {
 
 
 window.addEventListener('keydown', (e) => {
+  if (e.code === 'Backquote') {
+    e.preventDefault();
+    toggleDevConsole();
+    return;
+  }
+
+  if (isDevConsoleOpen()) return;
+
   const t = e.target;
   const typing = t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement;
 
@@ -783,7 +791,10 @@ window.addEventListener('keydown', (e) => {
     sendJson({ type: 'weaponSwitch', weaponKey: 'pistol' });
   }
 });
-window.addEventListener('keyup', (e) => keyStateFromCode(e.code, false));
+window.addEventListener('keyup', (e) => {
+  if (isDevConsoleOpen()) return;
+  keyStateFromCode(e.code, false);
+});
 canvas.addEventListener('mousedown', (e) => { if (e.button === 0) { input.shooting = true; input.pointerX = e.clientX; input.pointerY = e.clientY; } });
 window.addEventListener('mouseup', () => { input.shooting = false; });
 canvas.addEventListener('mousemove', (e) => { input.pointerX = e.clientX; input.pointerY = e.clientY; });
@@ -962,6 +973,16 @@ ws.addEventListener('message', (ev) => {
 
   if (msg.type === 'netPong') {
     handleNetPong(msg);
+    return;
+  }
+
+  if (msg.type === 'devConsole') {
+    onDevConsoleServerMessage(msg);
+    return;
+  }
+
+  if (msg.type === 'devConsole') {
+    onDevConsoleServerMessage(msg);
     return;
   }
 
