@@ -551,18 +551,26 @@ function render(ts) {
   const dt = Math.min(0.05, (ts - lastFrameTs) / 1000);
   lastFrameTs = ts;
   const overlayOpen = getComputedStyle(joinOverlay).display !== 'none';
-  const gameplayActive = Boolean(game.state) && !overlayOpen;
 
-  if (gameplayActive) {
-    fpsFrameCount += 1;
-    fpsAccumSec += dt;
-    if (fpsAccumSec >= FPS_UI_UPDATE_SEC) {
-      if (fpsCornerEl && game.showFpsEnabled) fpsCornerEl.textContent = `FPS: ${Math.round(fpsFrameCount / fpsAccumSec)}`;
-      updateNetMetaUi();
-      fpsFrameCount = 0;
-      fpsAccumSec = 0;
-    }
-  } else {
+  if (overlayOpen) {
+    fpsFrameCount = 0;
+    fpsAccumSec = 0;
+    scheduleNextFrame(MENU_IDLE_FRAME_MS);
+    return;
+  }
+
+  if (!game.state) {
+    fpsFrameCount = 0;
+    fpsAccumSec = 0;
+    scheduleNextFrame();
+    return;
+  }
+
+  fpsFrameCount += 1;
+  fpsAccumSec += dt;
+  if (fpsAccumSec >= FPS_UI_UPDATE_SEC) {
+    if (fpsCornerEl && game.showFpsEnabled) fpsCornerEl.textContent = `FPS: ${Math.round(fpsFrameCount / fpsAccumSec)}`;
+    updateNetMetaUi();
     fpsFrameCount = 0;
     fpsAccumSec = 0;
   }
@@ -573,26 +581,6 @@ function render(ts) {
   updateEnemyInterpolation(dt);
   updateBulletInterpolation(dt);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  if (!game.state) {
-    if (!overlayOpen) {
-      updateTopCenterHud(Date.now());
-      updateBottomHud();
-    }
-    const waitingElapsed = performance.now() - waitingForFirstStateSince;
-    if (waitingForFirstState && !overlayOpen && waitingElapsed >= 250) {
-      ctx.fillStyle = '#fff';
-      ctx.font = '16px sans-serif';
-      ctx.fillText('Waiting for state from server...', 24, 40);
-    }
-    scheduleNextFrame(overlayOpen ? MENU_IDLE_FRAME_MS : 0);
-    return;
-  }
-
-  if (overlayOpen) {
-    scheduleNextFrame(MENU_IDLE_FRAME_MS);
-    return;
-  }
 
   updateTopCenterHud(Number(game.state.now) || Date.now());
   updateBottomHud();

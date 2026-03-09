@@ -845,6 +845,7 @@ function updateFpsCornerVisibility(overlayOpen = null) {
 }
 
 function updateHudVisibility(overlayOpen) {
+  canvas.classList.toggle('hidden', Boolean(overlayOpen));
   if (hudEl) hudEl.classList.toggle('menu-hidden', Boolean(overlayOpen));
   if (topCenterHudEl) topCenterHudEl.classList.toggle('hidden', Boolean(overlayOpen));
   if (bottomHudEl) bottomHudEl.classList.toggle('hidden', Boolean(overlayOpen));
