@@ -1351,7 +1351,7 @@ function applyDevCheatCommand(room, player, rawCommand, now = Date.now()) {
   const args = parts;
 
   if (cmd === 'help') {
-    sendDevConsole(player, 'Commands: unlock <room-secret>, lock, god [on|off], weapon <pistol|smg|shotgun|sniper> [ammo], ammo <n>, heal [n], hp <n>, xp <n>, levelup [n], skill <id> [levels], spawn <normal|charger|ranged|boss> [count], killall, status');
+    sendDevConsole(player, 'Commands: room|roomcode, unlock <room-secret>, lock, god [on|off], weapon <pistol|smg|shotgun|sniper> [ammo], ammo <n>, heal [n], hp <n>, xp <n>, levelup [n], skill <id> [levels], spawn <normal|charger|ranged|boss> [count], killall, status');
     return;
   }
 
@@ -1372,6 +1372,11 @@ function applyDevCheatCommand(room, player, rawCommand, now = Date.now()) {
     }
     player.devUnlocked = true;
     sendDevConsole(player, `Dev cheats unlocked for room ${room.code}.`);
+    return;
+  }
+
+  if (cmd === 'room' || cmd === 'roomcode') {
+    sendDevConsole(player, 'Room code: ' + String(room.code || '-'));
     return;
   }
 
