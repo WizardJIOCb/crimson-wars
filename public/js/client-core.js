@@ -985,6 +985,7 @@ devConsoleInputEl?.addEventListener('keydown', (e) => {
   }
   if (e.code === 'Escape' || e.code === 'Backquote') {
     e.preventDefault();
+    e.stopPropagation();
     toggleDevConsole(false);
   }
 });
