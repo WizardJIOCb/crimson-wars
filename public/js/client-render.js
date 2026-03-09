@@ -1,3 +1,14 @@
+const MENU_IDLE_FRAME_MS = 180;
+const FPS_UI_UPDATE_SEC = 0.75;
+
+function scheduleNextFrame(delayMs = 0) {
+  if (delayMs > 0) {
+    setTimeout(() => requestAnimationFrame(render), delayMs);
+    return;
+  }
+  requestAnimationFrame(render);
+}
+
 function drawGround() {
   ctx.fillStyle = '#0d0f14';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -539,15 +550,23 @@ function drawFx() {
 function render(ts) {
   const dt = Math.min(0.05, (ts - lastFrameTs) / 1000);
   lastFrameTs = ts;
+  const overlayOpen = getComputedStyle(joinOverlay).display !== 'none';
+  const gameplayActive = Boolean(game.state) && !overlayOpen;
 
-  fpsFrameCount += 1;
-  fpsAccumSec += dt;
-  if (fpsAccumSec >= 0.25) {
-    if (fpsCornerEl) fpsCornerEl.textContent = `FPS: ${Math.round(fpsFrameCount / fpsAccumSec)}`;
-    updateNetMetaUi();
+  if (gameplayActive) {
+    fpsFrameCount += 1;
+    fpsAccumSec += dt;
+    if (fpsAccumSec >= FPS_UI_UPDATE_SEC) {
+      if (fpsCornerEl && game.showFpsEnabled) fpsCornerEl.textContent = `FPS: ${Math.round(fpsFrameCount / fpsAccumSec)}`;
+      updateNetMetaUi();
+      fpsFrameCount = 0;
+      fpsAccumSec = 0;
+    }
+  } else {
     fpsFrameCount = 0;
     fpsAccumSec = 0;
   }
+
   game.sampledNet = sampleBufferedState();
   updateFx(dt);
   updatePlayerInterpolation(dt);
@@ -556,16 +575,22 @@ function render(ts) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   if (!game.state) {
-    updateTopCenterHud(Date.now());
-    updateBottomHud();
-    const overlayOpen = getComputedStyle(joinOverlay).display !== 'none';
+    if (!overlayOpen) {
+      updateTopCenterHud(Date.now());
+      updateBottomHud();
+    }
     const waitingElapsed = performance.now() - waitingForFirstStateSince;
     if (waitingForFirstState && !overlayOpen && waitingElapsed >= 250) {
       ctx.fillStyle = '#fff';
       ctx.font = '16px sans-serif';
       ctx.fillText('Waiting for state from server...', 24, 40);
     }
-    requestAnimationFrame(render);
+    scheduleNextFrame(overlayOpen ? MENU_IDLE_FRAME_MS : 0);
+    return;
+  }
+
+  if (overlayOpen) {
+    scheduleNextFrame(MENU_IDLE_FRAME_MS);
     return;
   }
 
@@ -641,11 +666,9 @@ function render(ts) {
   ctx.lineWidth = 2;
   ctx.strokeRect(-camera.x, -camera.y, game.world.width, game.world.height);
 
-  requestAnimationFrame(render);
+  scheduleNextFrame();
 }
-
 startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 setInterval(sendNetStatsReport, 1500);
-requestAnimationFrame(render);
-
+scheduleNextFrame();
