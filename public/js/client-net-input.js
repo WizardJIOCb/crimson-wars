@@ -127,7 +127,7 @@ function setInfoPanelHidden(hidden) {
   if (infoPanelEl) infoPanelEl.classList.toggle('is-hidden', infoPanelHidden);
   if (toggleInfoBtn) {
     if (mobile.enabled) {
-      toggleInfoBtn.textContent = '===';
+      toggleInfoBtn.textContent = '=';
       toggleInfoBtn.setAttribute('aria-label', infoPanelHidden ? 'Show menu' : 'Hide menu');
       toggleInfoBtn.title = infoPanelHidden ? 'Show menu' : 'Hide menu';
     } else {
