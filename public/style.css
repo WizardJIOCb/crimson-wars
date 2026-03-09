@@ -1279,3 +1279,28 @@ body {
     max-height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 18px);
   }
 }
+
+@media (max-width: 720px) {
+  #toggle-info {
+    top: calc(env(safe-area-inset-top) + 52px);
+    left: 8px;
+  }
+
+  #stats-toggle {
+    right: 8px;
+    bottom: calc(env(safe-area-inset-bottom) + 82px);
+  }
+
+  #stats-panel {
+    right: 8px;
+    bottom: calc(env(safe-area-inset-bottom) + 126px);
+  }
+
+  #mobile-controls {
+    bottom: calc(env(safe-area-inset-bottom) + 86px);
+  }
+
+  #jump-btn {
+    margin-bottom: 96px;
+  }
+}
