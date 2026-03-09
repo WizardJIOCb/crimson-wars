@@ -1330,3 +1330,8 @@ body {
     margin-top: 15px;
   }
 }
+
+
+#levelup-overlay {
+  z-index: 50;
+}
