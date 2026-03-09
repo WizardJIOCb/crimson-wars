@@ -1322,10 +1322,10 @@ body {
   }
 
   #mobile-controls {
-    bottom: calc(env(safe-area-inset-bottom) + 72px);
+    bottom: calc(env(safe-area-inset-bottom) + 82px);
   }
 
   #jump-btn {
-    margin-bottom: 72px;
+    margin-bottom: 82px;
   }
 }
