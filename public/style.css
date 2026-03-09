@@ -1304,3 +1304,28 @@ body {
     margin-bottom: 96px;
   }
 }
+
+@media (max-width: 720px) {
+  #toggle-info {
+    top: calc(env(safe-area-inset-top) + 10px);
+    left: 12px;
+    width: 32px;
+    height: 30px;
+    padding: 0;
+    border-radius: 999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    line-height: 1;
+    z-index: 44;
+  }
+
+  #mobile-controls {
+    bottom: calc(env(safe-area-inset-bottom) + 72px);
+  }
+
+  #jump-btn {
+    margin-bottom: 72px;
+  }
+}

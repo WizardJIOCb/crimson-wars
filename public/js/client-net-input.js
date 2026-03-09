@@ -125,7 +125,17 @@ jumpBtnEl?.addEventListener('mousedown', (e) => { e.preventDefault(); queueJump(
 function setInfoPanelHidden(hidden) {
   infoPanelHidden = Boolean(hidden);
   if (infoPanelEl) infoPanelEl.classList.toggle('is-hidden', infoPanelHidden);
-  if (toggleInfoBtn) toggleInfoBtn.textContent = infoPanelHidden ? 'Show menu' : 'Hide menu';
+  if (toggleInfoBtn) {
+    if (mobile.enabled) {
+      toggleInfoBtn.textContent = '|||';
+      toggleInfoBtn.setAttribute('aria-label', infoPanelHidden ? 'Show menu' : 'Hide menu');
+      toggleInfoBtn.title = infoPanelHidden ? 'Show menu' : 'Hide menu';
+    } else {
+      toggleInfoBtn.textContent = infoPanelHidden ? 'Show menu' : 'Hide menu';
+      toggleInfoBtn.removeAttribute('aria-label');
+      toggleInfoBtn.removeAttribute('title');
+    }
+  }
   localStorage.setItem('cw:infoPanelHidden', infoPanelHidden ? '1' : '0');
 }
 
