@@ -162,6 +162,7 @@ let recordsDb = null;
 let stmtInsertRecord = null;
 let stmtPruneRecords = null;
 let stmtTopRecords = null;
+let stmtDeleteRecordByName = null;
 
 function parseRecordRunDetails(raw) {
   if (!raw) return null;
@@ -186,6 +187,23 @@ function normalizeRecordEntry(entry) {
     at: Math.max(0, Number(entry?.at) || Date.now()),
     runDetails: parseRecordRunDetails(entry?.runDetails),
   };
+}
+function recordNameKey(name) {
+  return (name || '').toString().trim().toLowerCase();
+}
+
+function isBetterRecord(next, prev) {
+  const nk = Math.max(0, Number(next?.kills) || 0);
+  const pk = Math.max(0, Number(prev?.kills) || 0);
+  if (nk !== pk) return nk > pk;
+
+  const ns = Math.max(0, Number(next?.score) || 0);
+  const ps = Math.max(0, Number(prev?.score) || 0);
+  if (ns !== ps) return ns > ps;
+
+  const nt = Math.max(0, Number(next?.at) || 0);
+  const pt = Math.max(0, Number(prev?.at) || 0);
+  return nt > pt;
 }
 function clampNum(value, min, max, fallback) {
   const n = Number(value);
@@ -225,10 +243,11 @@ function normalizeRoomSync(raw) {
 }
 function loadRecordsFromDb() {
   if (!recordsDb || !stmtTopRecords) return;
-  const rows = stmtTopRecords.all(LEADERBOARD_LIMIT);
+  const rows = stmtTopRecords.all(LEADERBOARD_LIMIT * 5);
   records.length = 0;
+  const seen = new Set();
   for (const row of rows) {
-    records.push(normalizeRecordEntry({
+    const normalized = normalizeRecordEntry({
       id: row.id,
       name: row.name,
       kills: row.kills,
@@ -237,7 +256,12 @@ function loadRecordsFromDb() {
       durationSec: row.durationSec,
       at: row.at,
       runDetails: row.runDetails,
-    }));
+    });
+    const key = recordNameKey(normalized.name);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    records.push(normalized);
+    if (records.length >= LEADERBOARD_LIMIT) break;
   }
 }
 
@@ -280,6 +304,7 @@ function initRecordsStore() {
       '  LIMIT ?',
       ')',
     ].join('\n'));
+    stmtDeleteRecordByName = recordsDb.prepare('DELETE FROM records WHERE LOWER(name)=LOWER(?)');
 
     stmtTopRecords = recordsDb.prepare([
       'SELECT',
@@ -303,6 +328,7 @@ function initRecordsStore() {
     stmtInsertRecord = null;
     stmtPruneRecords = null;
     stmtTopRecords = null;
+    stmtDeleteRecordByName = null;
     console.error('Records DB init failed, using in-memory records only:', err.message);
   }
 }
@@ -326,12 +352,21 @@ function listRecordsForLobby(page = 1, pageSize = LEADERBOARD_PAGE_SIZE) {
 
 function pushRecord(entry) {
   const normalized = normalizeRecordEntry(entry);
-  records.push(normalized);
+  const key = recordNameKey(normalized.name);
+  const existingIndex = records.findIndex((x) => recordNameKey(x.name) === key);
+
+  if (existingIndex >= 0) {
+    if (!isBetterRecord(normalized, records[existingIndex])) return;
+    records[existingIndex] = normalized;
+  } else {
+    records.push(normalized);
+  }
   records.sort((a, b) => (b.kills - a.kills) || (b.score - a.score) || (b.at - a.at));
   if (records.length > LEADERBOARD_LIMIT) records.length = LEADERBOARD_LIMIT;
 
-  if (!recordsDb || !stmtInsertRecord || !stmtPruneRecords) return;
+  if (!recordsDb || !stmtInsertRecord || !stmtPruneRecords || !stmtDeleteRecordByName) return;
   try {
+    stmtDeleteRecordByName.run(normalized.name);
     stmtInsertRecord.run({
       ...normalized,
       runDetailsJson: normalized.runDetails ? JSON.stringify(normalized.runDetails) : null,
