@@ -818,9 +818,49 @@ window.addEventListener('keyup', (e) => {
   if (isDevConsoleOpen()) return;
   keyStateFromCode(e.code, false);
 });
-canvas.addEventListener('mousedown', (e) => { if (e.button === 0) { input.shooting = true; input.pointerX = e.clientX; input.pointerY = e.clientY; } });
+
+function setPointerFromClient(clientX, clientY) {
+  input.pointerX = clientX;
+  input.pointerY = clientY;
+}
+
+canvas.addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return;
+  input.shooting = true;
+  setPointerFromClient(e.clientX, e.clientY);
+});
 window.addEventListener('mouseup', () => { input.shooting = false; });
-canvas.addEventListener('mousemove', (e) => { input.pointerX = e.clientX; input.pointerY = e.clientY; });
+canvas.addEventListener('mousemove', (e) => { setPointerFromClient(e.clientX, e.clientY); });
+
+let mobileShootTouchId = null;
+canvas.addEventListener('touchstart', (e) => {
+  if (!mobile.enabled) return;
+  const t = e.changedTouches[0];
+  if (!t) return;
+  mobileShootTouchId = t.identifier;
+  input.shooting = true;
+  setPointerFromClient(t.clientX, t.clientY);
+  e.preventDefault();
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  if (!mobile.enabled || mobileShootTouchId === null) return;
+  const t = getTouchById(e.touches, mobileShootTouchId);
+  if (!t) return;
+  setPointerFromClient(t.clientX, t.clientY);
+  e.preventDefault();
+}, { passive: false });
+
+const stopMobileTapShoot = (e) => {
+  if (!mobile.enabled || mobileShootTouchId === null) return;
+  const ended = getTouchById(e.changedTouches, mobileShootTouchId);
+  if (!ended) return;
+  mobileShootTouchId = null;
+  input.shooting = false;
+  e.preventDefault();
+};
+canvas.addEventListener('touchend', stopMobileTapShoot, { passive: false });
+canvas.addEventListener('touchcancel', stopMobileTapShoot, { passive: false });
 
 joinForm.addEventListener('click', (e) => {
   const t = e.target;
