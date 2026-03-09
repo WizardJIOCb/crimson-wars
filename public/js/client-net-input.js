@@ -263,6 +263,29 @@ function sendJoinRequest(roomCode, joinSync = null) {
   updateMobileControlsVisibility();
 }
 
+
+async function copyRoomCodeToClipboard(roomCode, { silent = false } = {}) {
+  const code = String(roomCode || '').trim();
+  if (!code) return false;
+  if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+    if (!silent) statusEl.textContent = `Room code: ${code} (clipboard unavailable)`;
+    return false;
+  }
+  try {
+    await navigator.clipboard.writeText(code);
+    if (!silent) statusEl.textContent = `Room code copied: ${code}`;
+    return true;
+  } catch {
+    if (!silent) statusEl.textContent = `Room code: ${code} (click Room to copy)`;
+    return false;
+  }
+}
+
+if (roomMetaEl) { roomMetaEl.style.cursor = 'pointer'; roomMetaEl.title = 'Click to copy room code'; }
+roomMetaEl?.addEventListener('click', () => {
+  if (!game.roomCode) return;
+  copyRoomCodeToClipboard(game.roomCode, { silent: false });
+});
 function renderPresence(presence) {
   if (!presenceMetaEl) return;
   const online = Number(presence?.online) || 0;
@@ -981,11 +1004,6 @@ ws.addEventListener('message', (ev) => {
     return;
   }
 
-  if (msg.type === 'devConsole') {
-    onDevConsoleServerMessage(msg);
-    return;
-  }
-
   if (msg.type === 'welcome') {
     game.myId = msg.id;
     resetNetStats();
@@ -1016,6 +1034,7 @@ ws.addEventListener('message', (ev) => {
     visuals.skillLabels = [];
     visuals.skillCdPrev = new Map();
     roomMetaEl.textContent = `Room: ${msg.roomCode}`;
+    copyRoomCodeToClipboard(msg.roomCode, { silent: true });
     statusEl.textContent = `Online as ${msg.id} | tick ${roomSync.tickRate}`;
   }
 
