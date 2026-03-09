@@ -322,6 +322,60 @@ function updateRecordsPager() {
   if (recordsNextBtn) recordsNextBtn.disabled = recordsUi.page >= recordsUi.totalPages;
 }
 
+function closeRecordDetailsModal() {
+  if (!recordDetailsModalEl) return;
+  recordDetailsModalEl.classList.add('hidden');
+}
+
+function renderRunDetailsHtml(details) {
+  if (!details || typeof details !== 'object') {
+    return '<div class="record-details-empty">No detailed run stats for this record.</div>';
+  }
+
+  const shotIntervalMs = Math.max(1, Number(details.shotIntervalMs) || 1);
+  const fireRate = (1000 / shotIntervalMs).toFixed(2);
+  const list = [
+    ['Character', details.playerClass || '--'],
+    ['Level', Math.max(1, Number(details.level) || 1)],
+    ['XP', `${Math.max(0, Number(details.xp) || 0)} / ${Math.max(1, Number(details.xpToNext) || 1)}`],
+    ['HP', `${Math.max(0, Number(details.hp) || 0)} / ${Math.max(1, Number(details.maxHp) || 1)}`],
+    ['Weapon', details.weaponLabel || details.weaponKey || '--'],
+    ['Damage / shot', Math.max(1, Number(details.shotDamage) || 1)],
+    ['Fire rate', `${fireRate} shots/s`],
+    ['Move speed', Math.max(0, Math.round(Number(details.moveSpeed) || 0))],
+    ['Pickup radius', Math.max(0, Math.round(Number(details.pickupRadius) || 0))],
+    ['HP regen', `${Math.max(0, Number(details.hpRegenPerSec) || 0).toFixed(2)}/s`],
+    ['Jump charges', Math.max(1, Number(details.dodgeChargesMax) || 1)],
+    ['Damage multiplier', `x${Math.max(0.1, Number(details.damageMul) || 1).toFixed(2)}`],
+    ['Fire-rate multiplier', `x${Math.max(0.1, Number(details.fireRateMul) || 1).toFixed(2)}`],
+    ['Speed multiplier', `x${Math.max(0.1, Number(details.moveSpeedMul) || 1).toFixed(2)}`],
+    ['Room kills at death', Math.max(0, Number(details.totalEnemyKills) || 0)],
+    ['Survived', `${Math.max(1, Number(details.survivedSec) || 1)}s`],
+  ];
+
+  const rows = list.map(([k, v]) => `<div class="rd-row"><span>${k}</span><b>${v}</b></div>`).join('');
+  const skills = Array.isArray(details.skills) ? details.skills : [];
+  const skillsHtml = skills.length
+    ? `<div class="rd-skills">${skills.map((s) => `<span class="rd-skill">${s.name || s.id} Lv${Math.max(1, Number(s.level) || 1)}</span>`).join('')}</div>`
+    : '<div class="record-details-empty">No skills picked.</div>';
+
+  return `<div class="rd-grid">${rows}</div><div class="rd-subtitle">Skills</div>${skillsHtml}`;
+}
+
+function openRecordDetailsModal(record, rankLabel) {
+  if (!recordDetailsModalEl || !recordDetailsTitleEl || !recordDetailsBodyEl) return;
+  const name = record?.name || 'Unknown';
+  const kills = Number(record?.kills) || 0;
+  const score = Number(record?.score) || 0;
+  const durationSec = Number(record?.durationSec) || 0;
+  const roomCode = (record?.roomCode || '-').toString();
+
+  recordDetailsTitleEl.textContent = `${rankLabel} ${name} | ${kills} K | ${score} pts`;
+  const summary = `<div class="rd-summary">Room ${roomCode} | ${durationSec}s</div>`;
+  recordDetailsBodyEl.innerHTML = summary + renderRunDetailsHtml(record?.runDetails || null);
+  recordDetailsModalEl.classList.remove('hidden');
+}
+
 function renderRecordsList(items, page = 1, totalPages = 1, total = 0) {
   if (!recordsListEl) return;
   recordsUi.page = page;
@@ -338,12 +392,15 @@ function renderRecordsList(items, page = 1, totalPages = 1, total = 0) {
   recordsListEl.innerHTML = '';
   for (let i = 0; i < items.length; i += 1) {
     const r = items[i];
-    const row = document.createElement('div');
+    const rankNumber = rankOffset + i + 1;
+    const rankLabel = `#${rankNumber}`;
+    const row = document.createElement('button');
+    row.type = 'button';
     row.className = 'record-row';
 
     const rank = document.createElement('div');
     rank.className = 'record-rank';
-    rank.textContent = `#${rankOffset + i + 1}`;
+    rank.textContent = rankLabel;
 
     const name = document.createElement('div');
     name.className = 'record-name';
@@ -351,22 +408,14 @@ function renderRecordsList(items, page = 1, totalPages = 1, total = 0) {
 
     const kills = Number(r.kills) || 0;
     const score = Number(r.score) || 0;
-    const durationSec = Number(r.durationSec) || 0;
-    const roomCode = (r.roomCode || '-').toString();
 
     const meta = document.createElement('div');
     meta.className = 'record-meta';
     meta.textContent = `${kills}K / ${score}pts`;
 
-    const details = [
-      `Name: ${r.name || 'Unknown'}`,
-      `Kills: ${kills}`,
-      `Score (points): ${score}`,
-      `Room: ${roomCode}`,
-      `Match time: ${durationSec}s`,
-    ].join('\n');
-    row.title = details;
-    meta.title = details;
+    row.addEventListener('click', () => {
+      openRecordDetailsModal(r, rankLabel);
+    });
 
     row.appendChild(rank);
     row.appendChild(name);
@@ -375,6 +424,13 @@ function renderRecordsList(items, page = 1, totalPages = 1, total = 0) {
   }
 }
 
+recordDetailsCloseBtn?.addEventListener('click', () => {
+  closeRecordDetailsModal();
+});
+
+recordDetailsModalEl?.addEventListener('click', (e) => {
+  if (e.target === recordDetailsModalEl) closeRecordDetailsModal();
+});
 async function requestRecordsList(page = recordsUi.page) {
   if (!recordsListEl) return;
   try {

@@ -163,17 +163,30 @@ let stmtInsertRecord = null;
 let stmtPruneRecords = null;
 let stmtTopRecords = null;
 
+function parseRecordRunDetails(raw) {
+  if (!raw) return null;
+  if (typeof raw === 'object') return raw;
+  if (typeof raw !== 'string') return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 function normalizeRecordEntry(entry) {
   return {
+    id: Math.max(0, Number(entry?.id) || 0),
     name: (entry?.name || 'Unknown').toString().slice(0, 18),
     kills: Math.max(0, Number(entry?.kills) || 0),
     score: Math.max(0, Number(entry?.score) || 0),
     roomCode: (entry?.roomCode || '-').toString().slice(0, 12),
     durationSec: Math.max(1, Number(entry?.durationSec) || 1),
     at: Math.max(0, Number(entry?.at) || Date.now()),
+    runDetails: parseRecordRunDetails(entry?.runDetails),
   };
 }
-
 function clampNum(value, min, max, fallback) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
@@ -215,14 +228,16 @@ function loadRecordsFromDb() {
   const rows = stmtTopRecords.all(LEADERBOARD_LIMIT);
   records.length = 0;
   for (const row of rows) {
-    records.push({
+    records.push(normalizeRecordEntry({
+      id: row.id,
       name: row.name,
       kills: row.kills,
       score: row.score,
       roomCode: row.roomCode,
       durationSec: row.durationSec,
       at: row.at,
-    });
+      runDetails: row.runDetails,
+    }));
   }
 }
 
@@ -241,14 +256,20 @@ function initRecordsStore() {
       '  score INTEGER NOT NULL,',
       '  room_code TEXT NOT NULL,',
       '  duration_sec INTEGER NOT NULL,',
-      '  at INTEGER NOT NULL',
+      '  at INTEGER NOT NULL,',
+      '  run_details TEXT NULL',
       ');',
       'CREATE INDEX IF NOT EXISTS idx_records_rank ON records (kills DESC, score DESC, at DESC);',
     ].join('\n'));
 
+    const hasRunDetails = recordsDb.prepare('PRAGMA table_info(records)').all().some((c) => c.name === 'run_details');
+    if (!hasRunDetails) {
+      recordsDb.exec('ALTER TABLE records ADD COLUMN run_details TEXT NULL');
+    }
+
     stmtInsertRecord = recordsDb.prepare([
-      'INSERT INTO records (name, kills, score, room_code, duration_sec, at)',
-      'VALUES (@name, @kills, @score, @roomCode, @durationSec, @at)',
+      'INSERT INTO records (name, kills, score, room_code, duration_sec, at, run_details)',
+      'VALUES (@name, @kills, @score, @roomCode, @durationSec, @at, @runDetailsJson)',
     ].join('\n'));
 
     stmtPruneRecords = recordsDb.prepare([
@@ -262,12 +283,14 @@ function initRecordsStore() {
 
     stmtTopRecords = recordsDb.prepare([
       'SELECT',
+      '  id,',
       '  name,',
       '  kills,',
       '  score,',
       '  room_code AS roomCode,',
       '  duration_sec AS durationSec,',
-      '  at',
+      '  at,',
+      '  run_details AS runDetails',
       'FROM records',
       'ORDER BY kills DESC, score DESC, at DESC',
       'LIMIT ?',
@@ -283,6 +306,7 @@ function initRecordsStore() {
     console.error('Records DB init failed, using in-memory records only:', err.message);
   }
 }
+
 function listRecordsForLobby(page = 1, pageSize = LEADERBOARD_PAGE_SIZE) {
   const total = records.length;
   const size = Math.max(1, Math.min(50, Math.floor(pageSize) || LEADERBOARD_PAGE_SIZE));
@@ -308,7 +332,10 @@ function pushRecord(entry) {
 
   if (!recordsDb || !stmtInsertRecord || !stmtPruneRecords) return;
   try {
-    stmtInsertRecord.run(normalized);
+    stmtInsertRecord.run({
+      ...normalized,
+      runDetailsJson: normalized.runDetails ? JSON.stringify(normalized.runDetails) : null,
+    });
     stmtPruneRecords.run(LEADERBOARD_LIMIT);
   } catch (err) {
     console.error('Records DB write failed:', err.message);
@@ -316,7 +343,6 @@ function pushRecord(entry) {
 }
 
 initRecordsStore();
-
 function cloneJson(obj) {
   return JSON.parse(JSON.stringify(obj));
 }
@@ -1188,6 +1214,50 @@ function playerSelectSkill(player, skillId) {
   return true;
 }
 
+function buildRunDetails(room, target, now) {
+  const shotIntervalMs = Math.max(1, Math.round(Number(target.fireIntervalMs) || Number(WEAPONS[target.weaponKey]?.cooldownMs) || 1));
+  const skills = [];
+  if (target && target.skills && typeof target.skills === 'object') {
+    for (const skillId of Object.keys(target.skills)) {
+      const st = target.skills[skillId];
+      const level = Math.max(0, Number(st?.level) || 0);
+      if (level <= 0) continue;
+      const def = pickSkillData(skillId);
+      skills.push({
+        id: skillId,
+        name: def?.name || skillId,
+        kind: def?.kind || 'passive',
+        rarity: def?.rarity || 'common',
+        level,
+      });
+    }
+  }
+
+  return {
+    playerClass: (target.playerClass || 'cyber').toString(),
+    level: Math.max(1, Number(target.level) || 1),
+    xp: Math.max(0, Number(target.xp) || 0),
+    xpToNext: Math.max(1, Number(target.xpToNext) || 1),
+    hp: Math.max(0, Math.round(Number(target.hp) || 0)),
+    maxHp: Math.max(1, Math.round(Number(target.maxHp) || PLAYER_HP_MAX)),
+    weaponKey: target.weaponKey,
+    weaponLabel: WEAPONS[target.weaponKey]?.label || target.weaponKey || 'Unknown',
+    shotDamage: Math.max(1, Math.round(Number(target.shotDamage) || 1)),
+    shotIntervalMs,
+    moveSpeed: Math.max(0, Math.round(Number(target.moveSpeed) || PLAYER_SPEED)),
+    pickupRadius: Math.max(0, Math.round(Number(target.pickupRadius) || PLAYER_PICKUP_RADIUS_BASE)),
+    hpRegenPerSec: Math.max(0, Number(target.hpRegenPerSec) || 0),
+    dodgeChargesMax: Math.max(1, Number(target.dodgeChargesMax) || PLAYER_DODGE_MAX_CHARGES),
+    damageMul: Math.max(0.1, Number(target.damageMul) || 1),
+    fireRateMul: Math.max(0.1, Number(target.fireRateMul) || 1),
+    moveSpeedMul: Math.max(0.1, Number(target.moveSpeedMul) || 1),
+    totalEnemyKills: Math.max(0, Number(room.totalEnemyKills) || 0),
+    roomAlivePlayers: Math.max(0, Number(room.players?.size) || 0),
+    survivedSec: Math.max(1, Math.floor((now - (target.joinedAt || now)) / 1000)),
+    skills,
+  };
+}
+
 function downPlayer(room, target, now) {
   target.hp = 0;
   target.alive = false;
@@ -1207,10 +1277,10 @@ function downPlayer(room, target, now) {
     roomCode: room.code,
     durationSec: Math.max(1, Math.floor((now - (target.joinedAt || now)) / 1000)),
     at: now,
+    runDetails: buildRunDetails(room, target, now),
   });
   broadcastRoom(room, { type: 'system', message: `${target.name} was downed.` });
 }
-
 function joinRoom(ws, join) {
   const room = getOrCreateRoom(join?.roomCode, join?.sync);
 
@@ -1669,23 +1739,3 @@ setInterval(() => {
 server.listen(PORT, () => {
   console.log(`Server started: http://localhost:${PORT}`);
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

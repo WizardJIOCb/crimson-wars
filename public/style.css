@@ -1135,3 +1135,141 @@ body {
     display: none !important;
   }
 }
+
+/* Mobile HUD and records details overlay fixes */
+#stats-toggle {
+  z-index: 35;
+}
+
+#stats-panel {
+  z-index: 36;
+}
+
+.record-row {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.record-row:hover {
+  border-color: rgba(96, 165, 250, 0.55);
+  background: rgba(30, 58, 110, 0.35);
+}
+
+.record-details-modal {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 14px;
+  z-index: 8;
+  background: rgba(2, 6, 14, 0.64);
+  backdrop-filter: blur(5px);
+}
+
+.record-details-modal.hidden {
+  display: none;
+}
+
+.record-details-card {
+  width: min(560px, calc(100vw - 24px));
+  max-height: min(78vh, 760px);
+  overflow: auto;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 12px;
+  background: rgba(8, 14, 24, 0.96);
+  padding: 10px;
+}
+
+.record-details-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+#record-details-title {
+  color: #e2e8f0;
+  font-size: 14px;
+}
+
+.record-details-body {
+  display: grid;
+  gap: 8px;
+  color: #d1d5db;
+  font-size: 13px;
+}
+
+.rd-summary {
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.rd-grid {
+  display: grid;
+  gap: 5px;
+}
+
+.rd-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.rd-row b {
+  color: #f8fafc;
+  text-align: right;
+}
+
+.rd-subtitle {
+  margin-top: 3px;
+  font-weight: 700;
+  color: #cbd5e1;
+}
+
+.rd-skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rd-skill {
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: rgba(30, 41, 59, 0.55);
+  color: #e2e8f0;
+  font-size: 12px;
+}
+
+.record-details-empty {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+@media (max-width: 720px) {
+  #toggle-info {
+    position: fixed;
+    top: calc(env(safe-area-inset-top) + 8px);
+    left: 8px;
+    z-index: 42;
+  }
+
+  #scoreboard {
+    margin-top: 44px;
+  }
+
+  #stats-panel {
+    bottom: calc(env(safe-area-inset-bottom) + 190px);
+  }
+
+  .record-details-card {
+    width: calc(100vw - 16px);
+    max-height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 18px);
+  }
+}
