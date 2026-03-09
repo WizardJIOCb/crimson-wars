@@ -1424,3 +1424,22 @@ body {
   outline: none;
   border-color: rgba(59,130,246,0.85);
 }
+
+#dev-console-toggle {
+  position: fixed;
+  right: 12px;
+  bottom: 62px;
+  z-index: 61;
+  min-width: 44px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(148,163,184,0.45);
+  background: rgba(6, 10, 16, 0.88);
+  color: #bfdbfe;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+#dev-console-toggle.hidden {
+  display: none;
+}

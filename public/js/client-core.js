@@ -70,6 +70,7 @@ const levelupOptionsEl = document.getElementById('levelup-options');
 const statsToggleBtn = document.getElementById('stats-toggle');
 const statsPanelEl = document.getElementById('stats-panel');
 const statsContentEl = document.getElementById('stats-content');
+const devConsoleToggleBtn = document.getElementById('dev-console-toggle');
 const devConsoleEl = document.getElementById('dev-console');
 const devConsoleLogEl = document.getElementById('dev-console-log');
 const devConsoleFormEl = document.getElementById('dev-console-form');
@@ -186,6 +187,9 @@ let waitingForFirstStateSince = 0;
 let lastScoreboardHtml = '';
 let lastLevelupHtml = '';
 let devConsoleOpen = false;
+const DEV_CMD_HISTORY_LIMIT = 60;
+const devConsoleHistory = [];
+let devConsoleHistoryIndex = -1;
 
 const ROOM_SYNC_PRESETS = {
   normal: {
@@ -860,6 +864,29 @@ function appendDevConsoleLine(text, kind = '') {
   devConsoleLogEl.scrollTop = devConsoleLogEl.scrollHeight;
 }
 
+
+function pushDevCommandHistory(cmd) {
+  const normalized = String(cmd || '').trim();
+  if (!normalized) return;
+  if (devConsoleHistory[devConsoleHistory.length - 1] !== normalized) {
+    devConsoleHistory.push(normalized);
+    if (devConsoleHistory.length > DEV_CMD_HISTORY_LIMIT) devConsoleHistory.splice(0, devConsoleHistory.length - DEV_CMD_HISTORY_LIMIT);
+  }
+  devConsoleHistoryIndex = devConsoleHistory.length;
+}
+
+function browseDevCommandHistory(step) {
+  if (!devConsoleInputEl || devConsoleHistory.length === 0) return;
+  const next = Math.max(0, Math.min(devConsoleHistory.length, devConsoleHistoryIndex + step));
+  devConsoleHistoryIndex = next;
+  if (devConsoleHistoryIndex >= devConsoleHistory.length) {
+    devConsoleInputEl.value = '';
+  } else {
+    devConsoleInputEl.value = devConsoleHistory[devConsoleHistoryIndex] || '';
+    const len = devConsoleInputEl.value.length;
+    devConsoleInputEl.setSelectionRange(len, len);
+  }
+}
 function setDevConsoleOpen(open) {
   if (!devConsoleEl) return;
   const next = Boolean(open);
@@ -889,9 +916,21 @@ function toggleDevConsole(force) {
 function submitDevConsoleCommand(rawCommand) {
   const cmd = String(rawCommand || '').trim();
   if (!cmd) return;
+  pushDevCommandHistory(cmd);
   appendDevConsoleLine(`> ${cmd}`);
   if (cmd.toLowerCase() === 'clear') {
     if (devConsoleLogEl) devConsoleLogEl.innerHTML = '';
+    return;
+  }
+  if (cmd.toLowerCase() === 'history') {
+    if (devConsoleHistory.length === 0) {
+      appendDevConsoleLine('History is empty.');
+      return;
+    }
+    const start = Math.max(0, devConsoleHistory.length - 20);
+    for (let i = start; i < devConsoleHistory.length; i += 1) {
+      appendDevConsoleLine((i - start + 1) + '. ' + (devConsoleHistory[i] || ''));
+    }
     return;
   }
   if (!sendJson({ type: 'devCheat', command: cmd })) {
@@ -934,16 +973,31 @@ devConsoleFormEl?.addEventListener('submit', (e) => {
 });
 
 devConsoleInputEl?.addEventListener('keydown', (e) => {
+  if (e.code === 'ArrowUp') {
+    e.preventDefault();
+    browseDevCommandHistory(-1);
+    return;
+  }
+  if (e.code === 'ArrowDown') {
+    e.preventDefault();
+    browseDevCommandHistory(1);
+    return;
+  }
   if (e.code === 'Escape' || e.code === 'Backquote') {
     e.preventDefault();
     toggleDevConsole(false);
   }
 });
 
+devConsoleToggleBtn?.addEventListener('click', () => {
+  toggleDevConsole();
+});
+
 appendDevConsoleLine('Console ready. Type help.');
 function updateMobileControlsVisibility() {
   const overlayOpen = getComputedStyle(joinOverlay).display !== 'none';
   updateHudVisibility(overlayOpen);
+  if (devConsoleToggleBtn) devConsoleToggleBtn.classList.toggle('hidden', !mobile.enabled || overlayOpen);
 
   if (!mobile.enabled) {
     setMobileControlsVisible(false);
