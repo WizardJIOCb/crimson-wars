@@ -18,6 +18,7 @@ function parseRoomRow(row) {
     updatedAt: Math.max(0, Number(row.updated_at) || 0),
     instanceId: (row.instance_id || '').toString(),
     isShuttingDown: !!row.is_shutting_down,
+    publicBaseUrl: (row.public_base_url || '').toString(),
   };
 }
 
@@ -32,6 +33,7 @@ function parseInstanceRow(row) {
     inGamePlayers: Math.max(0, Number(row.in_game_players) || 0),
     inMenuSockets: Math.max(0, Number(row.in_menu_sockets) || 0),
     roomCount: Math.max(0, Number(row.room_count) || 0),
+    publicBaseUrl: (row.public_base_url || '').toString(),
   };
 }
 
@@ -50,7 +52,8 @@ function createRuntimeRegistryStore({ dataDir, dbPath, instanceId }) {
     '  online_sockets INTEGER NOT NULL DEFAULT 0,',
     '  in_game_players INTEGER NOT NULL DEFAULT 0,',
     '  in_menu_sockets INTEGER NOT NULL DEFAULT 0,',
-    '  room_count INTEGER NOT NULL DEFAULT 0',
+    '  room_count INTEGER NOT NULL DEFAULT 0,',
+    '  public_base_url TEXT NOT NULL DEFAULT \'\'',
     ');',
     'CREATE TABLE IF NOT EXISTS room_registry (',
     '  room_code TEXT PRIMARY KEY,',
@@ -59,15 +62,23 @@ function createRuntimeRegistryStore({ dataDir, dbPath, instanceId }) {
     '  max_players INTEGER NOT NULL DEFAULT 0,',
     '  started_at INTEGER NOT NULL,',
     '  updated_at INTEGER NOT NULL,',
-    '  is_shutting_down INTEGER NOT NULL DEFAULT 0',
+    '  is_shutting_down INTEGER NOT NULL DEFAULT 0,',
+    '  public_base_url TEXT NOT NULL DEFAULT \'\'',
     ');',
     'CREATE INDEX IF NOT EXISTS idx_room_registry_instance ON room_registry(instance_id);',
     'CREATE INDEX IF NOT EXISTS idx_room_registry_updated ON room_registry(updated_at);',
   ].join('\n'));
 
+  try {
+    db.exec('ALTER TABLE instance_registry ADD COLUMN public_base_url TEXT NOT NULL DEFAULT \'\'');
+  } catch {}
+  try {
+    db.exec('ALTER TABLE room_registry ADD COLUMN public_base_url TEXT NOT NULL DEFAULT \'\'');
+  } catch {}
+
   const stmtUpsertInstance = db.prepare([
-    'INSERT INTO instance_registry (instance_id, started_at, heartbeat_at, is_shutting_down, online_sockets, in_game_players, in_menu_sockets, room_count)',
-    'VALUES (@instanceId, @startedAt, @heartbeatAt, @isShuttingDown, @onlineSockets, @inGamePlayers, @inMenuSockets, @roomCount)',
+    'INSERT INTO instance_registry (instance_id, started_at, heartbeat_at, is_shutting_down, online_sockets, in_game_players, in_menu_sockets, room_count, public_base_url)',
+    'VALUES (@instanceId, @startedAt, @heartbeatAt, @isShuttingDown, @onlineSockets, @inGamePlayers, @inMenuSockets, @roomCount, @publicBaseUrl)',
     'ON CONFLICT(instance_id) DO UPDATE SET',
     '  started_at=excluded.started_at,',
     '  heartbeat_at=excluded.heartbeat_at,',
@@ -75,19 +86,21 @@ function createRuntimeRegistryStore({ dataDir, dbPath, instanceId }) {
     '  online_sockets=excluded.online_sockets,',
     '  in_game_players=excluded.in_game_players,',
     '  in_menu_sockets=excluded.in_menu_sockets,',
-    '  room_count=excluded.room_count',
+    '  room_count=excluded.room_count,',
+    '  public_base_url=excluded.public_base_url',
   ].join('\n'));
   const stmtDeleteRoomsByInstance = db.prepare('DELETE FROM room_registry WHERE instance_id = ?');
   const stmtInsertRoom = db.prepare([
-    'INSERT INTO room_registry (room_code, instance_id, player_count, max_players, started_at, updated_at, is_shutting_down)',
-    'VALUES (@roomCode, @instanceId, @playerCount, @maxPlayers, @startedAt, @updatedAt, @isShuttingDown)',
+    'INSERT INTO room_registry (room_code, instance_id, player_count, max_players, started_at, updated_at, is_shutting_down, public_base_url)',
+    'VALUES (@roomCode, @instanceId, @playerCount, @maxPlayers, @startedAt, @updatedAt, @isShuttingDown, @publicBaseUrl)',
     'ON CONFLICT(room_code) DO UPDATE SET',
     '  instance_id=excluded.instance_id,',
     '  player_count=excluded.player_count,',
     '  max_players=excluded.max_players,',
     '  started_at=excluded.started_at,',
     '  updated_at=excluded.updated_at,',
-    '  is_shutting_down=excluded.is_shutting_down',
+    '  is_shutting_down=excluded.is_shutting_down,',
+    '  public_base_url=excluded.public_base_url',
   ].join('\n'));
   const stmtListRooms = db.prepare([
     'SELECT r.*',
@@ -102,6 +115,13 @@ function createRuntimeRegistryStore({ dataDir, dbPath, instanceId }) {
     'WHERE heartbeat_at >= ?',
     'ORDER BY instance_id ASC',
   ].join('\n'));
+  const stmtGetRoomByCode = db.prepare([
+    'SELECT r.*',
+    'FROM room_registry r',
+    'JOIN instance_registry i ON i.instance_id = r.instance_id',
+    'WHERE r.room_code = ? AND r.updated_at >= ? AND i.heartbeat_at >= ?',
+    'LIMIT 1',
+  ].join('\n'));
   const stmtDeleteStaleRooms = db.prepare('DELETE FROM room_registry WHERE updated_at < ?');
   const stmtDeleteStaleInstances = db.prepare('DELETE FROM instance_registry WHERE heartbeat_at < ?');
   const stmtDeleteRoomsForStaleInstances = db.prepare([
@@ -110,7 +130,7 @@ function createRuntimeRegistryStore({ dataDir, dbPath, instanceId }) {
   ].join('\n'));
   const stmtDeleteInstance = db.prepare('DELETE FROM instance_registry WHERE instance_id = ?');
 
-  const txPublishRooms = db.transaction((rooms, shuttingDown) => {
+  const txPublishRooms = db.transaction((rooms, shuttingDown, publicBaseUrl) => {
     stmtDeleteRoomsByInstance.run(instanceId);
     const updatedAt = nowMs();
     for (const room of rooms) {
@@ -122,6 +142,7 @@ function createRuntimeRegistryStore({ dataDir, dbPath, instanceId }) {
         startedAt: Math.max(0, Number(room.startedAt) || 0),
         updatedAt,
         isShuttingDown: shuttingDown ? 1 : 0,
+        publicBaseUrl: String(publicBaseUrl || '').trim(),
       });
     }
   });
@@ -144,12 +165,13 @@ function createRuntimeRegistryStore({ dataDir, dbPath, instanceId }) {
       inGamePlayers: Math.max(0, Number(payload.inGamePlayers) || 0),
       inMenuSockets: Math.max(0, Number(payload.inMenuSockets) || 0),
       roomCount: Math.max(0, Number(payload.roomCount) || 0),
+      publicBaseUrl: String(payload.publicBaseUrl || '').trim(),
     });
   }
 
-  function publishRooms(rooms, { isShuttingDown = false } = {}) {
+  function publishRooms(rooms, { isShuttingDown = false, publicBaseUrl = '' } = {}) {
     pruneStale();
-    txPublishRooms(Array.isArray(rooms) ? rooms : [], isShuttingDown);
+    txPublishRooms(Array.isArray(rooms) ? rooms : [], isShuttingDown, publicBaseUrl);
   }
 
   function listRooms() {
@@ -162,6 +184,25 @@ function createRuntimeRegistryStore({ dataDir, dbPath, instanceId }) {
   function listInstances() {
     pruneStale();
     return stmtListInstances.all(nowMs() - INSTANCE_STALE_MS).map(parseInstanceRow);
+  }
+
+  function getRoomByCode(roomCode) {
+    const code = (roomCode || '').toString().trim().toUpperCase();
+    if (!code) return null;
+    pruneStale();
+    return parseRoomRow(stmtGetRoomByCode.get(code, nowMs() - ROOM_STALE_MS, nowMs() - INSTANCE_STALE_MS));
+  }
+
+  function chooseTargetInstance() {
+    const instances = listInstances()
+      .filter((instance) => !instance.isShuttingDown && instance.publicBaseUrl);
+    if (instances.length === 0) return null;
+    instances.sort((a, b) =>
+      (a.roomCount - b.roomCount)
+      || (a.inGamePlayers - b.inGamePlayers)
+      || (a.onlineSockets - b.onlineSockets)
+      || a.instanceId.localeCompare(b.instanceId));
+    return instances[0];
   }
 
   function getPresence() {
@@ -184,6 +225,8 @@ function createRuntimeRegistryStore({ dataDir, dbPath, instanceId }) {
     publishRooms,
     listRooms,
     listInstances,
+    getRoomByCode,
+    chooseTargetInstance,
     getPresence,
     unregisterInstance,
     pruneStale,

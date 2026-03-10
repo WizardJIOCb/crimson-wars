@@ -210,6 +210,7 @@ let lastLevelupHtml = '';
 let devConsoleOpen = false;
 let nicknameCheckTimer = null;
 let restartReloadTimer = null;
+let pendingAutoJoin = false;
 const DEV_CMD_HISTORY_LIMIT = 60;
 const devConsoleHistory = [];
 let devConsoleHistoryIndex = -1;
@@ -326,6 +327,46 @@ async function apiJson(url, options = {}) {
     throw new Error(message);
   }
   return data || {};
+}
+
+function normalizeUrlForCompare(url) {
+  try {
+    const parsed = new URL(url, window.location.href);
+    parsed.hash = '';
+    return parsed.toString();
+  } catch {
+    return '';
+  }
+}
+
+function applyInitialRoomIntent() {
+  const params = new URLSearchParams(window.location.search);
+  const room = (params.get('room') || '').trim().toUpperCase();
+  const mode = (params.get('mode') || '').trim().toLowerCase();
+  if (roomCodeInput && room) roomCodeInput.value = room.slice(0, 10);
+  if (mode === 'join' || (room && !mode)) {
+    joinMode = 'join';
+  } else if (mode === 'create') {
+    joinMode = 'create';
+  }
+  pendingAutoJoin = Boolean(room && joinMode === 'join');
+}
+
+async function resolveRoomRoute(mode, roomCode = '') {
+  const params = new URLSearchParams({
+    mode: mode === 'create' ? 'create' : 'join',
+  });
+  const normalizedCode = String(roomCode || '').trim().toUpperCase();
+  if (normalizedCode) params.set('roomCode', normalizedCode);
+  return apiJson(`/api/room-route?${params.toString()}`, { method: 'GET' });
+}
+
+function redirectToResolvedTarget(route) {
+  const redirectUrl = normalizeUrlForCompare(route?.target?.redirectUrl || '');
+  const currentUrl = normalizeUrlForCompare(window.location.href);
+  if (!redirectUrl || !currentUrl || redirectUrl === currentUrl) return false;
+  window.location.assign(redirectUrl);
+  return true;
 }
 
 function setPlayerAuthBusy(busy) {
@@ -632,6 +673,7 @@ nameInput?.addEventListener('blur', () => {
 });
 
 setAuthTab('guest');
+applyInitialRoomIntent();
 renderPlayerAuthUi();
 void refreshPlayerAuthSession({ silent: true });
 

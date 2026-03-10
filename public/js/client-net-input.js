@@ -246,8 +246,16 @@ for (const el of [syncTickrateEl, syncStateRateEl, syncRenderDelayEl, syncMaxExt
   });
 }
 
-function sendJoinRequest(roomCode, joinSync = null) {
+async function sendJoinRequest(roomCode, joinSync = null) {
   if (ws.readyState !== WebSocket.OPEN) return;
+  const mode = joinSync ? 'create' : 'join';
+  try {
+    const route = await resolveRoomRoute(mode, roomCode);
+    if (redirectToResolvedTarget(route)) return;
+  } catch (err) {
+    statusEl.textContent = err.message || 'Failed to resolve room route.';
+    return;
+  }
   const name = (game.playerAuth?.player?.nickname || nameInput.value.trim() || 'Fighter').trim();
   localStorage.setItem(NICKNAME_STORAGE_KEY, name);
   if (authLoginNicknameEl && !authLoginNicknameEl.value) authLoginNicknameEl.value = name;
@@ -328,7 +336,7 @@ function renderRoomsList(rooms) {
     joinBtn.addEventListener('click', () => {
       roomCodeInput.value = room.code;
       joinMode = 'join';
-      sendJoinRequest(room.code, null);
+      void sendJoinRequest(room.code, null);
     });
 
     row.appendChild(code);
@@ -886,7 +894,7 @@ joinForm.addEventListener('submit', (e) => {
   if (ws.readyState !== WebSocket.OPEN) return;
   const roomCode = joinMode === 'create' ? '' : roomCodeInput.value.trim();
   const joinSync = joinMode === 'create' ? configFromSyncUi() : null;
-  sendJoinRequest(roomCode, joinSync);
+  void sendJoinRequest(roomCode, joinSync);
 });
 
 function handleSkillOptionInteract(e) {
@@ -1030,6 +1038,11 @@ ws.addEventListener('open', () => {
   requestRoomsList();
   requestRecordsList(1);
   sendNetPing();
+  if (pendingAutoJoin && roomCodeInput?.value) {
+    pendingAutoJoin = false;
+    joinMode = 'join';
+    void sendJoinRequest(roomCodeInput.value.trim(), null);
+  }
 });
 
 ws.addEventListener('close', () => {
@@ -1107,6 +1120,10 @@ ws.addEventListener('message', (ev) => {
     waitingForFirstState = false;
     waitingForFirstStateSince = 0;
     statusEl.textContent = msg.message;
+    if (msg.redirectUrl) {
+      window.location.assign(msg.redirectUrl);
+      return;
+    }
     if (Number(msg.retryAfterMs) > 0) {
       scheduleClientReload(Number(msg.retryAfterMs), msg.message || 'Server restarting. Reconnecting...');
     }

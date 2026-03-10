@@ -23,6 +23,7 @@ const PLAYER_SESSION_COOKIE = 'crimson_player_session';
 const INSTANCE_ID = (process.env.INSTANCE_ID || `${require('os').hostname()}-${process.pid}`).toString().trim();
 const SHUTDOWN_GRACE_MS = Math.max(1000, Number(process.env.SHUTDOWN_GRACE_MS) || 8000);
 const RESTART_RETRY_MS = Math.max(1000, Number(process.env.RESTART_RETRY_MS) || 2500);
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || (IS_PROD ? '' : `http://localhost:${PORT}`)).toString().trim().replace(/\/+$/, '');
 
 const {
   MAIN_LOOP_RATE,
@@ -205,8 +206,9 @@ function publishRuntimeRegistry() {
     inGamePlayers,
     inMenuSockets: Math.max(0, activeSockets.size - inGamePlayers),
     roomCount: localRooms.length,
+    publicBaseUrl: PUBLIC_BASE_URL,
   });
-  runtimeRegistryStore.publishRooms(localRooms, { isShuttingDown });
+  runtimeRegistryStore.publishRooms(localRooms, { isShuttingDown, publicBaseUrl: PUBLIC_BASE_URL });
 }
 
 function parseCookies(req) {
@@ -221,6 +223,19 @@ function parseCookies(req) {
     out[key] = decodeURIComponent(value);
   }
   return out;
+}
+
+function cleanRoomCodeForLookup(raw) {
+  return (raw || '').toString().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+}
+
+function buildRoomRedirectUrl(baseUrl, roomCode, mode = 'join') {
+  const base = (baseUrl || '').toString().trim().replace(/\/+$/, '');
+  if (!base) return '';
+  const url = new URL(base);
+  if (roomCode) url.searchParams.set('room', cleanRoomCodeForLookup(roomCode));
+  if (mode) url.searchParams.set('mode', mode);
+  return url.toString();
 }
 
 function readAdminSession(req) {
@@ -360,6 +375,7 @@ app.get('/api/runtime', (_req, res) => {
   res.json({
     ok: true,
     instanceId: INSTANCE_ID,
+    publicBaseUrl: PUBLIC_BASE_URL,
     isShuttingDown,
     shutdownStartedAt,
     rooms: rooms.size,
@@ -367,6 +383,67 @@ app.get('/api/runtime', (_req, res) => {
     instances: runtimeRegistryStore.listInstances(),
     lobbyRooms: runtimeRegistryStore.listRooms(),
     now: Date.now(),
+  });
+});
+
+app.get('/api/room-route', (req, res) => {
+  const mode = (req.query.mode || 'join').toString().trim().toLowerCase() === 'create' ? 'create' : 'join';
+  const roomCode = cleanRoomCodeForLookup(req.query.roomCode || req.query.room_code || '');
+
+  if (mode === 'join') {
+    if (!roomCode) {
+      res.status(400).json({ ok: false, message: 'Room code is required' });
+      return;
+    }
+    const room = runtimeRegistryStore.getRoomByCode(roomCode);
+    if (!room) {
+      res.json({
+        ok: true,
+        mode,
+        found: false,
+        roomCode,
+        target: {
+          instanceId: INSTANCE_ID,
+          publicBaseUrl: PUBLIC_BASE_URL,
+          redirectUrl: buildRoomRedirectUrl(PUBLIC_BASE_URL, roomCode, mode),
+          isCurrentInstance: true,
+        },
+      });
+      return;
+    }
+    res.json({
+      ok: true,
+      mode,
+      found: true,
+      room: {
+        code: room.code,
+        players: room.players,
+        maxPlayers: room.maxPlayers,
+        instanceId: room.instanceId,
+      },
+      target: {
+        instanceId: room.instanceId,
+        publicBaseUrl: room.publicBaseUrl || PUBLIC_BASE_URL,
+        redirectUrl: buildRoomRedirectUrl(room.publicBaseUrl || PUBLIC_BASE_URL, room.code, mode),
+        isCurrentInstance: room.instanceId === INSTANCE_ID,
+      },
+    });
+    return;
+  }
+
+  const target = runtimeRegistryStore.chooseTargetInstance() || {
+    instanceId: INSTANCE_ID,
+    publicBaseUrl: PUBLIC_BASE_URL,
+  };
+  res.json({
+    ok: true,
+    mode,
+    target: {
+      instanceId: target.instanceId,
+      publicBaseUrl: target.publicBaseUrl || PUBLIC_BASE_URL,
+      redirectUrl: buildRoomRedirectUrl(target.publicBaseUrl || PUBLIC_BASE_URL, '', mode),
+      isCurrentInstance: target.instanceId === INSTANCE_ID,
+    },
   });
 });
 
@@ -527,10 +604,15 @@ app.delete('/api/admin/users/:id', requireAdminManager, (req, res) => {
 });
 
 app.get('/api/rooms', (_req, res) => {
+  const rooms = listRoomsForLobby().map((room) => ({
+    ...room,
+    redirectUrl: buildRoomRedirectUrl(room.publicBaseUrl || PUBLIC_BASE_URL, room.code, 'join'),
+  }));
   res.json({
-    rooms: listRoomsForLobby(),
+    rooms,
     presence: getPresenceStats(),
     instanceId: INSTANCE_ID,
+    publicBaseUrl: PUBLIC_BASE_URL,
     isShuttingDown,
     now: Date.now(),
   });
@@ -1664,6 +1746,21 @@ function joinRoom(ws, join) {
       instanceId: INSTANCE_ID,
     });
     return null;
+  }
+  const requestedCode = cleanRoomCodeForLookup(join?.roomCode);
+  if (requestedCode) {
+    const routedRoom = runtimeRegistryStore.getRoomByCode(requestedCode);
+    if (routedRoom && routedRoom.instanceId && routedRoom.instanceId !== INSTANCE_ID) {
+      sendTo(ws, {
+        type: 'joinError',
+        message: `Room ${requestedCode} is hosted on another server. Redirecting...`,
+        code: 409,
+        roomCode: requestedCode,
+        redirectUrl: buildRoomRedirectUrl(routedRoom.publicBaseUrl, requestedCode, 'join'),
+        instanceId: routedRoom.instanceId,
+      });
+      return null;
+    }
   }
   const room = getOrCreateRoom(join?.roomCode, join?.sync);
 
