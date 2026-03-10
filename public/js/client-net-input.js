@@ -437,7 +437,8 @@ function renderRecordsList(items, page = 1, totalPages = 1, total = 0) {
 
     const name = document.createElement('div');
     name.className = 'record-name';
-    name.textContent = r.name || 'Unknown';
+    const attempts = Math.max(1, Number(r.attempts) || 1);
+    name.textContent = (r.name || 'Unknown') + ' [' + attempts + ']';
 
     const kills = Number(r.kills) || 0;
     const score = Number(r.score) || 0;

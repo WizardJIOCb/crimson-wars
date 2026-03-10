@@ -182,6 +182,7 @@ function normalizeRecordEntry(entry) {
   return {
     id: Math.max(0, Number(entry?.id) || 0),
     name: (entry?.name || 'Unknown').toString().slice(0, 18),
+    attempts: Math.max(1, Number(entry?.attempts) || 1),
     kills: Math.max(0, Number(entry?.kills) || 0),
     score: Math.max(0, Number(entry?.score) || 0),
     roomCode: (entry?.roomCode || '-').toString().slice(0, 12),
@@ -252,6 +253,7 @@ function loadRecordsFromDb() {
     const normalized = normalizeRecordEntry({
       id: row.id,
       name: row.name,
+      attempts: row.attempts,
       kills: row.kills,
       score: row.score,
       roomCode: row.roomCode,
@@ -278,6 +280,7 @@ function initRecordsStore() {
       'CREATE TABLE IF NOT EXISTS records (',
       '  id INTEGER PRIMARY KEY AUTOINCREMENT,',
       '  name TEXT NOT NULL,',
+      '  attempts INTEGER NOT NULL DEFAULT 1,',
       '  kills INTEGER NOT NULL,',
       '  score INTEGER NOT NULL,',
       '  room_code TEXT NOT NULL,',
@@ -292,10 +295,14 @@ function initRecordsStore() {
     if (!hasRunDetails) {
       recordsDb.exec('ALTER TABLE records ADD COLUMN run_details TEXT NULL');
     }
+    const hasAttempts = recordsDb.prepare('PRAGMA table_info(records)').all().some((c) => c.name === 'attempts');
+    if (!hasAttempts) {
+      recordsDb.exec('ALTER TABLE records ADD COLUMN attempts INTEGER NOT NULL DEFAULT 1');
+    }
 
     stmtInsertRecord = recordsDb.prepare([
-      'INSERT INTO records (name, kills, score, room_code, duration_sec, at, run_details)',
-      'VALUES (@name, @kills, @score, @roomCode, @durationSec, @at, @runDetailsJson)',
+      'INSERT INTO records (name, attempts, kills, score, room_code, duration_sec, at, run_details)',
+      'VALUES (@name, @attempts, @kills, @score, @roomCode, @durationSec, @at, @runDetailsJson)',
     ].join('\n'));
 
     stmtPruneRecords = recordsDb.prepare([
@@ -312,6 +319,7 @@ function initRecordsStore() {
       'SELECT',
       '  id,',
       '  name,',
+      '  attempts,',
       '  kills,',
       '  score,',
       '  room_code AS roomCode,',
@@ -358,20 +366,27 @@ function pushRecord(entry) {
   const existingIndex = records.findIndex((x) => recordNameKey(x.name) === key);
 
   if (existingIndex >= 0) {
-    if (!isBetterRecord(normalized, records[existingIndex])) return;
-    records[existingIndex] = normalized;
+    const existing = records[existingIndex];
+    const attempts = Math.max(1, Number(existing?.attempts) || 1) + 1;
+    if (isBetterRecord(normalized, existing)) {
+      records[existingIndex] = { ...normalized, attempts };
+    } else {
+      records[existingIndex] = { ...existing, attempts };
+    }
   } else {
     records.push(normalized);
   }
+
   records.sort((a, b) => (b.kills - a.kills) || (b.score - a.score) || (b.at - a.at));
   if (records.length > LEADERBOARD_LIMIT) records.length = LEADERBOARD_LIMIT;
+  const persistedRecord = records.find((x) => recordNameKey(x.name) === key) || normalized;
 
   if (!recordsDb || !stmtInsertRecord || !stmtPruneRecords || !stmtDeleteRecordByName) return;
   try {
     stmtDeleteRecordByName.run(normalized.name);
     stmtInsertRecord.run({
-      ...normalized,
-      runDetailsJson: normalized.runDetails ? JSON.stringify(normalized.runDetails) : null,
+      ...persistedRecord,
+      runDetailsJson: persistedRecord.runDetails ? JSON.stringify(persistedRecord.runDetails) : null,
     });
     stmtPruneRecords.run(LEADERBOARD_LIMIT);
   } catch (err) {
