@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const Database = require('better-sqlite3');
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
-const NICKNAME_MIN_LENGTH = 3;
+const NICKNAME_MIN_LENGTH = 2;
 const NICKNAME_MAX_LENGTH = 18;
 const PASSWORD_MIN_LENGTH = 6;
 const PROVIDERS = new Set(['google', 'vk', 'mailru']);

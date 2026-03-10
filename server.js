@@ -449,15 +449,18 @@ app.get('/api/room-route', (req, res) => {
 
 app.get('/api/player/me', (req, res) => {
   if (!req.playerUser) {
-    res.status(401).json({
-      ok: false,
-      message: 'Authentication required',
+    res.json({
+      ok: true,
+      authenticated: false,
+      player: null,
+      identities: [],
       providers: ['google', 'vk', 'mailru'],
     });
     return;
   }
   res.json({
     ok: true,
+    authenticated: true,
     player: req.playerUser,
     identities: req.playerSession?.identities || [],
     providers: ['google', 'vk', 'mailru'],
