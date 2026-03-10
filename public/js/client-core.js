@@ -3,6 +3,7 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
 const statusEl = document.getElementById('status');
+const instanceMetaEl = document.getElementById('instance-meta');
 const roomMetaEl = document.getElementById('room-meta');
 const weaponMetaEl = document.getElementById('weapon-meta');
 const movementMetaEl = document.getElementById('movement-meta');
@@ -91,8 +92,20 @@ const devConsoleInputEl = document.getElementById('dev-console-input');
 
 ctx.imageSmoothingEnabled = false;
 
-const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
-const ws = new WebSocket(`${wsProto}://${location.host}/ws`);
+const APP_ORIGIN = window.location.origin;
+let currentWorkerOrigin = APP_ORIGIN;
+let ws = {
+  readyState: WebSocket.CLOSED,
+  close() {},
+  addEventListener() {},
+  send() {},
+};
+let socketOpenPromise = null;
+const socketHandlers = {
+  open: [],
+  close: [],
+  message: [],
+};
 
 const QUALITY = {
   low: { groundTexture: false, groundTileSize: 96, maxBlood: 120, maxMuzzle: 28, bloodMult: 0.55, overlays: false },
@@ -157,6 +170,10 @@ const game = {
   roomDifficulty: { level: 1, hpMul: 1, speedMul: 1, damageMul: 1, attackRateMul: 1, spawnIntervalMs: 760 },
   skillCatalog: {},
   mySkillChoices: [],
+  runtimeInstance: {
+    instanceId: '',
+    publicBaseUrl: '',
+  },
   playerAuth: {
     mode: 'guest',
     player: null,
@@ -339,6 +356,95 @@ function normalizeUrlForCompare(url) {
   } catch {
     return '';
   }
+}
+
+function normalizeOrigin(url) {
+  try {
+    return new URL(url, window.location.href).origin;
+  } catch {
+    return APP_ORIGIN;
+  }
+}
+
+function buildWorkerWsUrl(origin) {
+  const endpoint = new URL(normalizeOrigin(origin));
+  endpoint.protocol = endpoint.protocol === 'https:' ? 'wss:' : 'ws:';
+  endpoint.pathname = '/ws';
+  endpoint.search = '';
+  endpoint.hash = '';
+  return endpoint.toString();
+}
+
+function registerSocketHandlers(handlers) {
+  if (typeof handlers?.open === 'function') socketHandlers.open.push(handlers.open);
+  if (typeof handlers?.close === 'function') socketHandlers.close.push(handlers.close);
+  if (typeof handlers?.message === 'function') socketHandlers.message.push(handlers.message);
+}
+
+function attachSocketBridge(socket) {
+  socket.addEventListener('open', (event) => {
+    if (socket !== ws) return;
+    socketOpenPromise = null;
+    for (const handler of socketHandlers.open) handler(event);
+  });
+  socket.addEventListener('close', (event) => {
+    if (socket !== ws) return;
+    socketOpenPromise = null;
+    for (const handler of socketHandlers.close) handler(event);
+  });
+  socket.addEventListener('message', (event) => {
+    if (socket !== ws) return;
+    for (const handler of socketHandlers.message) handler(event);
+  });
+}
+
+function connectGameSocket(origin = currentWorkerOrigin) {
+  const nextOrigin = normalizeOrigin(origin);
+  if (ws instanceof WebSocket && currentWorkerOrigin === nextOrigin && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+    return socketOpenPromise || Promise.resolve();
+  }
+
+  currentWorkerOrigin = nextOrigin;
+  renderInstanceMeta();
+
+  if (ws instanceof WebSocket) {
+    try {
+      ws.close(1000, 'switch worker');
+    } catch {
+      // ignore close race
+    }
+  }
+
+  const socket = new WebSocket(buildWorkerWsUrl(nextOrigin));
+  ws = socket;
+  socketOpenPromise = new Promise((resolve, reject) => {
+    let settled = false;
+    socket.addEventListener('open', () => {
+      if (socket !== ws || settled) return;
+      settled = true;
+      resolve();
+    });
+    socket.addEventListener('error', () => {
+      if (socket !== ws || settled) return;
+      settled = true;
+      reject(new Error('Socket connection failed.'));
+    });
+    socket.addEventListener('close', () => {
+      if (socket !== ws || settled) return;
+      settled = true;
+      reject(new Error('Socket closed before connection.'));
+    });
+  });
+  attachSocketBridge(socket);
+  return socketOpenPromise;
+}
+
+function renderInstanceMeta() {
+  if (!instanceMetaEl) return;
+  const uiHost = new URL(APP_ORIGIN).host;
+  const workerHost = new URL(currentWorkerOrigin || APP_ORIGIN).host;
+  const instanceId = game.runtimeInstance.instanceId || '--';
+  instanceMetaEl.textContent = `Instance: ${instanceId} | UI: ${uiHost} | Game: ${workerHost}`;
 }
 
 function applyInitialRoomIntent() {
@@ -697,6 +803,7 @@ nameInput?.addEventListener('blur', () => {
 setAuthTab('guest');
 applyInitialRoomIntent();
 renderPlayerAuthUi();
+renderInstanceMeta();
 void refreshPlayerAuthSession({ silent: true });
 
 function updateTopCenterHud(nowMs = Date.now()) {

@@ -247,18 +247,26 @@ for (const el of [syncTickrateEl, syncStateRateEl, syncRenderDelayEl, syncMaxExt
 }
 
 async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
-  if (ws.readyState !== WebSocket.OPEN) return;
   const mode = joinSync ? 'create' : 'join';
-  const skipRouting = options?.skipRouting === true || consumeRoutedIntent(mode, roomCode);
+  const skipRouting = options?.skipRouting === true;
   if (!skipRouting) {
     try {
       const route = await resolveRoomRoute(mode, roomCode);
-      if (redirectToResolvedTarget(route)) return;
+      const workerOrigin = normalizeOrigin(route?.target?.publicBaseUrl || APP_ORIGIN);
+      await connectGameSocket(workerOrigin);
     } catch (err) {
       statusEl.textContent = err.message || 'Failed to resolve room route.';
       return;
     }
+  } else {
+    try {
+      await connectGameSocket(currentWorkerOrigin || APP_ORIGIN);
+    } catch (err) {
+      statusEl.textContent = err.message || 'Failed to connect to game server.';
+      return;
+    }
   }
+  if (ws.readyState !== WebSocket.OPEN) return;
   const name = (game.playerAuth?.player?.nickname || nameInput.value.trim() || 'Fighter').trim();
   localStorage.setItem(NICKNAME_STORAGE_KEY, name);
   if (authLoginNicknameEl && !authLoginNicknameEl.value) authLoginNicknameEl.value = name;
@@ -1034,9 +1042,12 @@ setInterval(() => {
     requestRecordsList(recordsUi.page);
   }
 }, 5000);
-ws.addEventListener('open', () => {
+registerSocketHandlers({
+open: () => {
   game.connected = true;
   statusEl.textContent = 'Connected. Create room or join code.';
+  game.runtimeInstance.publicBaseUrl = currentWorkerOrigin || APP_ORIGIN;
+  renderInstanceMeta();
   void refreshPlayerAuthSession({ silent: true });
   requestRoomsList();
   requestRecordsList(1);
@@ -1050,16 +1061,15 @@ ws.addEventListener('open', () => {
     joinMode = 'create';
     void sendJoinRequest('', configFromSyncUi(), { skipRouting: true });
   }
-});
-
-ws.addEventListener('close', () => {
+},
+close: () => {
   game.connected = false;
   netStats.pendingPings.clear();
   if (!restartReloadTimer) {
     statusEl.textContent = 'Disconnected';
   }
-});
-ws.addEventListener('message', (ev) => {
+},
+message: (ev) => {
   const rawSize = typeof ev.data === 'string' ? ev.data.length : 0;
   if (rawSize > 0) markRxBytes(rawSize);
 
@@ -1083,6 +1093,9 @@ ws.addEventListener('message', (ev) => {
 
   if (msg.type === 'welcome') {
     game.myId = msg.id;
+    game.runtimeInstance.instanceId = String(msg.instanceId || '');
+    game.runtimeInstance.publicBaseUrl = currentWorkerOrigin || APP_ORIGIN;
+    renderInstanceMeta();
     resetNetStats();
     prevMyAlive = true;
     sessionStartedAt = Date.now();
@@ -1128,7 +1141,13 @@ ws.addEventListener('message', (ev) => {
     waitingForFirstStateSince = 0;
     statusEl.textContent = msg.message;
     if (msg.redirectUrl) {
-      window.location.assign(msg.redirectUrl);
+      try {
+        const redirectedOrigin = normalizeOrigin(msg.redirectUrl);
+        currentWorkerOrigin = redirectedOrigin;
+        void sendJoinRequest(msg.roomCode || roomCodeInput?.value || '', null, { skipRouting: true });
+      } catch {
+        statusEl.textContent = msg.message || 'Failed to switch game server.';
+      }
       return;
     }
     if (Number(msg.retryAfterMs) > 0) {
@@ -1202,7 +1221,10 @@ ws.addEventListener('message', (ev) => {
       if (movementMetaEl) movementMetaEl.textContent = '';
     }
   }
+},
 });
+
+void connectGameSocket(APP_ORIGIN);
 
 function sendInput() {
   if (!game.connected || !game.myId || ws.readyState !== WebSocket.OPEN || !game.state) return;
