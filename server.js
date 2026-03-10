@@ -24,6 +24,7 @@ const INSTANCE_ID = (process.env.INSTANCE_ID || `${require('os').hostname()}-${p
 const SHUTDOWN_GRACE_MS = Math.max(1000, Number(process.env.SHUTDOWN_GRACE_MS) || 8000);
 const RESTART_RETRY_MS = Math.max(1000, Number(process.env.RESTART_RETRY_MS) || 2500);
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || (IS_PROD ? '' : `http://localhost:${PORT}`)).toString().trim().replace(/\/+$/, '');
+const SESSION_COOKIE_DOMAIN = (process.env.SESSION_COOKIE_DOMAIN || (IS_PROD ? '.rodion.pro' : '')).toString().trim();
 
 const {
   MAIN_LOOP_RATE,
@@ -294,6 +295,7 @@ function setAdminSessionCookie(res, token) {
     'SameSite=Lax',
     `Max-Age=${Math.floor((1000 * 60 * 60 * 24 * 14) / 1000)}`,
   ];
+  if (SESSION_COOKIE_DOMAIN) parts.push(`Domain=${SESSION_COOKIE_DOMAIN}`);
   if (IS_PROD) parts.push('Secure');
   res.setHeader('Set-Cookie', parts.join('; '));
 }
@@ -306,6 +308,7 @@ function clearAdminSessionCookie(res) {
     'SameSite=Lax',
     'Max-Age=0',
   ];
+  if (SESSION_COOKIE_DOMAIN) parts.push(`Domain=${SESSION_COOKIE_DOMAIN}`);
   if (IS_PROD) parts.push('Secure');
   res.setHeader('Set-Cookie', parts.join('; '));
 }
@@ -318,6 +321,7 @@ function setPlayerSessionCookie(res, token) {
     'SameSite=Lax',
     `Max-Age=${Math.floor((1000 * 60 * 60 * 24 * 30) / 1000)}`,
   ];
+  if (SESSION_COOKIE_DOMAIN) parts.push(`Domain=${SESSION_COOKIE_DOMAIN}`);
   if (IS_PROD) parts.push('Secure');
   res.setHeader('Set-Cookie', parts.join('; '));
 }
@@ -330,6 +334,7 @@ function clearPlayerSessionCookie(res) {
     'SameSite=Lax',
     'Max-Age=0',
   ];
+  if (SESSION_COOKIE_DOMAIN) parts.push(`Domain=${SESSION_COOKIE_DOMAIN}`);
   if (IS_PROD) parts.push('Secure');
   res.setHeader('Set-Cookie', parts.join('; '));
 }
