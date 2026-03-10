@@ -784,6 +784,9 @@ function isVisibleWorld(x, y, pad = 0) {
 
 function updateScoreboard(players) {
   const sorted = [...players].sort((a, b) => b.score - a.score);
+  const titleText = scoreboardMinimized ? `Players: ${sorted.length}` : 'Players';
+  const toggleLabel = scoreboardMinimized ? 'Expand players list' : 'Minimize players list';
+  const toggleIcon = scoreboardMinimized ? '+' : '&minus;';
   const rows = sorted.map((p) => {
     const kills = Number(p.kills) || 0;
     const ammo = p.ammo === null ? 'inf' : p.ammo;
@@ -795,7 +798,9 @@ function updateScoreboard(players) {
     return `<div class="score-row${meClass}">${connIcon}<span class="score-player-text">${p.name} - Kills: ${kills} (${p.weaponLabel} ${ammo})</span></div>`;
   });
 
-  const nextHtml = `<div class="score-title">Players</div>${rows.join('')}`;
+  const nextHtml = scoreboardMinimized
+    ? `<div class="score-head"><div class="score-title">${titleText}</div><button type="button" class="panel-close panel-close-sm scoreboard-toggle" aria-label="${toggleLabel}" title="${toggleLabel}">${toggleIcon}</button></div>`
+    : `<div class="score-head"><div class="score-title">${titleText}</div><button type="button" class="panel-close panel-close-sm scoreboard-toggle" aria-label="${toggleLabel}" title="${toggleLabel}">${toggleIcon}</button></div>${rows.join('')}`;
   if (scoreboardEl.matches(':hover')) return;
   if (nextHtml === lastScoreboardHtml) return;
   lastScoreboardHtml = nextHtml;

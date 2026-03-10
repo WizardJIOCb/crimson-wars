@@ -86,6 +86,7 @@ const levelupOverlayEl = document.getElementById('levelup-overlay');
 const levelupOptionsEl = document.getElementById('levelup-options');
 const statsToggleBtn = document.getElementById('stats-toggle');
 const statsPanelEl = document.getElementById('stats-panel');
+const statsPanelCloseBtn = document.getElementById('stats-panel-close');
 const statsContentEl = document.getElementById('stats-content');
 const devConsoleToggleBtn = document.getElementById('dev-console-toggle');
 const devConsoleEl = document.getElementById('dev-console');
@@ -217,6 +218,8 @@ const storedInfoPanelHidden = localStorage.getItem('cw:infoPanelHidden');
 let infoPanelHidden = storedInfoPanelHidden === null ? true : storedInfoPanelHidden === '1';
 const storedStatsPanelOpen = localStorage.getItem('cw:statsPanelOpen');
 let statsPanelOpen = storedStatsPanelOpen === '1';
+const storedScoreboardMinimized = localStorage.getItem('cw:scoreboardMinimized');
+let scoreboardMinimized = storedScoreboardMinimized === null ? true : storedScoreboardMinimized === '1';
 let lastFrameTs = performance.now();
 let fpsFrameCount = 0;
 let fpsAccumSec = 0;
@@ -949,6 +952,12 @@ function setStatsPanelOpen(open) {
   if (statsToggleBtn) statsToggleBtn.setAttribute('aria-expanded', statsPanelOpen ? 'true' : 'false');
 }
 
+function setScoreboardMinimized(minimized) {
+  scoreboardMinimized = Boolean(minimized);
+  localStorage.setItem('cw:scoreboardMinimized', scoreboardMinimized ? '1' : '0');
+  if (scoreboardEl) scoreboardEl.classList.toggle('is-minimized', scoreboardMinimized);
+}
+
 function fmtStatNum(v, digits = 1) {
   const n = Number(v);
   if (!Number.isFinite(n)) return '--';
@@ -991,7 +1000,18 @@ function updateStatsPanel(me) {
 statsToggleBtn?.addEventListener('click', () => {
   setStatsPanelOpen(!statsPanelOpen);
 });
+statsPanelCloseBtn?.addEventListener('click', () => {
+  setStatsPanelOpen(false);
+});
+scoreboardEl?.addEventListener('click', (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  if (!target.closest('.scoreboard-toggle')) return;
+  setScoreboardMinimized(!scoreboardMinimized);
+  if (game.state?.players) updateScoreboard(game.state.players);
+});
 setStatsPanelOpen(statsPanelOpen);
+setScoreboardMinimized(scoreboardMinimized);
 updateStatsPanel(null);
 
 function updateJumpButtonUi(me) {

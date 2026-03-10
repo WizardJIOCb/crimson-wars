@@ -39,6 +39,7 @@ body {
   right: 12px;
   pointer-events: none;
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   z-index: 41;
@@ -254,13 +255,38 @@ body {
 
 #scoreboard {
   max-width: 360px;
+  min-width: 260px;
+  max-height: min(52vh, 420px);
+  overflow: auto;
   text-align: left;
+}
+
+#scoreboard.is-minimized {
+  min-width: 0;
+  width: auto;
+  max-width: 220px;
+  max-height: none;
+  overflow: visible;
+}
+
+#scoreboard .score-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 #scoreboard .score-title {
   font-weight: 700;
-  margin-bottom: 6px;
   letter-spacing: 0.4px;
+}
+
+#scoreboard:not(.is-minimized) .score-head {
+  margin-bottom: 6px;
+}
+
+.scoreboard-toggle {
+  flex: 0 0 auto;
 }
 
 #scoreboard .score-row {
@@ -823,12 +849,20 @@ body {
   color: #e5e7eb;
   font: inherit;
   font-size: 22px;
-  line-height: 1;
+  line-height: 0.80;
   cursor: pointer;
+  padding: 0 0 2px;
 }
 
 .panel-close:hover {
   background: rgba(255,255,255,0.12);
+}
+
+.panel-close-sm {
+  width: 30px;
+  height: 30px;
+  flex-basis: 30px;
+  font-size: 18px;
 }
 
 #toggle-info {
@@ -903,10 +937,15 @@ body {
   display: none;
 }
 
+#stats-panel .panel-head {
+  align-items: center;
+  margin-bottom: 12px;
+}
+
 .stats-title {
   font-size: 14px;
   font-weight: 800;
-  margin-bottom: 8px;
+  margin-bottom: 0;
   color: #dbeafe;
 }
 
