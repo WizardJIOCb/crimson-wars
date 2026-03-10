@@ -636,7 +636,7 @@ function render(ts) {
   for (const b of game.state.bullets) {
     const rb = getBulletRenderPos(b);
     if (!isVisibleWorld(rb.x, rb.y, 12)) continue;
-    if (game.bulletTracersEnabled && b.ownerId === game.myId) {
+    if (game.bulletTracersEnabled) {
       const speed = Math.hypot(Number(rb.vx) || 0, Number(rb.vy) || 0);
       if (speed > 8) {
         const tracerLen = Math.min(26, Math.max(10, speed * 0.028));
