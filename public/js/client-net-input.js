@@ -246,15 +246,18 @@ for (const el of [syncTickrateEl, syncStateRateEl, syncRenderDelayEl, syncMaxExt
   });
 }
 
-async function sendJoinRequest(roomCode, joinSync = null) {
+async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
   if (ws.readyState !== WebSocket.OPEN) return;
   const mode = joinSync ? 'create' : 'join';
-  try {
-    const route = await resolveRoomRoute(mode, roomCode);
-    if (redirectToResolvedTarget(route)) return;
-  } catch (err) {
-    statusEl.textContent = err.message || 'Failed to resolve room route.';
-    return;
+  const skipRouting = options?.skipRouting === true || consumeRoutedIntent(mode, roomCode);
+  if (!skipRouting) {
+    try {
+      const route = await resolveRoomRoute(mode, roomCode);
+      if (redirectToResolvedTarget(route)) return;
+    } catch (err) {
+      statusEl.textContent = err.message || 'Failed to resolve room route.';
+      return;
+    }
   }
   const name = (game.playerAuth?.player?.nickname || nameInput.value.trim() || 'Fighter').trim();
   localStorage.setItem(NICKNAME_STORAGE_KEY, name);
@@ -1041,7 +1044,11 @@ ws.addEventListener('open', () => {
   if (pendingAutoJoin && roomCodeInput?.value) {
     pendingAutoJoin = false;
     joinMode = 'join';
-    void sendJoinRequest(roomCodeInput.value.trim(), null);
+    void sendJoinRequest(roomCodeInput.value.trim(), null, { skipRouting: true });
+  } else if (pendingAutoCreate) {
+    pendingAutoCreate = false;
+    joinMode = 'create';
+    void sendJoinRequest('', configFromSyncUi(), { skipRouting: true });
   }
 });
 

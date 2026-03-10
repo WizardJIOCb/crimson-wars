@@ -211,6 +211,8 @@ let devConsoleOpen = false;
 let nicknameCheckTimer = null;
 let restartReloadTimer = null;
 let pendingAutoJoin = false;
+let pendingAutoCreate = false;
+let routedIntent = null;
 const DEV_CMD_HISTORY_LIMIT = 60;
 const devConsoleHistory = [];
 let devConsoleHistoryIndex = -1;
@@ -343,6 +345,7 @@ function applyInitialRoomIntent() {
   const params = new URLSearchParams(window.location.search);
   const room = (params.get('room') || '').trim().toUpperCase();
   const mode = (params.get('mode') || '').trim().toLowerCase();
+  const routed = params.get('routed') === '1';
   if (roomCodeInput && room) roomCodeInput.value = room.slice(0, 10);
   if (mode === 'join' || (room && !mode)) {
     joinMode = 'join';
@@ -350,6 +353,8 @@ function applyInitialRoomIntent() {
     joinMode = 'create';
   }
   pendingAutoJoin = Boolean(room && joinMode === 'join');
+  pendingAutoCreate = Boolean(!room && joinMode === 'create' && routed);
+  routedIntent = routed ? { mode: joinMode, room } : null;
 }
 
 async function resolveRoomRoute(mode, roomCode = '') {
@@ -362,10 +367,27 @@ async function resolveRoomRoute(mode, roomCode = '') {
 }
 
 function redirectToResolvedTarget(route) {
-  const redirectUrl = normalizeUrlForCompare(route?.target?.redirectUrl || '');
+  const rawRedirectUrl = route?.target?.redirectUrl || '';
+  const redirect = rawRedirectUrl ? new URL(rawRedirectUrl, window.location.href) : null;
+  if (redirect) redirect.searchParams.set('routed', '1');
+  const redirectUrl = normalizeUrlForCompare(redirect ? redirect.toString() : '');
   const currentUrl = normalizeUrlForCompare(window.location.href);
   if (!redirectUrl || !currentUrl || redirectUrl === currentUrl) return false;
   window.location.assign(redirectUrl);
+  return true;
+}
+
+function consumeRoutedIntent(mode, roomCode = '') {
+  if (!routedIntent) return false;
+  const normalizedMode = mode === 'create' ? 'create' : 'join';
+  const normalizedRoom = String(roomCode || '').trim().toUpperCase();
+  const matches = routedIntent.mode === normalizedMode
+    && (normalizedMode === 'create' || routedIntent.room === normalizedRoom);
+  if (!matches) return false;
+  routedIntent = null;
+  const url = new URL(window.location.href);
+  url.searchParams.delete('routed');
+  window.history.replaceState({}, document.title, url.toString());
   return true;
 }
 
