@@ -388,6 +388,13 @@ function setPlayerAccessCollapsed(collapsed) {
   playerAccessDetailsEl.open = !collapsed;
 }
 
+function reloadForPlayerSession(message) {
+  statusEl.textContent = message;
+  window.setTimeout(() => {
+    window.location.reload();
+  }, 120);
+}
+
 async function refreshPlayerAuthSession({ silent = false } = {}) {
   try {
     const data = await apiJson('/api/player/me', { method: 'GET' });
@@ -471,6 +478,7 @@ async function loginPlayerAccount() {
     statusEl.textContent = `Logged in as ${data.player?.nickname || nickname}.`;
     renderPlayerAuthUi();
     setPlayerAccessCollapsed(true);
+    reloadForPlayerSession('Logged in. Refreshing session...');
   } catch (err) {
     statusEl.textContent = err.message;
   } finally {
@@ -497,6 +505,7 @@ async function registerPlayerAccount() {
     statusEl.textContent = `Nickname ${data.player?.nickname || nickname} registered.`;
     renderPlayerAuthUi();
     setPlayerAccessCollapsed(true);
+    reloadForPlayerSession('Nickname registered. Refreshing session...');
   } catch (err) {
     statusEl.textContent = err.message;
   } finally {
@@ -515,6 +524,7 @@ async function logoutPlayerAccount() {
     renderPlayerAuthUi();
     setPlayerAccessCollapsed(false);
     void updateNicknameStatus(nameInput?.value || '');
+    reloadForPlayerSession('Logged out. Refreshing session...');
   } catch (err) {
     statusEl.textContent = err.message;
   } finally {
