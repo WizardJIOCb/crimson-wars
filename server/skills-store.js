@@ -28,6 +28,10 @@ function createSkillsStore({ dataDir, skillsConfigPath, defaultSkillDefs }) {
     return 'default';
   }
 
+  function isDefaultCollectionId(collectionId) {
+    return normalizeCollectionId(collectionId, defaultCollectionId()) === defaultCollectionId();
+  }
+
   function normalizeCollectionId(raw, fallback = 'variant') {
     const value = (raw || fallback || 'variant').toString().trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
     return value || fallback || 'variant';
@@ -210,6 +214,9 @@ function createSkillsStore({ dataDir, skillsConfigPath, defaultSkillDefs }) {
     if (!existing || !collection) {
       return { ok: false, code: 404, message: 'Skill not found' };
     }
+    if (isDefaultCollectionId(collection.id)) {
+      return { ok: false, code: 400, message: 'Default collection is read-only' };
+    }
     const merged = normalizeSkillDef({ ...existing, ...patch, id }, id);
     if (!merged) {
       return { ok: false, code: 400, message: 'Invalid payload' };
@@ -250,6 +257,9 @@ function createSkillsStore({ dataDir, skillsConfigPath, defaultSkillDefs }) {
     const current = ensureState();
     const collection = getCollectionById(collectionId);
     if (!collection) return { ok: false, code: 404, message: 'Collection not found' };
+    if (isDefaultCollectionId(collection.id)) {
+      return { ok: false, code: 400, message: 'Default collection cannot be renamed' };
+    }
     collection.name = (name || '').toString().trim().slice(0, 50) || collection.name;
     collection.updatedAt = Date.now();
     if (!saveState()) return { ok: false, code: 500, message: 'Save failed' };
@@ -267,6 +277,9 @@ function createSkillsStore({ dataDir, skillsConfigPath, defaultSkillDefs }) {
 
   function deleteCollection(collectionId) {
     const current = ensureState();
+    if (isDefaultCollectionId(collectionId)) {
+      return { ok: false, code: 400, message: 'Default collection cannot be deleted' };
+    }
     if (current.collections.length <= 1) {
       return { ok: false, code: 400, message: 'At least one collection is required' };
     }
