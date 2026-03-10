@@ -10,6 +10,7 @@ const config = require('./server/config');
 const { createAdminAuthStore } = require('./server/admin-auth-store');
 const { createPlayerAuthStore, normalizeNickname } = require('./server/player-auth-store');
 const { createRecordsStore } = require('./server/records-store');
+const { createRuntimeRegistryStore } = require('./server/runtime-registry-store');
 const { createSkillsStore } = require('./server/skills-store');
 const PORT = process.env.PORT || 8080;
 const IS_PROD = process.env.NODE_ENV === 'production';
@@ -19,6 +20,9 @@ const ADMIN_BOOTSTRAP_LOGIN = process.env.ADMIN_BOOTSTRAP_LOGIN || 'WizardJIOCb'
 const ADMIN_BOOTSTRAP_PASSWORD = process.env.ADMIN_BOOTSTRAP_PASSWORD || (IS_PROD ? '' : 'WizardJIOCb-local');
 const ADMIN_SESSION_COOKIE = 'crimson_admin_session';
 const PLAYER_SESSION_COOKIE = 'crimson_player_session';
+const INSTANCE_ID = (process.env.INSTANCE_ID || `${require('os').hostname()}-${process.pid}`).toString().trim();
+const SHUTDOWN_GRACE_MS = Math.max(1000, Number(process.env.SHUTDOWN_GRACE_MS) || 8000);
+const RESTART_RETRY_MS = Math.max(1000, Number(process.env.RESTART_RETRY_MS) || 2500);
 
 const {
   MAIN_LOOP_RATE,
@@ -84,6 +88,7 @@ const {
   SKILLS_CONFIG_PATH,
   ADMIN_AUTH_DB_PATH,
   PLAYER_AUTH_DB_PATH,
+  RUNTIME_REGISTRY_DB_PATH,
   DEFAULT_ROOM_SYNC,
   WEAPONS,
   DROP_WEAPON_KEYS,
@@ -92,6 +97,10 @@ const {
 
 const app = express();
 app.use(express.json({ limit: '256kb' }));
+app.use((req, res, next) => {
+  res.setHeader('X-Crimson-Instance', INSTANCE_ID);
+  next();
+});
 app.use(express.static(path.join(__dirname, 'public')));
 
 const server = http.createServer(app);
@@ -99,6 +108,10 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 
 const rooms = new Map();
 const activeSockets = new Set();
+let isShuttingDown = false;
+let shutdownStartedAt = 0;
+let forceShutdownTimer = null;
+const processStartedAt = Date.now();
 const adminAuthStore = createAdminAuthStore({
   dataDir: DATA_DIR,
   dbPath: ADMIN_AUTH_DB_PATH,
@@ -109,6 +122,11 @@ const adminAuthStore = createAdminAuthStore({
 const playerAuthStore = createPlayerAuthStore({
   dataDir: DATA_DIR,
   dbPath: PLAYER_AUTH_DB_PATH,
+});
+const runtimeRegistryStore = createRuntimeRegistryStore({
+  dataDir: DATA_DIR,
+  dbPath: RUNTIME_REGISTRY_DB_PATH,
+  instanceId: INSTANCE_ID,
 });
 const recordsStore = createRecordsStore({
   dataDir: DATA_DIR,
@@ -160,27 +178,35 @@ function normalizeRoomSync(raw) {
 }
 
 function getPresenceStats() {
-  let inGame = 0;
-  for (const room of rooms.values()) {
-    inGame += room.players.size;
-  }
-
-  const online = activeSockets.size;
-  const inMenu = Math.max(0, online - inGame);
-  return { online, inGame, inMenu };
+  return runtimeRegistryStore.getPresence();
 }
 
 function listRoomsForLobby() {
-  return Array.from(rooms.values())
+  return runtimeRegistryStore.listRooms();
+}
+
+function publishRuntimeRegistry() {
+  const localRooms = Array.from(rooms.values())
     .filter((room) => room.players.size > 0)
-    .sort((a, b) => (b.players.size - a.players.size) || a.code.localeCompare(b.code))
-    .slice(0, 40)
     .map((room) => ({
       code: room.code,
       players: room.players.size,
       maxPlayers: MAX_PLAYERS,
       startedAt: room.startedAt,
     }));
+  let inGamePlayers = 0;
+  for (const room of rooms.values()) {
+    inGamePlayers += room.players.size;
+  }
+  runtimeRegistryStore.publishInstance({
+    startedAt: processStartedAt,
+    isShuttingDown,
+    onlineSockets: activeSockets.size,
+    inGamePlayers,
+    inMenuSockets: Math.max(0, activeSockets.size - inGamePlayers),
+    roomCount: localRooms.length,
+  });
+  runtimeRegistryStore.publishRooms(localRooms, { isShuttingDown });
 }
 
 function parseCookies(req) {
@@ -299,6 +325,50 @@ function generateAdminPassword() {
 
 app.use(attachPlayerAuth);
 app.use(attachAdminAuth);
+
+app.get('/healthz', (_req, res) => {
+  res.json({
+    ok: true,
+    instanceId: INSTANCE_ID,
+    isShuttingDown,
+    uptimeSec: Math.round(process.uptime()),
+    now: Date.now(),
+  });
+});
+
+app.get('/readyz', (_req, res) => {
+  if (isShuttingDown) {
+    res.status(503).json({
+      ok: false,
+      ready: false,
+      instanceId: INSTANCE_ID,
+      isShuttingDown: true,
+      shutdownStartedAt,
+      now: Date.now(),
+    });
+    return;
+  }
+  res.json({
+    ok: true,
+    ready: true,
+    instanceId: INSTANCE_ID,
+    now: Date.now(),
+  });
+});
+
+app.get('/api/runtime', (_req, res) => {
+  res.json({
+    ok: true,
+    instanceId: INSTANCE_ID,
+    isShuttingDown,
+    shutdownStartedAt,
+    rooms: rooms.size,
+    onlineSockets: activeSockets.size,
+    instances: runtimeRegistryStore.listInstances(),
+    lobbyRooms: runtimeRegistryStore.listRooms(),
+    now: Date.now(),
+  });
+});
 
 app.get('/api/player/me', (req, res) => {
   if (!req.playerUser) {
@@ -460,6 +530,8 @@ app.get('/api/rooms', (_req, res) => {
   res.json({
     rooms: listRoomsForLobby(),
     presence: getPresenceStats(),
+    instanceId: INSTANCE_ID,
+    isShuttingDown,
     now: Date.now(),
   });
 });
@@ -484,6 +556,7 @@ app.get('/api/skills', (_req, res) => {
   res.json({
     skills: skillsStore.getList(),
     activeCollection: active ? { id: active.id, name: active.name, updatedAt: active.updatedAt } : null,
+    instanceId: INSTANCE_ID,
     now: Date.now(),
   });
 });
@@ -678,6 +751,7 @@ function getOrCreateRoom(requestedCode, requestedSync) {
     const sync = normalizeRoomSync(requestedSync || DEFAULT_ROOM_SYNC);
     rooms.set(code, {
       code,
+      instanceId: INSTANCE_ID,
       sync,
       tickMs: 1000 / sync.tickRate,
       stateIntervalMs: 1000 / sync.stateSendHz,
@@ -702,6 +776,7 @@ function getOrCreateRoom(requestedCode, requestedSync) {
       startedAt: Date.now(),
       trees: generateTrees(),
     });
+    publishRuntimeRegistry();
   }
 
   return rooms.get(code);
@@ -727,6 +802,8 @@ function serializeRoom(room) {
   const nextPortal = room.bossPortals.length > 0 ? room.bossPortals[0] : null;
   return {
     now,
+    instanceId: room.instanceId || INSTANCE_ID,
+    isShuttingDown,
     roomCode: room.code,
     roomStartedAt: room.startedAt,
     totalEnemyKills: room.totalEnemyKills || 0,
@@ -1578,6 +1655,16 @@ function applyDevCheatCommand(room, player, rawCommand, now = Date.now()) {
   sendDevConsole(player, 'Unknown command. Type help', false);
 }
 function joinRoom(ws, join) {
+  if (isShuttingDown) {
+    sendTo(ws, {
+      type: 'joinError',
+      message: 'Server is restarting. Please reconnect in a moment.',
+      code: 503,
+      retryAfterMs: RESTART_RETRY_MS,
+      instanceId: INSTANCE_ID,
+    });
+    return null;
+  }
   const room = getOrCreateRoom(join?.roomCode, join?.sync);
 
   if (room.players.size >= MAX_PLAYERS) {
@@ -1649,11 +1736,13 @@ function joinRoom(ws, join) {
   room.players.set(id, player);
   room.scores.set(id, 0);
   room.kills.set(id, 0);
+  publishRuntimeRegistry();
 
   sendTo(ws, {
     type: 'welcome',
     id,
     roomCode: room.code,
+    instanceId: room.instanceId || INSTANCE_ID,
     tickRate: room.sync.tickRate,
     sync: room.sync,
     maxPlayers: MAX_PLAYERS,
@@ -1685,10 +1774,97 @@ function removePlayer(player) {
   if (room.players.size === 0) {
     rooms.delete(room.code);
   }
+  publishRuntimeRegistry();
+}
+
+function notifyClientsAboutRestart(reason = 'restart') {
+  const payload = {
+    type: 'serverRestart',
+    reason,
+    retryAfterMs: RESTART_RETRY_MS,
+    instanceId: INSTANCE_ID,
+    now: Date.now(),
+  };
+  for (const ws of activeSockets) {
+    sendTo(ws, payload);
+  }
+}
+
+function closeActiveSocketsGracefully() {
+  for (const ws of activeSockets) {
+    try {
+      ws.close(1012, 'server restarting');
+    } catch {
+      // ignore close race
+    }
+  }
+}
+
+function beginGracefulShutdown(signal) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  shutdownStartedAt = Date.now();
+  console.log(`Graceful shutdown started (${signal}) on ${INSTANCE_ID}`);
+  publishRuntimeRegistry();
+  notifyClientsAboutRestart(signal);
+
+  if (forceShutdownTimer) clearTimeout(forceShutdownTimer);
+  forceShutdownTimer = setTimeout(() => {
+    runtimeRegistryStore.unregisterInstance();
+    for (const ws of activeSockets) {
+      try {
+        ws.terminate();
+      } catch {
+        // ignore terminate race
+      }
+    }
+    process.exit(0);
+  }, SHUTDOWN_GRACE_MS);
+  if (typeof forceShutdownTimer.unref === 'function') forceShutdownTimer.unref();
+
+  try {
+    wss.close();
+  } catch {
+    // ignore server close race
+  }
+  try {
+    server.close((err) => {
+      runtimeRegistryStore.unregisterInstance();
+      if (err) {
+        console.error('HTTP server close failed:', err);
+        process.exit(1);
+        return;
+      }
+      process.exit(0);
+    });
+  } catch (err) {
+    console.error('Graceful shutdown failed:', err);
+    process.exit(1);
+  }
+
+  setTimeout(() => {
+    closeActiveSocketsGracefully();
+  }, Math.min(400, Math.max(50, Math.floor(RESTART_RETRY_MS / 4))));
 }
 
 wss.on('connection', (ws, req) => {
+  if (isShuttingDown) {
+    sendTo(ws, {
+      type: 'serverRestart',
+      reason: 'restart',
+      retryAfterMs: RESTART_RETRY_MS,
+      instanceId: INSTANCE_ID,
+      now: Date.now(),
+    });
+    try {
+      ws.close(1013, 'server restarting');
+    } catch {
+      // ignore close race
+    }
+    return;
+  }
   activeSockets.add(ws);
+  publishRuntimeRegistry();
   ws.playerSession = readPlayerSession(req);
   let player = null;
 
@@ -1757,6 +1933,7 @@ wss.on('connection', (ws, req) => {
 
   ws.on('close', () => {
     activeSockets.delete(ws);
+    publishRuntimeRegistry();
     if (!player) return;
     removePlayer(player);
   });
@@ -2053,8 +2230,23 @@ setInterval(() => {
     }
   }
 }, MAIN_LOOP_MS);
+
+setInterval(() => {
+  publishRuntimeRegistry();
+}, 1000);
+
+process.on('SIGTERM', () => {
+  beginGracefulShutdown('SIGTERM');
+});
+
+process.on('SIGINT', () => {
+  beginGracefulShutdown('SIGINT');
+});
+
 server.listen(PORT, () => {
+  publishRuntimeRegistry();
   console.log(`Server started: http://localhost:${PORT}`);
+  console.log(`Instance ID: ${INSTANCE_ID}`);
   console.log(`Admin login enabled: ${ADMIN_BOOTSTRAP_LOGIN}`);
   if (!IS_PROD) {
     console.log(`Bootstrap admin password: ${ADMIN_BOOTSTRAP_PASSWORD}`);

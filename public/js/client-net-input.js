@@ -344,6 +344,9 @@ async function requestRoomsList() {
     const res = await fetch('/api/rooms', { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const payload = await res.json();
+    if (payload?.isShuttingDown) {
+      statusEl.textContent = 'Server restarting. New rooms are temporarily unavailable.';
+    }
     renderPresence(payload.presence);
     renderRoomsList(Array.isArray(payload.rooms) ? payload.rooms : []);
   } catch {
@@ -1032,7 +1035,9 @@ ws.addEventListener('open', () => {
 ws.addEventListener('close', () => {
   game.connected = false;
   netStats.pendingPings.clear();
-  statusEl.textContent = 'Disconnected';
+  if (!restartReloadTimer) {
+    statusEl.textContent = 'Disconnected';
+  }
 });
 ws.addEventListener('message', (ev) => {
   const rawSize = typeof ev.data === 'string' ? ev.data.length : 0;
@@ -1048,6 +1053,11 @@ ws.addEventListener('message', (ev) => {
 
   if (msg.type === 'devConsole') {
     onDevConsoleServerMessage(msg);
+    return;
+  }
+
+  if (msg.type === 'serverRestart') {
+    handleServerRestartNotice(msg);
     return;
   }
 
@@ -1097,6 +1107,9 @@ ws.addEventListener('message', (ev) => {
     waitingForFirstState = false;
     waitingForFirstStateSince = 0;
     statusEl.textContent = msg.message;
+    if (Number(msg.retryAfterMs) > 0) {
+      scheduleClientReload(Number(msg.retryAfterMs), msg.message || 'Server restarting. Reconnecting...');
+    }
     joinOverlay.style.display = 'grid';
     joinOverlay.classList.remove('death-mode');
     setDeathCinematicActive(false);

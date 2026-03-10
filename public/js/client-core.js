@@ -209,6 +209,7 @@ let lastScoreboardHtml = '';
 let lastLevelupHtml = '';
 let devConsoleOpen = false;
 let nicknameCheckTimer = null;
+let restartReloadTimer = null;
 const DEV_CMD_HISTORY_LIMIT = 60;
 const devConsoleHistory = [];
 let devConsoleHistoryIndex = -1;
@@ -414,6 +415,28 @@ function reloadForPlayerSession(message) {
   window.setTimeout(() => {
     window.location.reload();
   }, 120);
+}
+
+function scheduleClientReload(delayMs = 1500, message = 'Server restarting. Reconnecting...') {
+  if (restartReloadTimer) return;
+  statusEl.textContent = message;
+  const waitMs = Math.max(250, Number(delayMs) || 1500);
+  restartReloadTimer = window.setTimeout(() => {
+    window.location.reload();
+  }, waitMs);
+}
+
+function handleServerRestartNotice(msg) {
+  const retryAfterMs = Math.max(500, Number(msg?.retryAfterMs) || 1500);
+  const reason = (msg?.reason || 'restart').toString();
+  joinOverlay.style.display = 'grid';
+  joinOverlay.classList.remove('death-mode');
+  setDeathCinematicActive(false);
+  updateMobileControlsVisibility();
+  if (typeof clearLocalSessionState === 'function') clearLocalSessionState();
+  scheduleClientReload(retryAfterMs, reason === 'restart'
+    ? 'Server restarting. Reconnecting...'
+    : `Server ${reason}. Reconnecting...`);
 }
 
 async function refreshPlayerAuthSession({ silent = false } = {}) {
