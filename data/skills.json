@@ -88,6 +88,46 @@
           "desc": "+jump charges"
         },
         {
+          "id": "pistol_buddy",
+          "name": "Pistol Buddy",
+          "kind": "passive",
+          "rarity": "common",
+          "maxLevel": 5,
+          "weight": 0.96,
+          "companionWeaponKey": "pistol",
+          "desc": "+1 pistol bot"
+        },
+        {
+          "id": "smg_buddy",
+          "name": "SMG Buddy",
+          "kind": "passive",
+          "rarity": "common",
+          "maxLevel": 5,
+          "weight": 0.82,
+          "companionWeaponKey": "smg",
+          "desc": "+1 SMG bot"
+        },
+        {
+          "id": "shotgun_buddy",
+          "name": "Shotgun Buddy",
+          "kind": "passive",
+          "rarity": "rare",
+          "maxLevel": 4,
+          "weight": 0.56,
+          "companionWeaponKey": "shotgun",
+          "desc": "+1 shotgun bot"
+        },
+        {
+          "id": "sniper_buddy",
+          "name": "Sniper Buddy",
+          "kind": "passive",
+          "rarity": "epic",
+          "maxLevel": 3,
+          "weight": 0.34,
+          "companionWeaponKey": "sniper",
+          "desc": "+1 sniper bot"
+        },
+        {
           "id": "shockwave",
           "name": "Shockwave",
           "kind": "active",
@@ -223,6 +263,46 @@
           "weight": 0.62,
           "extraDodgeChargesPerLevel": 1,
           "desc": "+jump charges"
+        },
+        {
+          "id": "pistol_buddy",
+          "name": "Pistol Buddy",
+          "kind": "passive",
+          "rarity": "common",
+          "maxLevel": 5,
+          "weight": 0.96,
+          "companionWeaponKey": "pistol",
+          "desc": "+1 pistol bot"
+        },
+        {
+          "id": "smg_buddy",
+          "name": "SMG Buddy",
+          "kind": "passive",
+          "rarity": "common",
+          "maxLevel": 5,
+          "weight": 0.82,
+          "companionWeaponKey": "smg",
+          "desc": "+1 SMG bot"
+        },
+        {
+          "id": "shotgun_buddy",
+          "name": "Shotgun Buddy",
+          "kind": "passive",
+          "rarity": "rare",
+          "maxLevel": 4,
+          "weight": 0.56,
+          "companionWeaponKey": "shotgun",
+          "desc": "+1 shotgun bot"
+        },
+        {
+          "id": "sniper_buddy",
+          "name": "Sniper Buddy",
+          "kind": "passive",
+          "rarity": "epic",
+          "maxLevel": 3,
+          "weight": 0.34,
+          "companionWeaponKey": "sniper",
+          "desc": "+1 sniper bot"
         },
         {
           "id": "shockwave",

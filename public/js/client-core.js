@@ -10,6 +10,9 @@ const movementMetaEl = document.getElementById('movement-meta');
 const netMetaEl = document.getElementById('net-meta');
 const showFpsToggleEl = document.getElementById('show-fps-toggle');
 const fpsCornerEl = document.getElementById('fps-corner');
+const showMinimapToggleEl = document.getElementById('show-minimap-toggle');
+const minimapWrapEl = document.getElementById('minimap-wrap');
+const minimapCanvasEl = document.getElementById('minimap');
 const qualitySelect = document.getElementById('quality-select');
 const shadowToggleEl = document.getElementById('shadow-toggle');
 const bulletTracersToggleEl = document.getElementById('bullet-tracers-toggle');
@@ -162,6 +165,7 @@ const game = {
   autoFireEnabled: localStorage.getItem('cw:autoFireEnabled') === '1',
   connectionIndicatorEnabled: getToggleDefaultOn('cw:connectionIndicatorEnabled'),
   showFpsEnabled: getToggleDefaultOn('cw:showFpsEnabled'),
+  showMinimapEnabled: getToggleDefaultOn('cw:showMinimapEnabled'),
   renderPlayers: new Map(),
   renderEnemies: new Map(),
   renderBullets: new Map(),
@@ -238,8 +242,150 @@ let pendingAutoJoin = false;
 let pendingAutoCreate = false;
 let routedIntent = null;
 const DEV_CMD_HISTORY_LIMIT = 60;
+const DEV_CMD_HISTORY_STORAGE_KEY = 'cw:devConsoleHistory';
 const devConsoleHistory = [];
 let devConsoleHistoryIndex = -1;
+const DEV_KEY_BINDINGS_STORAGE_KEY = 'cw:devKeyBindings';
+let devKeyBindings = {};
+
+function loadDevConsoleHistory() {
+  try {
+    const raw = localStorage.getItem(DEV_CMD_HISTORY_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return;
+    devConsoleHistory.splice(0, devConsoleHistory.length, ...parsed
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+      .slice(-DEV_CMD_HISTORY_LIMIT));
+    devConsoleHistoryIndex = devConsoleHistory.length;
+  } catch {
+    devConsoleHistory.length = 0;
+    devConsoleHistoryIndex = 0;
+  }
+}
+
+function saveDevConsoleHistory() {
+  localStorage.setItem(DEV_CMD_HISTORY_STORAGE_KEY, JSON.stringify(devConsoleHistory.slice(-DEV_CMD_HISTORY_LIMIT)));
+}
+
+function clearDevConsoleHistory() {
+  devConsoleHistory.length = 0;
+  devConsoleHistoryIndex = 0;
+  localStorage.removeItem(DEV_CMD_HISTORY_STORAGE_KEY);
+}
+
+function loadDevKeyBindings() {
+  try {
+    const raw = localStorage.getItem(DEV_KEY_BINDINGS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    devKeyBindings = parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    devKeyBindings = {};
+  }
+}
+
+function saveDevKeyBindings() {
+  localStorage.setItem(DEV_KEY_BINDINGS_STORAGE_KEY, JSON.stringify(devKeyBindings));
+}
+
+function normalizeBindKey(rawKey) {
+  const value = String(rawKey || '').trim();
+  if (!value) return null;
+  if (/^Key[A-Z]$/.test(value)) return { code: value, label: value.slice(3) };
+  if (/^Digit[0-9]$/.test(value)) return { code: value, label: value.slice(5) };
+  if (/^[A-Za-z]$/.test(value)) {
+    const upper = value.toUpperCase();
+    return { code: `Key${upper}`, label: upper };
+  }
+  if (/^[0-9]$/.test(value)) return { code: `Digit${value}`, label: value };
+  const aliases = {
+    space: { code: 'Space', label: 'Space' },
+    spacebar: { code: 'Space', label: 'Space' },
+    enter: { code: 'Enter', label: 'Enter' },
+    escape: { code: 'Escape', label: 'Escape' },
+    esc: { code: 'Escape', label: 'Escape' },
+    tab: { code: 'Tab', label: 'Tab' },
+    backquote: { code: 'Backquote', label: '`' },
+    tilde: { code: 'Backquote', label: '`' },
+  };
+  return aliases[value.toLowerCase()] || null;
+}
+
+function parseBindCommand(rawCommand) {
+  const command = String(rawCommand || '').trim();
+  const match = /^bind\s+(?:"([^"]+)"|(\S+))\s+(?:"([^"]+)"|(.+))$/i.exec(command);
+  if (!match) return null;
+  const keyToken = match[1] || match[2] || '';
+  const commandToken = (match[3] || match[4] || '').trim();
+  return { keyToken, commandToken };
+}
+
+function parseUnbindCommand(rawCommand) {
+  const command = String(rawCommand || '').trim();
+  const match = /^unbind\s+(?:"([^"]+)"|(\S+))$/i.exec(command);
+  if (!match) return null;
+  return { keyToken: match[1] || match[2] || '' };
+}
+
+function handleLocalDevConsoleCommand(rawCommand) {
+  const bindParsed = parseBindCommand(rawCommand);
+  if (bindParsed) {
+    const normalizedKey = normalizeBindKey(bindParsed.keyToken);
+    if (!normalizedKey) {
+      appendDevConsoleLine('Bind failed: unsupported key.', 'err');
+      return true;
+    }
+    if (!bindParsed.commandToken) {
+      appendDevConsoleLine('Bind failed: command is empty.', 'err');
+      return true;
+    }
+    devKeyBindings[normalizedKey.code] = {
+      key: normalizedKey.label,
+      command: bindParsed.commandToken,
+    };
+    saveDevKeyBindings();
+    appendDevConsoleLine(`Bound ${normalizedKey.label} -> ${bindParsed.commandToken}`, 'ok');
+    return true;
+  }
+
+  const unbindParsed = parseUnbindCommand(rawCommand);
+  if (unbindParsed) {
+    const normalizedKey = normalizeBindKey(unbindParsed.keyToken);
+    if (!normalizedKey) {
+      appendDevConsoleLine('Unbind failed: unsupported key.', 'err');
+      return true;
+    }
+    if (!devKeyBindings[normalizedKey.code]) {
+      appendDevConsoleLine(`No bind for ${normalizedKey.label}.`, 'err');
+      return true;
+    }
+    delete devKeyBindings[normalizedKey.code];
+    saveDevKeyBindings();
+    appendDevConsoleLine(`Unbound ${normalizedKey.label}.`, 'ok');
+    return true;
+  }
+
+  if (/^binds$/i.test(String(rawCommand || '').trim())) {
+    const entries = Object.entries(devKeyBindings);
+    if (entries.length === 0) {
+      appendDevConsoleLine('No binds configured.');
+      return true;
+    }
+    for (const [, binding] of entries.sort((a, b) => String(a[0]).localeCompare(String(b[0])))) {
+      appendDevConsoleLine(`${binding.key} -> ${binding.command}`);
+    }
+    return true;
+  }
+
+  return false;
+}
+
+function runBoundDevCommand(code) {
+  const binding = devKeyBindings[String(code || '')];
+  if (!binding?.command) return false;
+  submitDevConsoleCommand(binding.command);
+  return true;
+}
 
 const ROOM_SYNC_PRESETS = {
   normal: {
@@ -1409,6 +1555,18 @@ showFpsToggleEl?.addEventListener('change', () => {
 });
 setShowFpsEnabled(game.showFpsEnabled);
 
+function setShowMinimapEnabled(enabled) {
+  game.showMinimapEnabled = Boolean(enabled);
+  if (showMinimapToggleEl) showMinimapToggleEl.checked = game.showMinimapEnabled;
+  localStorage.setItem('cw:showMinimapEnabled', game.showMinimapEnabled ? '1' : '0');
+  updateMinimapVisibility();
+}
+
+showMinimapToggleEl?.addEventListener('change', () => {
+  setShowMinimapEnabled(showMinimapToggleEl.checked);
+});
+setShowMinimapEnabled(game.showMinimapEnabled);
+
 function resizeCanvas() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
@@ -1447,6 +1605,7 @@ function pushDevCommandHistory(cmd) {
   if (devConsoleHistory[devConsoleHistory.length - 1] !== normalized) {
     devConsoleHistory.push(normalized);
     if (devConsoleHistory.length > DEV_CMD_HISTORY_LIMIT) devConsoleHistory.splice(0, devConsoleHistory.length - DEV_CMD_HISTORY_LIMIT);
+    saveDevConsoleHistory();
   }
   devConsoleHistoryIndex = devConsoleHistory.length;
 }
@@ -1509,6 +1668,12 @@ function submitDevConsoleCommand(rawCommand) {
     }
     return;
   }
+  if (cmd.toLowerCase() === 'clearhistory') {
+    clearDevConsoleHistory();
+    appendDevConsoleLine('Command history cleared.', 'ok');
+    return;
+  }
+  if (handleLocalDevConsoleCommand(cmd)) return;
   if (!sendJson({ type: 'devCheat', command: cmd })) {
     appendDevConsoleLine('Not connected.', 'err');
   }
@@ -1525,6 +1690,12 @@ function updateFpsCornerVisibility(overlayOpen = null) {
   fpsCornerEl.classList.toggle('hidden', menuOpen || !game.showFpsEnabled);
 }
 
+function updateMinimapVisibility(overlayOpen = null) {
+  if (!minimapWrapEl) return;
+  const menuOpen = overlayOpen === null ? (getComputedStyle(joinOverlay).display !== 'none') : Boolean(overlayOpen);
+  minimapWrapEl.classList.toggle('hidden', menuOpen || !game.showMinimapEnabled);
+}
+
 function updateHudVisibility(overlayOpen) {
   canvas.classList.toggle('hidden', Boolean(overlayOpen));
   if (hudEl) hudEl.classList.toggle('menu-hidden', Boolean(overlayOpen));
@@ -1539,6 +1710,7 @@ function updateHudVisibility(overlayOpen) {
   if (overlayOpen && levelupOverlayEl) levelupOverlayEl.classList.add('hidden');
   if (overlayOpen) document.body.classList.remove('levelup-open');
   updateFpsCornerVisibility(overlayOpen);
+  updateMinimapVisibility(overlayOpen);
 }
 
 
@@ -1571,6 +1743,8 @@ devConsoleToggleBtn?.addEventListener('click', () => {
 });
 
 appendDevConsoleLine('Console ready. Type help.');
+loadDevConsoleHistory();
+loadDevKeyBindings();
 function updateMobileControlsVisibility() {
   const overlayOpen = getComputedStyle(joinOverlay).display !== 'none';
   updateHudVisibility(overlayOpen);

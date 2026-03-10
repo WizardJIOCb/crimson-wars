@@ -858,6 +858,7 @@ function getOrCreateRoom(requestedCode, requestedSync) {
       stateAccumulatorMs: 0,
       accumulatorMs: 0,
       players: new Map(),
+      companions: [],
       bullets: [],
       enemies: [],
       drops: [],
@@ -865,6 +866,7 @@ function getOrCreateRoom(requestedCode, requestedSync) {
       scores: new Map(),
       kills: new Map(),
       nextEnemyId: 1,
+      nextCompanionId: 1,
       nextBulletId: 1,
       nextDropId: 1,
       nextXpOrbId: 1,
@@ -896,10 +898,329 @@ function broadcastRoom(room, payload) {
   }
 }
 
+function getCompanionSkillDefs() {
+  return skillsStore.getList().filter((def) => String(def?.companionWeaponKey || '').trim());
+}
+
+function createCompanion(room, owner, def, ordinal = 0) {
+  const spawnX = Number(owner?.x) || WORLD_WIDTH / 2;
+  const spawnY = Number(owner?.y) || WORLD_HEIGHT / 2;
+  const seed = (ordinal + 1) * 0.73 + String(def?.id || '').length * 0.19;
+  const holdAngle = Math.PI * 2 * (seed - Math.floor(seed));
+  const holdRadius = 44 + (ordinal % 3) * 10 + (String(def?.id || '').charCodeAt(0) % 7);
+  return {
+    id: `c${room.nextCompanionId++}`,
+    ownerId: owner.id,
+    skillId: def.id,
+    ordinal: ordinal,
+    x: spawnX,
+    y: spawnY,
+    aimX: spawnX + 1,
+    aimY: spawnY,
+    vx: 0,
+    vy: 0,
+    alive: true,
+    hp: 1,
+    maxHp: 1,
+    fireCooldownLeft: 0,
+    weaponKey: String(def.companionWeaponKey || 'pistol').toLowerCase(),
+    playerClass: owner.playerClass || 'cyber',
+    name: '',
+    holdOffsetX: Math.cos(holdAngle) * holdRadius,
+    holdOffsetY: Math.sin(holdAngle) * holdRadius * 0.78,
+  };
+}
+
+function syncRoomCompanions(room) {
+  if (!room) return;
+  const desired = [];
+  const defs = getCompanionSkillDefs();
+  for (const owner of room.players.values()) {
+    for (const def of defs) {
+      const count = Math.max(0, getSkillRank(owner, def.id));
+      for (let ordinal = 0; ordinal < count; ordinal += 1) {
+        desired.push({
+          ownerId: owner.id,
+          skillId: def.id,
+          ordinal,
+          owner,
+          def,
+        });
+      }
+    }
+  }
+
+  const used = new Set();
+  const nextCompanions = [];
+  for (const entry of desired) {
+    const matchIndex = room.companions.findIndex((companion, index) => {
+      if (used.has(index)) return false;
+      return companion.ownerId === entry.ownerId
+        && companion.skillId === entry.skillId
+        && companion.ordinal === entry.ordinal;
+    });
+    if (matchIndex >= 0) {
+      used.add(matchIndex);
+      const companion = room.companions[matchIndex];
+      companion.weaponKey = String(entry.def.companionWeaponKey || companion.weaponKey || 'pistol').toLowerCase();
+      companion.playerClass = entry.owner.playerClass || companion.playerClass || 'cyber';
+      nextCompanions.push(companion);
+      continue;
+    }
+    nextCompanions.push(createCompanion(room, entry.owner, entry.def, entry.ordinal));
+  }
+  room.companions = nextCompanions;
+}
+
+function getCompanionWeaponRange(weaponKey) {
+  if (weaponKey === 'shotgun') return 300;
+  if (weaponKey === 'sniper') return 760;
+  if (weaponKey === 'smg') return 470;
+  return 520;
+}
+
+function fireCompanionWeapon(room, companion, owner, now) {
+  const weapon = WEAPONS[companion.weaponKey] || WEAPONS.pistol;
+  const dx = companion.aimX - companion.x;
+  const dy = companion.aimY - companion.y;
+  const baseAngle = Math.atan2(dy, dx);
+  const damageMul = Math.max(0.2, Number(owner?.damageMul) || 1);
+  const fireRateMul = Math.max(0.2, Number(owner?.fireRateMul) || 1);
+
+  for (let i = 0; i < weapon.pellets; i += 1) {
+    const spread = (Math.random() - 0.5) * (weapon.spreadDeg * Math.PI / 180);
+    const angle = baseAngle + spread;
+    const speedVariance = Math.max(0, Number(weapon.bulletSpeedVariance) || 0);
+    const speedMul = 1 + ((Math.random() * 2) - 1) * speedVariance;
+    const bulletSpeed = Math.max(120, weapon.bulletSpeed * speedMul);
+    room.bullets.push({
+      id: room.nextBulletId++,
+      ownerId: owner?.id || companion.ownerId,
+      fromEnemy: false,
+      x: companion.x,
+      y: companion.y,
+      vx: Math.cos(angle) * bulletSpeed,
+      vy: Math.sin(angle) * bulletSpeed,
+      lifeMs: weapon.bulletLifeMs,
+      damage: Math.max(1, Math.round(weapon.bulletDamage * damageMul)),
+      color: weapon.color,
+    });
+  }
+
+  companion.fireCooldownLeft = Math.max(35, weapon.cooldownMs / fireRateMul);
+  companion.lastShotAt = now;
+}
+
+function tickCompanions(room, dtSec, now) {
+  if (!room || !Array.isArray(room.companions) || room.companions.length === 0) return;
+  const byOwner = new Map();
+  for (const companion of room.companions) {
+    if (!byOwner.has(companion.ownerId)) byOwner.set(companion.ownerId, []);
+    byOwner.get(companion.ownerId).push(companion);
+  }
+
+  for (const companions of byOwner.values()) {
+    companions.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  }
+
+  for (const companion of room.companions) {
+    const owner = room.players.get(companion.ownerId);
+    if (!owner) continue;
+    const squad = byOwner.get(companion.ownerId) || [companion];
+    const slotIndex = Math.max(0, squad.findIndex((item) => item.id === companion.id));
+    const slotCount = Math.max(1, squad.length);
+    const moveLen = Math.hypot(Number(owner.moveX) || 0, Number(owner.moveY) || 0);
+    const moving = moveLen > 0.12;
+    const moveDirX = moving ? (Number(owner.moveX) || 0) / moveLen : 0;
+    const moveDirY = moving ? (Number(owner.moveY) || 0) / moveLen : 0;
+    const aimDx = (Number(owner.aimX) || owner.x + 1) - owner.x;
+    const aimDy = (Number(owner.aimY) || owner.y) - owner.y;
+    const aimLen = Math.hypot(aimDx, aimDy) || 1;
+    const fallbackDirX = aimDx / aimLen;
+    const fallbackDirY = aimDy / aimLen;
+    const dirX = moving ? moveDirX : fallbackDirX;
+    const dirY = moving ? moveDirY : fallbackDirY;
+    const sideX = -dirY;
+    const sideY = dirX;
+
+    let desiredX = owner.x;
+    let desiredY = owner.y;
+    if (moving) {
+      const behindDist = 48 + Math.min(22, slotCount * 6);
+      const sideSpread = (slotIndex - (slotCount - 1) / 2) * 28;
+      desiredX = owner.x - dirX * behindDist + sideX * sideSpread;
+      desiredY = owner.y - dirY * behindDist + sideY * sideSpread * 0.9;
+    } else {
+      desiredX = owner.x + Number(companion.holdOffsetX || 0);
+      desiredY = owner.y + Number(companion.holdOffsetY || 0);
+    }
+    desiredX = clamp(desiredX, PLAYER_RADIUS, WORLD_WIDTH - PLAYER_RADIUS);
+    desiredY = clamp(desiredY, PLAYER_RADIUS, WORLD_HEIGHT - PLAYER_RADIUS);
+
+    const followDx = desiredX - companion.x;
+    const followDy = desiredY - companion.y;
+    const followDist = Math.hypot(followDx, followDy) || 1;
+    const followSpeed = PLAYER_SPEED * 0.86;
+    const desiredSpeed = Math.min(followSpeed, followDist * (moving ? 6.4 : 5.1));
+    companion.vx = followDist > 2 ? (followDx / followDist) * desiredSpeed : 0;
+    companion.vy = followDist > 2 ? (followDy / followDist) * desiredSpeed : 0;
+
+    if (!owner.alive) {
+      companion.x = clamp(companion.x + companion.vx * dtSec, PLAYER_RADIUS, WORLD_WIDTH - PLAYER_RADIUS);
+      companion.y = clamp(companion.y + companion.vy * dtSec, PLAYER_RADIUS, WORLD_HEIGHT - PLAYER_RADIUS);
+      companion.aimX = owner.x;
+      companion.aimY = owner.y;
+      continue;
+    }
+
+    const range = getCompanionWeaponRange(companion.weaponKey);
+    const target = nearestEnemyTo(room, companion.x, companion.y, range);
+    if (target) {
+      companion.aimX = target.x;
+      companion.aimY = target.y;
+      const tdx = target.x - companion.x;
+      const tdy = target.y - companion.y;
+      const targetDist = Math.hypot(tdx, tdy) || 1;
+      if (targetDist > range * 0.62) {
+        companion.vx += (tdx / targetDist) * followSpeed * 0.28;
+        companion.vy += (tdy / targetDist) * followSpeed * 0.28;
+      }
+      companion.fireCooldownLeft = Math.max(0, Number(companion.fireCooldownLeft) - dtSec * 1000);
+      if (companion.fireCooldownLeft <= 0) {
+        fireCompanionWeapon(room, companion, owner, now);
+      }
+    } else {
+      companion.aimX = owner.aimX || owner.x + 1;
+      companion.aimY = owner.aimY || owner.y;
+      companion.fireCooldownLeft = Math.max(0, Number(companion.fireCooldownLeft) - dtSec * 1000);
+    }
+
+    const speedLen = Math.hypot(companion.vx, companion.vy);
+    if (speedLen > followSpeed) {
+      companion.vx = (companion.vx / speedLen) * followSpeed;
+      companion.vy = (companion.vy / speedLen) * followSpeed;
+    }
+    companion.x = clamp(companion.x + companion.vx * dtSec, PLAYER_RADIUS, WORLD_WIDTH - PLAYER_RADIUS);
+    companion.y = clamp(companion.y + companion.vy * dtSec, PLAYER_RADIUS, WORLD_HEIGHT - PLAYER_RADIUS);
+  }
+}
+
+function nearestEnemyTo(room, x, y, maxRange = Infinity) {
+  let best = null;
+  let bestD2 = maxRange * maxRange;
+  for (const enemy of room.enemies) {
+    if (!enemy || enemy.hp <= 0) continue;
+    const dx = enemy.x - x;
+    const dy = enemy.y - y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < bestD2) {
+      best = enemy;
+      bestD2 = d2;
+    }
+  }
+  return best;
+}
+
 function serializeRoom(room) {
   const now = Date.now();
   const difficulty = getRoomDifficulty(room, now);
   const nextPortal = room.bossPortals.length > 0 ? room.bossPortals[0] : null;
+  const serializedPlayers = Array.from(room.players.values()).map((p) => ({
+    id: p.id,
+    name: p.name,
+    x: p.x,
+    y: p.y,
+    hp: p.hp,
+    maxHp: Math.max(1, Math.round(Number(p.maxHp) || PLAYER_HP_MAX)),
+    alive: p.alive,
+    score: room.scores.get(p.id) || 0,
+    kills: room.kills.get(p.id) || 0,
+    weaponKey: p.weaponKey,
+    weaponLabel: WEAPONS[p.weaponKey].label,
+    ammo: p.weaponAmmo,
+    aimX: Number(p.aimX) || p.x,
+    aimY: Number(p.aimY) || p.y,
+    shooting: Boolean(p.shooting),
+    damageMul: Number(Math.max(0.2, Number(p.damageMul) || 1).toFixed(3)),
+    fireRateMul: Number(Math.max(0.2, Number(p.fireRateMul) || 1).toFixed(3)),
+    moveSpeedMul: Number(Math.max(0.2, Number(p.moveSpeedMul) || 1).toFixed(3)),
+    pickupRadius: Math.max(0, Math.round(Number(p.pickupRadius) || PLAYER_PICKUP_RADIUS_BASE)),
+    hpRegenPerSec: Number(Math.max(0, Number(p.hpRegenPerSec) || 0).toFixed(2)),
+    moveSpeed: Math.max(1, Math.round(PLAYER_SPEED * Math.max(0.2, Number(p.moveSpeedMul) || 1))),
+    shotDamage: Math.max(1, Math.round((WEAPONS[p.weaponKey]?.bulletDamage || WEAPONS.pistol.bulletDamage) * Math.max(0.2, Number(p.damageMul) || 1))),
+    shotIntervalMs: Math.max(35, Math.round((WEAPONS[p.weaponKey]?.cooldownMs || WEAPONS.pistol.cooldownMs) / Math.max(0.2, Number(p.fireRateMul) || 1))),
+    playerClass: p.playerClass || 'cyber',
+    netQuality: p.netQuality || 0,
+    netPingMs: p.netPingMs || 0,
+    slowUntil: Number(p.slowUntil) || 0,
+    dodgeCooldownMs: Math.max(0, Math.round(p.dodgeCooldownMs || 0)),
+    dodgeCharges: Math.max(0, Math.round(p.dodgeCharges || 0)),
+    dodgeChargesMax: Math.max(1, Math.round(p.dodgeChargesMax || PLAYER_DODGE_MAX_CHARGES)),
+    dodgeRechargeMs: Math.max(0, Math.round(p.dodgeRechargeMs || 0)),
+    dodgeRechargeTotalMs: PLAYER_DODGE_COOLDOWN_MS,
+    dodgeInvulnUntil: Number(p.dodgeInvulnUntil) || 0,
+    level: Math.max(1, Math.floor(Number(p.level) || 1)),
+    xp: Math.max(0, Math.floor(Number(p.xp) || 0)),
+    xpToNext: Math.max(1, Math.floor(Number(p.xpToNext) || getXpToNextLevel(p.level || 1))),
+    pendingSkillChoices: Array.isArray(p.pendingSkillChoices) ? p.pendingSkillChoices.slice(0, SKILL_PICK_OPTIONS) : [],
+    skills: (p.skillOrder || []).map((sid) => {
+      const st = p.skills?.[sid] || { level: 0, cooldownMs: 0, maxCooldownMs: 0 };
+      const def = skillsStore.getById(sid) || { id: sid, name: sid, kind: 'passive', rarity: 'common', desc: '' };
+      return {
+        id: sid,
+        name: def.name,
+        kind: def.kind,
+        rarity: def.rarity,
+        desc: def.desc || '',
+        level: Math.max(0, Math.floor(Number(st.level) || 0)),
+        cooldownMs: Math.max(0, Math.round(Number(st.cooldownMs) || 0)),
+        maxCooldownMs: Math.max(0, Math.round(Number(st.maxCooldownMs) || 0)),
+      };
+    }),
+  }));
+  const serializedCompanions = (room.companions || []).map((companion) => ({
+    id: companion.id,
+    name: '',
+    x: companion.x,
+    y: companion.y,
+    hp: 1,
+    maxHp: 1,
+    alive: true,
+    score: 0,
+    kills: 0,
+    weaponKey: companion.weaponKey,
+    weaponLabel: WEAPONS[companion.weaponKey]?.label || companion.weaponKey || 'Pistol',
+    ammo: null,
+    aimX: Number(companion.aimX) || companion.x,
+    aimY: Number(companion.aimY) || companion.y,
+    shooting: Number(companion.fireCooldownLeft) > 0 && now - Number(companion.lastShotAt || 0) < 120,
+    damageMul: 1,
+    fireRateMul: 1,
+    moveSpeedMul: 1,
+    pickupRadius: 0,
+    hpRegenPerSec: 0,
+    moveSpeed: Math.max(1, Math.round(Math.hypot(Number(companion.vx) || 0, Number(companion.vy) || 0))),
+    shotDamage: Math.max(1, Math.round(WEAPONS[companion.weaponKey]?.bulletDamage || WEAPONS.pistol.bulletDamage)),
+    shotIntervalMs: Math.max(35, Math.round(WEAPONS[companion.weaponKey]?.cooldownMs || WEAPONS.pistol.cooldownMs)),
+    playerClass: companion.playerClass || 'cyber',
+    netQuality: 0,
+    netPingMs: 0,
+    slowUntil: 0,
+    dodgeCooldownMs: 0,
+    dodgeCharges: 0,
+    dodgeChargesMax: 0,
+    dodgeRechargeMs: 0,
+    dodgeRechargeTotalMs: PLAYER_DODGE_COOLDOWN_MS,
+    dodgeInvulnUntil: 0,
+    level: 1,
+    xp: 0,
+    xpToNext: 1,
+    pendingSkillChoices: [],
+    skills: [],
+    isCompanion: true,
+    ownerId: companion.ownerId,
+    skillId: companion.skillId,
+  }));
   return {
     now,
     instanceId: room.instanceId || INSTANCE_ID,
@@ -920,59 +1241,7 @@ function serializeRoom(room) {
     },
     world: { width: WORLD_WIDTH, height: WORLD_HEIGHT },
     sync: room.sync,
-    players: Array.from(room.players.values()).map((p) => ({
-      id: p.id,
-      name: p.name,
-      x: p.x,
-      y: p.y,
-      hp: p.hp,
-      maxHp: Math.max(1, Math.round(Number(p.maxHp) || PLAYER_HP_MAX)),
-      alive: p.alive,
-      score: room.scores.get(p.id) || 0,
-      kills: room.kills.get(p.id) || 0,
-      weaponKey: p.weaponKey,
-      weaponLabel: WEAPONS[p.weaponKey].label,
-      ammo: p.weaponAmmo,
-      aimX: Number(p.aimX) || p.x,
-      aimY: Number(p.aimY) || p.y,
-      shooting: Boolean(p.shooting),
-      damageMul: Number(Math.max(0.2, Number(p.damageMul) || 1).toFixed(3)),
-      fireRateMul: Number(Math.max(0.2, Number(p.fireRateMul) || 1).toFixed(3)),
-      moveSpeedMul: Number(Math.max(0.2, Number(p.moveSpeedMul) || 1).toFixed(3)),
-      pickupRadius: Math.max(0, Math.round(Number(p.pickupRadius) || PLAYER_PICKUP_RADIUS_BASE)),
-      hpRegenPerSec: Number(Math.max(0, Number(p.hpRegenPerSec) || 0).toFixed(2)),
-      moveSpeed: Math.max(1, Math.round(PLAYER_SPEED * Math.max(0.2, Number(p.moveSpeedMul) || 1))),
-      shotDamage: Math.max(1, Math.round((WEAPONS[p.weaponKey]?.bulletDamage || WEAPONS.pistol.bulletDamage) * Math.max(0.2, Number(p.damageMul) || 1))),
-      shotIntervalMs: Math.max(35, Math.round((WEAPONS[p.weaponKey]?.cooldownMs || WEAPONS.pistol.cooldownMs) / Math.max(0.2, Number(p.fireRateMul) || 1))),
-      playerClass: p.playerClass || 'cyber',
-      netQuality: p.netQuality || 0,
-      netPingMs: p.netPingMs || 0,
-      slowUntil: Number(p.slowUntil) || 0,
-      dodgeCooldownMs: Math.max(0, Math.round(p.dodgeCooldownMs || 0)),
-      dodgeCharges: Math.max(0, Math.round(p.dodgeCharges || 0)),
-      dodgeChargesMax: Math.max(1, Math.round(p.dodgeChargesMax || PLAYER_DODGE_MAX_CHARGES)),
-      dodgeRechargeMs: Math.max(0, Math.round(p.dodgeRechargeMs || 0)),
-      dodgeRechargeTotalMs: PLAYER_DODGE_COOLDOWN_MS,
-      dodgeInvulnUntil: Number(p.dodgeInvulnUntil) || 0,
-      level: Math.max(1, Math.floor(Number(p.level) || 1)),
-      xp: Math.max(0, Math.floor(Number(p.xp) || 0)),
-      xpToNext: Math.max(1, Math.floor(Number(p.xpToNext) || getXpToNextLevel(p.level || 1))),
-      pendingSkillChoices: Array.isArray(p.pendingSkillChoices) ? p.pendingSkillChoices.slice(0, SKILL_PICK_OPTIONS) : [],
-      skills: (p.skillOrder || []).map((sid) => {
-        const st = p.skills?.[sid] || { level: 0, cooldownMs: 0, maxCooldownMs: 0 };
-        const def = skillsStore.getById(sid) || { id: sid, name: sid, kind: 'passive', rarity: 'common', desc: '' };
-        return {
-          id: sid,
-          name: def.name,
-          kind: def.kind,
-          rarity: def.rarity,
-          desc: def.desc || '',
-          level: Math.max(0, Math.floor(Number(st.level) || 0)),
-          cooldownMs: Math.max(0, Math.round(Number(st.cooldownMs) || 0)),
-          maxCooldownMs: Math.max(0, Math.round(Number(st.maxCooldownMs) || 0)),
-        };
-      }),
-    })),
+    players: serializedPlayers.concat(serializedCompanions),
     bullets: room.bullets.map((b) => ({
       id: b.id,
       ownerId: b.ownerId,
@@ -1184,14 +1453,17 @@ function fireFromPlayer(room, player) {
   for (let i = 0; i < weapon.pellets; i += 1) {
     const spread = (Math.random() - 0.5) * (weapon.spreadDeg * Math.PI / 180);
     const angle = baseAngle + spread;
+    const speedVariance = Math.max(0, Number(weapon.bulletSpeedVariance) || 0);
+    const speedMul = 1 + ((Math.random() * 2) - 1) * speedVariance;
+    const bulletSpeed = Math.max(120, weapon.bulletSpeed * speedMul);
     room.bullets.push({
       id: room.nextBulletId++,
       ownerId: player.id,
       fromEnemy: false,
       x: player.x,
       y: player.y,
-      vx: Math.cos(angle) * weapon.bulletSpeed,
-      vy: Math.sin(angle) * weapon.bulletSpeed,
+      vx: Math.cos(angle) * bulletSpeed,
+      vy: Math.sin(angle) * bulletSpeed,
       lifeMs: weapon.bulletLifeMs,
       damage: Math.max(1, Math.round(weapon.bulletDamage * damageMul)),
       color: weapon.color,
@@ -1412,10 +1684,16 @@ function spawnXpOrbs(room, x, y, amount) {
 
 function getEnemyXpValue(enemy) {
   if (!enemy) return 6;
-  if (enemy.type === 'boss') return 130;
+  if (enemy.type === 'boss') return 220;
   if (enemy.type === 'charger') return 12;
   if (enemy.type === 'ranged') return 10;
   return 8;
+}
+
+function getEnemyScoreValue(enemy) {
+  if (!enemy) return 10;
+  if (enemy.type === 'boss') return 100;
+  return 10;
 }
 
 function enemyTakeDamage(room, enemy, damage, ownerId, now) {
@@ -1427,7 +1705,7 @@ function enemyTakeDamage(room, enemy, damage, ownerId, now) {
   if (idx >= 0) room.enemies.splice(idx, 1);
 
   if (ownerId && room.players.has(ownerId)) {
-    room.scores.set(ownerId, (room.scores.get(ownerId) || 0) + 10);
+    room.scores.set(ownerId, (room.scores.get(ownerId) || 0) + getEnemyScoreValue(enemy));
     room.kills.set(ownerId, (room.kills.get(ownerId) || 0) + 1);
     const killer = room.players.get(ownerId);
     if (killer) gainPlayerXp(room, killer, getEnemyXpValue(enemy), now);
@@ -1573,18 +1851,41 @@ function sendDevConsole(player, text, ok = true) {
   sendTo(player.ws, { type: 'devConsole', ok: Boolean(ok), text: String(text || '') });
 }
 
-function grantPlayerSkillLevels(player, skillId, levels = 1) {
+function isBuddySkillDef(def) {
+  return Boolean(def && String(def.companionWeaponKey || '').trim());
+}
+
+function grantPlayerSkillLevels(player, skillId, levels = 1, options = {}) {
   const sid = (skillId || '').toString().trim().toLowerCase();
   const def = skillsStore.getById(sid);
   if (!def) return 0;
   const st = ensureSkillState(player, sid);
   const before = st.level;
+  const add = Math.max(1, Math.floor(Number(levels) || 1));
   const maxLevel = Math.max(1, Number(def.maxLevel) || 1);
-  st.level = Math.min(maxLevel, st.level + Math.max(1, Math.floor(Number(levels) || 1)));
+  if (options.ignoreMax === true) st.level = Math.max(0, Number(st.level) || 0) + add;
+  else st.level = Math.min(maxLevel, Math.max(0, Number(st.level) || 0) + add);
   if (!Array.isArray(player.skillOrder)) player.skillOrder = [];
   if (!player.skillOrder.includes(sid)) player.skillOrder.push(sid);
   rebuildPlayerDerivedStats(player);
   return Math.max(0, st.level - before);
+}
+
+function clearPlayerBuddySkills(player) {
+  if (!player?.skills || typeof player.skills !== 'object') return 0;
+  const buddySkillIds = ['pistol_buddy', 'smg_buddy', 'shotgun_buddy', 'sniper_buddy'];
+  let removed = 0;
+  for (const skillId of buddySkillIds) {
+    const st = player.skills[skillId];
+    if (!st || Number(st.level) <= 0) continue;
+    removed += Math.max(0, Number(st.level) || 0);
+    delete player.skills[skillId];
+  }
+  if (Array.isArray(player.skillOrder)) {
+    player.skillOrder = player.skillOrder.filter((skillId) => !buddySkillIds.includes(String(skillId || '').toLowerCase()));
+  }
+  rebuildPlayerDerivedStats(player);
+  return removed;
 }
 
 function applyDevCheatCommand(room, player, rawCommand, now = Date.now()) {
@@ -1599,7 +1900,7 @@ function applyDevCheatCommand(room, player, rawCommand, now = Date.now()) {
   const args = parts;
 
   if (cmd === 'help') {
-    sendDevConsole(player, 'Commands: room|roomcode, unlock <room-secret>, lock, god [on|off], weapon <pistol|smg|shotgun|sniper> [ammo], ammo <n>, heal [n], hp <n>, xp <n>, levelup [n], skill <id> [levels], spawn <normal|charger|ranged|boss> [count], killall, status');
+    sendDevConsole(player, 'Commands: room|roomcode, unlock <room-secret>, lock, god [on|off], weapon <pistol|smg|shotgun|sniper> [ammo], ammo <n>, heal [n], hp <n>, xp <n>, levelup [n], skills, skill <id> [levels], bots|buddies [levels], nobots|clearbots, spawn <normal|charger|ranged|boss> [count], killall, status');
     return;
   }
 
@@ -1694,7 +1995,7 @@ function applyDevCheatCommand(room, player, rawCommand, now = Date.now()) {
       sendDevConsole(player, 'Usage: xp <amount>', false);
       return;
     }
-    addXpAndMaybeLevel(player, amount, now);
+    gainPlayerXp(room, player, amount, now);
     sendDevConsole(player, `XP +${amount} -> Lv ${player.level} (${player.xp}/${player.xpToNext})`);
     return;
   }
@@ -1703,25 +2004,71 @@ function applyDevCheatCommand(room, player, rawCommand, now = Date.now()) {
     const count = Math.max(1, Math.min(50, Math.floor(Number(args[0]) || 1)));
     for (let i = 0; i < count; i += 1) {
       const need = Math.max(1, Number(player.xpToNext) - Number(player.xp) + 1);
-      addXpAndMaybeLevel(player, need, now);
+      gainPlayerXp(room, player, need, now);
     }
     sendDevConsole(player, `Level up x${count} -> Lv ${player.level}`);
     return;
   }
 
+  if (cmd === 'skills') {
+    const defs = skillsStore.getList();
+    if (defs.length === 0) {
+      sendDevConsole(player, 'No skills in active collection.', false);
+      return;
+    }
+    sendDevConsole(player, `Skills in active collection: ${defs.length}`);
+    for (const def of defs) {
+      sendDevConsole(
+        player,
+        `${def.id} | ${def.name} | ${def.kind || 'passive'} | ${def.rarity || 'common'} | max ${Math.max(1, Number(def.maxLevel) || 1)}`
+      );
+    }
+    return;
+  }
+
   if (cmd === 'skill') {
     const sid = String(args[0] || '').toLowerCase();
-    const lv = Math.max(1, Math.min(20, Math.floor(Number(args[1]) || 1)));
+    const lv = Math.max(1, Math.floor(Number(args[1]) || 1));
     if (!sid) {
       sendDevConsole(player, 'Usage: skill <id> [levels]', false);
       return;
     }
-    const gained = grantPlayerSkillLevels(player, sid, lv);
+    const def = skillsStore.getById(sid);
+    const gained = grantPlayerSkillLevels(player, sid, lv, { ignoreMax: isBuddySkillDef(def) });
     if (gained <= 0) {
       sendDevConsole(player, 'Skill not changed (already max or unknown).', false);
       return;
     }
     sendDevConsole(player, `Skill ${sid} +${gained}`);
+    return;
+  }
+
+  if (cmd === 'bots' || cmd === 'buddies') {
+    const levels = Math.max(1, Math.floor(Number(args[0]) || 1));
+    const granted = [
+      grantPlayerSkillLevels(player, 'pistol_buddy', levels, { ignoreMax: true }),
+      grantPlayerSkillLevels(player, 'smg_buddy', levels, { ignoreMax: true }),
+      grantPlayerSkillLevels(player, 'shotgun_buddy', levels, { ignoreMax: true }),
+      grantPlayerSkillLevels(player, 'sniper_buddy', levels, { ignoreMax: true }),
+    ];
+    const totalGranted = granted.reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0);
+    syncRoomCompanions(room);
+    if (totalGranted <= 0) {
+      sendDevConsole(player, 'Bots not changed (already maxed or unavailable).', false);
+      return;
+    }
+    sendDevConsole(player, `Bots granted: pistol +${granted[0]}, smg +${granted[1]}, shotgun +${granted[2]}, sniper +${granted[3]}.`);
+    return;
+  }
+
+  if (cmd === 'nobots' || cmd === 'clearbots') {
+    const removed = clearPlayerBuddySkills(player);
+    syncRoomCompanions(room);
+    if (removed <= 0) {
+      sendDevConsole(player, 'No bots to remove.', false);
+      return;
+    }
+    sendDevConsole(player, `Removed all bots (${removed} levels).`);
     return;
   }
 
@@ -1736,7 +2083,7 @@ function applyDevCheatCommand(room, player, rawCommand, now = Date.now()) {
 
   if (cmd === 'killall') {
     let killed = 0;
-    for (const e of room.enemies) {
+    for (const e of [...room.enemies]) {
       if (e.hp > 0) {
         enemyTakeDamage(room, e, e.hp + 9999, player.id, now);
         killed += 1;
@@ -1881,6 +2228,7 @@ function removePlayer(player) {
   const room = rooms.get(player.roomCode);
   if (!room) return;
   room.players.delete(player.id);
+  room.companions = (room.companions || []).filter((companion) => companion.ownerId !== player.id);
   room.scores.delete(player.id);
   room.kills.delete(player.id);
 
@@ -2055,6 +2403,7 @@ wss.on('connection', (ws, req) => {
 });
 
 function tickRoom(room, dtSec, now) {
+  syncRoomCompanions(room);
   const roomDifficulty = getRoomDifficulty(room, now);
   if (room.players.size > 0 && now - room.lastEnemySpawnAt >= roomDifficulty.spawnIntervalMs) {
     room.lastEnemySpawnAt = now;
@@ -2114,6 +2463,8 @@ function tickRoom(room, dtSec, now) {
 
     tickPlayerSkills(room, p, dtSec, now);
   }
+
+  tickCompanions(room, dtSec, now);
 
   for (let i = room.bullets.length - 1; i >= 0; i -= 1) {
     const b = room.bullets[i];

@@ -38,6 +38,12 @@
       </p>
       <p class="shadow-option">
         <label>
+          <input id="show-minimap-toggle" type="checkbox" checked />
+          Show minimap
+        </label>
+      </p>
+      <p class="shadow-option">
+        <label>
           <input id="bullet-tracers-toggle" type="checkbox" checked />
           Bullet tracers
         </label>
@@ -79,11 +85,17 @@
         </label>
       </p>
     </div>
-    <button id="toggle-info" class="hud-toggle" type="button">Menu</button>
+    <button id="toggle-info" class="hud-toggle" type="button" aria-label="Menu">
+      <span class="menu-burger" aria-hidden="true">☰</span>
+      <span class="menu-label">☰</span>
+    </button>
     <div class="panel" id="scoreboard"></div>
   </div>
 
   <div id="fps-corner" class="hidden" aria-live="polite">FPS: --</div>
+  <div id="minimap-wrap" class="hidden" aria-hidden="true">
+    <canvas id="minimap" width="220" height="220"></canvas>
+  </div>
   <div id="top-center-hud" aria-live="polite">
     <div class="top-center-row">
       <span id="match-timer">Time 00:00</span>

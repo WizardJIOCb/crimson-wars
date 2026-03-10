@@ -1,5 +1,7 @@
 const MENU_IDLE_FRAME_MS = 180;
 const FPS_UI_UPDATE_SEC = 0.75;
+const minimapCtx = minimapCanvasEl?.getContext('2d');
+if (minimapCtx) minimapCtx.imageSmoothingEnabled = false;
 
 function scheduleNextFrame(delayMs = 0) {
   if (delayMs > 0) {
@@ -178,6 +180,7 @@ function drawPlayer(p, t, isMe, rx, ry) {
   if (!isVisibleWorld(rx, ry, 50)) return;
   const x = rx - camera.x;
   const y = ry - camera.y;
+  const isCompanion = Boolean(p.isCompanion);
 
   if (!p.alive) {
     drawCircle(rx, ry, 18, '#6b7280');
@@ -188,7 +191,7 @@ function drawPlayer(p, t, isMe, rx, ry) {
   const playerSprite = sprites.players[variant.id];
   const fw = Math.max(8, Number(variant.frameW) || 32);
   const fh = Math.max(8, Number(variant.frameH) || 48);
-  const scale = Math.max(0.5, Number(variant.scale) || 1);
+  const scale = Math.max(0.5, Number(variant.scale) || 1) * (isCompanion ? 0.84 : 1);
 
   const dw = fw * scale;
   const dh = fh * scale;
@@ -230,12 +233,14 @@ function drawPlayer(p, t, isMe, rx, ry) {
     drawCircle(rx, ry, 18, isMe ? '#22d3ee' : '#a78bfa');
   }
 
-  if (isMe) drawJumpChargesIndicator(p, x, y);
-  drawHpBar(rx, ry, Math.max(0, p.hp / p.maxHp));
-  ctx.fillStyle = '#f8fafc';
-  ctx.font = '13px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText(p.name, x, y - 42);
+  if (!isCompanion && isMe) drawJumpChargesIndicator(p, x, y);
+  if (!isCompanion) drawHpBar(rx, ry, Math.max(0, p.hp / p.maxHp));
+  if (p.name) {
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = '13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(p.name, x, y - 42);
+  }
 }
 function drawBossPortals(portals, nowMs) {
   if (!Array.isArray(portals)) return;
@@ -547,6 +552,90 @@ function drawFx() {
   }
   ctx.globalAlpha = 1;
 }
+
+function drawMinimap() {
+  if (!minimapCanvasEl || !minimapCtx || !game.showMinimapEnabled || !game.state) return;
+  const cssWidth = Math.max(96, Math.round(minimapCanvasEl.clientWidth || 0));
+  const cssHeight = Math.max(96, Math.round(minimapCanvasEl.clientHeight || 0));
+  const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  const targetWidth = Math.max(96, Math.round(cssWidth * dpr));
+  const targetHeight = Math.max(96, Math.round(cssHeight * dpr));
+  if (minimapCanvasEl.width !== targetWidth || minimapCanvasEl.height !== targetHeight) {
+    minimapCanvasEl.width = targetWidth;
+    minimapCanvasEl.height = targetHeight;
+  }
+
+  const w = minimapCanvasEl.width;
+  const h = minimapCanvasEl.height;
+  const pad = Math.max(6, Math.round(8 * dpr));
+  const mapX = pad;
+  const mapY = pad;
+  const mapW = Math.max(20, w - pad * 2);
+  const mapH = Math.max(20, h - pad * 2);
+  const worldW = Math.max(1, Number(game.world?.width) || 1);
+  const worldH = Math.max(1, Number(game.world?.height) || 1);
+  const sx = mapW / worldW;
+  const sy = mapH / worldH;
+
+  function toMapX(x) { return mapX + Math.max(0, Math.min(mapW, Number(x || 0) * sx)); }
+  function toMapY(y) { return mapY + Math.max(0, Math.min(mapH, Number(y || 0) * sy)); }
+  function dot(x, y, r, color) {
+    minimapCtx.fillStyle = color;
+    minimapCtx.beginPath();
+    minimapCtx.arc(toMapX(x), toMapY(y), r, 0, Math.PI * 2);
+    minimapCtx.fill();
+  }
+
+  minimapCtx.clearRect(0, 0, w, h);
+
+  const bg = minimapCtx.createLinearGradient(0, 0, 0, h);
+  bg.addColorStop(0, 'rgba(11, 18, 28, 0.96)');
+  bg.addColorStop(1, 'rgba(5, 9, 15, 0.96)');
+  minimapCtx.fillStyle = bg;
+  minimapCtx.fillRect(0, 0, w, h);
+
+  minimapCtx.strokeStyle = 'rgba(255,255,255,0.16)';
+  minimapCtx.lineWidth = Math.max(1, dpr);
+  minimapCtx.strokeRect(mapX, mapY, mapW, mapH);
+
+  minimapCtx.fillStyle = 'rgba(34, 197, 94, 0.06)';
+  minimapCtx.fillRect(mapX, mapY, mapW, mapH);
+
+  const camX = mapX + (camera.x / worldW) * mapW;
+  const camY = mapY + (camera.y / worldH) * mapH;
+  const camW = Math.max(8 * dpr, (canvas.width / worldW) * mapW);
+  const camH = Math.max(8 * dpr, (canvas.height / worldH) * mapH);
+  minimapCtx.strokeStyle = 'rgba(255,255,255,0.28)';
+  minimapCtx.lineWidth = Math.max(1, dpr);
+  minimapCtx.strokeRect(camX, camY, Math.min(mapW, camW), Math.min(mapH, camH));
+
+  for (const orb of game.state.xpOrbs || []) {
+    dot(orb.x, orb.y, Math.max(1.6 * dpr, 1.5), '#38bdf8');
+  }
+
+  for (const drop of game.state.drops || []) {
+    dot(drop.x, drop.y, Math.max(1.8 * dpr, 1.6), '#f59e0b');
+  }
+
+  for (const enemy of game.state.enemies || []) {
+    const isBoss = enemy.type === 'boss';
+    dot(enemy.x, enemy.y, isBoss ? Math.max(4.2 * dpr, 3.8) : Math.max(2.2 * dpr, 2), isBoss ? '#fb7185' : '#ef4444');
+    if (isBoss) {
+      minimapCtx.strokeStyle = 'rgba(254, 202, 202, 0.92)';
+      minimapCtx.lineWidth = Math.max(1, dpr);
+      minimapCtx.beginPath();
+      minimapCtx.arc(toMapX(enemy.x), toMapY(enemy.y), Math.max(6 * dpr, 5.5), 0, Math.PI * 2);
+      minimapCtx.stroke();
+    }
+  }
+
+  for (const player of game.state.players || []) {
+    if (player.isCompanion) continue;
+    const isMe = player.id === game.myId;
+    dot(player.x, player.y, isMe ? Math.max(3.4 * dpr, 3) : Math.max(2.3 * dpr, 2), isMe ? '#22d3ee' : '#a5f3fc');
+  }
+}
+
 function render(ts) {
   const dt = Math.min(0.05, (ts - lastFrameTs) / 1000);
   lastFrameTs = ts;
@@ -673,6 +762,8 @@ function render(ts) {
   ctx.strokeStyle = 'rgba(255,255,255,0.16)';
   ctx.lineWidth = 2;
   ctx.strokeRect(-camera.x, -camera.y, game.world.width, game.world.height);
+
+  drawMinimap();
 
   scheduleNextFrame();
 }

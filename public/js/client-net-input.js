@@ -126,7 +126,7 @@ function setInfoPanelHidden(hidden) {
   infoPanelHidden = Boolean(hidden);
   if (infoPanelEl) infoPanelEl.classList.toggle('is-hidden', infoPanelHidden);
   if (toggleInfoBtn) {
-    toggleInfoBtn.textContent = 'Menu';
+    toggleInfoBtn.textContent = '☰';
     toggleInfoBtn.setAttribute('aria-label', 'Show menu');
     toggleInfoBtn.title = 'Show menu';
     toggleInfoBtn.classList.toggle('hidden', !infoPanelHidden);
@@ -783,7 +783,7 @@ function isVisibleWorld(x, y, pad = 0) {
 }
 
 function updateScoreboard(players) {
-  const sorted = [...players].sort((a, b) => b.score - a.score);
+  const sorted = [...players].filter((p) => !p.isCompanion).sort((a, b) => b.score - a.score);
   const titleText = scoreboardMinimized ? `Players: ${sorted.length}` : 'Players';
   const toggleLabel = scoreboardMinimized ? 'Expand players list' : 'Minimize players list';
   const toggleIcon = scoreboardMinimized ? '+' : '&minus;';
@@ -835,9 +835,15 @@ window.addEventListener('keydown', (e) => {
 
   const t = e.target;
   const typing = t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement;
+  const overlayOpen = getComputedStyle(joinOverlay).display !== 'none';
 
   if (!typing && e.code === 'KeyH') {
     setInfoPanelHidden(!infoPanelHidden);
+    return;
+  }
+
+  if (!typing && !overlayOpen && !e.repeat && runBoundDevCommand(e.code)) {
+    e.preventDefault();
     return;
   }
 
