@@ -1,154 +1,85 @@
 const path = require('path');
 const http = require('http');
-const fs = require('fs');
 const express = require('express');
 const WebSocket = require('ws');
-const Database = require('better-sqlite3');
 
 const { WebSocketServer } = WebSocket;
 
+const config = require('./server/config');
+const { createRecordsStore } = require('./server/records-store');
+const { createSkillsStore } = require('./server/skills-store');
 const PORT = process.env.PORT || 8080;
-const MAIN_LOOP_RATE = 120;
-const MAIN_LOOP_MS = 1000 / MAIN_LOOP_RATE;
-const MAX_PLAYERS = 8;
-const WORLD_WIDTH = 2400;
-const WORLD_HEIGHT = 1400;
-const PLAYER_RADIUS = 18;
-const ENEMY_RADIUS = 18;
-const BULLET_RADIUS = 4;
-const DROP_RADIUS = 16;
-
-const PLAYER_SPEED = 340;
-const PLAYER_HP_MAX = 100;
-const PLAYER_DODGE_DISTANCE = 165;
-const PLAYER_DODGE_COOLDOWN_MS = 1200;
-const PLAYER_DODGE_MAX_CHARGES = 2;
-const PLAYER_DODGE_INVULN_MS = 220;
-const ENEMY_SPEED_MIN = 75;
-const ENEMY_SPEED_MAX = 135;
-const ENEMY_HP_BASE = 22;
-const ENEMY_SPAWN_INTERVAL_MS = 760;
-const ENEMY_ATTACK_WINDUP_MS = 500;
-const ENEMY_ATTACK_DAMAGE = 16;
-const ENEMY_ATTACK_BASE_COOLDOWN_MS = 1000;
-const ENEMY_ATTACK_MIN_COOLDOWN_MS = 150;
-const ENEMY_ATTACK_CAST_FREQUENCY = 0;
-const ENEMY_CHARGER_DASH_DISTANCE = 120;
-const ENEMY_RANGED_DAMAGE = 10;
-const ENEMY_RANGED_BULLET_SPEED = 520;
-const ENEMY_RANGED_BULLET_LIFE_MS = 1300;
-const ENEMY_RANGED_FIRE_COOLDOWN_MS = 900;
-const ENEMY_RANGED_MIN_RANGE = 170;
-const ENEMY_RANGED_MAX_RANGE = 280;
-const BOSS_KILL_INTERVAL = 50;
-const BOSS_PORTAL_WARN_MS = 4200;
-const BOSS_RADIUS = 42;
-const BOSS_SPRITE_SCALE = 2.6;
-const BOSS_HP_BASE = 520;
-const BOSS_SPEED = 88;
-const BOSS_ATTACK_DAMAGE = 30;
-const BOSS_ATTACK_WINDUP_MS = 820;
-const BOSS_ATTACK_COOLDOWN_MS = 1300;
-const BOSS_DASH_DISTANCE = 180;
-const DIFFICULTY_STEP_SEC = 45;
-const DIFFICULTY_SPAWN_MIN_MS = 260;
-const DIFFICULTY_HP_PER_LEVEL = 0.11;
-const DIFFICULTY_SPEED_PER_LEVEL = 0.045;
-const DIFFICULTY_DAMAGE_PER_LEVEL = 0.08;
-const DIFFICULTY_ATTACK_RATE_PER_LEVEL = 0.04;
-const DIFFICULTY_SPAWN_REDUCTION_MS = 24;
-const XP_ORB_LIFETIME_MS = 22000;
-const XP_ORB_PULL_SPEED = 520;
-const PLAYER_PICKUP_RADIUS_BASE = 74;
-const SKILL_PICK_OPTIONS = 3;
-const PLAYER_SLOW_FACTOR = 0.8;
-const PLAYER_SLOW_DURATION_MS = 600;
-const DROP_LIFETIME_MS = 30000;
-const TREE_COUNT = 65;
-const LEADERBOARD_LIMIT = 500;
-const LEADERBOARD_PAGE_SIZE = 10;
-const DATA_DIR = path.join(__dirname, 'data');
-const RECORDS_DB_PATH = path.join(DATA_DIR, 'records.db');
-const SKILLS_CONFIG_PATH = path.join(DATA_DIR, 'skills.json');
 const SKILLS_ADMIN_TOKEN = process.env.SKILLS_ADMIN_TOKEN || '';
 const DEV_CHEATS_ENABLED = (process.env.DEV_CHEATS_ENABLED || '1') !== '0';
 const DEV_CHEAT_SECRET = (process.env.DEV_CHEAT_SECRET || 'bloodmoon').toString().trim();
 
-
-const DEFAULT_ROOM_SYNC = {
-  tickRate: 45,
-  stateSendHz: 30,
-  netRenderDelayMs: 90,
-  maxExtrapolationMs: 80,
-  entityInterpRate: 16,
-  bulletCorrectionRate: 18,
-  inputSendHz: 30,
-};
-
-const WEAPONS = {
-  pistol: {
-    label: 'Pistol',
-    cooldownMs: 170,
-    pellets: 1,
-    spreadDeg: 1.5,
-    bulletSpeed: 920,
-    bulletLifeMs: 1300,
-    bulletDamage: 11,
-    ammo: null,
-    color: '#f59e0b',
-  },
-  smg: {
-    label: 'SMG',
-    cooldownMs: 85,
-    pellets: 1,
-    spreadDeg: 4,
-    bulletSpeed: 860,
-    bulletLifeMs: 950,
-    bulletDamage: 8,
-    ammo: 220,
-    color: '#38bdf8',
-  },
-  shotgun: {
-    label: 'Shotgun',
-    cooldownMs: 430,
-    pellets: 7,
-    spreadDeg: 20,
-    bulletSpeed: 770,
-    bulletLifeMs: 470,
-    bulletDamage: 7,
-    ammo: 46,
-    color: '#f97316',
-  },
-  sniper: {
-    label: 'Sniper',
-    cooldownMs: 700,
-    pellets: 1,
-    spreadDeg: 0.2,
-    bulletSpeed: 1220,
-    bulletLifeMs: 1700,
-    bulletDamage: 44,
-    ammo: 40,
-    color: '#e5e7eb',
-  },
-};
-
-const DROP_WEAPON_KEYS = ['smg', 'shotgun', 'sniper'];
-
-
-const DEFAULT_SKILL_DEFS = {
-  weapon_mastery: { id: 'weapon_mastery', name: 'Weapon Mastery', kind: 'passive', rarity: 'common', maxLevel: 8, weight: 1.35, damageMulPerLevel: 0.11, desc: '+damage' },
-  rapid_reload: { id: 'rapid_reload', name: 'Rapid Reload', kind: 'passive', rarity: 'common', maxLevel: 8, weight: 1.3, fireRateMulPerLevel: 0.1, desc: '+fire rate' },
-  vitality: { id: 'vitality', name: 'Vitality', kind: 'passive', rarity: 'common', maxLevel: 8, weight: 1.25, maxHpFlatPerLevel: 20, desc: '+max HP' },
-  haste: { id: 'haste', name: 'Haste', kind: 'passive', rarity: 'common', maxLevel: 7, weight: 1.2, moveSpeedMulPerLevel: 0.075, desc: '+move speed' },
-  magnetism: { id: 'magnetism', name: 'Magnetism', kind: 'passive', rarity: 'common', maxLevel: 6, weight: 1.12, pickupRadiusPerLevel: 22, desc: '+XP pickup radius' },
-  bloodlust: { id: 'bloodlust', name: 'Bloodlust', kind: 'passive', rarity: 'rare', maxLevel: 6, weight: 0.86, damageMulPerLevel: 0.16, fireRateMulPerLevel: 0.05, desc: '+damage +fire rate' },
-  regeneration: { id: 'regeneration', name: 'Regeneration', kind: 'passive', rarity: 'rare', maxLevel: 6, weight: 0.85, hpRegenPerSecPerLevel: 1.15, desc: 'HP regen/sec' },
-  dodge_instinct: { id: 'dodge_instinct', name: 'Dodge Instinct', kind: 'passive', rarity: 'rare', maxLevel: 3, weight: 0.62, extraDodgeChargesPerLevel: 1, desc: '+jump charges' },
-  shockwave: { id: 'shockwave', name: 'Shockwave', kind: 'active', rarity: 'rare', maxLevel: 8, weight: 0.84, cooldownMs: 5400, cooldownMulPerLevel: 0.08, radius: 170, radiusPerLevel: 14, damage: 38, damagePerLevel: 16, desc: 'AoE blast around hero' },
-  blade_orbit: { id: 'blade_orbit', name: 'Blade Orbit', kind: 'active', rarity: 'common', maxLevel: 8, weight: 1.02, cooldownMs: 1450, cooldownMulPerLevel: 0.05, radius: 190, radiusPerLevel: 12, damage: 23, damagePerLevel: 10, targets: 2, targetsPerLevel: 1, desc: 'Hits nearest enemies' },
-  chain_lightning: { id: 'chain_lightning', name: 'Chain Lightning', kind: 'active', rarity: 'epic', maxLevel: 7, weight: 0.52, cooldownMs: 6200, cooldownMulPerLevel: 0.08, radius: 330, radiusPerLevel: 18, damage: 52, damagePerLevel: 19, targets: 3, targetsPerLevel: 1, desc: 'Chains to nearest enemies' },
-};
-let skillDefs = null;
+const {
+  MAIN_LOOP_RATE,
+  MAIN_LOOP_MS,
+  MAX_PLAYERS,
+  WORLD_WIDTH,
+  WORLD_HEIGHT,
+  PLAYER_RADIUS,
+  ENEMY_RADIUS,
+  BULLET_RADIUS,
+  DROP_RADIUS,
+  PLAYER_SPEED,
+  PLAYER_HP_MAX,
+  PLAYER_DODGE_DISTANCE,
+  PLAYER_DODGE_COOLDOWN_MS,
+  PLAYER_DODGE_MAX_CHARGES,
+  PLAYER_DODGE_INVULN_MS,
+  ENEMY_SPEED_MIN,
+  ENEMY_SPEED_MAX,
+  ENEMY_HP_BASE,
+  ENEMY_SPAWN_INTERVAL_MS,
+  ENEMY_ATTACK_WINDUP_MS,
+  ENEMY_ATTACK_DAMAGE,
+  ENEMY_ATTACK_BASE_COOLDOWN_MS,
+  ENEMY_ATTACK_MIN_COOLDOWN_MS,
+  ENEMY_ATTACK_CAST_FREQUENCY,
+  ENEMY_CHARGER_DASH_DISTANCE,
+  ENEMY_RANGED_DAMAGE,
+  ENEMY_RANGED_BULLET_SPEED,
+  ENEMY_RANGED_BULLET_LIFE_MS,
+  ENEMY_RANGED_FIRE_COOLDOWN_MS,
+  ENEMY_RANGED_MIN_RANGE,
+  ENEMY_RANGED_MAX_RANGE,
+  BOSS_KILL_INTERVAL,
+  BOSS_PORTAL_WARN_MS,
+  BOSS_RADIUS,
+  BOSS_SPRITE_SCALE,
+  BOSS_HP_BASE,
+  BOSS_SPEED,
+  BOSS_ATTACK_DAMAGE,
+  BOSS_ATTACK_WINDUP_MS,
+  BOSS_ATTACK_COOLDOWN_MS,
+  BOSS_DASH_DISTANCE,
+  DIFFICULTY_STEP_SEC,
+  DIFFICULTY_SPAWN_MIN_MS,
+  DIFFICULTY_HP_PER_LEVEL,
+  DIFFICULTY_SPEED_PER_LEVEL,
+  DIFFICULTY_DAMAGE_PER_LEVEL,
+  DIFFICULTY_ATTACK_RATE_PER_LEVEL,
+  DIFFICULTY_SPAWN_REDUCTION_MS,
+  XP_ORB_LIFETIME_MS,
+  XP_ORB_PULL_SPEED,
+  PLAYER_PICKUP_RADIUS_BASE,
+  SKILL_PICK_OPTIONS,
+  PLAYER_SLOW_FACTOR,
+  PLAYER_SLOW_DURATION_MS,
+  DROP_LIFETIME_MS,
+  TREE_COUNT,
+  LEADERBOARD_LIMIT,
+  LEADERBOARD_PAGE_SIZE,
+  DATA_DIR,
+  RECORDS_DB_PATH,
+  SKILLS_CONFIG_PATH,
+  DEFAULT_ROOM_SYNC,
+  WEAPONS,
+  DROP_WEAPON_KEYS,
+  DEFAULT_SKILL_DEFS,
+} = config;
 
 const app = express();
 app.use(express.json({ limit: '256kb' }));
@@ -159,55 +90,19 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 
 const rooms = new Map();
 const activeSockets = new Set();
-const records = [];
-let recordsDb = null;
-let stmtInsertRecord = null;
-let stmtPruneRecords = null;
-let stmtTopRecords = null;
-let stmtDeleteRecordByName = null;
+const recordsStore = createRecordsStore({
+  dataDir: DATA_DIR,
+  dbPath: RECORDS_DB_PATH,
+  leaderboardLimit: LEADERBOARD_LIMIT,
+  leaderboardPageSize: LEADERBOARD_PAGE_SIZE,
+});
+const skillsStore = createSkillsStore({
+  dataDir: DATA_DIR,
+  skillsConfigPath: SKILLS_CONFIG_PATH,
+  defaultSkillDefs: DEFAULT_SKILL_DEFS,
+  adminToken: SKILLS_ADMIN_TOKEN,
+});
 
-function parseRecordRunDetails(raw) {
-  if (!raw) return null;
-  if (typeof raw === 'object') return raw;
-  if (typeof raw !== 'string') return null;
-  try {
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function normalizeRecordEntry(entry) {
-  return {
-    id: Math.max(0, Number(entry?.id) || 0),
-    name: (entry?.name || 'Unknown').toString().slice(0, 18),
-    attempts: Math.max(1, Number(entry?.attempts) || 1),
-    kills: Math.max(0, Number(entry?.kills) || 0),
-    score: Math.max(0, Number(entry?.score) || 0),
-    roomCode: (entry?.roomCode || '-').toString().slice(0, 12),
-    durationSec: Math.max(1, Number(entry?.durationSec) || 1),
-    at: Math.max(0, Number(entry?.at) || Date.now()),
-    runDetails: parseRecordRunDetails(entry?.runDetails),
-  };
-}
-function recordNameKey(name) {
-  return (name || '').toString().trim().toLowerCase();
-}
-
-function isBetterRecord(next, prev) {
-  const nk = Math.max(0, Number(next?.kills) || 0);
-  const pk = Math.max(0, Number(prev?.kills) || 0);
-  if (nk !== pk) return nk > pk;
-
-  const ns = Math.max(0, Number(next?.score) || 0);
-  const ps = Math.max(0, Number(prev?.score) || 0);
-  if (ns !== ps) return ns > ps;
-
-  const nt = Math.max(0, Number(next?.at) || 0);
-  const pt = Math.max(0, Number(prev?.at) || 0);
-  return nt > pt;
-}
 function clampNum(value, min, max, fallback) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
@@ -244,233 +139,6 @@ function normalizeRoomSync(raw) {
     inputSendHz: Math.round(clampNum(raw?.inputSendHz, 10, 120, DEFAULT_ROOM_SYNC.inputSendHz)),
   };
 }
-function loadRecordsFromDb() {
-  if (!recordsDb || !stmtTopRecords) return;
-  const rows = stmtTopRecords.all(LEADERBOARD_LIMIT * 5);
-  records.length = 0;
-  const seen = new Set();
-  for (const row of rows) {
-    const normalized = normalizeRecordEntry({
-      id: row.id,
-      name: row.name,
-      attempts: row.attempts,
-      kills: row.kills,
-      score: row.score,
-      roomCode: row.roomCode,
-      durationSec: row.durationSec,
-      at: row.at,
-      runDetails: row.runDetails,
-    });
-    const key = recordNameKey(normalized.name);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    records.push(normalized);
-    if (records.length >= LEADERBOARD_LIMIT) break;
-  }
-}
-
-function initRecordsStore() {
-  try {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    recordsDb = new Database(RECORDS_DB_PATH);
-    recordsDb.pragma('journal_mode = WAL');
-    recordsDb.pragma('synchronous = NORMAL');
-
-    recordsDb.exec([
-      'CREATE TABLE IF NOT EXISTS records (',
-      '  id INTEGER PRIMARY KEY AUTOINCREMENT,',
-      '  name TEXT NOT NULL,',
-      '  attempts INTEGER NOT NULL DEFAULT 1,',
-      '  kills INTEGER NOT NULL,',
-      '  score INTEGER NOT NULL,',
-      '  room_code TEXT NOT NULL,',
-      '  duration_sec INTEGER NOT NULL,',
-      '  at INTEGER NOT NULL,',
-      '  run_details TEXT NULL',
-      ');',
-      'CREATE INDEX IF NOT EXISTS idx_records_rank ON records (kills DESC, score DESC, at DESC);',
-    ].join('\n'));
-
-    const hasRunDetails = recordsDb.prepare('PRAGMA table_info(records)').all().some((c) => c.name === 'run_details');
-    if (!hasRunDetails) {
-      recordsDb.exec('ALTER TABLE records ADD COLUMN run_details TEXT NULL');
-    }
-    const hasAttempts = recordsDb.prepare('PRAGMA table_info(records)').all().some((c) => c.name === 'attempts');
-    if (!hasAttempts) {
-      recordsDb.exec('ALTER TABLE records ADD COLUMN attempts INTEGER NOT NULL DEFAULT 1');
-    }
-
-    stmtInsertRecord = recordsDb.prepare([
-      'INSERT INTO records (name, attempts, kills, score, room_code, duration_sec, at, run_details)',
-      'VALUES (@name, @attempts, @kills, @score, @roomCode, @durationSec, @at, @runDetailsJson)',
-    ].join('\n'));
-
-    stmtPruneRecords = recordsDb.prepare([
-      'DELETE FROM records',
-      'WHERE id NOT IN (',
-      '  SELECT id FROM records',
-      '  ORDER BY kills DESC, score DESC, at DESC',
-      '  LIMIT ?',
-      ')',
-    ].join('\n'));
-    stmtDeleteRecordByName = recordsDb.prepare('DELETE FROM records WHERE LOWER(name)=LOWER(?)');
-
-    stmtTopRecords = recordsDb.prepare([
-      'SELECT',
-      '  id,',
-      '  name,',
-      '  attempts,',
-      '  kills,',
-      '  score,',
-      '  room_code AS roomCode,',
-      '  duration_sec AS durationSec,',
-      '  at,',
-      '  run_details AS runDetails',
-      'FROM records',
-      'ORDER BY kills DESC, score DESC, at DESC',
-      'LIMIT ?',
-    ].join('\n'));
-
-    loadRecordsFromDb();
-    console.log(`Records DB ready: ${RECORDS_DB_PATH} (loaded ${records.length})`);
-  } catch (err) {
-    recordsDb = null;
-    stmtInsertRecord = null;
-    stmtPruneRecords = null;
-    stmtTopRecords = null;
-    stmtDeleteRecordByName = null;
-    console.error('Records DB init failed, using in-memory records only:', err.message);
-  }
-}
-
-function listRecordsForLobby(page = 1, pageSize = LEADERBOARD_PAGE_SIZE) {
-  const total = records.length;
-  const size = Math.max(1, Math.min(50, Math.floor(pageSize) || LEADERBOARD_PAGE_SIZE));
-  const totalPages = Math.max(1, Math.ceil(total / size));
-  const currentPage = Math.max(1, Math.min(totalPages, Math.floor(page) || 1));
-  const start = (currentPage - 1) * size;
-  const items = records.slice(start, start + size);
-
-  return {
-    page: currentPage,
-    pageSize: size,
-    total,
-    totalPages,
-    items,
-  };
-}
-
-function pushRecord(entry) {
-  const normalized = normalizeRecordEntry(entry);
-  const key = recordNameKey(normalized.name);
-  const existingIndex = records.findIndex((x) => recordNameKey(x.name) === key);
-
-  if (existingIndex >= 0) {
-    const existing = records[existingIndex];
-    const attempts = Math.max(1, Number(existing?.attempts) || 1) + 1;
-    if (isBetterRecord(normalized, existing)) {
-      records[existingIndex] = { ...normalized, attempts };
-    } else {
-      records[existingIndex] = { ...existing, attempts };
-    }
-  } else {
-    records.push(normalized);
-  }
-
-  records.sort((a, b) => (b.kills - a.kills) || (b.score - a.score) || (b.at - a.at));
-  if (records.length > LEADERBOARD_LIMIT) records.length = LEADERBOARD_LIMIT;
-  const persistedRecord = records.find((x) => recordNameKey(x.name) === key) || normalized;
-
-  if (!recordsDb || !stmtInsertRecord || !stmtPruneRecords || !stmtDeleteRecordByName) return;
-  try {
-    stmtDeleteRecordByName.run(normalized.name);
-    stmtInsertRecord.run({
-      ...persistedRecord,
-      runDetailsJson: persistedRecord.runDetails ? JSON.stringify(persistedRecord.runDetails) : null,
-    });
-    stmtPruneRecords.run(LEADERBOARD_LIMIT);
-  } catch (err) {
-    console.error('Records DB write failed:', err.message);
-  }
-}
-
-initRecordsStore();
-function cloneJson(obj) {
-  return JSON.parse(JSON.stringify(obj));
-}
-
-function normalizeSkillDef(raw, fallbackId = '') {
-  const id = ((raw?.id || fallbackId || '').toString().trim().toLowerCase().replace(/[^a-z0-9_]/g, '')).slice(0, 40);
-  if (!id) return null;
-  const base = DEFAULT_SKILL_DEFS[id] || {};
-  return {
-    ...base,
-    ...raw,
-    id,
-    name: (raw?.name || base.name || id).toString().slice(0, 40),
-    kind: (raw?.kind || base.kind || 'passive') === 'active' ? 'active' : 'passive',
-    rarity: (raw?.rarity || base.rarity || 'common').toString().slice(0, 12),
-    maxLevel: Math.max(1, Math.min(12, Math.floor(Number(raw?.maxLevel ?? base.maxLevel ?? 5) || 5))),
-    weight: Math.max(0.05, Number(raw?.weight ?? base.weight ?? 1) || 1),
-    desc: (raw?.desc || base.desc || '').toString().slice(0, 80),
-  };
-}
-
-function loadSkillDefs() {
-  const merged = cloneJson(DEFAULT_SKILL_DEFS);
-  try {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    if (fs.existsSync(SKILLS_CONFIG_PATH)) {
-      const raw = fs.readFileSync(SKILLS_CONFIG_PATH, 'utf8');
-      const parsed = JSON.parse(raw);
-      const list = Array.isArray(parsed) ? parsed : Object.values(parsed || {});
-      for (const item of list) {
-        const norm = normalizeSkillDef(item, item?.id);
-        if (!norm) continue;
-        merged[norm.id] = { ...(merged[norm.id] || {}), ...norm };
-      }
-    } else {
-      fs.writeFileSync(SKILLS_CONFIG_PATH, JSON.stringify(Object.values(merged), null, 2), 'utf8');
-    }
-  } catch (err) {
-    console.error('Skills config load failed, using defaults:', err.message);
-  }
-  skillDefs = merged;
-}
-
-function saveSkillDefs() {
-  try {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(SKILLS_CONFIG_PATH, JSON.stringify(Object.values(skillDefs || {}), null, 2), 'utf8');
-    return true;
-  } catch (err) {
-    console.error('Skills config write failed:', err.message);
-    return false;
-  }
-}
-
-function getSkillDefsMap() {
-  if (!skillDefs) loadSkillDefs();
-  return skillDefs;
-}
-
-function getSkillDefsList() {
-  return Object.values(getSkillDefsMap());
-}
-
-function pickSkillData(id) {
-  return getSkillDefsMap()[id] || null;
-}
-
-function checkAdminToken(req) {
-  if (!SKILLS_ADMIN_TOKEN) return false;
-  const token = (req.query.token || req.headers['x-admin-token'] || '').toString();
-  return token && token === SKILLS_ADMIN_TOKEN;
-}
-
-loadSkillDefs();
-
-
 
 function getPresenceStats() {
   let inGame = 0;
@@ -511,7 +179,7 @@ app.get('/api/rooms', (_req, res) => {
 app.get('/api/records', (req, res) => {
   const page = Number(req.query.page) || 1;
   const pageSize = Number(req.query.page_size) || LEADERBOARD_PAGE_SIZE;
-  const payload = listRecordsForLobby(page, pageSize);
+  const payload = recordsStore.listRecordsForLobby(page, pageSize);
 
   res.json({
     records: payload.items,
@@ -524,40 +192,35 @@ app.get('/api/records', (req, res) => {
 });
 
 app.get('/api/skills', (_req, res) => {
-  res.json({ skills: getSkillDefsList(), now: Date.now() });
+  res.json({ skills: skillsStore.getList(), now: Date.now() });
 });
 
 app.get('/api/admin/skills', (req, res) => {
-  if (!checkAdminToken(req)) {
+  if (!skillsStore.checkAdminToken(req)) {
     res.status(403).json({ ok: false, message: 'Forbidden' });
     return;
   }
-  res.json({ ok: true, skills: getSkillDefsList() });
+  res.json({ ok: true, skills: skillsStore.getList() });
 });
 
 app.put('/api/admin/skills/:id', (req, res) => {
-  if (!checkAdminToken(req)) {
+  if (!skillsStore.checkAdminToken(req)) {
     res.status(403).json({ ok: false, message: 'Forbidden' });
     return;
   }
   const id = (req.params.id || '').toString().trim().toLowerCase();
-  const existing = pickSkillData(id);
+  const existing = skillsStore.getById(id);
   if (!existing) {
     res.status(404).json({ ok: false, message: 'Skill not found' });
     return;
   }
   const patch = req.body && typeof req.body === 'object' ? req.body : {};
-  const merged = normalizeSkillDef({ ...existing, ...patch, id }, id);
-  if (!merged) {
-    res.status(400).json({ ok: false, message: 'Invalid payload' });
+  const result = skillsStore.updateSkill(id, patch);
+  if (!result.ok) {
+    res.status(result.code).json({ ok: false, message: result.message });
     return;
   }
-  skillDefs[id] = merged;
-  if (!saveSkillDefs()) {
-    res.status(500).json({ ok: false, message: 'Save failed' });
-    return;
-  }
-  res.json({ ok: true, skill: merged });
+  res.json({ ok: true, skill: result.skill });
 });
 
 function clamp(value, min, max) {
@@ -727,7 +390,7 @@ function serializeRoom(room) {
       pendingSkillChoices: Array.isArray(p.pendingSkillChoices) ? p.pendingSkillChoices.slice(0, SKILL_PICK_OPTIONS) : [],
       skills: (p.skillOrder || []).map((sid) => {
         const st = p.skills?.[sid] || { level: 0, cooldownMs: 0, maxCooldownMs: 0 };
-        const def = pickSkillData(sid) || { id: sid, name: sid, kind: 'passive', rarity: 'common', desc: '' };
+        const def = skillsStore.getById(sid) || { id: sid, name: sid, kind: 'passive', rarity: 'common', desc: '' };
         return {
           id: sid,
           name: def.name,
@@ -1081,7 +744,7 @@ function rebuildPlayerDerivedStats(player) {
   player.pickupRadius = PLAYER_PICKUP_RADIUS_BASE;
   player.extraDodgeCharges = 0;
 
-  for (const def of getSkillDefsList()) {
+  for (const def of skillsStore.getList()) {
     const lvl = getSkillRank(player, def.id);
     if (lvl <= 0) continue;
     player.damageMul += (Number(def.damageMulPerLevel) || 0) * lvl;
@@ -1121,7 +784,7 @@ function weightedSkillPick(pool) {
 }
 
 function rollSkillChoices(player, count = SKILL_PICK_OPTIONS) {
-  const defs = getSkillDefsList();
+  const defs = skillsStore.getList();
   const candidates = defs.filter((def) => getSkillRank(player, def.id) < (Number(def.maxLevel) || 1));
   if (candidates.length === 0) return [];
   const out = [];
@@ -1213,7 +876,7 @@ function tickPlayerSkills(room, player, dtSec, now) {
     player.hp = clamp(player.hp + player.hpRegenPerSec * dtSec, 0, player.maxHp || PLAYER_HP_MAX);
   }
 
-  const defs = getSkillDefsMap();
+  const defs = skillsStore.getMap();
   for (const skillId of player.skillOrder || []) {
     const st = player.skills[skillId];
     if (!st || st.level <= 0) continue;
@@ -1252,7 +915,7 @@ function playerSelectSkill(player, skillId) {
   if (!pickId) return false;
   const options = Array.isArray(player.pendingSkillChoices) ? player.pendingSkillChoices : [];
   if (!options.includes(pickId)) return false;
-  const def = pickSkillData(pickId);
+  const def = skillsStore.getById(pickId);
   if (!def) return false;
   const st = ensureSkillState(player, pickId);
   const nextLevel = Math.min(Number(def.maxLevel) || 1, (Number(st.level) || 0) + 1);
@@ -1275,7 +938,7 @@ function buildRunDetails(room, target, now) {
       const st = target.skills[skillId];
       const level = Math.max(0, Number(st?.level) || 0);
       if (level <= 0) continue;
-      const def = pickSkillData(skillId);
+      const def = skillsStore.getById(skillId);
       skills.push({
         id: skillId,
         name: def?.name || skillId,
@@ -1323,7 +986,7 @@ function downPlayer(room, target, now) {
   target.dodgeInvulnUntil = 0;
   target.jumpQueued = false;
   setPlayerWeapon(target, 'pistol');
-  pushRecord({
+  recordsStore.pushRecord({
     name: target.name,
     kills: room.kills.get(target.id) || 0,
     score: room.scores.get(target.id) || 0,
@@ -1342,7 +1005,7 @@ function sendDevConsole(player, text, ok = true) {
 
 function grantPlayerSkillLevels(player, skillId, levels = 1) {
   const sid = (skillId || '').toString().trim().toLowerCase();
-  const def = pickSkillData(sid);
+  const def = skillsStore.getById(sid);
   if (!def) return 0;
   const st = ensureSkillState(player, sid);
   const before = st.level;
@@ -1593,7 +1256,7 @@ function joinRoom(ws, join) {
     tickRate: room.sync.tickRate,
     sync: room.sync,
     maxPlayers: MAX_PLAYERS,
-    skillCatalog: getSkillDefsList(),
+    skillCatalog: skillsStore.getList(),
   });
 
   broadcastRoom(room, {
@@ -1986,3 +1649,5 @@ setInterval(() => {
 server.listen(PORT, () => {
   console.log(`Server started: http://localhost:${PORT}`);
 });
+
+
