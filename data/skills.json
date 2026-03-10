@@ -1,132 +1,279 @@
-[
-  {
-    "id": "weapon_mastery",
-    "name": "Weapon Mastery",
-    "kind": "passive",
-    "rarity": "common",
-    "maxLevel": 8,
-    "weight": 1.35,
-    "damageMulPerLevel": 0.11,
-    "desc": "+damage"
-  },
-  {
-    "id": "rapid_reload",
-    "name": "Rapid Reload",
-    "kind": "passive",
-    "rarity": "common",
-    "maxLevel": 8,
-    "weight": 1.3,
-    "fireRateMulPerLevel": 0.1,
-    "desc": "+fire rate"
-  },
-  {
-    "id": "vitality",
-    "name": "Vitality",
-    "kind": "passive",
-    "rarity": "common",
-    "maxLevel": 8,
-    "weight": 1.25,
-    "maxHpFlatPerLevel": 20,
-    "desc": "+max HP"
-  },
-  {
-    "id": "haste",
-    "name": "Haste",
-    "kind": "passive",
-    "rarity": "common",
-    "maxLevel": 7,
-    "weight": 1.2,
-    "moveSpeedMulPerLevel": 0.075,
-    "desc": "+move speed"
-  },
-  {
-    "id": "magnetism",
-    "name": "Magnetism",
-    "kind": "passive",
-    "rarity": "common",
-    "maxLevel": 6,
-    "weight": 1.12,
-    "pickupRadiusPerLevel": 22,
-    "desc": "+XP pickup radius"
-  },
-  {
-    "id": "bloodlust",
-    "name": "Bloodlust",
-    "kind": "passive",
-    "rarity": "rare",
-    "maxLevel": 6,
-    "weight": 0.86,
-    "damageMulPerLevel": 0.16,
-    "fireRateMulPerLevel": 0.05,
-    "desc": "+damage +fire rate"
-  },
-  {
-    "id": "regeneration",
-    "name": "Regeneration",
-    "kind": "passive",
-    "rarity": "rare",
-    "maxLevel": 6,
-    "weight": 0.85,
-    "hpRegenPerSecPerLevel": 1.15,
-    "desc": "HP regen/sec"
-  },
-  {
-    "id": "dodge_instinct",
-    "name": "Dodge Instinct",
-    "kind": "passive",
-    "rarity": "rare",
-    "maxLevel": 3,
-    "weight": 0.62,
-    "extraDodgeChargesPerLevel": 1,
-    "desc": "+jump charges"
-  },
-  {
-    "id": "shockwave",
-    "name": "Shockwave",
-    "kind": "active",
-    "rarity": "rare",
-    "maxLevel": 8,
-    "weight": 0.84,
-    "cooldownMs": 5400,
-    "cooldownMulPerLevel": 0.08,
-    "radius": 170,
-    "radiusPerLevel": 14,
-    "damage": 38,
-    "damagePerLevel": 16,
-    "desc": "AoE blast around hero"
-  },
-  {
-    "id": "blade_orbit",
-    "name": "Blade Orbit",
-    "kind": "active",
-    "rarity": "common",
-    "maxLevel": 8,
-    "weight": 1.02,
-    "cooldownMs": 1450,
-    "cooldownMulPerLevel": 0.05,
-    "radius": 190,
-    "radiusPerLevel": 12,
-    "damage": 23,
-    "damagePerLevel": 10,
-    "targets": 2,
-    "targetsPerLevel": 1,
-    "desc": "Hits nearest enemies"
-  },
-  {
-    "id": "chain_lightning",
-    "name": "Chain Lightning",
-    "kind": "active",
-    "rarity": "epic",
-    "maxLevel": 7,
-    "weight": 0.52,
-    "cooldownMs": 6200,
-    "cooldownMulPerLevel": 0.08,
-    "radius": 330,
-    "radiusPerLevel": 18,
-    "damage": 52,
-    "damagePerLevel": 19,
-    "targets": 3,
-    "targetsPerLevel": 1,
-    "desc": "Chains to nearest enemies"
-  }
-]
+{
+  "activeCollectionId": "default",
+  "collections": [
+    {
+      "id": "default",
+      "name": "Default",
+      "updatedAt": 1773148241178,
+      "skills": [
+        {
+          "id": "weapon_mastery",
+          "name": "Weapon Mastery",
+          "kind": "passive",
+          "rarity": "common",
+          "maxLevel": 8,
+          "weight": 1.35,
+          "damageMulPerLevel": 0.11,
+          "desc": "+damage"
+        },
+        {
+          "id": "rapid_reload",
+          "name": "Rapid Reload",
+          "kind": "passive",
+          "rarity": "common",
+          "maxLevel": 8,
+          "weight": 1.3,
+          "fireRateMulPerLevel": 0.1,
+          "desc": "+fire rate"
+        },
+        {
+          "id": "vitality",
+          "name": "Vitality",
+          "kind": "passive",
+          "rarity": "common",
+          "maxLevel": 8,
+          "weight": 1.25,
+          "maxHpFlatPerLevel": 20,
+          "desc": "+max HP"
+        },
+        {
+          "id": "haste",
+          "name": "Haste",
+          "kind": "passive",
+          "rarity": "common",
+          "maxLevel": 7,
+          "weight": 1.2,
+          "moveSpeedMulPerLevel": 0.075,
+          "desc": "+move speed"
+        },
+        {
+          "id": "magnetism",
+          "name": "Magnetism",
+          "kind": "passive",
+          "rarity": "common",
+          "maxLevel": 6,
+          "weight": 1.12,
+          "pickupRadiusPerLevel": 22,
+          "desc": "+XP pickup radius"
+        },
+        {
+          "id": "bloodlust",
+          "name": "Bloodlust",
+          "kind": "passive",
+          "rarity": "rare",
+          "maxLevel": 6,
+          "weight": 0.86,
+          "damageMulPerLevel": 0.16,
+          "fireRateMulPerLevel": 0.05,
+          "desc": "+damage +fire rate"
+        },
+        {
+          "id": "regeneration",
+          "name": "Regeneration",
+          "kind": "passive",
+          "rarity": "rare",
+          "maxLevel": 6,
+          "weight": 0.85,
+          "hpRegenPerSecPerLevel": 1.15,
+          "desc": "HP regen/sec"
+        },
+        {
+          "id": "dodge_instinct",
+          "name": "Dodge Instinct",
+          "kind": "passive",
+          "rarity": "rare",
+          "maxLevel": 3,
+          "weight": 0.62,
+          "extraDodgeChargesPerLevel": 1,
+          "desc": "+jump charges"
+        },
+        {
+          "id": "shockwave",
+          "name": "Shockwave",
+          "kind": "active",
+          "rarity": "rare",
+          "maxLevel": 8,
+          "weight": 0.84,
+          "cooldownMs": 5400,
+          "cooldownMulPerLevel": 0.08,
+          "radius": 170,
+          "radiusPerLevel": 14,
+          "damage": 38,
+          "damagePerLevel": 16,
+          "desc": "AoE blast around hero"
+        },
+        {
+          "id": "blade_orbit",
+          "name": "Blade Orbit",
+          "kind": "active",
+          "rarity": "common",
+          "maxLevel": 8,
+          "weight": 1.02,
+          "cooldownMs": 1450,
+          "cooldownMulPerLevel": 0.05,
+          "radius": 190,
+          "radiusPerLevel": 12,
+          "damage": 23,
+          "damagePerLevel": 10,
+          "targets": 2,
+          "targetsPerLevel": 1,
+          "desc": "Hits nearest enemies"
+        },
+        {
+          "id": "chain_lightning",
+          "name": "Chain Lightning",
+          "kind": "active",
+          "rarity": "epic",
+          "maxLevel": 7,
+          "weight": 0.52,
+          "cooldownMs": 6200,
+          "cooldownMulPerLevel": 0.08,
+          "radius": 330,
+          "radiusPerLevel": 18,
+          "damage": 52,
+          "damagePerLevel": 19,
+          "targets": 3,
+          "targetsPerLevel": 1,
+          "desc": "Chains to nearest enemies"
+        }
+      ]
+    },
+    {
+      "id": "hardcode",
+      "name": "Hardcode",
+      "updatedAt": 1773148280274,
+      "skills": [
+        {
+          "id": "weapon_mastery",
+          "name": "Weapon Mastery",
+          "kind": "passive",
+          "rarity": "common",
+          "maxLevel": 8,
+          "weight": 1.35,
+          "damageMulPerLevel": 0.11,
+          "desc": "+damage"
+        },
+        {
+          "id": "rapid_reload",
+          "name": "Rapid Reload",
+          "kind": "passive",
+          "rarity": "common",
+          "maxLevel": 8,
+          "weight": 1.3,
+          "fireRateMulPerLevel": 0.1,
+          "desc": "+fire rate"
+        },
+        {
+          "id": "vitality",
+          "name": "Vitality",
+          "kind": "passive",
+          "rarity": "common",
+          "maxLevel": 8,
+          "weight": 1.25,
+          "maxHpFlatPerLevel": 20,
+          "desc": "+max HP"
+        },
+        {
+          "id": "haste",
+          "name": "Haste",
+          "kind": "passive",
+          "rarity": "common",
+          "maxLevel": 7,
+          "weight": 1.2,
+          "moveSpeedMulPerLevel": 0.075,
+          "desc": "+move speed"
+        },
+        {
+          "id": "magnetism",
+          "name": "Magnetism",
+          "kind": "passive",
+          "rarity": "common",
+          "maxLevel": 6,
+          "weight": 1.12,
+          "pickupRadiusPerLevel": 22,
+          "desc": "+XP pickup radius"
+        },
+        {
+          "id": "bloodlust",
+          "name": "Bloodlust",
+          "kind": "passive",
+          "rarity": "rare",
+          "maxLevel": 6,
+          "weight": 0.86,
+          "damageMulPerLevel": 0.16,
+          "fireRateMulPerLevel": 0.05,
+          "desc": "+damage +fire rate"
+        },
+        {
+          "id": "regeneration",
+          "name": "Regeneration",
+          "kind": "passive",
+          "rarity": "rare",
+          "maxLevel": 6,
+          "weight": 0.85,
+          "hpRegenPerSecPerLevel": 1.15,
+          "desc": "HP regen/sec"
+        },
+        {
+          "id": "dodge_instinct",
+          "name": "Dodge Instinct",
+          "kind": "passive",
+          "rarity": "rare",
+          "maxLevel": 3,
+          "weight": 0.62,
+          "extraDodgeChargesPerLevel": 1,
+          "desc": "+jump charges"
+        },
+        {
+          "id": "shockwave",
+          "name": "Shockwave",
+          "kind": "active",
+          "rarity": "rare",
+          "maxLevel": 8,
+          "weight": 0.84,
+          "cooldownMs": 5400,
+          "cooldownMulPerLevel": 0.08,
+          "radius": 170,
+          "radiusPerLevel": 14,
+          "damage": 38,
+          "damagePerLevel": 16,
+          "desc": "AoE blast around hero"
+        },
+        {
+          "id": "blade_orbit",
+          "name": "Blade Orbit",
+          "kind": "active",
+          "rarity": "common",
+          "maxLevel": 8,
+          "weight": 1.02,
+          "cooldownMs": 1450,
+          "cooldownMulPerLevel": 0.05,
+          "radius": 190,
+          "radiusPerLevel": 12,
+          "damage": 23,
+          "damagePerLevel": 10,
+          "targets": 2,
+          "targetsPerLevel": 1,
+          "desc": "Hits nearest enemies"
+        },
+        {
+          "id": "chain_lightning",
+          "name": "Chain Lightning",
+          "kind": "active",
+          "rarity": "epic",
+          "maxLevel": 7,
+          "weight": 0.52,
+          "cooldownMs": 6200,
+          "cooldownMulPerLevel": 0.08,
+          "radius": 330,
+          "radiusPerLevel": 18,
+          "damage": 52,
+          "damagePerLevel": 19,
+          "targets": 3,
+          "targetsPerLevel": 1,
+          "desc": "Chains to nearest enemies"
+        }
+      ]
+    }
+  ]
+}

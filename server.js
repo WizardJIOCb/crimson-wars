@@ -113,7 +113,6 @@ const skillsStore = createSkillsStore({
   dataDir: DATA_DIR,
   skillsConfigPath: SKILLS_CONFIG_PATH,
   defaultSkillDefs: DEFAULT_SKILL_DEFS,
-  adminToken: '',
 });
 
 function clampNum(value, min, max, fallback) {
@@ -349,27 +348,75 @@ app.get('/api/records', (req, res) => {
 });
 
 app.get('/api/skills', (_req, res) => {
-  res.json({ skills: skillsStore.getList(), now: Date.now() });
+  const active = skillsStore.getActiveCollection();
+  res.json({
+    skills: skillsStore.getList(),
+    activeCollection: active ? { id: active.id, name: active.name, updatedAt: active.updatedAt } : null,
+    now: Date.now(),
+  });
 });
 
 app.get('/api/admin/skills', requireAdmin, (req, res) => {
-  res.json({ ok: true, skills: skillsStore.getList() });
+  const collectionId = (req.query.collection_id || '').toString();
+  res.json({ ok: true, ...skillsStore.getAdminPayload(collectionId) });
+});
+
+app.post('/api/admin/skill-collections', requireAdmin, (req, res) => {
+  const payload = req.body && typeof req.body === 'object' ? req.body : {};
+  const result = skillsStore.createCollection({
+    name: payload.name,
+    sourceCollectionId: payload.sourceCollectionId,
+  });
+  if (!result.ok) {
+    res.status(result.code).json({ ok: false, message: result.message });
+    return;
+  }
+  res.json({ ok: true, collection: result.collection, ...skillsStore.getAdminPayload(result.collection.id) });
+});
+
+app.put('/api/admin/skill-collections/:id', requireAdmin, (req, res) => {
+  const payload = req.body && typeof req.body === 'object' ? req.body : {};
+  const result = skillsStore.renameCollection(req.params.id, payload.name);
+  if (!result.ok) {
+    res.status(result.code).json({ ok: false, message: result.message });
+    return;
+  }
+  res.json({ ok: true, collection: result.collection, ...skillsStore.getAdminPayload(result.collection.id) });
+});
+
+app.post('/api/admin/skill-collections/:id/activate', requireAdmin, (req, res) => {
+  const result = skillsStore.activateCollection(req.params.id);
+  if (!result.ok) {
+    res.status(result.code).json({ ok: false, message: result.message });
+    return;
+  }
+  res.json({ ok: true, collection: result.collection, ...skillsStore.getAdminPayload(result.collection.id) });
+});
+
+app.delete('/api/admin/skill-collections/:id', requireAdmin, (req, res) => {
+  const result = skillsStore.deleteCollection(req.params.id);
+  if (!result.ok) {
+    res.status(result.code).json({ ok: false, message: result.message });
+    return;
+  }
+  res.json({ ok: true, ...skillsStore.getAdminPayload(result.activeCollectionId) });
 });
 
 app.put('/api/admin/skills/:id', requireAdmin, (req, res) => {
   const id = (req.params.id || '').toString().trim().toLowerCase();
-  const existing = skillsStore.getById(id);
+  const collectionId = (req.query.collection_id || '').toString();
+  const existing = skillsStore.getById(id, collectionId);
   if (!existing) {
     res.status(404).json({ ok: false, message: 'Skill not found' });
     return;
   }
   const patch = req.body && typeof req.body === 'object' ? req.body : {};
-  const result = skillsStore.updateSkill(id, patch);
+  const result = skillsStore.updateSkill(id, patch, collectionId);
   if (!result.ok) {
     res.status(result.code).json({ ok: false, message: result.message });
     return;
   }
-  res.json({ ok: true, skill: result.skill });
+  res.json({ ok: true, skill: result.skill, ...skillsStore.getAdminPayload(result.collection?.id) });
 });
 
 function clamp(value, min, max) {
