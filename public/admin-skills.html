@@ -5,82 +5,198 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Crimson Wars - Skills Admin</title>
   <style>
-    body{font-family:Segoe UI,Tahoma,sans-serif;background:#0b0f14;color:#e5e7eb;margin:0;padding:16px}
-    .row{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
-    input,button,select{background:#111827;color:#e5e7eb;border:1px solid #334155;border-radius:8px;padding:8px}
-    table{width:100%;border-collapse:collapse;background:#0f172a}
-    th,td{border:1px solid #1f2937;padding:6px;font-size:13px}
-    th{background:#111827;position:sticky;top:0}
-    .ok{color:#34d399}.err{color:#f87171}
+    :root{--bg:#07111a;--bg2:#0d1824;--panel:rgba(11,20,30,.94);--line:rgba(159,176,196,.18);--text:#ebf2fb;--muted:#8fa5bb;--accent:#ff744f;--ok:#42d597;--warn:#ffca62;--err:#ff6f7f;--radius:18px;--mono:"Cascadia Code",Consolas,monospace;--ui:"Segoe UI",Tahoma,sans-serif}
+    *{box-sizing:border-box}
+    html,body{margin:0;min-height:100%;background:radial-gradient(circle at top left,rgba(255,116,79,.12),transparent 30%),radial-gradient(circle at top right,rgba(72,140,255,.12),transparent 28%),linear-gradient(180deg,var(--bg2),var(--bg));color:var(--text);font-family:var(--ui)}
+    body{padding:18px}
+    button,input,select,textarea{font:inherit}
+    .app{max-width:1560px;margin:0 auto;display:grid;gap:16px}
+    .hero,.workspace{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(360px,.85fr);gap:16px}
+    .workspace{grid-template-columns:minmax(420px,.95fr) minmax(520px,1.1fr)}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 24px 70px rgba(0,0,0,.38);backdrop-filter:blur(10px)}
+    .hero-main,.auth,.panel{padding:20px}
+    .eyebrow{display:inline-block;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.05);color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.12em}
+    h1{margin:14px 0 10px;font-size:40px;line-height:1}
+    h2,h3{margin:0}
+    .copy,.subcopy,.muted{color:var(--muted)}
+    .copy{max-width:760px;line-height:1.6}
+    .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:20px}
+    .stat{padding:14px;border:1px solid rgba(255,255,255,.06);border-radius:14px;background:rgba(255,255,255,.04)}
+    .stat .label,.field label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+    .stat .value{margin-top:4px;font-size:28px;font-weight:700}
+    .toolbar,.meta,.filters,.token-row,.editor-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .token-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:end}
+    .field{display:grid;gap:6px;min-width:0}
+    input,select,textarea{width:100%;padding:11px 12px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.045);color:var(--text);outline:none}
+    option{color:#10161d;background:#ffffff}
+    textarea{min-height:84px;resize:vertical}
+    input:focus,select:focus,textarea:focus{border-color:rgba(255,116,79,.75);box-shadow:0 0 0 4px rgba(255,116,79,.14)}
+    .btn{padding:11px 14px;border-radius:12px;border:1px solid transparent;background:rgba(255,255,255,.06);color:var(--text);cursor:pointer}
+    .btn:hover{background:rgba(255,255,255,.1)}
+    .btn:disabled{opacity:.5;cursor:not-allowed}
+    .btn-primary{background:linear-gradient(135deg,#ff744f,#ff9863);color:#10161d;font-weight:700}
+    .btn-primary:hover{background:linear-gradient(135deg,#45d08f,#69e19d);color:#08140f}
+    .btn-ghost{background:transparent;border-color:var(--line)}
+    .status{min-height:20px;font-size:13px}.status.ok{color:var(--ok)}.status.warn{color:var(--warn)}.status.err{color:var(--err)}
+    .filters{display:grid;grid-template-columns:minmax(0,1.4fr) repeat(3,minmax(100px,.7fr));margin:14px 0}
+    .table-wrap{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:rgba(0,0,0,.16)}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:12px;border-bottom:1px solid rgba(255,255,255,.06);text-align:left;vertical-align:top;font-size:13px}
+    th{position:sticky;top:0;background:rgba(9,17,25,.98);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+    tbody tr{cursor:pointer}
+    tbody tr:hover{background:rgba(255,255,255,.04)}
+    tbody tr.sel{background:rgba(255,116,79,.1)}
+    tbody tr.dirty{box-shadow:inset 3px 0 0 var(--warn)}
+    .mono{font-family:var(--mono)}
+    .pill{display:inline-flex;align-items:center;justify-content:center;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:700;text-transform:uppercase}
+    .kind-passive{background:rgba(255,255,255,.08)}.kind-active{background:rgba(93,198,255,.13);color:#8ed8ff}.rarity-common{background:rgba(159,176,196,.14)}.rarity-rare{background:rgba(93,137,255,.16);color:#90b6ff}.rarity-epic{background:rgba(255,121,196,.16);color:#ff98db}
+    .effects{display:flex;flex-wrap:wrap;gap:6px}
+    .chip{padding:5px 8px;border-radius:10px;background:rgba(255,255,255,.05);font-size:12px;color:#c3d2e2}
+    .empty{padding:28px;text-align:center;color:var(--muted)}
+    .editor-empty{padding:32px;border:1px dashed rgba(159,176,196,.3);border-radius:16px;text-align:center;color:var(--muted)}
+    .editor-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:16px}
+    .editor-title{display:grid;gap:8px}
+    .editor-title .name{font-size:24px;font-weight:700}
+    .subcard{padding:16px;border-radius:16px;border:1px solid var(--line);background:rgba(255,255,255,.025);margin-top:16px}
+    .subcopy{font-size:13px;line-height:1.5;margin:6px 0 14px}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .span-2{grid-column:span 2}
+    pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.5 var(--mono);color:#c9d8e8}
+    @media (max-width:1180px){.hero,.workspace{grid-template-columns:1fr}}
+    @media (max-width:760px){body{padding:12px}.stats,.filters,.grid,.token-row{grid-template-columns:1fr}.span-2{grid-column:span 1}}
   </style>
 </head>
 <body>
-  <h1>Skills Admin</h1>
-  <div class="row">
-    <label>Token <input id="token" placeholder="SKILLS_ADMIN_TOKEN" /></label>
-    <button id="load">Load</button>
-    <button id="save">Save selected row</button>
-    <span id="msg"></span>
-  </div>
-  <div class="row">
-    <label>Skill <select id="skill"></select></label>
-    <label>Name <input id="name" /></label>
-    <label>Kind <select id="kind"><option>passive</option><option>active</option></select></label>
-    <label>Rarity <select id="rarity"><option>common</option><option>rare</option><option>epic</option></select></label>
-    <label>Max lvl <input id="maxLevel" type="number" min="1" max="12" /></label>
-    <label>Weight <input id="weight" type="number" step="0.01" /></label>
-    <label>Desc <input id="desc" /></label>
+  <div class="app">
+    <section class="hero">
+      <div class="card hero-main">
+        <div class="eyebrow">Crimson Wars Control Room</div>
+        <h1>Skills Admin</h1>
+        <div class="copy">A proper editor for the live skill catalog: searchable table, selected-skill workspace, dynamic balance fields, payload preview, and local token memory.</div>
+        <div class="stats">
+          <div class="stat"><div class="label">Skills</div><div id="stat-total" class="value">0</div></div>
+          <div class="stat"><div class="label">Unsaved</div><div id="stat-dirty" class="value">0</div></div>
+          <div class="stat"><div class="label">Visible</div><div id="stat-visible" class="value">0</div></div>
+        </div>
+      </div>
+      <aside class="card auth">
+        <div class="meta"><h2>Access</h2><span id="auth-badge" class="muted">Not loaded</span></div>
+        <div class="field" style="margin-top:14px">
+          <label for="token">Admin token</label>
+          <div class="token-row">
+            <input id="token" type="password" placeholder="SKILLS_ADMIN_TOKEN" autocomplete="off" />
+            <button id="toggle-token" type="button" class="btn btn-ghost">Show</button>
+            <button id="load" type="button" class="btn btn-primary">Load skills</button>
+          </div>
+        </div>
+        <div class="toolbar" style="margin-top:14px">
+          <button id="save-selected" type="button" class="btn" disabled>Save selected</button>
+          <button id="revert-selected" type="button" class="btn btn-ghost" disabled>Revert selected</button>
+          <button id="reload" type="button" class="btn btn-ghost" disabled>Reload</button>
+        </div>
+        <div id="status" class="status muted" style="margin-top:12px">Enter token and load the catalog.</div>
+      </aside>
+    </section>
+    <section class="workspace">
+      <div class="card panel">
+        <div class="meta"><h3>Catalog</h3><span id="catalog-meta" class="muted">No data loaded</span></div>
+        <div class="filters">
+          <div class="field"><label for="search">Search</label><input id="search" type="text" placeholder="id, name, desc, stat key" /></div>
+          <div class="field"><label for="filter-kind">Kind</label><select id="filter-kind"><option value="">All</option><option value="passive">Passive</option><option value="active">Active</option></select></div>
+          <div class="field"><label for="filter-rarity">Rarity</label><select id="filter-rarity"><option value="">All</option><option value="common">Common</option><option value="rare">Rare</option><option value="epic">Epic</option></select></div>
+          <div class="field"><label for="filter-state">State</label><select id="filter-state"><option value="">All</option><option value="dirty">Unsaved only</option><option value="clean">Saved only</option></select></div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>Name</th><th>Type</th><th>Max</th><th>Weight</th><th>Summary</th></tr></thead>
+            <tbody id="skills-body"><tr><td colspan="6" class="empty">Load skills to start editing.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card panel">
+        <div id="editor-empty" class="editor-empty">Choose a skill from the table to inspect and edit it.</div>
+        <div id="editor" hidden>
+          <div class="editor-head">
+            <div class="editor-title">
+              <div class="meta">
+                <span id="editor-kind-pill" class="pill">kind</span>
+                <span id="editor-rarity-pill" class="pill">rarity</span>
+                <span id="editor-dirty" class="muted">Saved</span>
+              </div>
+              <div id="editor-name" class="name">Skill</div>
+              <div id="editor-id" class="mono muted"></div>
+            </div>
+            <div class="editor-actions">
+              <button id="copy-json" type="button" class="btn btn-ghost">Copy JSON</button>
+              <button id="save-top" type="button" class="btn btn-primary">Save skill</button>
+            </div>
+          </div>
+          <div class="subcard">
+            <h3>Core fields</h3>
+            <p class="subcopy">These are the fields most often touched during balancing and drop-table tuning.</p>
+            <div class="grid">
+              <div class="field"><label for="field-name">Name</label><input id="field-name" maxlength="40" /></div>
+              <div class="field"><label for="field-id">ID</label><input id="field-id" disabled /></div>
+              <div class="field"><label for="field-kind">Kind</label><select id="field-kind"><option value="passive">Passive</option><option value="active">Active</option></select></div>
+              <div class="field"><label for="field-rarity">Rarity</label><select id="field-rarity"><option value="common">Common</option><option value="rare">Rare</option><option value="epic">Epic</option></select></div>
+              <div class="field"><label for="field-maxLevel">Max level</label><input id="field-maxLevel" type="number" min="1" max="12" step="1" /></div>
+              <div class="field"><label for="field-weight">Weight</label><input id="field-weight" type="number" min="0.05" step="0.01" /></div>
+              <div class="field span-2"><label for="field-desc">Description</label><textarea id="field-desc" maxlength="80"></textarea></div>
+            </div>
+          </div>
+          <div class="subcard">
+            <h3>Balance numbers</h3>
+            <p class="subcopy">Every extra numeric field is rendered automatically, so new skill properties stay editable without rewriting the admin page.</p>
+            <div id="effects-grid" class="grid"></div>
+          </div>
+          <div class="subcard">
+            <div class="meta"><h3>Payload preview</h3><span class="muted">Sent on save</span></div>
+            <pre id="json-preview">{}</pre>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
   <script>
-    const $ = (id) => document.getElementById(id);
-    let skills = [];
-    function msg(t, ok=true){ const el=$('msg'); el.textContent=t; el.className=ok?'ok':'err'; }
-    function fillSelect(){
-      const s=$('skill'); s.innerHTML='';
-      skills.forEach(x=>{ const o=document.createElement('option'); o.value=x.id; o.textContent=x.id; s.appendChild(o); });
-      if (skills.length) { s.value=skills[0].id; fillForm(skills[0]); }
-    }
-    function fillForm(sk){
-      $('name').value = sk.name || '';
-      $('kind').value = sk.kind || 'passive';
-      $('rarity').value = sk.rarity || 'common';
-      $('maxLevel').value = sk.maxLevel || 1;
-      $('weight').value = sk.weight || 1;
-      $('desc').value = sk.desc || '';
-    }
-    function current(){ return skills.find(x=>x.id === $('skill').value); }
-    $('skill').addEventListener('change',()=>{ const sk=current(); if(sk) fillForm(sk); });
-    $('load').addEventListener('click', async()=>{
-      try{
-        const token=encodeURIComponent($('token').value.trim());
-        const res=await fetch('/api/admin/skills?token='+token,{cache:'no-store'});
-        const data=await res.json();
-        if(!res.ok) throw new Error(data.message || ('HTTP '+res.status));
-        skills=Array.isArray(data.skills)?data.skills:[];
-        fillSelect();
-        msg('Loaded '+skills.length+' skills');
-      }catch(e){ msg(e.message,false); }
-    });
-    $('save').addEventListener('click', async()=>{
-      const sk=current(); if(!sk){ msg('No skill selected',false); return; }
-      const patch={
-        name:$('name').value,
-        kind:$('kind').value,
-        rarity:$('rarity').value,
-        maxLevel:Number($('maxLevel').value||1),
-        weight:Number($('weight').value||1),
-        desc:$('desc').value,
-      };
-      try{
-        const token=encodeURIComponent($('token').value.trim());
-        const res=await fetch('/api/admin/skills/'+encodeURIComponent(sk.id)+'?token='+token,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)});
-        const data=await res.json();
-        if(!res.ok) throw new Error(data.message || ('HTTP '+res.status));
-        const i=skills.findIndex(x=>x.id===sk.id); if(i>=0) skills[i]=data.skill;
-        fillForm(data.skill);
-        msg('Saved '+sk.id);
-      }catch(e){ msg(e.message,false); }
-    });
+    const STORAGE_TOKEN_KEY='crimson-skills-admin-token';
+    const CORE_KEYS=['id','name','kind','rarity','maxLevel','weight','desc'];
+    const EFFECT_LABELS={damageMulPerLevel:'Damage / level',fireRateMulPerLevel:'Fire rate / level',maxHpFlatPerLevel:'Max HP / level',moveSpeedMulPerLevel:'Move speed / level',pickupRadiusPerLevel:'Pickup radius / level',hpRegenPerSecPerLevel:'HP regen / sec / level',extraDodgeChargesPerLevel:'Extra dodge charges / level',cooldownMs:'Base cooldown (ms)',cooldownMulPerLevel:'Cooldown reduction / level',radius:'Base radius',radiusPerLevel:'Radius / level',damage:'Base damage',damagePerLevel:'Damage / level',targets:'Base targets',targetsPerLevel:'Targets / level'};
+    const $=id=>document.getElementById(id);
+    const dom={token:$('token'),load:$('load'),reload:$('reload'),toggleToken:$('toggle-token'),status:$('status'),authBadge:$('auth-badge'),search:$('search'),filterKind:$('filter-kind'),filterRarity:$('filter-rarity'),filterState:$('filter-state'),skillsBody:$('skills-body'),catalogMeta:$('catalog-meta'),statTotal:$('stat-total'),statDirty:$('stat-dirty'),statVisible:$('stat-visible'),editorEmpty:$('editor-empty'),editor:$('editor'),editorName:$('editor-name'),editorId:$('editor-id'),editorKindPill:$('editor-kind-pill'),editorRarityPill:$('editor-rarity-pill'),editorDirty:$('editor-dirty'),fieldName:$('field-name'),fieldId:$('field-id'),fieldKind:$('field-kind'),fieldRarity:$('field-rarity'),fieldMaxLevel:$('field-maxLevel'),fieldWeight:$('field-weight'),fieldDesc:$('field-desc'),effectsGrid:$('effects-grid'),jsonPreview:$('json-preview'),saveSelected:$('save-selected'),saveTop:$('save-top'),revertSelected:$('revert-selected'),copyJson:$('copy-json')};
+    const state={loaded:false,selectedId:'',skills:[],original:new Map(),working:new Map(),filteredIds:[]};
+    const clone=v=>JSON.parse(JSON.stringify(v));
+    const current=()=>state.selectedId?state.working.get(state.selectedId)||null:null;
+    const sorted=obj=>{const out={};Object.keys(obj).sort().forEach(k=>out[k]=obj[k]);return out};
+    const effectKeys=skill=>Object.keys(skill).filter(k=>!CORE_KEYS.includes(k)).sort((a,b)=>a.localeCompare(b));
+    const labelFor=key=>EFFECT_LABELS[key]||key.replace(/([a-z0-9])([A-Z])/g,'$1 $2').replace(/_/g,' ').replace(/\b\w/g,s=>s.toUpperCase());
+    const parseNum=el=>{const n=Number(String(el.value||'').trim());return Number.isFinite(n)?n:0};
+    const dirty=id=>JSON.stringify(state.working.get(id))!==JSON.stringify(state.original.get(id));
+    const dirtyCount=()=>state.skills.reduce((n,s)=>n+(dirty(s.id)?1:0),0);
+    function setStatus(text,type='muted'){dom.status.textContent=text;dom.status.className=`status ${type}`}
+    function updateStats(){dom.statTotal.textContent=String(state.skills.length);dom.statDirty.textContent=String(dirtyCount());dom.statVisible.textContent=String(state.filteredIds.length);dom.catalogMeta.textContent=state.loaded?`${state.filteredIds.length} shown / ${state.skills.length} total`:'No data loaded';dom.authBadge.textContent=state.loaded?'Catalog loaded':'Not loaded'}
+    function summary(skill){const keys=effectKeys(skill);return keys.length?keys.slice(0,4).map(k=>`<span class="chip mono">${k}: ${skill[k]}</span>`).join(''):'<span class="muted">No extra values</span>'}
+    function matches(skill){const q=dom.search.value.trim().toLowerCase();if(dom.filterKind.value&&skill.kind!==dom.filterKind.value)return false;if(dom.filterRarity.value&&skill.rarity!==dom.filterRarity.value)return false;const d=dirty(skill.id);if(dom.filterState.value==='dirty'&&!d)return false;if(dom.filterState.value==='clean'&&d)return false;if(!q)return true;const text=[skill.id,skill.name,skill.desc,...effectKeys(skill)].join(' ').toLowerCase();return text.includes(q)}
+    function renderTable(){const rows=state.skills.filter(matches);state.filteredIds=rows.map(s=>s.id);if(!rows.length){dom.skillsBody.innerHTML='<tr><td colspan="6" class="empty">No skills match the current filters.</td></tr>';updateStats();return}dom.skillsBody.innerHTML=rows.map(skill=>{const row=state.working.get(skill.id);return `<tr data-id="${skill.id}" class="${skill.id===state.selectedId?'sel':''} ${dirty(skill.id)?'dirty':''}"><td class="mono">${skill.id}</td><td><div>${row.name||skill.id}</div><div class="muted">${row.desc||''}</div></td><td><div class="pill kind-${row.kind}">${row.kind}</div><div style="height:6px"></div><div class="pill rarity-${row.rarity}">${row.rarity}</div></td><td>${row.maxLevel??'-'}</td><td>${row.weight??'-'}</td><td><div class="effects">${summary(row)}</div></td></tr>`}).join('');updateStats()}
+    function setEditor(visible){dom.editor.hidden=!visible;dom.editorEmpty.hidden=visible;dom.saveSelected.disabled=!visible;dom.revertSelected.disabled=!visible}
+    function renderEditor(){const skill=current();if(!skill){setEditor(false);updateStats();return}setEditor(true);dom.editorName.textContent=skill.name||skill.id;dom.editorId.textContent=skill.id;dom.editorKindPill.className=`pill kind-${skill.kind}`;dom.editorKindPill.textContent=skill.kind;dom.editorRarityPill.className=`pill rarity-${skill.rarity}`;dom.editorRarityPill.textContent=skill.rarity;dom.editorDirty.textContent=dirty(skill.id)?'Unsaved changes':'Saved';dom.editorDirty.className=dirty(skill.id)?'status warn':'muted';dom.fieldName.value=skill.name||'';dom.fieldId.value=skill.id||'';dom.fieldKind.value=skill.kind||'passive';dom.fieldRarity.value=skill.rarity||'common';dom.fieldMaxLevel.value=skill.maxLevel??1;dom.fieldWeight.value=skill.weight??1;dom.fieldDesc.value=skill.desc||'';const keys=effectKeys(skill);dom.effectsGrid.innerHTML=keys.length?keys.map(k=>`<div class="field"><label for="fx-${k}">${labelFor(k)}</label><input id="fx-${k}" data-effect-key="${k}" type="number" step="any" value="${skill[k]}"></div>`).join(''):'<div class="muted">This skill has no extra numeric tuning fields.</div>';dom.jsonPreview.textContent=JSON.stringify(sorted(skill),null,2);dom.revertSelected.disabled=!dirty(skill.id);updateStats()}
+    function selectSkill(id){state.selectedId=id||'';renderTable();renderEditor()}
+    function patchSkill(id,key,value){const skill=state.working.get(id);if(!skill)return;skill[key]=value;renderTable();renderEditor()}
+    async function fetchSkills(){const token=encodeURIComponent(dom.token.value.trim());const res=await fetch(`/api/admin/skills?token=${token}`,{cache:'no-store'});const data=await res.json();if(!res.ok)throw new Error(data.message||`HTTP ${res.status}`);return Array.isArray(data.skills)?data.skills:[]}
+    async function loadSkills(){const token=dom.token.value.trim();if(!token){setStatus('Token is required.','err');return}dom.load.disabled=true;dom.reload.disabled=true;setStatus('Loading skills from server...','warn');try{const skills=await fetchSkills();skills.sort((a,b)=>a.id.localeCompare(b.id));state.skills=skills.map(clone);state.original=new Map(skills.map(s=>[s.id,clone(s)]));state.working=new Map(skills.map(s=>[s.id,clone(s)]));state.loaded=true;localStorage.setItem(STORAGE_TOKEN_KEY,token);dom.reload.disabled=false;selectSkill(skills[0]?.id||'');setStatus(`Loaded ${skills.length} skills.`,'ok')}catch(err){state.loaded=false;state.skills=[];state.original=new Map();state.working=new Map();state.selectedId='';renderTable();renderEditor();setStatus(err.message||'Load failed.','err')}finally{dom.load.disabled=false}}
+    async function saveSkill(id){const skill=state.working.get(id);const token=encodeURIComponent(dom.token.value.trim());const res=await fetch(`/api/admin/skills/${encodeURIComponent(id)}?token=${token}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(skill)});const data=await res.json();if(!res.ok)throw new Error(data.message||`HTTP ${res.status}`);const saved=data.skill||skill;state.original.set(id,clone(saved));state.working.set(id,clone(saved));const idx=state.skills.findIndex(x=>x.id===id);if(idx>=0)state.skills[idx]=clone(saved);renderTable();renderEditor();setStatus(`Saved ${id}.`,'ok')}
+    function revertSkill(id){const orig=state.original.get(id);if(!orig)return;state.working.set(id,clone(orig));renderTable();renderEditor();setStatus(`Reverted ${id}.`,'warn')}
+    function bind(input,key,parser){input.addEventListener('input',()=>{const skill=current();if(!skill)return;patchSkill(skill.id,key,parser?parser(input):input.value)})}
+    dom.toggleToken.addEventListener('click',()=>{const hidden=dom.token.type==='password';dom.token.type=hidden?'text':'password';dom.toggleToken.textContent=hidden?'Hide':'Show'});
+    dom.load.addEventListener('click',loadSkills);dom.reload.addEventListener('click',loadSkills);
+    [dom.search,dom.filterKind,dom.filterRarity,dom.filterState].forEach(el=>{el.addEventListener('input',renderTable);el.addEventListener('change',renderTable)});
+    dom.skillsBody.addEventListener('click',e=>{const row=e.target.closest('tr[data-id]');if(row)selectSkill(row.dataset.id||'')});
+    bind(dom.fieldName,'name');bind(dom.fieldKind,'kind');bind(dom.fieldRarity,'rarity');bind(dom.fieldMaxLevel,'maxLevel',parseNum);bind(dom.fieldWeight,'weight',parseNum);bind(dom.fieldDesc,'desc');
+    dom.effectsGrid.addEventListener('input',e=>{if(!(e.target instanceof HTMLInputElement))return;const key=e.target.dataset.effectKey;const skill=current();if(key&&skill)patchSkill(skill.id,key,parseNum(e.target))});
+    dom.saveSelected.addEventListener('click',async()=>{const skill=current();if(!skill)return;try{dom.saveSelected.disabled=true;dom.saveTop.disabled=true;setStatus(`Saving ${skill.id}...`,'warn');await saveSkill(skill.id)}catch(err){setStatus(err.message||'Save failed.','err')}finally{dom.saveSelected.disabled=false;dom.saveTop.disabled=false}});
+    dom.saveTop.addEventListener('click',()=>dom.saveSelected.click());
+    dom.revertSelected.addEventListener('click',()=>{const skill=current();if(skill)revertSkill(skill.id)});
+    dom.copyJson.addEventListener('click',async()=>{const skill=current();if(!skill)return;try{await navigator.clipboard.writeText(JSON.stringify(sorted(skill),null,2));setStatus(`Copied ${skill.id} JSON.`,'ok')}catch{setStatus('Clipboard access failed.','err')}});
+    dom.token.value=localStorage.getItem(STORAGE_TOKEN_KEY)||'';renderTable();renderEditor();updateStats();
   </script>
 </body>
 </html>

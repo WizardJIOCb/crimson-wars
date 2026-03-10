@@ -9,7 +9,8 @@ const config = require('./server/config');
 const { createRecordsStore } = require('./server/records-store');
 const { createSkillsStore } = require('./server/skills-store');
 const PORT = process.env.PORT || 8080;
-const SKILLS_ADMIN_TOKEN = process.env.SKILLS_ADMIN_TOKEN || '';
+const IS_PROD = process.env.NODE_ENV === 'production';
+const SKILLS_ADMIN_TOKEN = process.env.SKILLS_ADMIN_TOKEN || (IS_PROD ? '' : 'local-skills-admin');
 const DEV_CHEATS_ENABLED = (process.env.DEV_CHEATS_ENABLED || '1') !== '0';
 const DEV_CHEAT_SECRET = (process.env.DEV_CHEAT_SECRET || 'bloodmoon').toString().trim();
 
@@ -1648,6 +1649,11 @@ setInterval(() => {
 }, MAIN_LOOP_MS);
 server.listen(PORT, () => {
   console.log(`Server started: http://localhost:${PORT}`);
+  if (SKILLS_ADMIN_TOKEN) {
+    console.log(`Skills admin token enabled: ${SKILLS_ADMIN_TOKEN}`);
+  } else {
+    console.log('Skills admin token disabled');
+  }
 });
 
 
