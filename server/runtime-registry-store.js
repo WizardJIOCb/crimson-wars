@@ -65,6 +65,10 @@ function createRuntimeRegistryStore({ dataDir, dbPath, instanceId }) {
     '  is_shutting_down INTEGER NOT NULL DEFAULT 0,',
     '  public_base_url TEXT NOT NULL DEFAULT \'\'',
     ');',
+    'CREATE TABLE IF NOT EXISTS placement_state (',
+    '  key TEXT PRIMARY KEY,',
+    '  value_integer INTEGER NOT NULL DEFAULT 0',
+    ');',
     'CREATE INDEX IF NOT EXISTS idx_room_registry_instance ON room_registry(instance_id);',
     'CREATE INDEX IF NOT EXISTS idx_room_registry_updated ON room_registry(updated_at);',
   ].join('\n'));
@@ -121,6 +125,11 @@ function createRuntimeRegistryStore({ dataDir, dbPath, instanceId }) {
     'JOIN instance_registry i ON i.instance_id = r.instance_id',
     'WHERE r.room_code = ? AND r.updated_at >= ? AND i.heartbeat_at >= ?',
     'LIMIT 1',
+  ].join('\n'));
+  const stmtGetPlacementCursor = db.prepare('SELECT value_integer FROM placement_state WHERE key = ?');
+  const stmtUpsertPlacementCursor = db.prepare([
+    'INSERT INTO placement_state (key, value_integer) VALUES (?, ?)',
+    'ON CONFLICT(key) DO UPDATE SET value_integer=excluded.value_integer',
   ].join('\n'));
   const stmtDeleteStaleRooms = db.prepare('DELETE FROM room_registry WHERE updated_at < ?');
   const stmtDeleteStaleInstances = db.prepare('DELETE FROM instance_registry WHERE heartbeat_at < ?');
@@ -202,7 +211,20 @@ function createRuntimeRegistryStore({ dataDir, dbPath, instanceId }) {
       || (a.inGamePlayers - b.inGamePlayers)
       || (a.onlineSockets - b.onlineSockets)
       || a.instanceId.localeCompare(b.instanceId));
-    return instances[0];
+
+    const first = instances[0];
+    const candidatePool = instances.filter((instance) =>
+      instance.roomCount === first.roomCount
+      && instance.inGamePlayers === first.inGamePlayers
+      && instance.onlineSockets === first.onlineSockets);
+    if (candidatePool.length === 1) return candidatePool[0];
+
+    const key = 'create_room_cursor';
+    const row = stmtGetPlacementCursor.get(key);
+    const nextIndex = Math.max(0, Number(row?.value_integer) || 0);
+    const picked = candidatePool[nextIndex % candidatePool.length];
+    stmtUpsertPlacementCursor.run(key, nextIndex + 1);
+    return picked;
   }
 
   function getPresence() {
