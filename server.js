@@ -8,6 +8,7 @@ const { WebSocketServer } = WebSocket;
 
 const config = require('./server/config');
 const { createAdminAuthStore } = require('./server/admin-auth-store');
+const { createPlayerAuthStore, normalizeNickname } = require('./server/player-auth-store');
 const { createRecordsStore } = require('./server/records-store');
 const { createSkillsStore } = require('./server/skills-store');
 const PORT = process.env.PORT || 8080;
@@ -17,6 +18,7 @@ const DEV_CHEAT_SECRET = (process.env.DEV_CHEAT_SECRET || 'bloodmoon').toString(
 const ADMIN_BOOTSTRAP_LOGIN = process.env.ADMIN_BOOTSTRAP_LOGIN || 'WizardJIOCb';
 const ADMIN_BOOTSTRAP_PASSWORD = process.env.ADMIN_BOOTSTRAP_PASSWORD || (IS_PROD ? '' : 'WizardJIOCb-local');
 const ADMIN_SESSION_COOKIE = 'crimson_admin_session';
+const PLAYER_SESSION_COOKIE = 'crimson_player_session';
 
 const {
   MAIN_LOOP_RATE,
@@ -81,6 +83,7 @@ const {
   RECORDS_DB_PATH,
   SKILLS_CONFIG_PATH,
   ADMIN_AUTH_DB_PATH,
+  PLAYER_AUTH_DB_PATH,
   DEFAULT_ROOM_SYNC,
   WEAPONS,
   DROP_WEAPON_KEYS,
@@ -102,6 +105,10 @@ const adminAuthStore = createAdminAuthStore({
   bootstrapLogin: ADMIN_BOOTSTRAP_LOGIN,
   bootstrapPassword: ADMIN_BOOTSTRAP_PASSWORD,
   isProd: IS_PROD,
+});
+const playerAuthStore = createPlayerAuthStore({
+  dataDir: DATA_DIR,
+  dbPath: PLAYER_AUTH_DB_PATH,
 });
 const recordsStore = createRecordsStore({
   dataDir: DATA_DIR,
@@ -197,10 +204,24 @@ function readAdminSession(req) {
   return session || null;
 }
 
+function readPlayerSession(req) {
+  const cookies = parseCookies(req);
+  const token = cookies[PLAYER_SESSION_COOKIE] || '';
+  const session = playerAuthStore.getSession(token);
+  return session || null;
+}
+
 function attachAdminAuth(req, _res, next) {
   const session = readAdminSession(req);
   req.adminSession = session;
   req.adminUser = session?.user || null;
+  next();
+}
+
+function attachPlayerAuth(req, _res, next) {
+  const session = readPlayerSession(req);
+  req.playerSession = session;
+  req.playerUser = session?.player || null;
   next();
 }
 
@@ -248,11 +269,122 @@ function clearAdminSessionCookie(res) {
   res.setHeader('Set-Cookie', parts.join('; '));
 }
 
+function setPlayerSessionCookie(res, token) {
+  const parts = [
+    `${PLAYER_SESSION_COOKIE}=${encodeURIComponent(token)}`,
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Lax',
+    `Max-Age=${Math.floor((1000 * 60 * 60 * 24 * 30) / 1000)}`,
+  ];
+  if (IS_PROD) parts.push('Secure');
+  res.setHeader('Set-Cookie', parts.join('; '));
+}
+
+function clearPlayerSessionCookie(res) {
+  const parts = [
+    `${PLAYER_SESSION_COOKIE}=`,
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Lax',
+    'Max-Age=0',
+  ];
+  if (IS_PROD) parts.push('Secure');
+  res.setHeader('Set-Cookie', parts.join('; '));
+}
+
 function generateAdminPassword() {
   return crypto.randomBytes(12).toString('base64url');
 }
 
+app.use(attachPlayerAuth);
 app.use(attachAdminAuth);
+
+app.get('/api/player/me', (req, res) => {
+  if (!req.playerUser) {
+    res.status(401).json({
+      ok: false,
+      message: 'Authentication required',
+      providers: ['google', 'vk', 'mailru'],
+    });
+    return;
+  }
+  res.json({
+    ok: true,
+    player: req.playerUser,
+    identities: req.playerSession?.identities || [],
+    providers: ['google', 'vk', 'mailru'],
+  });
+});
+
+app.get('/api/player/nickname-status', (req, res) => {
+  const result = playerAuthStore.getNicknameStatus(req.query.nickname);
+  const normalized = normalizeNickname(req.query.nickname);
+  const occupiedInLobby = normalized
+    ? Array.from(rooms.values()).some((room) =>
+      Array.from(room.players.values()).some((player) => player.name.toLowerCase() === normalized.toLowerCase()))
+    : false;
+  if (!result.ok) {
+    res.status(result.code).json({
+      ok: false,
+      message: result.message,
+      nickname: result.nickname,
+      nicknameKey: result.nicknameKey,
+      isRegistered: false,
+      isOccupied: occupiedInLobby,
+    });
+    return;
+  }
+  res.json({
+    ok: true,
+    nickname: result.nickname,
+    nicknameKey: result.nicknameKey,
+    isRegistered: result.isRegistered,
+    isOccupied: occupiedInLobby,
+    player: result.player,
+  });
+});
+
+app.post('/api/player/register', (req, res) => {
+  const nickname = (req.body?.nickname || '').toString();
+  const password = (req.body?.password || '').toString();
+  const result = playerAuthStore.register(nickname, password);
+  if (!result.ok) {
+    res.status(result.code).json({ ok: false, message: result.message });
+    return;
+  }
+  setPlayerSessionCookie(res, result.token);
+  res.json({
+    ok: true,
+    player: result.player,
+    identities: result.identities,
+    providers: ['google', 'vk', 'mailru'],
+  });
+});
+
+app.post('/api/player/login', (req, res) => {
+  const nickname = (req.body?.nickname || '').toString();
+  const password = (req.body?.password || '').toString();
+  const result = playerAuthStore.authenticate(nickname, password);
+  if (!result.ok) {
+    res.status(result.code).json({ ok: false, message: result.message });
+    return;
+  }
+  setPlayerSessionCookie(res, result.token);
+  res.json({
+    ok: true,
+    player: result.player,
+    identities: result.identities,
+    providers: ['google', 'vk', 'mailru'],
+  });
+});
+
+app.post('/api/player/logout', (req, res) => {
+  const cookies = parseCookies(req);
+  playerAuthStore.deleteSession(cookies[PLAYER_SESSION_COOKIE] || '');
+  clearPlayerSessionCookie(res);
+  res.json({ ok: true });
+});
 
 app.get('/admin/skills', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin-skills.html'));
@@ -465,6 +597,71 @@ function randomRoomCode() {
 function cleanRoomCode(raw) {
   const code = (raw || '').toString().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
   return code;
+}
+
+function isNicknameOccupied(name) {
+  const key = normalizeNickname(name).toLowerCase();
+  if (!key) return false;
+  for (const room of rooms.values()) {
+    for (const player of room.players.values()) {
+      if ((player.name || '').toString().trim().toLowerCase() === key) return true;
+    }
+  }
+  return false;
+}
+
+function resolveJoinIdentity(ws, rawName) {
+  const normalizedName = normalizeNickname(rawName || 'Fighter') || 'Fighter';
+  const nicknameStatus = playerAuthStore.getNicknameStatus(normalizedName);
+  if (!nicknameStatus.ok) {
+    return {
+      ok: false,
+      code: 400,
+      message: nicknameStatus.message,
+      name: normalizedName,
+    };
+  }
+  if (isNicknameOccupied(normalizedName)) {
+    return {
+      ok: false,
+      code: 409,
+      message: `Nickname ${normalizedName} is already in use.`,
+      name: normalizedName,
+    };
+  }
+
+  const sessionPlayer = ws.playerSession?.player || null;
+  if (nicknameStatus.isRegistered) {
+    if (!sessionPlayer) {
+      return {
+        ok: false,
+        code: 401,
+        message: `Nickname ${normalizedName} is registered. Log in to use it.`,
+        name: normalizedName,
+      };
+    }
+    if (sessionPlayer.nicknameKey !== nicknameStatus.nicknameKey) {
+      return {
+        ok: false,
+        code: 403,
+        message: `Nickname ${normalizedName} belongs to another account.`,
+        name: normalizedName,
+      };
+    }
+    return {
+      ok: true,
+      name: sessionPlayer.nickname,
+      playerAccountId: sessionPlayer.id,
+      isRegistered: true,
+    };
+  }
+
+  return {
+    ok: true,
+    name: nicknameStatus.nickname,
+    playerAccountId: sessionPlayer?.nicknameKey === nicknameStatus.nicknameKey ? sessionPlayer.id : null,
+    isRegistered: false,
+  };
 }
 
 function getOrCreateRoom(requestedCode, requestedSync) {
@@ -1388,8 +1585,14 @@ function joinRoom(ws, join) {
     return null;
   }
 
+  const identity = resolveJoinIdentity(ws, join?.name);
+  if (!identity.ok) {
+    sendTo(ws, { type: 'joinError', message: identity.message, code: identity.code });
+    return null;
+  }
+
   const id = Math.random().toString(36).slice(2, 10);
-  const name = (join?.name || 'Fighter').toString().trim().slice(0, 18) || 'Fighter';
+  const name = identity.name;
   const playerClass = (join?.playerClass || 'cyber').toString().trim().slice(0, 24) || 'cyber';
   const spawn = randomPlayerSpawn();
 
@@ -1438,6 +1641,8 @@ function joinRoom(ws, join) {
     joinedAt: Date.now(),
     devUnlocked: false,
     godMode: false,
+    playerAccountId: identity.playerAccountId || null,
+    isRegisteredNickname: !!identity.isRegistered,
   };
 
   rebuildPlayerDerivedStats(player);
@@ -1453,6 +1658,11 @@ function joinRoom(ws, join) {
     sync: room.sync,
     maxPlayers: MAX_PLAYERS,
     skillCatalog: skillsStore.getList(),
+    me: {
+      name,
+      playerAccountId: player.playerAccountId,
+      isRegisteredNickname: player.isRegisteredNickname,
+    },
   });
 
   broadcastRoom(room, {
@@ -1477,8 +1687,9 @@ function removePlayer(player) {
   }
 }
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
   activeSockets.add(ws);
+  ws.playerSession = readPlayerSession(req);
   let player = null;
 
   ws.on('message', (msgRaw) => {

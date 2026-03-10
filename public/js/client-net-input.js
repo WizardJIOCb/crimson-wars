@@ -220,8 +220,11 @@ function renderCharacterPicker() {
 
 
 const storedNickname = localStorage.getItem(NICKNAME_STORAGE_KEY);
-if (nameInput && storedNickname && storedNickname.trim()) {
+if (nameInput && storedNickname && storedNickname.trim() && !game.playerAuth?.player) {
   nameInput.value = storedNickname.trim().slice(0, 18);
+}
+if (!game.playerAuth?.player) {
+  void updateNicknameStatus(nameInput?.value || '');
 }
 selectedPlayerClass = sanitizePlayerClass(localStorage.getItem(PLAYER_CLASS_STORAGE_KEY) || selectedPlayerClass);
 renderCharacterPicker();
@@ -245,8 +248,10 @@ for (const el of [syncTickrateEl, syncStateRateEl, syncRenderDelayEl, syncMaxExt
 
 function sendJoinRequest(roomCode, joinSync = null) {
   if (ws.readyState !== WebSocket.OPEN) return;
-  const name = nameInput.value.trim() || 'Fighter';
+  const name = (game.playerAuth?.player?.nickname || nameInput.value.trim() || 'Fighter').trim();
   localStorage.setItem(NICKNAME_STORAGE_KEY, name);
+  if (authLoginNicknameEl && !authLoginNicknameEl.value) authLoginNicknameEl.value = name;
+  if (authRegisterNicknameEl && !authRegisterNicknameEl.value) authRegisterNicknameEl.value = name;
   waitingForFirstState = true;
   resetNetStats();
   waitingForFirstStateSince = performance.now();
@@ -1018,6 +1023,7 @@ setInterval(() => {
 ws.addEventListener('open', () => {
   game.connected = true;
   statusEl.textContent = 'Connected. Create room or join code.';
+  void refreshPlayerAuthSession({ silent: true });
   requestRoomsList();
   requestRecordsList(1);
   sendNetPing();
@@ -1077,6 +1083,14 @@ ws.addEventListener('message', (ev) => {
     roomMetaEl.textContent = `Room: ${msg.roomCode}`;
     copyRoomCodeToClipboard(msg.roomCode, { silent: true });
     statusEl.textContent = `Online as ${msg.id} | tick ${roomSync.tickRate}`;
+    if (msg.me?.name && !game.playerAuth?.player) {
+      game.playerAuth.nicknameStatus = {
+        nickname: msg.me.name,
+        isRegistered: !!msg.me.isRegisteredNickname,
+        isOccupied: false,
+      };
+      renderPlayerAuthUi();
+    }
   }
 
   if (msg.type === 'joinError') {

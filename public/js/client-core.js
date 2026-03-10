@@ -20,7 +20,19 @@ const scoreboardEl = document.getElementById('scoreboard');
 const hudEl = document.getElementById('hud');
 const joinOverlay = document.getElementById('join-overlay');
 const joinForm = document.getElementById('join-form');
+const playerAccessDetailsEl = document.getElementById('player-access-details');
 const nameInput = document.getElementById('name');
+const nicknameHintEl = document.getElementById('nickname-hint');
+const playerAuthSummaryEl = document.getElementById('player-auth-summary');
+const playerLogoutBtn = document.getElementById('player-logout');
+const authTabButtons = Array.from(document.querySelectorAll('[data-auth-tab]'));
+const authPanels = Array.from(document.querySelectorAll('[data-auth-panel]'));
+const authLoginNicknameEl = document.getElementById('auth-login-nickname');
+const authLoginPasswordEl = document.getElementById('auth-login-password');
+const playerLoginBtn = document.getElementById('player-login');
+const authRegisterNicknameEl = document.getElementById('auth-register-nickname');
+const authRegisterPasswordEl = document.getElementById('auth-register-password');
+const playerRegisterBtn = document.getElementById('player-register');
 const characterSelectEl = document.getElementById('character-select');
 const roomCodeInput = document.getElementById('room-code');
 const refreshRoomsBtn = document.getElementById('refresh-rooms');
@@ -144,6 +156,14 @@ const game = {
   roomDifficulty: { level: 1, hpMul: 1, speedMul: 1, damageMul: 1, attackRateMul: 1, spawnIntervalMs: 760 },
   skillCatalog: {},
   mySkillChoices: [],
+  playerAuth: {
+    mode: 'guest',
+    player: null,
+    identities: [],
+    nicknameStatus: null,
+    busy: false,
+    checkingNickname: false,
+  },
 };
 
 const camera = { x: 0, y: 0 };
@@ -187,6 +207,7 @@ let waitingForFirstStateSince = 0;
 let lastScoreboardHtml = '';
 let lastLevelupHtml = '';
 let devConsoleOpen = false;
+let nicknameCheckTimer = null;
 const DEV_CMD_HISTORY_LIMIT = 60;
 const devConsoleHistory = [];
 let devConsoleHistoryIndex = -1;
@@ -282,6 +303,270 @@ function formatClock(secTotal) {
   const rs = s % 60;
   return `${m.toString().padStart(2, '0')}:${rs.toString().padStart(2, '0')}`;
 }
+
+async function apiJson(url, options = {}) {
+  const response = await fetch(url, {
+    credentials: 'same-origin',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+    ...options,
+  });
+  let data = null;
+  try {
+    data = await response.json();
+  } catch {
+    data = null;
+  }
+  if (!response.ok) {
+    const message = data?.message || `HTTP ${response.status}`;
+    throw new Error(message);
+  }
+  return data || {};
+}
+
+function setPlayerAuthBusy(busy) {
+  game.playerAuth.busy = Boolean(busy);
+  if (playerLoginBtn) playerLoginBtn.disabled = game.playerAuth.busy;
+  if (playerRegisterBtn) playerRegisterBtn.disabled = game.playerAuth.busy;
+  if (playerLogoutBtn) playerLogoutBtn.disabled = game.playerAuth.busy;
+}
+
+function setAuthTab(mode) {
+  game.playerAuth.mode = mode === 'login' || mode === 'register' ? mode : 'guest';
+  for (const button of authTabButtons) {
+    button.classList.toggle('active', button.dataset.authTab === game.playerAuth.mode);
+  }
+  for (const panel of authPanels) {
+    panel.classList.toggle('active', panel.dataset.authPanel === game.playerAuth.mode);
+  }
+}
+
+function renderPlayerAuthUi() {
+  const player = game.playerAuth.player;
+  const loggedIn = Boolean(player);
+  if (playerAuthSummaryEl) {
+    playerAuthSummaryEl.textContent = loggedIn
+      ? `Logged in as ${player.nickname}. This nickname is reserved for your account.`
+      : 'Guest mode. Registered nicknames require login.';
+  }
+  if (playerLogoutBtn) playerLogoutBtn.classList.toggle('hidden', !loggedIn);
+  if (nameInput) {
+    if (loggedIn) {
+      nameInput.value = player.nickname;
+      nameInput.disabled = true;
+    } else {
+      nameInput.disabled = false;
+    }
+  }
+  if (authLoginNicknameEl && !authLoginNicknameEl.value && nameInput?.value) authLoginNicknameEl.value = nameInput.value;
+  if (authRegisterNicknameEl && !authRegisterNicknameEl.value && nameInput?.value) authRegisterNicknameEl.value = nameInput.value;
+  if (nicknameHintEl) {
+    const status = game.playerAuth.nicknameStatus;
+    if (loggedIn) {
+      nicknameHintEl.textContent = 'Authenticated nickname. Join will use your reserved account name.';
+      nicknameHintEl.className = 'field-hint ok';
+    } else if (status?.isRegistered) {
+      nicknameHintEl.textContent = `Nickname ${status.nickname} is registered. Use Login to play with it.`;
+      nicknameHintEl.className = 'field-hint err';
+    } else if (status?.isOccupied) {
+      nicknameHintEl.textContent = `Nickname ${status.nickname} is already in use right now.`;
+      nicknameHintEl.className = 'field-hint err';
+    } else if (status?.nickname) {
+      nicknameHintEl.textContent = `Nickname ${status.nickname} is available for guest play.`;
+      nicknameHintEl.className = 'field-hint ok';
+    } else {
+      nicknameHintEl.textContent = 'Guest mode: choose any free nickname.';
+      nicknameHintEl.className = 'field-hint';
+    }
+  }
+}
+
+function setPlayerAccessCollapsed(collapsed) {
+  if (!playerAccessDetailsEl) return;
+  playerAccessDetailsEl.open = !collapsed;
+}
+
+async function refreshPlayerAuthSession({ silent = false } = {}) {
+  try {
+    const data = await apiJson('/api/player/me', { method: 'GET' });
+    game.playerAuth.player = data.player || null;
+    game.playerAuth.identities = Array.isArray(data.identities) ? data.identities : [];
+    if (game.playerAuth.player?.nickname) {
+      localStorage.setItem(NICKNAME_STORAGE_KEY, game.playerAuth.player.nickname);
+      game.playerAuth.nicknameStatus = {
+        nickname: game.playerAuth.player.nickname,
+        isRegistered: true,
+        isOccupied: false,
+      };
+    }
+  } catch {
+    game.playerAuth.player = null;
+    game.playerAuth.identities = [];
+  }
+  renderPlayerAuthUi();
+  if (!game.playerAuth.player && !silent) {
+    void updateNicknameStatus(nameInput?.value || '');
+  }
+}
+
+async function updateNicknameStatus(rawNickname) {
+  const nickname = String(rawNickname || '').trim();
+  if (game.playerAuth.player) {
+    game.playerAuth.nicknameStatus = {
+      nickname: game.playerAuth.player.nickname,
+      isRegistered: true,
+      isOccupied: false,
+    };
+    renderPlayerAuthUi();
+    return;
+  }
+  if (!nickname) {
+    game.playerAuth.nicknameStatus = null;
+    renderPlayerAuthUi();
+    return;
+  }
+  game.playerAuth.checkingNickname = true;
+  try {
+    const data = await apiJson(`/api/player/nickname-status?nickname=${encodeURIComponent(nickname)}`, { method: 'GET' });
+    game.playerAuth.nicknameStatus = data;
+  } catch (err) {
+    game.playerAuth.nicknameStatus = {
+      nickname,
+      isRegistered: false,
+      isOccupied: false,
+      error: err.message,
+    };
+  } finally {
+    game.playerAuth.checkingNickname = false;
+    renderPlayerAuthUi();
+  }
+}
+
+function scheduleNicknameStatusCheck() {
+  if (nicknameCheckTimer) clearTimeout(nicknameCheckTimer);
+  nicknameCheckTimer = setTimeout(() => {
+    nicknameCheckTimer = null;
+    void updateNicknameStatus(nameInput?.value || '');
+  }, 240);
+}
+
+async function loginPlayerAccount() {
+  const nickname = (authLoginNicknameEl?.value || nameInput?.value || '').trim();
+  const password = (authLoginPasswordEl?.value || '').trim();
+  if (!nickname || !password) {
+    statusEl.textContent = 'Enter nickname and password.';
+    return;
+  }
+  setPlayerAuthBusy(true);
+  try {
+    const data = await apiJson('/api/player/login', {
+      method: 'POST',
+      body: JSON.stringify({ nickname, password }),
+    });
+    game.playerAuth.player = data.player || null;
+    game.playerAuth.identities = Array.isArray(data.identities) ? data.identities : [];
+    if (authLoginPasswordEl) authLoginPasswordEl.value = '';
+    statusEl.textContent = `Logged in as ${data.player?.nickname || nickname}.`;
+    renderPlayerAuthUi();
+    setPlayerAccessCollapsed(true);
+  } catch (err) {
+    statusEl.textContent = err.message;
+  } finally {
+    setPlayerAuthBusy(false);
+  }
+}
+
+async function registerPlayerAccount() {
+  const nickname = (authRegisterNicknameEl?.value || nameInput?.value || '').trim();
+  const password = (authRegisterPasswordEl?.value || '').trim();
+  if (!nickname || !password) {
+    statusEl.textContent = 'Enter nickname and password.';
+    return;
+  }
+  setPlayerAuthBusy(true);
+  try {
+    const data = await apiJson('/api/player/register', {
+      method: 'POST',
+      body: JSON.stringify({ nickname, password }),
+    });
+    game.playerAuth.player = data.player || null;
+    game.playerAuth.identities = Array.isArray(data.identities) ? data.identities : [];
+    if (authRegisterPasswordEl) authRegisterPasswordEl.value = '';
+    statusEl.textContent = `Nickname ${data.player?.nickname || nickname} registered.`;
+    renderPlayerAuthUi();
+    setPlayerAccessCollapsed(true);
+  } catch (err) {
+    statusEl.textContent = err.message;
+  } finally {
+    setPlayerAuthBusy(false);
+  }
+}
+
+async function logoutPlayerAccount() {
+  setPlayerAuthBusy(true);
+  try {
+    await apiJson('/api/player/logout', { method: 'POST', body: '{}' });
+    game.playerAuth.player = null;
+    game.playerAuth.identities = [];
+    game.playerAuth.nicknameStatus = null;
+    statusEl.textContent = 'Logged out. Guest mode active.';
+    renderPlayerAuthUi();
+    setPlayerAccessCollapsed(false);
+    void updateNicknameStatus(nameInput?.value || '');
+  } catch (err) {
+    statusEl.textContent = err.message;
+  } finally {
+    setPlayerAuthBusy(false);
+  }
+}
+
+for (const button of authTabButtons) {
+  button.addEventListener('click', () => {
+    setAuthTab(button.dataset.authTab || 'guest');
+  });
+}
+
+playerLoginBtn?.addEventListener('click', () => {
+  void loginPlayerAccount();
+});
+
+playerRegisterBtn?.addEventListener('click', () => {
+  void registerPlayerAccount();
+});
+
+playerLogoutBtn?.addEventListener('click', () => {
+  void logoutPlayerAccount();
+});
+
+authLoginPasswordEl?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    void loginPlayerAccount();
+  }
+});
+
+authRegisterPasswordEl?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    void registerPlayerAccount();
+  }
+});
+
+nameInput?.addEventListener('input', () => {
+  if (game.playerAuth.player) return;
+  scheduleNicknameStatusCheck();
+});
+
+nameInput?.addEventListener('blur', () => {
+  if (game.playerAuth.player) return;
+  void updateNicknameStatus(nameInput.value || '');
+});
+
+setAuthTab('guest');
+renderPlayerAuthUi();
+void refreshPlayerAuthSession({ silent: true });
 
 function updateTopCenterHud(nowMs = Date.now()) {
   if (!matchTimerEl || !bossProgressEl || !difficultyMetaEl) return;

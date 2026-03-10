@@ -107,8 +107,54 @@
       <button id="death-continue" type="button" class="death-continue">Show menu</button>
     </div>
     <form id="join-form" autocomplete="off">
+      <details id="player-access-details" class="auth-card">
+        <summary class="auth-card-summary">Player access</summary>
+        <div class="auth-card-body">
+          <div class="auth-head">
+            <div id="player-auth-summary" class="auth-summary">Guest mode. Registered nicknames require login.</div>
+            <button id="player-logout" type="button" class="mini ghost hidden">Log out</button>
+          </div>
+
+          <div class="auth-tabs" role="tablist" aria-label="Player access mode">
+            <button id="auth-tab-guest" type="button" class="auth-tab active" data-auth-tab="guest">Guest</button>
+            <button id="auth-tab-login" type="button" class="auth-tab" data-auth-tab="login">Login</button>
+            <button id="auth-tab-register" type="button" class="auth-tab" data-auth-tab="register">Register</button>
+          </div>
+
+          <div class="auth-panel active" data-auth-panel="guest">
+            <div class="auth-copy">Play immediately with any free nickname that is not registered.</div>
+          </div>
+
+          <div class="auth-panel" data-auth-panel="login">
+            <label for="auth-login-nickname">Registered nickname</label>
+            <input id="auth-login-nickname" maxlength="18" placeholder="Nickname" />
+            <label for="auth-login-password">Password</label>
+            <input id="auth-login-password" type="password" maxlength="72" placeholder="Password" />
+            <button id="player-login" type="button" class="auth-action">Log in</button>
+          </div>
+
+          <div class="auth-panel" data-auth-panel="register">
+            <label for="auth-register-nickname">New nickname</label>
+            <input id="auth-register-nickname" maxlength="18" placeholder="Nickname" />
+            <label for="auth-register-password">Password</label>
+            <input id="auth-register-password" type="password" maxlength="72" placeholder="Password" />
+            <button id="player-register" type="button" class="auth-action">Register nickname</button>
+          </div>
+
+          <div class="providers-card">
+            <div class="providers-title">External sign-in</div>
+            <div class="providers-grid">
+              <button type="button" class="provider-btn" disabled>Google coming soon</button>
+              <button type="button" class="provider-btn" disabled>VK ID coming soon</button>
+              <button type="button" class="provider-btn" disabled>Mail.ru coming soon</button>
+            </div>
+          </div>
+        </div>
+      </details>
+
       <label for="name">Nickname</label>
       <input id="name" maxlength="18" value="Fighter" />
+      <div id="nickname-hint" class="field-hint">Guest mode: choose any free nickname.</div>
 
       <label>Character</label>
       <div id="character-select" class="character-select"></div>

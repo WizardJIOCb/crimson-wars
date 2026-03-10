@@ -377,7 +377,9 @@ body {
   padding: 18px;
   display: grid;
   gap: 8px;
-  min-width: 300px;
+  width: min(640px, calc(100vw - 20px));
+  max-height: calc(100vh - 20px);
+  overflow: auto;
 }
 #join-form input,
 #join-form button {
@@ -390,6 +392,162 @@ body {
 #join-form input {
   background: #0b0f15;
   color: var(--text);
+}
+
+.auth-card {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 4px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(8, 12, 18, 0.72);
+}
+
+.auth-card:not([open]) {
+  gap: 0;
+  padding-bottom: 8px;
+}
+
+.auth-card-summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 14px;
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.auth-card-summary::-webkit-details-marker {
+  display: none;
+}
+
+.auth-card-summary::after {
+  content: 'Hide';
+  float: right;
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.auth-card:not([open]) .auth-card-summary::after {
+  content: 'Show';
+}
+
+.auth-card-body {
+  display: grid;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.auth-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.auth-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.auth-summary {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+.auth-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.auth-tab,
+.auth-action,
+.provider-btn,
+#join-form button.ghost {
+  font: inherit;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.16);
+  color: #fff;
+}
+
+.auth-tab {
+  background: rgba(22, 30, 42, 0.78);
+}
+
+.auth-tab.active {
+  background: linear-gradient(135deg, #0f766e, #059669);
+}
+
+.auth-panel {
+  display: none;
+  gap: 8px;
+}
+
+.auth-panel.active {
+  display: grid;
+}
+
+.auth-copy {
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+.auth-action {
+  border: none;
+  background: linear-gradient(135deg, #dc2626, #be123c);
+  cursor: pointer;
+}
+
+.providers-card {
+  display: grid;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.providers-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+}
+
+.providers-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.provider-btn {
+  background: rgba(15, 23, 42, 0.72);
+  color: #cbd5e1;
+}
+
+.provider-btn:disabled {
+  opacity: 0.72;
+  cursor: not-allowed;
+}
+
+.field-hint {
+  min-height: 18px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.field-hint.ok {
+  color: #86efac;
+}
+
+.field-hint.err {
+  color: #fda4af;
+}
+
+.hidden {
+  display: none !important;
 }
 
 .character-select {
@@ -500,6 +658,32 @@ body {
 
   .levelup-options {
     grid-template-columns: 1fr;
+  }
+
+  #join-form {
+    width: calc(100vw - 12px);
+    max-height: calc(100vh - 12px);
+    padding: 12px;
+    gap: 7px;
+  }
+
+  .auth-head {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .auth-tabs,
+  .providers-grid,
+  .actions {
+    grid-template-columns: 1fr;
+  }
+
+  .character-select {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .rooms-list {
+    max-height: 160px;
   }
 }
 

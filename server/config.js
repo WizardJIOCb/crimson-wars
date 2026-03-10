@@ -63,6 +63,7 @@ const DATA_DIR = path.join(__dirname, '..', 'data');
 const RECORDS_DB_PATH = path.join(DATA_DIR, 'records.db');
 const SKILLS_CONFIG_PATH = path.join(DATA_DIR, 'skills.json');
 const ADMIN_AUTH_DB_PATH = path.join(DATA_DIR, 'admin-auth.db');
+const PLAYER_AUTH_DB_PATH = path.join(DATA_DIR, 'player-auth.db');
 
 const DEFAULT_ROOM_SYNC = {
   tickRate: 45,
@@ -200,6 +201,7 @@ module.exports = {
   RECORDS_DB_PATH,
   SKILLS_CONFIG_PATH,
   ADMIN_AUTH_DB_PATH,
+  PLAYER_AUTH_DB_PATH,
   DEFAULT_ROOM_SYNC,
   WEAPONS,
   DROP_WEAPON_KEYS,
