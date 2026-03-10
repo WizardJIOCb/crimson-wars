@@ -24,6 +24,7 @@ const playerAccessDetailsEl = document.getElementById('player-access-details');
 const nameInput = document.getElementById('name');
 const nicknameHintEl = document.getElementById('nickname-hint');
 const playerAuthSummaryEl = document.getElementById('player-auth-summary');
+const playerAuthFeedbackEl = document.getElementById('player-auth-feedback');
 const playerLogoutBtn = document.getElementById('player-logout');
 const authTabButtons = Array.from(document.querySelectorAll('[data-auth-tab]'));
 const authPanels = Array.from(document.querySelectorAll('[data-auth-panel]'));
@@ -341,6 +342,25 @@ function setAuthTab(mode) {
   for (const panel of authPanels) {
     panel.classList.toggle('active', panel.dataset.authPanel === game.playerAuth.mode);
   }
+  clearAuthFeedback();
+}
+
+function setAuthFeedback(message, kind = '') {
+  if (!playerAuthFeedbackEl) return;
+  const text = String(message || '').trim();
+  if (!text) {
+    clearAuthFeedback();
+    return;
+  }
+  playerAuthFeedbackEl.textContent = text;
+  playerAuthFeedbackEl.className = `auth-feedback${kind ? ` ${kind}` : ''}`;
+  playerAuthFeedbackEl.classList.remove('hidden');
+}
+
+function clearAuthFeedback() {
+  if (!playerAuthFeedbackEl) return;
+  playerAuthFeedbackEl.textContent = '';
+  playerAuthFeedbackEl.className = 'auth-feedback hidden';
 }
 
 function renderPlayerAuthUi() {
@@ -389,6 +409,7 @@ function setPlayerAccessCollapsed(collapsed) {
 }
 
 function reloadForPlayerSession(message) {
+  setAuthFeedback(message, 'ok');
   statusEl.textContent = message;
   window.setTimeout(() => {
     window.location.reload();
@@ -463,9 +484,12 @@ async function loginPlayerAccount() {
   const nickname = (authLoginNicknameEl?.value || nameInput?.value || '').trim();
   const password = (authLoginPasswordEl?.value || '').trim();
   if (!nickname || !password) {
+    setPlayerAccessCollapsed(false);
+    setAuthFeedback('Enter nickname and password.', 'err');
     statusEl.textContent = 'Enter nickname and password.';
     return;
   }
+  clearAuthFeedback();
   setPlayerAuthBusy(true);
   try {
     const data = await apiJson('/api/player/login', {
@@ -480,6 +504,8 @@ async function loginPlayerAccount() {
     setPlayerAccessCollapsed(true);
     reloadForPlayerSession('Logged in. Refreshing session...');
   } catch (err) {
+    setPlayerAccessCollapsed(false);
+    setAuthFeedback(err.message, 'err');
     statusEl.textContent = err.message;
   } finally {
     setPlayerAuthBusy(false);
@@ -490,9 +516,12 @@ async function registerPlayerAccount() {
   const nickname = (authRegisterNicknameEl?.value || nameInput?.value || '').trim();
   const password = (authRegisterPasswordEl?.value || '').trim();
   if (!nickname || !password) {
+    setPlayerAccessCollapsed(false);
+    setAuthFeedback('Enter nickname and password.', 'err');
     statusEl.textContent = 'Enter nickname and password.';
     return;
   }
+  clearAuthFeedback();
   setPlayerAuthBusy(true);
   try {
     const data = await apiJson('/api/player/register', {
@@ -507,6 +536,8 @@ async function registerPlayerAccount() {
     setPlayerAccessCollapsed(true);
     reloadForPlayerSession('Nickname registered. Refreshing session...');
   } catch (err) {
+    setPlayerAccessCollapsed(false);
+    setAuthFeedback(err.message, 'err');
     statusEl.textContent = err.message;
   } finally {
     setPlayerAuthBusy(false);
@@ -515,6 +546,7 @@ async function registerPlayerAccount() {
 
 async function logoutPlayerAccount() {
   setPlayerAuthBusy(true);
+  clearAuthFeedback();
   try {
     await apiJson('/api/player/logout', { method: 'POST', body: '{}' });
     game.playerAuth.player = null;
@@ -526,6 +558,8 @@ async function logoutPlayerAccount() {
     void updateNicknameStatus(nameInput?.value || '');
     reloadForPlayerSession('Logged out. Refreshing session...');
   } catch (err) {
+    setPlayerAccessCollapsed(false);
+    setAuthFeedback(err.message, 'err');
     statusEl.textContent = err.message;
   } finally {
     setPlayerAuthBusy(false);
