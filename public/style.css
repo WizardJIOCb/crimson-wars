@@ -798,6 +798,39 @@ body {
   display: none;
 }
 
+.panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.panel-head h1 {
+  margin: 0;
+}
+
+.panel-close {
+  pointer-events: auto;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.06);
+  color: #e5e7eb;
+  font: inherit;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.panel-close:hover {
+  background: rgba(255,255,255,0.12);
+}
+
 #toggle-info {
   pointer-events: auto;
   align-self: flex-start;
@@ -812,6 +845,10 @@ body {
 
 #toggle-info:hover {
   background: rgba(20, 29, 43, 0.9);
+}
+
+#toggle-info.hidden {
+  display: none;
 }
 .shadow-option {
   pointer-events: auto;

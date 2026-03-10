@@ -65,6 +65,7 @@ const syncEntityInterpEl = document.getElementById('sync-entity-interp');
 const syncBulletCorrectionEl = document.getElementById('sync-bullet-correction');
 const syncInputRateEl = document.getElementById('sync-input-rate');
 const infoPanelEl = document.getElementById('info-panel');
+const infoPanelCloseBtn = document.getElementById('info-panel-close');
 const toggleInfoBtn = document.getElementById('toggle-info');
 const mobileControlsEl = document.getElementById('mobile-controls');
 const moveStickEl = document.getElementById('move-stick');

@@ -10,7 +10,10 @@
 <body>
   <div id="hud">
     <div class="panel" id="info-panel">
-      <h1>Crimson Wars</h1>
+      <div class="panel-head">
+        <h1>Crimson Wars</h1>
+        <button id="info-panel-close" class="panel-close" type="button" aria-label="Hide menu" title="Hide menu">×</button>
+      </div>
       <p>WASD move, mouse aim, LMB fire</p>
       <p>Press `1` for pistol, `Space` jump, `H` hide menu</p>
       <p id="status">Connecting...</p>
@@ -76,7 +79,7 @@
         </label>
       </p>
     </div>
-    <button id="toggle-info" class="hud-toggle" type="button">Hide menu</button>
+    <button id="toggle-info" class="hud-toggle" type="button">Menu</button>
     <div class="panel" id="scoreboard"></div>
   </div>
 

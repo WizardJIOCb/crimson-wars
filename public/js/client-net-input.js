@@ -126,15 +126,10 @@ function setInfoPanelHidden(hidden) {
   infoPanelHidden = Boolean(hidden);
   if (infoPanelEl) infoPanelEl.classList.toggle('is-hidden', infoPanelHidden);
   if (toggleInfoBtn) {
-    if (mobile.enabled) {
-      toggleInfoBtn.textContent = '=';
-      toggleInfoBtn.setAttribute('aria-label', infoPanelHidden ? 'Show menu' : 'Hide menu');
-      toggleInfoBtn.title = infoPanelHidden ? 'Show menu' : 'Hide menu';
-    } else {
-      toggleInfoBtn.textContent = infoPanelHidden ? 'Show menu' : 'Hide menu';
-      toggleInfoBtn.removeAttribute('aria-label');
-      toggleInfoBtn.removeAttribute('title');
-    }
+    toggleInfoBtn.textContent = 'Menu';
+    toggleInfoBtn.setAttribute('aria-label', 'Show menu');
+    toggleInfoBtn.title = 'Show menu';
+    toggleInfoBtn.classList.toggle('hidden', !infoPanelHidden);
   }
   localStorage.setItem('cw:infoPanelHidden', infoPanelHidden ? '1' : '0');
 }
@@ -142,6 +137,12 @@ function setInfoPanelHidden(hidden) {
 if (toggleInfoBtn) {
   toggleInfoBtn.addEventListener('click', () => {
     setInfoPanelHidden(!infoPanelHidden);
+  });
+}
+
+if (infoPanelCloseBtn) {
+  infoPanelCloseBtn.addEventListener('click', () => {
+    setInfoPanelHidden(true);
   });
 }
 
