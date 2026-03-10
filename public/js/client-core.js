@@ -12,6 +12,7 @@ const showFpsToggleEl = document.getElementById('show-fps-toggle');
 const fpsCornerEl = document.getElementById('fps-corner');
 const qualitySelect = document.getElementById('quality-select');
 const shadowToggleEl = document.getElementById('shadow-toggle');
+const bulletTracersToggleEl = document.getElementById('bullet-tracers-toggle');
 const enemyHpToggleEl = document.getElementById('enemy-hp-toggle');
 const extraBloodToggleEl = document.getElementById('extra-blood-toggle');
 const hitEffectsToggleEl = document.getElementById('hit-effects-toggle');
@@ -152,6 +153,7 @@ const game = {
   sortedTrees: [],
   qualityKey: 'medium',
   shadowsEnabled: getToggleDefaultOn('cw:shadowsEnabled'),
+  bulletTracersEnabled: getToggleDefaultOn('cw:bulletTracersEnabled'),
   enemyHpBarsEnabled: getToggleDefaultOn('cw:enemyHpBarsEnabled'),
   extraBloodEnabled: getToggleDefaultOn('cw:extraBloodEnabled'),
   hitEffectsEnabled: getToggleDefaultOn('cw:hitEffectsEnabled'),
@@ -1307,6 +1309,17 @@ shadowToggleEl?.addEventListener('change', () => {
   setShadowsEnabled(shadowToggleEl.checked);
 });
 setShadowsEnabled(game.shadowsEnabled);
+
+function setBulletTracersEnabled(enabled) {
+  game.bulletTracersEnabled = Boolean(enabled);
+  if (bulletTracersToggleEl) bulletTracersToggleEl.checked = game.bulletTracersEnabled;
+  localStorage.setItem('cw:bulletTracersEnabled', game.bulletTracersEnabled ? '1' : '0');
+}
+
+bulletTracersToggleEl?.addEventListener('change', () => {
+  setBulletTracersEnabled(bulletTracersToggleEl.checked);
+});
+setBulletTracersEnabled(game.bulletTracersEnabled);
 
 function setEnemyHpBarsEnabled(enabled) {
   game.enemyHpBarsEnabled = Boolean(enabled);

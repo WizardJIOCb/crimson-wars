@@ -636,6 +636,26 @@ function render(ts) {
   for (const b of game.state.bullets) {
     const rb = getBulletRenderPos(b);
     if (!isVisibleWorld(rb.x, rb.y, 12)) continue;
+    if (game.bulletTracersEnabled && b.ownerId === game.myId) {
+      const speed = Math.hypot(Number(rb.vx) || 0, Number(rb.vy) || 0);
+      if (speed > 8) {
+        const tracerLen = Math.min(26, Math.max(10, speed * 0.028));
+        const dirX = (Number(rb.vx) || 0) / speed;
+        const dirY = (Number(rb.vy) || 0) / speed;
+        const sx = rb.x - camera.x;
+        const sy = rb.y - camera.y;
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(sx - dirX * tracerLen, sy - dirY * tracerLen);
+        ctx.strokeStyle = b.color || rb.color || '#f59e0b';
+        ctx.globalAlpha = 0.4;
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
     drawShadowAtScreen(rb.x - camera.x, rb.y - camera.y + 3, 3, 1.8, 0.18);
     drawCircle(rb.x, rb.y, 3, rb.color || b.color || '#f59e0b');
   }

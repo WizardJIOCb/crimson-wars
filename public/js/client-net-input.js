@@ -253,10 +253,21 @@ async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
   if (!skipRouting) {
     try {
       const route = await resolveRoomRoute(mode, roomCode);
+      if (mode === 'join' && route?.found && route?.room?.isFull) {
+        const message = `Room ${route.room.code} is full (${route.room.players}/${route.room.maxPlayers}).`;
+        statusEl.textContent = message;
+        setJoinFeedback(message);
+        joinOverlay.style.display = 'grid';
+        joinOverlay.classList.remove('death-mode');
+        setDeathCinematicActive(false);
+        updateMobileControlsVisibility();
+        return;
+      }
       const workerOrigin = normalizeOrigin(route?.target?.publicBaseUrl || APP_ORIGIN);
       await connectGameSocket(workerOrigin);
     } catch (err) {
       statusEl.textContent = err.message || 'Failed to resolve room route.';
+      setJoinFeedback(err.message || 'Failed to resolve room route.');
       return;
     }
   } else {
@@ -264,6 +275,7 @@ async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
       await connectGameSocket(currentWorkerOrigin || APP_ORIGIN);
     } catch (err) {
       statusEl.textContent = err.message || 'Failed to connect to game server.';
+      setJoinFeedback(err.message || 'Failed to connect to game server.');
       return;
     }
   }

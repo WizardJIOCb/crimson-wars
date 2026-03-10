@@ -424,6 +424,7 @@ app.get('/api/room-route', (req, res) => {
         code: room.code,
         players: room.players,
         maxPlayers: room.maxPlayers,
+        isFull: room.players >= room.maxPlayers,
         instanceId: room.instanceId,
       },
       target: {
