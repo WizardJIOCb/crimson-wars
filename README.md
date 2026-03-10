@@ -25,6 +25,43 @@ npm start
 ```
 Открыть: `http://localhost:8080`
 
+Для локальной разработки также можно использовать:
+```bash
+start-dev.bat
+```
+
+Локальная админка:
+- URL: `http://localhost:8080/admin-skills.html`
+- Логин: `WizardJIOCb`
+- Пароль: `WizardJIOCb-local`
+
+## Админка навыков и администраторы
+
+Админка навыков находится по адресу:
+- `/admin/skills`
+- `/admin-skills.html`
+
+Доступ в админку теперь идёт через обычный логин и пароль, а не через `token` в URL.
+
+Первый bootstrap-админ:
+- Логин: `WizardJIOCb`
+- Для локальной разработки пароль по умолчанию: `WizardJIOCb-local`
+- Для production пароль должен быть задан через переменную окружения `ADMIN_BOOTSTRAP_PASSWORD`
+
+Что может делать админ с правом управления администраторами:
+- создавать новые учётные записи админов
+- менять логин администратора
+- менять пароль администратора
+- отключать (`disable`) учётные записи
+- удалять учётные записи
+
+Ограничения безопасности:
+- админ не может удалить сам себя
+- админ не может отключить сам себе доступ
+- нельзя удалить или отключить последнего администратора, у которого есть право управлять другими админами
+
+Если при создании нового администратора пароль оставить пустым, система сгенерирует пароль автоматически и покажет его в интерфейсе один раз.
+
 ## Игровой поток
 - На входе можно создать комнату (авто-код) или войти по коду.
 - Код комнаты можно отправить друзьям.
@@ -58,6 +95,25 @@ sudo cp /var/www/crimson-wars/deploy/crimson-wars.service /etc/systemd/system/cr
 sudo systemctl daemon-reload
 sudo systemctl enable --now crimson-wars
 sudo systemctl status crimson-wars
+```
+
+Для production обязательно задайте bootstrap-пароль первого администратора, например через override:
+```bash
+sudo mkdir -p /etc/systemd/system/crimson-wars.service.d
+sudo nano /etc/systemd/system/crimson-wars.service.d/override.conf
+```
+
+Пример содержимого:
+```ini
+[Service]
+Environment=ADMIN_BOOTSTRAP_LOGIN=WizardJIOCb
+Environment=ADMIN_BOOTSTRAP_PASSWORD=CHANGE_ME_STRONG_PASSWORD
+```
+
+После изменения:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart crimson-wars
 ```
 
 ### 5) nginx

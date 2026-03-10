@@ -3,76 +3,90 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Crimson Wars - Skills Admin</title>
+  <title>Crimson Wars - Admin</title>
   <style>
-    :root{--bg:#07111a;--bg2:#0d1824;--panel:rgba(11,20,30,.94);--line:rgba(159,176,196,.18);--text:#ebf2fb;--muted:#8fa5bb;--accent:#ff744f;--ok:#42d597;--warn:#ffca62;--err:#ff6f7f;--radius:18px;--mono:"Cascadia Code",Consolas,monospace;--ui:"Segoe UI",Tahoma,sans-serif}
-    *{box-sizing:border-box}
-    html,body{margin:0;min-height:100%;background:radial-gradient(circle at top left,rgba(255,116,79,.12),transparent 30%),radial-gradient(circle at top right,rgba(72,140,255,.12),transparent 28%),linear-gradient(180deg,var(--bg2),var(--bg));color:var(--text);font-family:var(--ui)}
-    body{padding:18px}
-    button,input,select,textarea{font:inherit}
-    .app{max-width:1560px;margin:0 auto;display:grid;gap:16px}
-    .hero,.workspace{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(360px,.85fr);gap:16px}
-    .workspace{grid-template-columns:minmax(420px,.95fr) minmax(520px,1.1fr)}
+    :root{--bg:#08111a;--bg2:#0d1824;--panel:rgba(11,20,30,.94);--line:rgba(159,176,196,.18);--text:#ebf2fb;--muted:#8fa5bb;--accent:#ff744f;--ok:#42d597;--warn:#ffca62;--err:#ff6f7f;--radius:18px;--mono:"Cascadia Code",Consolas,monospace;--ui:"Segoe UI",Tahoma,sans-serif}
+    *{box-sizing:border-box} html,body{margin:0;min-height:100%;background:radial-gradient(circle at top left,rgba(255,116,79,.12),transparent 30%),radial-gradient(circle at top right,rgba(72,140,255,.12),transparent 28%),linear-gradient(180deg,var(--bg2),var(--bg));color:var(--text);font-family:var(--ui)}
+    body{padding:18px} button,input,select,textarea{font:inherit}
+    input,select,textarea{width:100%;padding:11px 12px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.045);color:var(--text);outline:none}
+    option{color:#10161d;background:#fff} textarea{min-height:84px;resize:vertical}
+    input:focus,select:focus,textarea:focus{border-color:rgba(255,116,79,.75);box-shadow:0 0 0 4px rgba(255,116,79,.14)}
+    .app{max-width:1600px;margin:0 auto;display:grid;gap:16px}
     .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 24px 70px rgba(0,0,0,.38);backdrop-filter:blur(10px)}
-    .hero-main,.auth,.panel{padding:20px}
+    .hero,.workspace,.admin-grid{display:grid;gap:16px}
+    .hero{grid-template-columns:minmax(0,1.2fr) minmax(360px,.8fr)}
+    .workspace{grid-template-columns:minmax(420px,.92fr) minmax(540px,1.08fr)}
+    .admin-grid{grid-template-columns:minmax(360px,.8fr) minmax(420px,1fr)}
+    .hero-main,.panel,.auth{padding:20px}
     .eyebrow{display:inline-block;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.05);color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.12em}
-    h1{margin:14px 0 10px;font-size:40px;line-height:1}
-    h2,h3{margin:0}
-    .copy,.subcopy,.muted{color:var(--muted)}
-    .copy{max-width:760px;line-height:1.6}
+    h1{margin:14px 0 10px;font-size:38px;line-height:1} h2,h3{margin:0}
+    .copy,.subcopy,.muted{color:var(--muted)} .copy{max-width:760px;line-height:1.6}
     .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:20px}
     .stat{padding:14px;border:1px solid rgba(255,255,255,.06);border-radius:14px;background:rgba(255,255,255,.04)}
-    .stat .label,.field label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
-    .stat .value{margin-top:4px;font-size:28px;font-weight:700}
-    .toolbar,.meta,.filters,.token-row,.editor-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-    .token-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:end}
+    .label,.field label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+    .value{margin-top:4px;font-size:28px;font-weight:700}
     .field{display:grid;gap:6px;min-width:0}
-    input,select,textarea{width:100%;padding:11px 12px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.045);color:var(--text);outline:none}
-    option{color:#10161d;background:#ffffff}
-    textarea{min-height:84px;resize:vertical}
-    input:focus,select:focus,textarea:focus{border-color:rgba(255,116,79,.75);box-shadow:0 0 0 4px rgba(255,116,79,.14)}
+    .toolbar,.meta,.filters,.editor-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     .btn{padding:11px 14px;border-radius:12px;border:1px solid transparent;background:rgba(255,255,255,.06);color:var(--text);cursor:pointer}
-    .btn:hover{background:rgba(255,255,255,.1)}
-    .btn:disabled{opacity:.5;cursor:not-allowed}
+    .btn:hover{background:rgba(255,255,255,.1)} .btn:disabled{opacity:.5;cursor:not-allowed}
     .btn-primary{background:linear-gradient(135deg,#ff744f,#ff9863);color:#10161d;font-weight:700}
     .btn-primary:hover{background:linear-gradient(135deg,#45d08f,#69e19d);color:#08140f}
     .btn-ghost{background:transparent;border-color:var(--line)}
     .status{min-height:20px;font-size:13px}.status.ok{color:var(--ok)}.status.warn{color:var(--warn)}.status.err{color:var(--err)}
+    .hidden{display:none!important}
     .filters{display:grid;grid-template-columns:minmax(0,1.4fr) repeat(3,minmax(100px,.7fr));margin:14px 0}
-    .table-wrap{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:rgba(0,0,0,.16)}
+    .table-wrap{border:1px solid var(--line);border-radius:16px;overflow:auto;background:rgba(0,0,0,.16);max-height:560px}
     table{width:100%;border-collapse:collapse}
     th,td{padding:12px;border-bottom:1px solid rgba(255,255,255,.06);text-align:left;vertical-align:top;font-size:13px}
     th{position:sticky;top:0;background:rgba(9,17,25,.98);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
-    tbody tr{cursor:pointer}
-    tbody tr:hover{background:rgba(255,255,255,.04)}
-    tbody tr.sel{background:rgba(255,116,79,.1)}
-    tbody tr.dirty{box-shadow:inset 3px 0 0 var(--warn)}
+    tbody tr{cursor:pointer} tbody tr:hover{background:rgba(255,255,255,.04)} tbody tr.sel{background:rgba(255,116,79,.1)} tbody tr.dirty{box-shadow:inset 3px 0 0 var(--warn)}
     .mono{font-family:var(--mono)}
     .pill{display:inline-flex;align-items:center;justify-content:center;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:700;text-transform:uppercase}
-    .kind-passive{background:rgba(255,255,255,.08)}.kind-active{background:rgba(93,198,255,.13);color:#8ed8ff}.rarity-common{background:rgba(159,176,196,.14)}.rarity-rare{background:rgba(93,137,255,.16);color:#90b6ff}.rarity-epic{background:rgba(255,121,196,.16);color:#ff98db}
-    .effects{display:flex;flex-wrap:wrap;gap:6px}
-    .chip{padding:5px 8px;border-radius:10px;background:rgba(255,255,255,.05);font-size:12px;color:#c3d2e2}
+    .kind-passive{background:rgba(255,255,255,.08)} .kind-active{background:rgba(93,198,255,.13);color:#8ed8ff}
+    .rarity-common{background:rgba(159,176,196,.14)} .rarity-rare{background:rgba(93,137,255,.16);color:#90b6ff} .rarity-epic{background:rgba(255,121,196,.16);color:#ff98db}
+    .effects{display:flex;flex-wrap:wrap;gap:6px} .chip{padding:5px 8px;border-radius:10px;background:rgba(255,255,255,.05);font-size:12px;color:#c3d2e2}
     .empty{padding:28px;text-align:center;color:var(--muted)}
     .editor-empty{padding:32px;border:1px dashed rgba(159,176,196,.3);border-radius:16px;text-align:center;color:var(--muted)}
     .editor-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:16px}
-    .editor-title{display:grid;gap:8px}
-    .editor-title .name{font-size:24px;font-weight:700}
+    .editor-title{display:grid;gap:8px}.editor-title .name{font-size:24px;font-weight:700}
     .subcard{padding:16px;border-radius:16px;border:1px solid var(--line);background:rgba(255,255,255,.025);margin-top:16px}
     .subcopy{font-size:13px;line-height:1.5;margin:6px 0 14px}
-    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-    .span-2{grid-column:span 2}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.span-2{grid-column:span 2}
+    .login-wrap{display:grid;place-items:center;min-height:70vh}
+    .login-card{width:min(460px,100%);padding:24px}
+    .checkbox{display:flex;gap:10px;align-items:center}.checkbox input{width:auto}
     pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.5 var(--mono);color:#c9d8e8}
-    @media (max-width:1180px){.hero,.workspace{grid-template-columns:1fr}}
-    @media (max-width:760px){body{padding:12px}.stats,.filters,.grid,.token-row{grid-template-columns:1fr}.span-2{grid-column:span 1}}
+    @media (max-width:1180px){.hero,.workspace,.admin-grid{grid-template-columns:1fr}}
+    @media (max-width:760px){body{padding:12px}.stats,.filters,.grid{grid-template-columns:1fr}.span-2{grid-column:span 1}}
   </style>
 </head>
 <body>
-  <div class="app">
+  <div id="login-view" class="login-wrap">
+    <div class="card login-card">
+      <div class="eyebrow">Crimson Wars Admin</div>
+      <h1>Admin Login</h1>
+      <div class="copy">Log in with an admin account. The first bootstrap account is managed on the server and can create, edit, and delete other admin users.</div>
+      <div class="field" style="margin-top:16px">
+        <label for="login-name">Login</label>
+        <input id="login-name" autocomplete="username" />
+      </div>
+      <div class="field" style="margin-top:12px">
+        <label for="login-password">Password</label>
+        <input id="login-password" type="password" autocomplete="current-password" />
+      </div>
+      <div class="toolbar" style="margin-top:16px">
+        <button id="login-btn" type="button" class="btn btn-primary">Log in</button>
+      </div>
+      <div id="login-status" class="status muted" style="margin-top:12px">Use your admin login and password.</div>
+    </div>
+  </div>
+
+  <div id="app-view" class="app hidden">
     <section class="hero">
       <div class="card hero-main">
         <div class="eyebrow">Crimson Wars Control Room</div>
         <h1>Skills Admin</h1>
-        <div class="copy">A proper editor for the live skill catalog: searchable table, selected-skill workspace, dynamic balance fields, payload preview, and local token memory.</div>
+        <div class="copy">Skills editor and admin account management behind a normal login flow. Sessions are stored in secure server cookies instead of sharing raw tokens.</div>
         <div class="stats">
           <div class="stat"><div class="label">Skills</div><div id="stat-total" class="value">0</div></div>
           <div class="stat"><div class="label">Unsaved</div><div id="stat-dirty" class="value">0</div></div>
@@ -80,23 +94,66 @@
         </div>
       </div>
       <aside class="card auth">
-        <div class="meta"><h2>Access</h2><span id="auth-badge" class="muted">Not loaded</span></div>
-        <div class="field" style="margin-top:14px">
-          <label for="token">Admin token</label>
-          <div class="token-row">
-            <input id="token" type="password" placeholder="SKILLS_ADMIN_TOKEN" autocomplete="off" />
-            <button id="toggle-token" type="button" class="btn btn-ghost">Show</button>
-            <button id="load" type="button" class="btn btn-primary">Load skills</button>
-          </div>
+        <div class="meta"><h2>Session</h2><span id="auth-badge" class="muted">Logged in</span></div>
+        <div style="margin-top:14px">
+          <div class="label">Current admin</div>
+          <div id="session-user" style="margin-top:6px;font-size:22px;font-weight:700">-</div>
+          <div id="session-meta" class="muted" style="margin-top:6px">-</div>
         </div>
-        <div class="toolbar" style="margin-top:14px">
-          <button id="save-selected" type="button" class="btn" disabled>Save selected</button>
-          <button id="revert-selected" type="button" class="btn btn-ghost" disabled>Revert selected</button>
-          <button id="reload" type="button" class="btn btn-ghost" disabled>Reload</button>
+        <div class="toolbar" style="margin-top:16px">
+          <button id="reload-all" type="button" class="btn btn-ghost">Reload data</button>
+          <button id="logout-btn" type="button" class="btn btn-primary">Log out</button>
         </div>
-        <div id="status" class="status muted" style="margin-top:12px">Enter token and load the catalog.</div>
+        <div id="status" class="status muted" style="margin-top:12px">Ready.</div>
       </aside>
     </section>
+
+    <section id="admin-users-panel" class="admin-grid hidden">
+      <div class="card panel">
+        <div class="meta"><h3>Admin Accounts</h3><span id="users-meta" class="muted">No users loaded</span></div>
+        <div class="table-wrap" style="margin-top:14px;max-height:360px">
+          <table>
+            <thead><tr><th>Login</th><th>Role</th><th>Status</th><th>Last login</th></tr></thead>
+            <tbody id="users-body"><tr><td colspan="4" class="empty">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card panel">
+        <div class="subcard" style="margin-top:0">
+          <h3>Create Admin</h3>
+          <p class="subcopy">Create new admin accounts. Leave password empty to auto-generate one-time credentials you can copy and send.</p>
+          <div class="grid">
+            <div class="field"><label for="new-login">Login</label><input id="new-login" maxlength="40" /></div>
+            <div class="field"><label for="new-password">Password</label><input id="new-password" type="text" placeholder="Leave blank to auto-generate" /></div>
+            <label class="checkbox"><input id="new-manager" type="checkbox" /> Can manage admins</label>
+            <label class="checkbox"><input id="new-active" type="checkbox" checked /> Active</label>
+          </div>
+          <div class="toolbar" style="margin-top:14px">
+            <button id="create-user-btn" type="button" class="btn btn-primary">Create admin</button>
+          </div>
+          <div id="create-user-status" class="status muted" style="margin-top:10px">Create a new login for another administrator.</div>
+        </div>
+        <div class="subcard">
+          <h3>Edit Selected Admin</h3>
+          <p class="subcopy">Update login, rotate password, disable access, or remove an account entirely.</p>
+          <div id="user-editor-empty" class="empty">Select an admin account from the table.</div>
+          <div id="user-editor" class="hidden">
+            <div class="grid">
+              <div class="field"><label for="edit-login">Login</label><input id="edit-login" maxlength="40" /></div>
+              <div class="field"><label for="edit-password">New password</label><input id="edit-password" type="text" placeholder="Leave blank to keep current password" /></div>
+              <label class="checkbox"><input id="edit-manager" type="checkbox" /> Can manage admins</label>
+              <label class="checkbox"><input id="edit-active" type="checkbox" /> Active</label>
+            </div>
+            <div class="toolbar" style="margin-top:14px">
+              <button id="save-user-btn" type="button" class="btn btn-primary">Save admin</button>
+              <button id="delete-user-btn" type="button" class="btn btn-ghost">Delete admin</button>
+            </div>
+            <div id="edit-user-status" class="status muted" style="margin-top:10px">Selected admin is ready to edit.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="workspace">
       <div class="card panel">
         <div class="meta"><h3>Catalog</h3><span id="catalog-meta" class="muted">No data loaded</span></div>
@@ -109,13 +166,13 @@
         <div class="table-wrap">
           <table>
             <thead><tr><th>ID</th><th>Name</th><th>Type</th><th>Max</th><th>Weight</th><th>Summary</th></tr></thead>
-            <tbody id="skills-body"><tr><td colspan="6" class="empty">Load skills to start editing.</td></tr></tbody>
+            <tbody id="skills-body"><tr><td colspan="6" class="empty">Loading...</td></tr></tbody>
           </table>
         </div>
       </div>
       <div class="card panel">
         <div id="editor-empty" class="editor-empty">Choose a skill from the table to inspect and edit it.</div>
-        <div id="editor" hidden>
+        <div id="editor" class="hidden">
           <div class="editor-head">
             <div class="editor-title">
               <div class="meta">
@@ -146,7 +203,7 @@
           </div>
           <div class="subcard">
             <h3>Balance numbers</h3>
-            <p class="subcopy">Every extra numeric field is rendered automatically, so new skill properties stay editable without rewriting the admin page.</p>
+            <p class="subcopy">Every extra numeric field is rendered automatically, so new skill properties stay editable without rewriting the page.</p>
             <div id="effects-grid" class="grid"></div>
           </div>
           <div class="subcard">
@@ -157,46 +214,61 @@
       </div>
     </section>
   </div>
+
   <script>
-    const STORAGE_TOKEN_KEY='crimson-skills-admin-token';
     const CORE_KEYS=['id','name','kind','rarity','maxLevel','weight','desc'];
     const EFFECT_LABELS={damageMulPerLevel:'Damage / level',fireRateMulPerLevel:'Fire rate / level',maxHpFlatPerLevel:'Max HP / level',moveSpeedMulPerLevel:'Move speed / level',pickupRadiusPerLevel:'Pickup radius / level',hpRegenPerSecPerLevel:'HP regen / sec / level',extraDodgeChargesPerLevel:'Extra dodge charges / level',cooldownMs:'Base cooldown (ms)',cooldownMulPerLevel:'Cooldown reduction / level',radius:'Base radius',radiusPerLevel:'Radius / level',damage:'Base damage',damagePerLevel:'Damage / level',targets:'Base targets',targetsPerLevel:'Targets / level'};
     const $=id=>document.getElementById(id);
-    const dom={token:$('token'),load:$('load'),reload:$('reload'),toggleToken:$('toggle-token'),status:$('status'),authBadge:$('auth-badge'),search:$('search'),filterKind:$('filter-kind'),filterRarity:$('filter-rarity'),filterState:$('filter-state'),skillsBody:$('skills-body'),catalogMeta:$('catalog-meta'),statTotal:$('stat-total'),statDirty:$('stat-dirty'),statVisible:$('stat-visible'),editorEmpty:$('editor-empty'),editor:$('editor'),editorName:$('editor-name'),editorId:$('editor-id'),editorKindPill:$('editor-kind-pill'),editorRarityPill:$('editor-rarity-pill'),editorDirty:$('editor-dirty'),fieldName:$('field-name'),fieldId:$('field-id'),fieldKind:$('field-kind'),fieldRarity:$('field-rarity'),fieldMaxLevel:$('field-maxLevel'),fieldWeight:$('field-weight'),fieldDesc:$('field-desc'),effectsGrid:$('effects-grid'),jsonPreview:$('json-preview'),saveSelected:$('save-selected'),saveTop:$('save-top'),revertSelected:$('revert-selected'),copyJson:$('copy-json')};
-    const state={loaded:false,selectedId:'',skills:[],original:new Map(),working:new Map(),filteredIds:[]};
+    const dom={loginView:$('login-view'),appView:$('app-view'),loginName:$('login-name'),loginPassword:$('login-password'),loginBtn:$('login-btn'),loginStatus:$('login-status'),reloadAll:$('reload-all'),logoutBtn:$('logout-btn'),status:$('status'),authBadge:$('auth-badge'),sessionUser:$('session-user'),sessionMeta:$('session-meta'),usersPanel:$('admin-users-panel'),usersMeta:$('users-meta'),usersBody:$('users-body'),newLogin:$('new-login'),newPassword:$('new-password'),newManager:$('new-manager'),newActive:$('new-active'),createUserBtn:$('create-user-btn'),createUserStatus:$('create-user-status'),userEditorEmpty:$('user-editor-empty'),userEditor:$('user-editor'),editLogin:$('edit-login'),editPassword:$('edit-password'),editManager:$('edit-manager'),editActive:$('edit-active'),saveUserBtn:$('save-user-btn'),deleteUserBtn:$('delete-user-btn'),editUserStatus:$('edit-user-status'),search:$('search'),filterKind:$('filter-kind'),filterRarity:$('filter-rarity'),filterState:$('filter-state'),skillsBody:$('skills-body'),catalogMeta:$('catalog-meta'),statTotal:$('stat-total'),statDirty:$('stat-dirty'),statVisible:$('stat-visible'),editorEmpty:$('editor-empty'),editor:$('editor'),editorName:$('editor-name'),editorId:$('editor-id'),editorKindPill:$('editor-kind-pill'),editorRarityPill:$('editor-rarity-pill'),editorDirty:$('editor-dirty'),fieldName:$('field-name'),fieldId:$('field-id'),fieldKind:$('field-kind'),fieldRarity:$('field-rarity'),fieldMaxLevel:$('field-maxLevel'),fieldWeight:$('field-weight'),fieldDesc:$('field-desc'),effectsGrid:$('effects-grid'),jsonPreview:$('json-preview'),copyJson:$('copy-json'),saveTop:$('save-top')};
+    const state={me:null,skills:[],original:new Map(),working:new Map(),selectedSkillId:'',filteredSkillIds:[],users:[],selectedUserId:0};
     const clone=v=>JSON.parse(JSON.stringify(v));
-    const current=()=>state.selectedId?state.working.get(state.selectedId)||null:null;
     const sorted=obj=>{const out={};Object.keys(obj).sort().forEach(k=>out[k]=obj[k]);return out};
     const effectKeys=skill=>Object.keys(skill).filter(k=>!CORE_KEYS.includes(k)).sort((a,b)=>a.localeCompare(b));
     const labelFor=key=>EFFECT_LABELS[key]||key.replace(/([a-z0-9])([A-Z])/g,'$1 $2').replace(/_/g,' ').replace(/\b\w/g,s=>s.toUpperCase());
     const parseNum=el=>{const n=Number(String(el.value||'').trim());return Number.isFinite(n)?n:0};
-    const dirty=id=>JSON.stringify(state.working.get(id))!==JSON.stringify(state.original.get(id));
-    const dirtyCount=()=>state.skills.reduce((n,s)=>n+(dirty(s.id)?1:0),0);
-    function setStatus(text,type='muted'){dom.status.textContent=text;dom.status.className=`status ${type}`}
-    function updateStats(){dom.statTotal.textContent=String(state.skills.length);dom.statDirty.textContent=String(dirtyCount());dom.statVisible.textContent=String(state.filteredIds.length);dom.catalogMeta.textContent=state.loaded?`${state.filteredIds.length} shown / ${state.skills.length} total`:'No data loaded';dom.authBadge.textContent=state.loaded?'Catalog loaded':'Not loaded'}
-    function summary(skill){const keys=effectKeys(skill);return keys.length?keys.slice(0,4).map(k=>`<span class="chip mono">${k}: ${skill[k]}</span>`).join(''):'<span class="muted">No extra values</span>'}
-    function matches(skill){const q=dom.search.value.trim().toLowerCase();if(dom.filterKind.value&&skill.kind!==dom.filterKind.value)return false;if(dom.filterRarity.value&&skill.rarity!==dom.filterRarity.value)return false;const d=dirty(skill.id);if(dom.filterState.value==='dirty'&&!d)return false;if(dom.filterState.value==='clean'&&d)return false;if(!q)return true;const text=[skill.id,skill.name,skill.desc,...effectKeys(skill)].join(' ').toLowerCase();return text.includes(q)}
-    function renderTable(){const rows=state.skills.filter(matches);state.filteredIds=rows.map(s=>s.id);if(!rows.length){dom.skillsBody.innerHTML='<tr><td colspan="6" class="empty">No skills match the current filters.</td></tr>';updateStats();return}dom.skillsBody.innerHTML=rows.map(skill=>{const row=state.working.get(skill.id);return `<tr data-id="${skill.id}" class="${skill.id===state.selectedId?'sel':''} ${dirty(skill.id)?'dirty':''}"><td class="mono">${skill.id}</td><td><div>${row.name||skill.id}</div><div class="muted">${row.desc||''}</div></td><td><div class="pill kind-${row.kind}">${row.kind}</div><div style="height:6px"></div><div class="pill rarity-${row.rarity}">${row.rarity}</div></td><td>${row.maxLevel??'-'}</td><td>${row.weight??'-'}</td><td><div class="effects">${summary(row)}</div></td></tr>`}).join('');updateStats()}
-    function setEditor(visible){dom.editor.hidden=!visible;dom.editorEmpty.hidden=visible;dom.saveSelected.disabled=!visible;dom.revertSelected.disabled=!visible}
-    function renderEditor(){const skill=current();if(!skill){setEditor(false);updateStats();return}setEditor(true);dom.editorName.textContent=skill.name||skill.id;dom.editorId.textContent=skill.id;dom.editorKindPill.className=`pill kind-${skill.kind}`;dom.editorKindPill.textContent=skill.kind;dom.editorRarityPill.className=`pill rarity-${skill.rarity}`;dom.editorRarityPill.textContent=skill.rarity;dom.editorDirty.textContent=dirty(skill.id)?'Unsaved changes':'Saved';dom.editorDirty.className=dirty(skill.id)?'status warn':'muted';dom.fieldName.value=skill.name||'';dom.fieldId.value=skill.id||'';dom.fieldKind.value=skill.kind||'passive';dom.fieldRarity.value=skill.rarity||'common';dom.fieldMaxLevel.value=skill.maxLevel??1;dom.fieldWeight.value=skill.weight??1;dom.fieldDesc.value=skill.desc||'';const keys=effectKeys(skill);dom.effectsGrid.innerHTML=keys.length?keys.map(k=>`<div class="field"><label for="fx-${k}">${labelFor(k)}</label><input id="fx-${k}" data-effect-key="${k}" type="number" step="any" value="${skill[k]}"></div>`).join(''):'<div class="muted">This skill has no extra numeric tuning fields.</div>';dom.jsonPreview.textContent=JSON.stringify(sorted(skill),null,2);dom.revertSelected.disabled=!dirty(skill.id);updateStats()}
-    function selectSkill(id){state.selectedId=id||'';renderTable();renderEditor()}
-    function patchSkill(id,key,value){const skill=state.working.get(id);if(!skill)return;skill[key]=value;renderTable();renderEditor()}
-    async function fetchSkills(){const token=encodeURIComponent(dom.token.value.trim());const res=await fetch(`/api/admin/skills?token=${token}`,{cache:'no-store'});const data=await res.json();if(!res.ok)throw new Error(data.message||`HTTP ${res.status}`);return Array.isArray(data.skills)?data.skills:[]}
-    async function loadSkills(){const token=dom.token.value.trim();if(!token){setStatus('Token is required.','err');return}dom.load.disabled=true;dom.reload.disabled=true;setStatus('Loading skills from server...','warn');try{const skills=await fetchSkills();skills.sort((a,b)=>a.id.localeCompare(b.id));state.skills=skills.map(clone);state.original=new Map(skills.map(s=>[s.id,clone(s)]));state.working=new Map(skills.map(s=>[s.id,clone(s)]));state.loaded=true;localStorage.setItem(STORAGE_TOKEN_KEY,token);dom.reload.disabled=false;selectSkill(skills[0]?.id||'');setStatus(`Loaded ${skills.length} skills.`,'ok')}catch(err){state.loaded=false;state.skills=[];state.original=new Map();state.working=new Map();state.selectedId='';renderTable();renderEditor();setStatus(err.message||'Load failed.','err')}finally{dom.load.disabled=false}}
-    async function saveSkill(id){const skill=state.working.get(id);const token=encodeURIComponent(dom.token.value.trim());const res=await fetch(`/api/admin/skills/${encodeURIComponent(id)}?token=${token}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(skill)});const data=await res.json();if(!res.ok)throw new Error(data.message||`HTTP ${res.status}`);const saved=data.skill||skill;state.original.set(id,clone(saved));state.working.set(id,clone(saved));const idx=state.skills.findIndex(x=>x.id===id);if(idx>=0)state.skills[idx]=clone(saved);renderTable();renderEditor();setStatus(`Saved ${id}.`,'ok')}
-    function revertSkill(id){const orig=state.original.get(id);if(!orig)return;state.working.set(id,clone(orig));renderTable();renderEditor();setStatus(`Reverted ${id}.`,'warn')}
-    function bind(input,key,parser){input.addEventListener('input',()=>{const skill=current();if(!skill)return;patchSkill(skill.id,key,parser?parser(input):input.value)})}
-    dom.toggleToken.addEventListener('click',()=>{const hidden=dom.token.type==='password';dom.token.type=hidden?'text':'password';dom.toggleToken.textContent=hidden?'Hide':'Show'});
-    dom.load.addEventListener('click',loadSkills);dom.reload.addEventListener('click',loadSkills);
-    [dom.search,dom.filterKind,dom.filterRarity,dom.filterState].forEach(el=>{el.addEventListener('input',renderTable);el.addEventListener('change',renderTable)});
-    dom.skillsBody.addEventListener('click',e=>{const row=e.target.closest('tr[data-id]');if(row)selectSkill(row.dataset.id||'')});
-    bind(dom.fieldName,'name');bind(dom.fieldKind,'kind');bind(dom.fieldRarity,'rarity');bind(dom.fieldMaxLevel,'maxLevel',parseNum);bind(dom.fieldWeight,'weight',parseNum);bind(dom.fieldDesc,'desc');
-    dom.effectsGrid.addEventListener('input',e=>{if(!(e.target instanceof HTMLInputElement))return;const key=e.target.dataset.effectKey;const skill=current();if(key&&skill)patchSkill(skill.id,key,parseNum(e.target))});
-    dom.saveSelected.addEventListener('click',async()=>{const skill=current();if(!skill)return;try{dom.saveSelected.disabled=true;dom.saveTop.disabled=true;setStatus(`Saving ${skill.id}...`,'warn');await saveSkill(skill.id)}catch(err){setStatus(err.message||'Save failed.','err')}finally{dom.saveSelected.disabled=false;dom.saveTop.disabled=false}});
-    dom.saveTop.addEventListener('click',()=>dom.saveSelected.click());
-    dom.revertSelected.addEventListener('click',()=>{const skill=current();if(skill)revertSkill(skill.id)});
-    dom.copyJson.addEventListener('click',async()=>{const skill=current();if(!skill)return;try{await navigator.clipboard.writeText(JSON.stringify(sorted(skill),null,2));setStatus(`Copied ${skill.id} JSON.`,'ok')}catch{setStatus('Clipboard access failed.','err')}});
-    dom.token.value=localStorage.getItem(STORAGE_TOKEN_KEY)||'';renderTable();renderEditor();updateStats();
+    const currentSkill=()=>state.selectedSkillId?state.working.get(state.selectedSkillId)||null:null;
+    const currentUser=()=>state.selectedUserId?state.users.find(x=>Number(x.id)===Number(state.selectedUserId))||null:null;
+    const dirtySkill=id=>JSON.stringify(state.working.get(id))!==JSON.stringify(state.original.get(id));
+    const dirtyCount=()=>state.skills.reduce((n,s)=>n+(dirtySkill(s.id)?1:0),0);
+    const fetchJson=async(url,options={})=>{const res=await fetch(url,{credentials:'same-origin',headers:{'Content-Type':'application/json',...(options.headers||{})},...options});const text=await res.text();let data={};try{data=text?JSON.parse(text):{}}catch{}if(!res.ok)throw new Error(data.message||`HTTP ${res.status}`);return data};
+    const setStatus=(text,type='muted')=>{dom.status.textContent=text;dom.status.className=`status ${type}`};
+    const setLoginStatus=(text,type='muted')=>{dom.loginStatus.textContent=text;dom.loginStatus.className=`status ${type}`};
+    const setCreateUserStatus=(text,type='muted')=>{dom.createUserStatus.textContent=text;dom.createUserStatus.className=`status ${type}`};
+    const setEditUserStatus=(text,type='muted')=>{dom.editUserStatus.textContent=text;dom.editUserStatus.className=`status ${type}`};
+    function syncAppVisibility(){const logged=!!state.me;dom.loginView.classList.toggle('hidden',logged);dom.appView.classList.toggle('hidden',!logged)}
+    function updateStats(){dom.statTotal.textContent=String(state.skills.length);dom.statDirty.textContent=String(dirtyCount());dom.statVisible.textContent=String(state.filteredSkillIds.length);dom.catalogMeta.textContent=state.skills.length?`${state.filteredSkillIds.length} shown / ${state.skills.length} total`:'No data loaded';dom.authBadge.textContent=state.me?'Logged in':'Not logged in';if(state.me){dom.sessionUser.textContent=state.me.login;dom.sessionMeta.textContent=state.me.canManageAdmins?'Can manage admins':'Skill editor'}}
+    function renderUsers(){if(!state.me?.canManageAdmins){dom.usersPanel.classList.add('hidden');return}dom.usersPanel.classList.remove('hidden');dom.usersMeta.textContent=`${state.users.length} admin account(s)`;if(!state.users.length){dom.usersBody.innerHTML='<tr><td colspan="4" class="empty">No admin users found.</td></tr>';return}dom.usersBody.innerHTML=state.users.map(user=>`<tr data-user-id="${user.id}" class="${Number(user.id)===Number(state.selectedUserId)?'sel':''}"><td><div>${user.login}</div><div class="muted mono">#${user.id}</div></td><td>${user.canManageAdmins?'<span class="pill rarity-rare">manager</span>':'<span class="pill kind-passive">editor</span>'}</td><td>${user.isActive?'<span class="pill kind-active">active</span>':'<span class="pill rarity-common">disabled</span>'}</td><td class="muted">${user.lastLoginAt?new Date(user.lastLoginAt).toLocaleString():'never'}</td></tr>`).join('');renderUserEditor()}
+    function renderUserEditor(){const user=currentUser();const visible=!!user&&!!state.me?.canManageAdmins;dom.userEditor.classList.toggle('hidden',!visible);dom.userEditorEmpty.classList.toggle('hidden',visible);if(!visible)return;dom.editLogin.value=user.login||'';dom.editPassword.value='';dom.editManager.checked=!!user.canManageAdmins;dom.editActive.checked=!!user.isActive;setEditUserStatus(`Editing ${user.login}.`,'muted')}
+    function skillSummary(skill){const keys=effectKeys(skill);return keys.length?keys.slice(0,4).map(k=>`<span class="chip mono">${k}: ${skill[k]}</span>`).join(''):'<span class="muted">No extra values</span>'}
+    function skillMatches(skill){const q=dom.search.value.trim().toLowerCase();if(dom.filterKind.value&&skill.kind!==dom.filterKind.value)return false;if(dom.filterRarity.value&&skill.rarity!==dom.filterRarity.value)return false;const d=dirtySkill(skill.id);if(dom.filterState.value==='dirty'&&!d)return false;if(dom.filterState.value==='clean'&&d)return false;if(!q)return true;return [skill.id,skill.name,skill.desc,...effectKeys(skill)].join(' ').toLowerCase().includes(q)}
+    function renderSkillsTable(){const rows=state.skills.filter(skillMatches);state.filteredSkillIds=rows.map(x=>x.id);if(!rows.length){dom.skillsBody.innerHTML='<tr><td colspan="6" class="empty">No skills match the current filters.</td></tr>';updateStats();return}dom.skillsBody.innerHTML=rows.map(skill=>{const row=state.working.get(skill.id);return `<tr data-skill-id="${skill.id}" class="${skill.id===state.selectedSkillId?'sel':''} ${dirtySkill(skill.id)?'dirty':''}"><td class="mono">${skill.id}</td><td><div>${row.name||skill.id}</div><div class="muted">${row.desc||''}</div></td><td><div class="pill kind-${row.kind}">${row.kind}</div><div style="height:6px"></div><div class="pill rarity-${row.rarity}">${row.rarity}</div></td><td>${row.maxLevel??'-'}</td><td>${row.weight??'-'}</td><td><div class="effects">${skillSummary(row)}</div></td></tr>`}).join('');updateStats()}
+    function renderSkillEditor(){const skill=currentSkill();const visible=!!skill;dom.editor.classList.toggle('hidden',!visible);dom.editorEmpty.classList.toggle('hidden',visible);if(!visible){updateStats();return}dom.editorName.textContent=skill.name||skill.id;dom.editorId.textContent=skill.id;dom.editorKindPill.className=`pill kind-${skill.kind}`;dom.editorKindPill.textContent=skill.kind;dom.editorRarityPill.className=`pill rarity-${skill.rarity}`;dom.editorRarityPill.textContent=skill.rarity;dom.editorDirty.textContent=dirtySkill(skill.id)?'Unsaved changes':'Saved';dom.editorDirty.className=dirtySkill(skill.id)?'status warn':'muted';dom.fieldName.value=skill.name||'';dom.fieldId.value=skill.id||'';dom.fieldKind.value=skill.kind||'passive';dom.fieldRarity.value=skill.rarity||'common';dom.fieldMaxLevel.value=skill.maxLevel??1;dom.fieldWeight.value=skill.weight??1;dom.fieldDesc.value=skill.desc||'';const keys=effectKeys(skill);dom.effectsGrid.innerHTML=keys.length?keys.map(k=>`<div class="field"><label for="fx-${k}">${labelFor(k)}</label><input id="fx-${k}" data-effect-key="${k}" type="number" step="any" value="${skill[k]}"></div>`).join(''):'<div class="muted">This skill has no extra numeric tuning fields.</div>';dom.jsonPreview.textContent=JSON.stringify(sorted(skill),null,2);updateStats()}
+    function patchSkill(id,key,value){const skill=state.working.get(id);if(!skill)return;skill[key]=value;renderSkillsTable();renderSkillEditor()}
+    function selectSkill(id){state.selectedSkillId=id||'';renderSkillsTable();renderSkillEditor()}
+    function selectUser(id){state.selectedUserId=Number(id)||0;renderUsers()}
+    async function loadMe(){const data=await fetchJson('/api/admin/me');state.me=data.user;syncAppVisibility();updateStats()}
+    async function loadSkills(){const data=await fetchJson('/api/admin/skills');const skills=(Array.isArray(data.skills)?data.skills:[]).sort((a,b)=>a.id.localeCompare(b.id));state.skills=skills.map(clone);state.original=new Map(skills.map(s=>[s.id,clone(s)]));state.working=new Map(skills.map(s=>[s.id,clone(s)]));state.selectedSkillId=skills[0]?.id||'';renderSkillsTable();renderSkillEditor()}
+    async function loadUsers(){if(!state.me?.canManageAdmins){state.users=[];state.selectedUserId=0;renderUsers();return}const data=await fetchJson('/api/admin/users');state.users=Array.isArray(data.users)?data.users:[];if(!state.users.some(x=>Number(x.id)===Number(state.selectedUserId)))state.selectedUserId=state.users[0]?.id||0;renderUsers()}
+    async function reloadAll(){await loadMe();await loadSkills();await loadUsers();setStatus('Admin data reloaded.','ok')}
+    async function submitLogin(){const login=dom.loginName.value.trim();const password=dom.loginPassword.value; if(!login||!password){setLoginStatus('Login and password are required.','err');return}dom.loginBtn.disabled=true;setLoginStatus('Signing in...','warn');try{await fetchJson('/api/admin/login',{method:'POST',body:JSON.stringify({login,password})});dom.loginPassword.value='';await reloadAll();setLoginStatus('Signed in.','ok')}catch(err){setLoginStatus(err.message||'Login failed.','err')}finally{dom.loginBtn.disabled=false}}
+    async function logout(){try{await fetchJson('/api/admin/logout',{method:'POST'});}catch{}state.me=null;state.skills=[];state.original=new Map();state.working=new Map();state.users=[];state.selectedSkillId='';state.selectedUserId=0;syncAppVisibility();renderSkillsTable();renderSkillEditor();renderUsers();setLoginStatus('Signed out.','ok')}
+    async function saveSkill(){const skill=currentSkill();if(!skill)return;setStatus(`Saving ${skill.id}...`,'warn');const data=await fetchJson(`/api/admin/skills/${encodeURIComponent(skill.id)}`,{method:'PUT',body:JSON.stringify(skill)});const saved=data.skill||skill;state.original.set(skill.id,clone(saved));state.working.set(skill.id,clone(saved));const idx=state.skills.findIndex(x=>x.id===skill.id);if(idx>=0)state.skills[idx]=clone(saved);renderSkillsTable();renderSkillEditor();setStatus(`Saved ${skill.id}.`,'ok')}
+    async function createUser(){const login=dom.newLogin.value.trim();const password=dom.newPassword.value.trim();if(!login){setCreateUserStatus('Login is required.','err');return}dom.createUserBtn.disabled=true;setCreateUserStatus('Creating admin...','warn');try{const data=await fetchJson('/api/admin/users',{method:'POST',body:JSON.stringify({login,password,canManageAdmins:dom.newManager.checked,isActive:dom.newActive.checked})});await loadUsers();dom.newLogin.value='';dom.newPassword.value='';dom.newManager.checked=false;dom.newActive.checked=true;const creds=data.generatedPassword?` Generated password: ${data.generatedPassword}`:'';setCreateUserStatus(`Admin ${data.user.login} created.${creds}`,'ok')}catch(err){setCreateUserStatus(err.message||'Create failed.','err')}finally{dom.createUserBtn.disabled=false}}
+    async function saveUser(){const user=currentUser();if(!user)return;dom.saveUserBtn.disabled=true;setEditUserStatus(`Saving ${user.login}...`,'warn');try{const payload={login:dom.editLogin.value.trim(),canManageAdmins:dom.editManager.checked,isActive:dom.editActive.checked};if(dom.editPassword.value.trim())payload.password=dom.editPassword.value.trim();await fetchJson(`/api/admin/users/${encodeURIComponent(user.id)}`,{method:'PUT',body:JSON.stringify(payload)});await loadUsers();setEditUserStatus(`Admin ${payload.login||user.login} saved.`,'ok')}catch(err){setEditUserStatus(err.message||'Save failed.','err')}finally{dom.saveUserBtn.disabled=false}}
+    async function deleteUser(){const user=currentUser();if(!user)return;if(!confirm(`Delete admin ${user.login}?`))return;dom.deleteUserBtn.disabled=true;setEditUserStatus(`Deleting ${user.login}...`,'warn');try{await fetchJson(`/api/admin/users/${encodeURIComponent(user.id)}`,{method:'DELETE'});await loadUsers();setEditUserStatus(`Admin ${user.login} deleted.`,'ok')}catch(err){setEditUserStatus(err.message||'Delete failed.','err')}finally{dom.deleteUserBtn.disabled=false}}
+    dom.loginBtn.addEventListener('click',submitLogin); dom.loginPassword.addEventListener('keydown',e=>{if(e.key==='Enter')submitLogin()});
+    dom.reloadAll.addEventListener('click',()=>reloadAll().catch(err=>setStatus(err.message||'Reload failed.','err'))); dom.logoutBtn.addEventListener('click',logout);
+    dom.usersBody.addEventListener('click',e=>{const row=e.target.closest('tr[data-user-id]');if(row)selectUser(row.dataset.userId)});
+    dom.createUserBtn.addEventListener('click',createUser); dom.saveUserBtn.addEventListener('click',saveUser); dom.deleteUserBtn.addEventListener('click',deleteUser);
+    [dom.search,dom.filterKind,dom.filterRarity,dom.filterState].forEach(el=>{el.addEventListener('input',renderSkillsTable);el.addEventListener('change',renderSkillsTable)});
+    dom.skillsBody.addEventListener('click',e=>{const row=e.target.closest('tr[data-skill-id]');if(row)selectSkill(row.dataset.skillId)});
+    [[dom.fieldName,'name'],[dom.fieldKind,'kind'],[dom.fieldRarity,'rarity'],[dom.fieldDesc,'desc']].forEach(([el,key])=>el.addEventListener('input',()=>{const skill=currentSkill();if(skill)patchSkill(skill.id,key,el.value)}));
+    dom.fieldMaxLevel.addEventListener('input',()=>{const skill=currentSkill();if(skill)patchSkill(skill.id,'maxLevel',parseNum(dom.fieldMaxLevel))});
+    dom.fieldWeight.addEventListener('input',()=>{const skill=currentSkill();if(skill)patchSkill(skill.id,'weight',parseNum(dom.fieldWeight))});
+    dom.effectsGrid.addEventListener('input',e=>{if(!(e.target instanceof HTMLInputElement))return;const key=e.target.dataset.effectKey;const skill=currentSkill();if(key&&skill)patchSkill(skill.id,key,parseNum(e.target))});
+    dom.saveTop.addEventListener('click',()=>saveSkill().catch(err=>setStatus(err.message||'Save failed.','err')));
+    dom.copyJson.addEventListener('click',async()=>{const skill=currentSkill();if(!skill)return;try{await navigator.clipboard.writeText(JSON.stringify(sorted(skill),null,2));setStatus(`Copied ${skill.id} JSON.`,'ok')}catch{setStatus('Clipboard access failed.','err')}});
+    (async()=>{try{await reloadAll()}catch{syncAppVisibility();renderSkillsTable();renderSkillEditor();renderUsers()}})();
   </script>
 </body>
 </html>

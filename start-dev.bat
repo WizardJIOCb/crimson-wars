@@ -11,7 +11,8 @@ if errorlevel 1 (
 )
 
 set "APP_URL=http://localhost:8080"
-set "SKILLS_ADMIN_TOKEN_LOCAL=local-skills-admin"
+set "ADMIN_BOOTSTRAP_LOGIN_LOCAL=WizardJIOCb"
+set "ADMIN_BOOTSTRAP_PASSWORD_LOCAL=WizardJIOCb-local"
 
 echo Starting Crimson Wars local server...
 echo.
@@ -19,8 +20,11 @@ echo Local URLs:
 echo   Game:  %APP_URL%
 echo   Admin: %APP_URL%/admin-skills.html
 echo.
-echo Admin token:
-echo   %SKILLS_ADMIN_TOKEN_LOCAL%
+echo Admin login:
+echo   %ADMIN_BOOTSTRAP_LOGIN_LOCAL%
+echo.
+echo Admin password:
+echo   %ADMIN_BOOTSTRAP_PASSWORD_LOCAL%
 echo.
 
 for /f %%P in ('powershell -NoProfile -Command "(Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -First 1)"') do (
@@ -31,7 +35,7 @@ for /f %%P in ('powershell -NoProfile -Command "(Get-NetTCPConnection -LocalPort
   )
 )
 
-start "Crimson Wars Server" cmd.exe /k "cd /d ""%~dp0"" && set ""SKILLS_ADMIN_TOKEN=%SKILLS_ADMIN_TOKEN_LOCAL%"" && echo Using SKILLS_ADMIN_TOKEN=%SKILLS_ADMIN_TOKEN_LOCAL% && node server.js"
+start "Crimson Wars Server" cmd.exe /k "cd /d ""%~dp0"" && set ""ADMIN_BOOTSTRAP_LOGIN=%ADMIN_BOOTSTRAP_LOGIN_LOCAL%"" && set ""ADMIN_BOOTSTRAP_PASSWORD=%ADMIN_BOOTSTRAP_PASSWORD_LOCAL%"" && echo Using admin login %ADMIN_BOOTSTRAP_LOGIN_LOCAL% && node server.js"
 
 timeout /t 2 /nobreak >nul
 start "" "%APP_URL%"

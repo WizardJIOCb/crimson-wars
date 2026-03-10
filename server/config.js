@@ -62,6 +62,7 @@ const LEADERBOARD_PAGE_SIZE = 10;
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const RECORDS_DB_PATH = path.join(DATA_DIR, 'records.db');
 const SKILLS_CONFIG_PATH = path.join(DATA_DIR, 'skills.json');
+const ADMIN_AUTH_DB_PATH = path.join(DATA_DIR, 'admin-auth.db');
 
 const DEFAULT_ROOM_SYNC = {
   tickRate: 45,
@@ -198,6 +199,7 @@ module.exports = {
   DATA_DIR,
   RECORDS_DB_PATH,
   SKILLS_CONFIG_PATH,
+  ADMIN_AUTH_DB_PATH,
   DEFAULT_ROOM_SYNC,
   WEAPONS,
   DROP_WEAPON_KEYS,

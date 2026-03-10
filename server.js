@@ -1,18 +1,22 @@
 const path = require('path');
 const http = require('http');
+const crypto = require('crypto');
 const express = require('express');
 const WebSocket = require('ws');
 
 const { WebSocketServer } = WebSocket;
 
 const config = require('./server/config');
+const { createAdminAuthStore } = require('./server/admin-auth-store');
 const { createRecordsStore } = require('./server/records-store');
 const { createSkillsStore } = require('./server/skills-store');
 const PORT = process.env.PORT || 8080;
 const IS_PROD = process.env.NODE_ENV === 'production';
-const SKILLS_ADMIN_TOKEN = process.env.SKILLS_ADMIN_TOKEN || (IS_PROD ? '' : 'local-skills-admin');
 const DEV_CHEATS_ENABLED = (process.env.DEV_CHEATS_ENABLED || '1') !== '0';
 const DEV_CHEAT_SECRET = (process.env.DEV_CHEAT_SECRET || 'bloodmoon').toString().trim();
+const ADMIN_BOOTSTRAP_LOGIN = process.env.ADMIN_BOOTSTRAP_LOGIN || 'WizardJIOCb';
+const ADMIN_BOOTSTRAP_PASSWORD = process.env.ADMIN_BOOTSTRAP_PASSWORD || (IS_PROD ? '' : 'WizardJIOCb-local');
+const ADMIN_SESSION_COOKIE = 'crimson_admin_session';
 
 const {
   MAIN_LOOP_RATE,
@@ -76,6 +80,7 @@ const {
   DATA_DIR,
   RECORDS_DB_PATH,
   SKILLS_CONFIG_PATH,
+  ADMIN_AUTH_DB_PATH,
   DEFAULT_ROOM_SYNC,
   WEAPONS,
   DROP_WEAPON_KEYS,
@@ -91,6 +96,13 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 
 const rooms = new Map();
 const activeSockets = new Set();
+const adminAuthStore = createAdminAuthStore({
+  dataDir: DATA_DIR,
+  dbPath: ADMIN_AUTH_DB_PATH,
+  bootstrapLogin: ADMIN_BOOTSTRAP_LOGIN,
+  bootstrapPassword: ADMIN_BOOTSTRAP_PASSWORD,
+  isProd: IS_PROD,
+});
 const recordsStore = createRecordsStore({
   dataDir: DATA_DIR,
   dbPath: RECORDS_DB_PATH,
@@ -101,7 +113,7 @@ const skillsStore = createSkillsStore({
   dataDir: DATA_DIR,
   skillsConfigPath: SKILLS_CONFIG_PATH,
   defaultSkillDefs: DEFAULT_SKILL_DEFS,
-  adminToken: SKILLS_ADMIN_TOKEN,
+  adminToken: '',
 });
 
 function clampNum(value, min, max, fallback) {
@@ -165,8 +177,152 @@ function listRoomsForLobby() {
     }));
 }
 
+function parseCookies(req) {
+  const out = {};
+  const raw = (req.headers.cookie || '').toString();
+  if (!raw) return out;
+  for (const part of raw.split(';')) {
+    const idx = part.indexOf('=');
+    if (idx <= 0) continue;
+    const key = part.slice(0, idx).trim();
+    const value = part.slice(idx + 1).trim();
+    out[key] = decodeURIComponent(value);
+  }
+  return out;
+}
+
+function readAdminSession(req) {
+  const cookies = parseCookies(req);
+  const token = cookies[ADMIN_SESSION_COOKIE] || '';
+  const session = adminAuthStore.getSession(token);
+  return session || null;
+}
+
+function attachAdminAuth(req, _res, next) {
+  const session = readAdminSession(req);
+  req.adminSession = session;
+  req.adminUser = session?.user || null;
+  next();
+}
+
+function requireAdmin(req, res, next) {
+  if (!req.adminUser) {
+    res.status(401).json({ ok: false, message: 'Authentication required' });
+    return;
+  }
+  next();
+}
+
+function requireAdminManager(req, res, next) {
+  if (!req.adminUser) {
+    res.status(401).json({ ok: false, message: 'Authentication required' });
+    return;
+  }
+  if (!req.adminUser.canManageAdmins) {
+    res.status(403).json({ ok: false, message: 'Forbidden' });
+    return;
+  }
+  next();
+}
+
+function setAdminSessionCookie(res, token) {
+  const parts = [
+    `${ADMIN_SESSION_COOKIE}=${encodeURIComponent(token)}`,
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Lax',
+    `Max-Age=${Math.floor((1000 * 60 * 60 * 24 * 14) / 1000)}`,
+  ];
+  if (IS_PROD) parts.push('Secure');
+  res.setHeader('Set-Cookie', parts.join('; '));
+}
+
+function clearAdminSessionCookie(res) {
+  const parts = [
+    `${ADMIN_SESSION_COOKIE}=`,
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Lax',
+    'Max-Age=0',
+  ];
+  if (IS_PROD) parts.push('Secure');
+  res.setHeader('Set-Cookie', parts.join('; '));
+}
+
+function generateAdminPassword() {
+  return crypto.randomBytes(12).toString('base64url');
+}
+
+app.use(attachAdminAuth);
+
 app.get('/admin/skills', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin-skills.html'));
+});
+
+app.get('/api/admin/me', (req, res) => {
+  if (!req.adminUser) {
+    res.status(401).json({ ok: false, message: 'Authentication required' });
+    return;
+  }
+  res.json({ ok: true, user: req.adminUser });
+});
+
+app.post('/api/admin/login', (req, res) => {
+  const login = (req.body?.login || '').toString();
+  const password = (req.body?.password || '').toString();
+  const result = adminAuthStore.authenticate(login, password);
+  if (!result.ok) {
+    res.status(result.code).json({ ok: false, message: result.message });
+    return;
+  }
+  setAdminSessionCookie(res, result.token);
+  res.json({ ok: true, user: result.user });
+});
+
+app.post('/api/admin/logout', (req, res) => {
+  const cookies = parseCookies(req);
+  adminAuthStore.deleteSession(cookies[ADMIN_SESSION_COOKIE] || '');
+  clearAdminSessionCookie(res);
+  res.json({ ok: true });
+});
+
+app.get('/api/admin/users', requireAdminManager, (_req, res) => {
+  res.json({ ok: true, users: adminAuthStore.listUsers() });
+});
+
+app.post('/api/admin/users', requireAdminManager, (req, res) => {
+  const payload = req.body && typeof req.body === 'object' ? req.body : {};
+  const generatedPassword = (payload.password || '').toString() ? null : generateAdminPassword();
+  const result = adminAuthStore.createUser(req.adminUser, {
+    login: payload.login,
+    password: payload.password || generatedPassword,
+    canManageAdmins: !!payload.canManageAdmins,
+    isActive: payload.isActive !== false,
+  });
+  if (!result.ok) {
+    res.status(result.code).json({ ok: false, message: result.message });
+    return;
+  }
+  res.json({ ok: true, user: result.user, generatedPassword });
+});
+
+app.put('/api/admin/users/:id', requireAdminManager, (req, res) => {
+  const payload = req.body && typeof req.body === 'object' ? req.body : {};
+  const result = adminAuthStore.updateUser(req.adminUser, req.params.id, payload);
+  if (!result.ok) {
+    res.status(result.code).json({ ok: false, message: result.message });
+    return;
+  }
+  res.json({ ok: true, user: result.user });
+});
+
+app.delete('/api/admin/users/:id', requireAdminManager, (req, res) => {
+  const result = adminAuthStore.deleteUser(req.adminUser, req.params.id);
+  if (!result.ok) {
+    res.status(result.code).json({ ok: false, message: result.message });
+    return;
+  }
+  res.json({ ok: true });
 });
 
 app.get('/api/rooms', (_req, res) => {
@@ -196,19 +352,11 @@ app.get('/api/skills', (_req, res) => {
   res.json({ skills: skillsStore.getList(), now: Date.now() });
 });
 
-app.get('/api/admin/skills', (req, res) => {
-  if (!skillsStore.checkAdminToken(req)) {
-    res.status(403).json({ ok: false, message: 'Forbidden' });
-    return;
-  }
+app.get('/api/admin/skills', requireAdmin, (req, res) => {
   res.json({ ok: true, skills: skillsStore.getList() });
 });
 
-app.put('/api/admin/skills/:id', (req, res) => {
-  if (!skillsStore.checkAdminToken(req)) {
-    res.status(403).json({ ok: false, message: 'Forbidden' });
-    return;
-  }
+app.put('/api/admin/skills/:id', requireAdmin, (req, res) => {
   const id = (req.params.id || '').toString().trim().toLowerCase();
   const existing = skillsStore.getById(id);
   if (!existing) {
@@ -1649,10 +1797,9 @@ setInterval(() => {
 }, MAIN_LOOP_MS);
 server.listen(PORT, () => {
   console.log(`Server started: http://localhost:${PORT}`);
-  if (SKILLS_ADMIN_TOKEN) {
-    console.log(`Skills admin token enabled: ${SKILLS_ADMIN_TOKEN}`);
-  } else {
-    console.log('Skills admin token disabled');
+  console.log(`Admin login enabled: ${ADMIN_BOOTSTRAP_LOGIN}`);
+  if (!IS_PROD) {
+    console.log(`Bootstrap admin password: ${ADMIN_BOOTSTRAP_PASSWORD}`);
   }
 });
 
