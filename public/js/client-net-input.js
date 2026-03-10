@@ -249,6 +249,7 @@ for (const el of [syncTickrateEl, syncStateRateEl, syncRenderDelayEl, syncMaxExt
 async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
   const mode = joinSync ? 'create' : 'join';
   const skipRouting = options?.skipRouting === true;
+  clearJoinFeedback();
   if (!skipRouting) {
     try {
       const route = await resolveRoomRoute(mode, roomCode);
@@ -1092,6 +1093,7 @@ message: (ev) => {
   }
 
   if (msg.type === 'welcome') {
+    clearJoinFeedback();
     game.myId = msg.id;
     game.runtimeInstance.instanceId = String(msg.instanceId || '');
     game.runtimeInstance.publicBaseUrl = currentWorkerOrigin || APP_ORIGIN;
@@ -1140,6 +1142,7 @@ message: (ev) => {
     waitingForFirstState = false;
     waitingForFirstStateSince = 0;
     statusEl.textContent = msg.message;
+    setJoinFeedback(msg.message);
     if (msg.redirectUrl) {
       try {
         const redirectedOrigin = normalizeOrigin(msg.redirectUrl);
@@ -1147,6 +1150,7 @@ message: (ev) => {
         void sendJoinRequest(msg.roomCode || roomCodeInput?.value || '', null, { skipRouting: true });
       } catch {
         statusEl.textContent = msg.message || 'Failed to switch game server.';
+        setJoinFeedback(msg.message || 'Failed to switch game server.');
       }
       return;
     }
@@ -1157,6 +1161,7 @@ message: (ev) => {
     joinOverlay.classList.remove('death-mode');
     setDeathCinematicActive(false);
     updateMobileControlsVisibility();
+    joinFeedbackEl?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     requestRoomsList();
     requestRecordsList(recordsUi.page);
   }

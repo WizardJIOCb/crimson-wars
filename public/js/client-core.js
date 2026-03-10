@@ -26,6 +26,7 @@ const nameInput = document.getElementById('name');
 const nicknameHintEl = document.getElementById('nickname-hint');
 const playerAuthSummaryEl = document.getElementById('player-auth-summary');
 const playerAuthFeedbackEl = document.getElementById('player-auth-feedback');
+const joinFeedbackEl = document.getElementById('join-feedback');
 const playerLogoutBtn = document.getElementById('player-logout');
 const authTabButtons = Array.from(document.querySelectorAll('[data-auth-tab]'));
 const authPanels = Array.from(document.querySelectorAll('[data-auth-panel]'));
@@ -531,6 +532,24 @@ function clearAuthFeedback() {
   if (!playerAuthFeedbackEl) return;
   playerAuthFeedbackEl.textContent = '';
   playerAuthFeedbackEl.className = 'auth-feedback hidden';
+}
+
+function setJoinFeedback(message) {
+  if (!joinFeedbackEl) return;
+  const text = String(message || '').trim();
+  if (!text) {
+    clearJoinFeedback();
+    return;
+  }
+  joinFeedbackEl.textContent = text;
+  joinFeedbackEl.className = 'join-feedback';
+  joinFeedbackEl.classList.remove('hidden');
+}
+
+function clearJoinFeedback() {
+  if (!joinFeedbackEl) return;
+  joinFeedbackEl.textContent = '';
+  joinFeedbackEl.className = 'join-feedback hidden';
 }
 
 function renderPlayerAuthUi() {

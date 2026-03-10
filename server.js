@@ -762,15 +762,17 @@ function cleanRoomCode(raw) {
   return code;
 }
 
-function isNicknameOccupied(name) {
+function findOccupiedPlayer(name) {
   const key = normalizeNickname(name).toLowerCase();
-  if (!key) return false;
+  if (!key) return null;
   for (const room of rooms.values()) {
     for (const player of room.players.values()) {
-      if ((player.name || '').toString().trim().toLowerCase() === key) return true;
+      if ((player.name || '').toString().trim().toLowerCase() === key) {
+        return { room, player };
+      }
     }
   }
-  return false;
+  return null;
 }
 
 function resolveJoinIdentity(ws, rawName) {
@@ -784,11 +786,18 @@ function resolveJoinIdentity(ws, rawName) {
       name: normalizedName,
     };
   }
-  if (isNicknameOccupied(normalizedName)) {
+  const occupied = findOccupiedPlayer(normalizedName);
+  if (occupied) {
+    const occupiedPlayer = occupied.player;
+    const sameAccount = occupiedPlayer.playerAccountId
+      && ws.playerSession?.player?.id
+      && occupiedPlayer.playerAccountId === ws.playerSession.player.id;
     return {
       ok: false,
       code: 409,
-      message: `Nickname ${normalizedName} is already in use.`,
+      message: sameAccount
+        ? `Nickname ${normalizedName} is already active in this room. Open another browser profile or log out to join with a different nickname.`
+        : `Nickname ${normalizedName} is already in use.`,
       name: normalizedName,
     };
   }
