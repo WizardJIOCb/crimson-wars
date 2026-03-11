@@ -564,255 +564,6 @@ function getPlayerRenderPos(player) {
   return game.renderPlayers.get(player.id) || player;
 }
 
-function clonePredictedPlayerState(player) {
-  if (!player) return null;
-  return {
-    ...player,
-    x: Number(player.x) || 0,
-    y: Number(player.y) || 0,
-    aimX: Number(player.aimX) || Number(player.x) || 0,
-    aimY: Number(player.aimY) || Number(player.y) || 0,
-    moveX: Number(player.moveX) || 0,
-    moveY: Number(player.moveY) || 0,
-    shooting: Boolean(player.shooting),
-    slowUntil: Number(player.slowUntil) || 0,
-    dodgeCooldownMs: Math.max(0, Number(player.dodgeCooldownMs) || 0),
-    dodgeCharges: Math.max(0, Number(player.dodgeCharges) || 0),
-    dodgeChargesMax: Math.max(1, Number(player.dodgeChargesMax) || CLIENT_PLAYER_DODGE_MAX_CHARGES),
-    dodgeRechargeMs: Math.max(0, Number(player.dodgeRechargeMs) || 0),
-    dodgeRechargeTotalMs: Math.max(1, Number(player.dodgeRechargeTotalMs) || CLIENT_PLAYER_DODGE_COOLDOWN_MS),
-    dodgeInvulnUntil: Number(player.dodgeInvulnUntil) || 0,
-    moveSpeedMul: Math.max(0.2, Number(player.moveSpeedMul) || 1),
-    lastProcessedInputSeq: Math.max(0, Number(player.lastProcessedInputSeq) || 0),
-  };
-}
-
-function getPredictedLocalPlayer() {
-  return game.localPrediction.active ? game.localPrediction.player : null;
-}
-
-function getLocalPlayerForInput() {
-  const predicted = getPredictedLocalPlayer();
-  if (predicted) return predicted;
-  return game.state?.players?.find((p) => p.id === game.myId) || null;
-}
-
-function applyPredictedDodgeRecharge(player, dtMs) {
-  const maxCharges = Math.max(1, Number(player.dodgeChargesMax) || CLIENT_PLAYER_DODGE_MAX_CHARGES);
-  player.dodgeCharges = Math.max(0, Math.min(maxCharges, Number(player.dodgeCharges) || 0));
-  player.dodgeRechargeMs = Math.max(0, Number(player.dodgeRechargeMs) || 0);
-
-  if (player.dodgeCharges >= maxCharges) {
-    player.dodgeRechargeMs = 0;
-    player.dodgeCooldownMs = 0;
-    return;
-  }
-
-  player.dodgeRechargeMs -= dtMs;
-  while (player.dodgeRechargeMs <= 0 && player.dodgeCharges < maxCharges) {
-    player.dodgeCharges += 1;
-    if (player.dodgeCharges < maxCharges) {
-      player.dodgeRechargeMs += CLIENT_PLAYER_DODGE_COOLDOWN_MS;
-    } else {
-      player.dodgeRechargeMs = 0;
-    }
-  }
-
-  player.dodgeCooldownMs = Math.max(0, player.dodgeRechargeMs);
-}
-
-function applyPredictedDodge(player, nowMs) {
-  if (!player?.alive) return;
-  const charges = Math.max(0, Number(player.dodgeCharges) || 0);
-  if (charges <= 0) return;
-  const fromX = player.x;
-  const fromY = player.y;
-
-  let dx = Number(player.moveX) || 0;
-  let dy = Number(player.moveY) || 0;
-  if (Math.hypot(dx, dy) < 0.05) {
-    dx = (Number(player.aimX) || player.x) - player.x;
-    dy = (Number(player.aimY) || player.y) - player.y;
-  }
-  const d = Math.hypot(dx, dy) || 1;
-  const nx = dx / d;
-  const ny = dy / d;
-
-  player.x = clamp(player.x + nx * CLIENT_PLAYER_DODGE_DISTANCE, CLIENT_PLAYER_RADIUS, game.world.width - CLIENT_PLAYER_RADIUS);
-  player.y = clamp(player.y + ny * CLIENT_PLAYER_DODGE_DISTANCE, CLIENT_PLAYER_RADIUS, game.world.height - CLIENT_PLAYER_RADIUS);
-  game.localPrediction.dodgeVisual = {
-    fromX,
-    fromY,
-    dashX: player.x,
-    dashY: player.y,
-    startAt: performance.now(),
-    durationMs: CLIENT_DODGE_VISUAL_MS,
-  };
-  player.dodgeCharges = Math.max(0, charges - 1);
-  if (player.dodgeCharges < (player.dodgeChargesMax || CLIENT_PLAYER_DODGE_MAX_CHARGES) && (player.dodgeRechargeMs || 0) <= 0) {
-    player.dodgeRechargeMs = CLIENT_PLAYER_DODGE_COOLDOWN_MS;
-  }
-  player.dodgeCooldownMs = Math.max(0, player.dodgeRechargeMs || 0);
-  player.dodgeInvulnUntil = nowMs + CLIENT_PLAYER_DODGE_INVULN_MS;
-}
-
-function applyPredictedInputFrame(player, command, dtSec, nowMs) {
-  if (!player) return;
-  player.moveX = clamp(Number(command.moveX) || 0, -1, 1);
-  player.moveY = clamp(Number(command.moveY) || 0, -1, 1);
-  player.aimX = Number(command.aimX) || player.x;
-  player.aimY = Number(command.aimY) || player.y;
-  player.shooting = Boolean(command.shooting);
-
-  if (!player.alive) return;
-
-  applyPredictedDodgeRecharge(player, dtSec * 1000);
-  if (command.jump) applyPredictedDodge(player, nowMs);
-
-  const moveLen = Math.hypot(player.moveX, player.moveY);
-  const nx = moveLen > 0 ? player.moveX / moveLen : 0;
-  const ny = moveLen > 0 ? player.moveY / moveLen : 0;
-  const slowed = Number(player.slowUntil) > nowMs;
-  const speedMul = (slowed ? CLIENT_PLAYER_SLOW_FACTOR : 1) * Math.max(0.2, Number(player.moveSpeedMul) || 1);
-
-  player.x = clamp(player.x + nx * CLIENT_PLAYER_SPEED * speedMul * dtSec, CLIENT_PLAYER_RADIUS, game.world.width - CLIENT_PLAYER_RADIUS);
-  player.y = clamp(player.y + ny * CLIENT_PLAYER_SPEED * speedMul * dtSec, CLIENT_PLAYER_RADIUS, game.world.height - CLIENT_PLAYER_RADIUS);
-}
-
-function reconcileLocalPlayerPrediction(authoritativePlayer) {
-  if (!authoritativePlayer || authoritativePlayer.id !== game.myId) return;
-
-  const prediction = game.localPrediction;
-  const ackSeq = Math.max(0, Number(authoritativePlayer.lastProcessedInputSeq) || 0);
-  prediction.lastAckSeq = Math.max(prediction.lastAckSeq, ackSeq);
-  prediction.pendingInputs = prediction.pendingInputs.filter((cmd) => cmd.seq > prediction.lastAckSeq);
-  const reconciledPlayer = clonePredictedPlayerState(authoritativePlayer);
-
-  const nowPerf = performance.now();
-  const nowMs = Date.now();
-  const predictionCapPerf = nowPerf - CLIENT_MAX_PREDICTION_AHEAD_MS;
-  for (let i = 0; i < prediction.pendingInputs.length; i += 1) {
-    const cmd = prediction.pendingInputs[i];
-    const next = prediction.pendingInputs[i + 1];
-    const segStart = Math.max(predictionCapPerf, Number(cmd.perfAt) || nowPerf);
-    const rawSegEnd = next ? Math.max(segStart, Number(next.perfAt) || segStart) : nowPerf;
-    const segEnd = Math.max(segStart, rawSegEnd);
-    if (segEnd <= segStart) continue;
-    applyPredictedInputFrame(
-      reconciledPlayer,
-      cmd,
-      Math.max(0, segEnd - segStart) / 1000,
-      Number(cmd.clientNowMs) || nowMs,
-    );
-  }
-  prediction.player = reconciledPlayer;
-  prediction.active = true;
-}
-
-function simulateLocalPlayerPrediction(dt) {
-  const prediction = game.localPrediction;
-  if (!prediction.active || !prediction.player || !game.myId || !game.state) return;
-  const command = buildCurrentInputPayload(false);
-  if (!command) return;
-  applyPredictedInputFrame(prediction.player, command, dt, Date.now());
-  updatePredictionDebugSnapshot();
-}
-
-function updatePredictionDebugSnapshot() {
-  const me = game.state?.players?.find((p) => p.id === game.myId);
-  const predicted = getPredictedLocalPlayer();
-  const render = me ? getPlayerRenderPos(me) : null;
-  if (!me || !predicted || !render) return;
-  const pendingInputs = Array.isArray(game.localPrediction.pendingInputs) ? game.localPrediction.pendingInputs : [];
-  const oldestPending = pendingInputs.length > 0
-    ? Math.max(0, performance.now() - (Number(pendingInputs[0].perfAt) || performance.now()))
-    : 0;
-
-  let bulletError = 0;
-  const predictedBullet = game.localPrediction.predictedBullets[0];
-  if (predictedBullet) {
-    let best = Infinity;
-    for (const b of game.state?.bullets || []) {
-      if (b.ownerId !== game.myId) continue;
-      const dx = (Number(b.x) || 0) - predictedBullet.x;
-      const dy = (Number(b.y) || 0) - predictedBullet.y;
-      const d = Math.hypot(dx, dy);
-      if (d < best) best = d;
-    }
-    bulletError = Number.isFinite(best) ? best : 0;
-  }
-
-  game.localPrediction.debug = {
-    serverX: Number(me.x) || 0,
-    serverY: Number(me.y) || 0,
-    predictedX: Number(predicted.x) || 0,
-    predictedY: Number(predicted.y) || 0,
-    renderX: Number(render.x) || 0,
-    renderY: Number(render.y) || 0,
-    posError: Math.hypot((Number(predicted.x) || 0) - (Number(me.x) || 0), (Number(predicted.y) || 0) - (Number(me.y) || 0)),
-    bulletError,
-    predictedBullets: game.localPrediction.predictedBullets.length,
-    pendingInputs: pendingInputs.length,
-    lastAckSeq: Number(game.localPrediction.lastAckSeq) || 0,
-    nextInputSeq: Number(game.localPrediction.nextInputSeq) || 0,
-    oldestPendingMs: oldestPending,
-    instanceId: String(game.runtimeInstance?.instanceId || game.state?.instanceId || ''),
-  };
-}
-
-function getLocalPredictedRenderPos() {
-  const prediction = game.localPrediction;
-  const player = prediction.player;
-  if (!prediction.active || !player) return null;
-
-  const visual = prediction.dodgeVisual;
-  if (!visual) {
-    return {
-      x: player.x,
-      y: player.y,
-    };
-  }
-
-  const durationMs = Math.max(1, Number(visual.durationMs) || CLIENT_DODGE_VISUAL_MS);
-  const elapsedMs = Math.max(0, performance.now() - Number(visual.startAt || 0));
-  const t = Math.max(0, Math.min(1, elapsedMs / durationMs));
-  const inv = 1 - t;
-  const eased = 1 - (inv * inv * inv);
-
-  if (t >= 1) {
-    prediction.dodgeVisual = null;
-    return {
-      x: player.x,
-      y: player.y,
-    };
-  }
-
-  return {
-    x: visual.fromX + (player.x - visual.fromX) * eased,
-    y: visual.fromY + (player.y - visual.fromY) * eased,
-  };
-}
-
-function isLocalDodgeVisualActive() {
-  return Boolean(game.localPrediction?.dodgeVisual);
-}
-
-function queuePredictedInput(command) {
-  const prediction = game.localPrediction;
-  prediction.pendingInputs.push({
-    ...command,
-    seq: Number(command.seq) || 0,
-    perfAt: performance.now(),
-    clientNowMs: Date.now(),
-  });
-  if (prediction.pendingInputs.length > 120) {
-    prediction.pendingInputs.splice(0, prediction.pendingInputs.length - 120);
-  }
-  if (prediction.player) {
-    applyPredictedInputFrame(prediction.player, command, 0, Date.now());
-  }
-}
-
 function updateEnemyInterpolation(dt) {
   if (!game.state) return;
   const targetMap = game.sampledNet?.enemies || mapById(game.state.enemies);
@@ -1233,17 +984,7 @@ function clearLocalSessionState() {
   game.state = null;
   game.netSnapshots = [];
   game.sampledNet = null;
-  game.localPrediction.active = false;
-  game.localPrediction.player = null;
-  game.localPrediction.pendingInputs = [];
-  game.localPrediction.nextInputSeq = 0;
-  game.localPrediction.lastAckSeq = 0;
-  game.localPrediction.dodgeVisual = null;
-  game.localPrediction.shotCooldownMs = 0;
-  game.localPrediction.predictedBullets = [];
-  game.localPrediction.debug = {
-    serverX: 0, serverY: 0, predictedX: 0, predictedY: 0, renderX: 0, renderY: 0, posError: 0, bulletError: 0, predictedBullets: 0, pendingInputs: 0, lastAckSeq: 0, nextInputSeq: 0, oldestPendingMs: 0, instanceId: '',
-  };
+  game.nextInputSeq = 0;
   game.renderPlayers.clear();
   game.renderEnemies.clear();
   game.renderBullets.clear();
@@ -1425,17 +1166,7 @@ message: (ev) => {
     game.renderBullets.clear();
     game.netSnapshots = [];
     game.sampledNet = null;
-    game.localPrediction.active = false;
-    game.localPrediction.player = null;
-    game.localPrediction.pendingInputs = [];
-    game.localPrediction.nextInputSeq = 0;
-    game.localPrediction.lastAckSeq = 0;
-    game.localPrediction.dodgeVisual = null;
-    game.localPrediction.shotCooldownMs = 0;
-    game.localPrediction.predictedBullets = [];
-    game.localPrediction.debug = {
-      serverX: 0, serverY: 0, predictedX: 0, predictedY: 0, renderX: 0, renderY: 0, posError: 0, bulletError: 0, predictedBullets: 0, pendingInputs: 0, lastAckSeq: 0, nextInputSeq: 0, oldestPendingMs: 0, instanceId: '',
-    };
+    game.nextInputSeq = 0;
     visuals.enemyPrev = new Map();
     visuals.playerPrev = new Map();
     visuals.blood = [];
@@ -1623,8 +1354,8 @@ function sendInput() {
   if (!game.connected || !game.myId || ws.readyState !== WebSocket.OPEN || !game.state) return;
   const payload = buildCurrentInputPayload(true);
   if (!payload) return;
-  const seq = game.localPrediction.nextInputSeq + 1;
-  game.localPrediction.nextInputSeq = seq;
+  const seq = game.nextInputSeq + 1;
+  game.nextInputSeq = seq;
 
   sendJson({
     type: 'input',
@@ -1632,7 +1363,6 @@ function sendInput() {
     ...payload,
   });
 
-  queuePredictedInput({ seq, ...payload });
   input.jumpQueued = false;
 }
 

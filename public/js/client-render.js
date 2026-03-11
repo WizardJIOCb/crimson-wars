@@ -554,36 +554,6 @@ function drawFx() {
   ctx.globalAlpha = 1;
 }
 
-function drawPredictionDebugOverlay() {
-  if (!game.localPrediction?.debugEnabled || !game.myId) return;
-  const d = game.localPrediction.debug || {};
-  const lines = [
-    `pred err: ${Math.round(Number(d.posError) || 0)}`,
-    `bullet err: ${Math.round(Number(d.bulletError) || 0)}`,
-    `srv: ${Math.round(Number(d.serverX) || 0)},${Math.round(Number(d.serverY) || 0)}`,
-    `pred: ${Math.round(Number(d.predictedX) || 0)},${Math.round(Number(d.predictedY) || 0)}`,
-    `rnd: ${Math.round(Number(d.renderX) || 0)},${Math.round(Number(d.renderY) || 0)}`,
-    `pred bullets: ${Math.round(Number(d.predictedBullets) || 0)}`,
-    `pending: ${Math.round(Number(d.pendingInputs) || 0)}`,
-    `ack/next: ${Math.round(Number(d.lastAckSeq) || 0)}/${Math.round(Number(d.nextInputSeq) || 0)}`,
-    `oldest: ${Math.round(Number(d.oldestPendingMs) || 0)}ms`,
-    `inst: ${String(d.instanceId || '--')}`,
-  ];
-
-  ctx.save();
-  ctx.fillStyle = 'rgba(5,10,18,0.8)';
-  ctx.fillRect(14, 62, 250, 180);
-  ctx.strokeStyle = 'rgba(120,180,220,0.35)';
-  ctx.strokeRect(14, 62, 250, 180);
-  ctx.fillStyle = '#dbeafe';
-  ctx.font = '12px monospace';
-  ctx.textAlign = 'left';
-  for (let i = 0; i < lines.length; i += 1) {
-    ctx.fillText(lines[i], 24, 82 + i * 16);
-  }
-  ctx.restore();
-}
-
 function drawMinimap() {
   if (!minimapCanvasEl || !minimapCtx || !game.showMinimapEnabled || !game.state) return;
   const cssWidth = Math.max(96, Math.round(minimapCanvasEl.clientWidth || 0));
@@ -806,7 +776,6 @@ function render(ts) {
   ctx.strokeRect(-camera.x, -camera.y, game.world.width, game.world.height);
 
   drawMinimap();
-  drawPredictionDebugOverlay();
 
   scheduleNextFrame();
 }

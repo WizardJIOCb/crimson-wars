@@ -121,18 +121,6 @@ const QUALITY = {
 };
 
 const input = { up: false, down: false, left: false, right: false, shooting: false, jumpQueued: false, pointerX: 0, pointerY: 0 };
-const CLIENT_PLAYER_RADIUS = 18;
-const CLIENT_PLAYER_SPEED = 340;
-const CLIENT_PLAYER_DODGE_DISTANCE = 165;
-const CLIENT_PLAYER_DODGE_COOLDOWN_MS = 1200;
-const CLIENT_PLAYER_DODGE_MAX_CHARGES = 2;
-const CLIENT_PLAYER_DODGE_INVULN_MS = 220;
-const CLIENT_PLAYER_SLOW_FACTOR = 0.8;
-const CLIENT_DODGE_VISUAL_MS = 180;
-const CLIENT_LOCAL_RENDER_FOLLOW_RATE = 18;
-const CLIENT_LOCAL_RENDER_HARD_SNAP_DIST = 260;
-const CLIENT_LOCAL_RENDER_MAX_CORRECTION_SPEED = 960;
-const CLIENT_MAX_PREDICTION_AHEAD_MS = 140;
 const CLIENT_CAMERA_FOLLOW_RATE = 14;
 const CLIENT_CAMERA_SNAP_DIST = 140;
 const mobile = {
@@ -185,33 +173,7 @@ const game = {
   renderBullets: new Map(),
   netSnapshots: [],
   sampledNet: null,
-  localPrediction: {
-    active: false,
-    player: null,
-    pendingInputs: [],
-    nextInputSeq: 0,
-    lastAckSeq: 0,
-    dodgeVisual: null,
-    shotCooldownMs: 0,
-    predictedBullets: [],
-    debugEnabled: false,
-    debug: {
-      serverX: 0,
-      serverY: 0,
-      predictedX: 0,
-      predictedY: 0,
-      renderX: 0,
-      renderY: 0,
-      posError: 0,
-      bulletError: 0,
-      predictedBullets: 0,
-      pendingInputs: 0,
-      lastAckSeq: 0,
-      nextInputSeq: 0,
-      oldestPendingMs: 0,
-      instanceId: '',
-    },
-  },
+  nextInputSeq: 0,
   roomStartedAt: 0,
   totalEnemyKills: 0,
   nextBossAtKills: 50,
