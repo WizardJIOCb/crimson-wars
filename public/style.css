@@ -690,6 +690,16 @@ body {
   background: linear-gradient(135deg, #2563eb, #0ea5e9);
 }
 
+#join-form .actions button {
+  transition: transform 0.16s ease, filter 0.16s ease, box-shadow 0.16s ease;
+}
+
+#join-form .actions button:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.28);
+}
+
 @media (max-width: 720px) {
   #hud {
     flex-direction: column;
@@ -1120,7 +1130,7 @@ body {
   max-height: 170px;
 }
 
-.record-row {
+#join-form .record-row {
   display: grid;
   grid-template-columns: auto 1fr auto;
   gap: 8px;
@@ -1129,6 +1139,7 @@ body {
   border-radius: 8px;
   background: rgba(30, 41, 59, 0.55);
   border: 1px solid rgba(255,255,255,0.08);
+  color: #e5e7eb;
 }
 
 .record-rank {
@@ -1141,6 +1152,7 @@ body {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+  color: #e5e7eb;
 }
 
 .record-meta {
@@ -1502,7 +1514,7 @@ body {
   z-index: 36;
 }
 
-.record-row {
+#join-form .record-row {
   appearance: none;
   -webkit-appearance: none;
   width: 100%;
@@ -1516,7 +1528,7 @@ body {
   padding: 6px;
 }
 
-.record-row:hover {
+#join-form .record-row:hover {
   border-color: rgba(96, 165, 250, 0.55);
   background: rgba(30, 58, 110, 0.35);
 }
