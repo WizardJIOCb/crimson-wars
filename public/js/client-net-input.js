@@ -558,24 +558,25 @@ function updatePlayerInterpolation(dt) {
       const dx = targetX - r.x;
       const dy = targetY - r.y;
       const dist = Math.hypot(dx, dy);
-      if (isLocalDodgeVisualActive()) {
+      if (!isLocalDodgeVisualActive() && dist >= CLIENT_LOCAL_RENDER_HARD_SNAP_DIST) {
         r.vx = dx / Math.max(0.001, dt);
         r.vy = dy / Math.max(0.001, dt);
         r.x = targetX;
         r.y = targetY;
-      } else if (dist >= CLIENT_LOCAL_RENDER_SNAP_DIST) {
-        r.vx = dx / Math.max(0.001, dt);
-        r.vy = dy / Math.max(0.001, dt);
-        r.x = targetX;
-        r.y = targetY;
-      } else {
+      } else if (dist > 0.0001) {
         const localAlpha = 1 - Math.exp(-CLIENT_LOCAL_RENDER_FOLLOW_RATE * dt);
-        const nx = r.x + dx * localAlpha;
-        const ny = r.y + dy * localAlpha;
+        const followStep = dist * localAlpha;
+        const maxStep = CLIENT_LOCAL_RENDER_MAX_CORRECTION_SPEED * dt;
+        const step = Math.min(dist, Math.max(followStep, maxStep));
+        const nx = r.x + (dx / dist) * step;
+        const ny = r.y + (dy / dist) * step;
         r.vx = (nx - r.x) / Math.max(0.001, dt);
         r.vy = (ny - r.y) / Math.max(0.001, dt);
         r.x = nx;
         r.y = ny;
+      } else {
+        r.vx = 0;
+        r.vy = 0;
       }
       continue;
     }
