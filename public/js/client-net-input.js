@@ -723,11 +723,14 @@ function reconcileLocalPlayerPrediction(authoritativePlayer) {
 
   const nowPerf = performance.now();
   const nowMs = Date.now();
+  const predictionCapPerf = nowPerf - CLIENT_MAX_PREDICTION_AHEAD_MS;
   for (let i = 0; i < prediction.pendingInputs.length; i += 1) {
     const cmd = prediction.pendingInputs[i];
     const next = prediction.pendingInputs[i + 1];
-    const segStart = Math.max(0, Number(cmd.perfAt) || nowPerf);
-    const segEnd = next ? Math.max(segStart, Number(next.perfAt) || segStart) : nowPerf;
+    const segStart = Math.max(predictionCapPerf, Number(cmd.perfAt) || nowPerf);
+    const rawSegEnd = next ? Math.max(segStart, Number(next.perfAt) || segStart) : nowPerf;
+    const segEnd = Math.max(segStart, rawSegEnd);
+    if (segEnd <= segStart) continue;
     applyPredictedInputFrame(
       reconciledPlayer,
       cmd,
@@ -810,6 +813,10 @@ function updatePredictionDebugSnapshot() {
   const predicted = getPredictedLocalPlayer();
   const render = me ? getPlayerRenderPos(me) : null;
   if (!me || !predicted || !render) return;
+  const pendingInputs = Array.isArray(game.localPrediction.pendingInputs) ? game.localPrediction.pendingInputs : [];
+  const oldestPending = pendingInputs.length > 0
+    ? Math.max(0, performance.now() - (Number(pendingInputs[0].perfAt) || performance.now()))
+    : 0;
 
   let bulletError = 0;
   const predictedBullet = game.localPrediction.predictedBullets[0];
@@ -835,6 +842,10 @@ function updatePredictionDebugSnapshot() {
     posError: Math.hypot((Number(predicted.x) || 0) - (Number(me.x) || 0), (Number(predicted.y) || 0) - (Number(me.y) || 0)),
     bulletError,
     predictedBullets: game.localPrediction.predictedBullets.length,
+    pendingInputs: pendingInputs.length,
+    lastAckSeq: Number(game.localPrediction.lastAckSeq) || 0,
+    nextInputSeq: Number(game.localPrediction.nextInputSeq) || 0,
+    oldestPendingMs: oldestPending,
   };
 }
 

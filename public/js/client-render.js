@@ -596,13 +596,16 @@ function drawPredictionDebugOverlay() {
     `pred: ${Math.round(Number(d.predictedX) || 0)},${Math.round(Number(d.predictedY) || 0)}`,
     `rnd: ${Math.round(Number(d.renderX) || 0)},${Math.round(Number(d.renderY) || 0)}`,
     `pred bullets: ${Math.round(Number(d.predictedBullets) || 0)}`,
+    `pending: ${Math.round(Number(d.pendingInputs) || 0)}`,
+    `ack/next: ${Math.round(Number(d.lastAckSeq) || 0)}/${Math.round(Number(d.nextInputSeq) || 0)}`,
+    `oldest: ${Math.round(Number(d.oldestPendingMs) || 0)}ms`,
   ];
 
   ctx.save();
   ctx.fillStyle = 'rgba(5,10,18,0.8)';
-  ctx.fillRect(14, 62, 220, 116);
+  ctx.fillRect(14, 62, 232, 164);
   ctx.strokeStyle = 'rgba(120,180,220,0.35)';
-  ctx.strokeRect(14, 62, 220, 116);
+  ctx.strokeRect(14, 62, 232, 164);
   ctx.fillStyle = '#dbeafe';
   ctx.font = '12px monospace';
   ctx.textAlign = 'left';

@@ -131,6 +131,7 @@ const CLIENT_PLAYER_SLOW_FACTOR = 0.8;
 const CLIENT_DODGE_VISUAL_MS = 180;
 const CLIENT_LOCAL_RENDER_FOLLOW_RATE = 28;
 const CLIENT_LOCAL_RENDER_SNAP_DIST = 72;
+const CLIENT_MAX_PREDICTION_AHEAD_MS = 140;
 const CLIENT_CAMERA_FOLLOW_RATE = 14;
 const CLIENT_CAMERA_SNAP_DIST = 140;
 const mobile = {
@@ -203,6 +204,10 @@ const game = {
       posError: 0,
       bulletError: 0,
       predictedBullets: 0,
+      pendingInputs: 0,
+      lastAckSeq: 0,
+      nextInputSeq: 0,
+      oldestPendingMs: 0,
     },
   },
   roomStartedAt: 0,
