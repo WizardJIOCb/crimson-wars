@@ -735,33 +735,8 @@ function reconcileLocalPlayerPrediction(authoritativePlayer) {
       Number(cmd.clientNowMs) || nowMs,
     );
   }
-
-  if (!prediction.player) {
-    prediction.player = reconciledPlayer;
-    prediction.active = true;
-    return;
-  }
-
-  const dx = reconciledPlayer.x - prediction.player.x;
-  const dy = reconciledPlayer.y - prediction.player.y;
-  const dist = Math.hypot(dx, dy);
-  const keepX = prediction.player.x;
-  const keepY = prediction.player.y;
-
-  prediction.player = {
-    ...prediction.player,
-    ...reconciledPlayer,
-  };
+  prediction.player = reconciledPlayer;
   prediction.active = true;
-
-  if (isLocalDodgeVisualActive() || dist >= CLIENT_RECONCILE_SNAP_DIST) {
-    prediction.player.x = reconciledPlayer.x;
-    prediction.player.y = reconciledPlayer.y;
-    return;
-  }
-
-  prediction.player.x = keepX + dx * CLIENT_RECONCILE_BLEND;
-  prediction.player.y = keepY + dy * CLIENT_RECONCILE_BLEND;
 }
 
 function simulateLocalPlayerPrediction(dt) {
