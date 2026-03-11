@@ -554,6 +554,64 @@ function drawFx() {
   ctx.globalAlpha = 1;
 }
 
+function drawPredictedLocalBullets() {
+  const predictedBullets = game.localPrediction?.predictedBullets || [];
+  for (const b of predictedBullets) {
+    if (!isVisibleWorld(b.x, b.y, 18)) continue;
+    if (game.bulletTracersEnabled) {
+      const speed = Math.hypot(Number(b.vx) || 0, Number(b.vy) || 0);
+      if (speed > 8) {
+        const tracerLen = Math.min(24, Math.max(10, speed * 0.024));
+        const dirX = (Number(b.vx) || 0) / speed;
+        const dirY = (Number(b.vy) || 0) / speed;
+        const sx = b.x - camera.x;
+        const sy = b.y - camera.y;
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(sx - dirX * tracerLen, sy - dirY * tracerLen);
+        ctx.strokeStyle = b.color || '#f59e0b';
+        ctx.globalAlpha = 0.28;
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+    drawShadowAtScreen(b.x - camera.x, b.y - camera.y + 3, 3, 1.8, 0.12);
+    ctx.save();
+    ctx.globalAlpha = 0.45;
+    drawCircle(b.x, b.y, 3, b.color || '#f59e0b');
+    ctx.restore();
+  }
+}
+
+function drawPredictionDebugOverlay() {
+  if (!game.localPrediction?.debugEnabled || !game.myId) return;
+  const d = game.localPrediction.debug || {};
+  const lines = [
+    `pred err: ${Math.round(Number(d.posError) || 0)}`,
+    `bullet err: ${Math.round(Number(d.bulletError) || 0)}`,
+    `srv: ${Math.round(Number(d.serverX) || 0)},${Math.round(Number(d.serverY) || 0)}`,
+    `pred: ${Math.round(Number(d.predictedX) || 0)},${Math.round(Number(d.predictedY) || 0)}`,
+    `rnd: ${Math.round(Number(d.renderX) || 0)},${Math.round(Number(d.renderY) || 0)}`,
+    `pred bullets: ${Math.round(Number(d.predictedBullets) || 0)}`,
+  ];
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(5,10,18,0.8)';
+  ctx.fillRect(14, 62, 220, 116);
+  ctx.strokeStyle = 'rgba(120,180,220,0.35)';
+  ctx.strokeRect(14, 62, 220, 116);
+  ctx.fillStyle = '#dbeafe';
+  ctx.font = '12px monospace';
+  ctx.textAlign = 'left';
+  for (let i = 0; i < lines.length; i += 1) {
+    ctx.fillText(lines[i], 24, 82 + i * 16);
+  }
+  ctx.restore();
+}
+
 function drawMinimap() {
   if (!minimapCanvasEl || !minimapCtx || !game.showMinimapEnabled || !game.state) return;
   const cssWidth = Math.max(96, Math.round(minimapCanvasEl.clientWidth || 0));
@@ -761,6 +819,7 @@ function render(ts) {
     drawShadowAtScreen(rb.x - camera.x, rb.y - camera.y + 3, 3, 1.8, 0.18);
     drawCircle(rb.x, rb.y, 3, rb.color || b.color || '#f59e0b');
   }
+  drawPredictedLocalBullets();
 
   drawEnemies(game.state.enemies, ts / 1000);
 
@@ -778,6 +837,7 @@ function render(ts) {
   ctx.strokeRect(-camera.x, -camera.y, game.world.width, game.world.height);
 
   drawMinimap();
+  drawPredictionDebugOverlay();
 
   scheduleNextFrame();
 }
