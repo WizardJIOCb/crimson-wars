@@ -121,6 +121,20 @@ const QUALITY = {
 };
 
 const input = { up: false, down: false, left: false, right: false, shooting: false, jumpQueued: false, pointerX: 0, pointerY: 0 };
+const CLIENT_PLAYER_RADIUS = 18;
+const CLIENT_PLAYER_SPEED = 340;
+const CLIENT_PLAYER_DODGE_DISTANCE = 165;
+const CLIENT_PLAYER_DODGE_COOLDOWN_MS = 1200;
+const CLIENT_PLAYER_DODGE_MAX_CHARGES = 2;
+const CLIENT_PLAYER_DODGE_INVULN_MS = 220;
+const CLIENT_PLAYER_SLOW_FACTOR = 0.8;
+const CLIENT_DODGE_VISUAL_MS = 180;
+const CLIENT_LOCAL_RENDER_FOLLOW_RATE = 28;
+const CLIENT_LOCAL_RENDER_SNAP_DIST = 72;
+const CLIENT_CORRECTION_BLEND_RATE = 16;
+const CLIENT_CORRECTION_MAX_DIST = 36;
+const CLIENT_CAMERA_FOLLOW_RATE = 14;
+const CLIENT_CAMERA_SNAP_DIST = 140;
 const mobile = {
   enabled: ('ontouchstart' in window) || (navigator.maxTouchPoints > 0),
   moveId: null,
@@ -171,6 +185,17 @@ const game = {
   renderBullets: new Map(),
   netSnapshots: [],
   sampledNet: null,
+  localPrediction: {
+    active: false,
+    player: null,
+    pendingInputs: [],
+    nextInputSeq: 0,
+    lastAckSeq: 0,
+    dodgeVisual: null,
+    correctionX: 0,
+    correctionY: 0,
+    lastRenderSampleAt: 0,
+  },
   roomStartedAt: 0,
   totalEnemyKills: 0,
   nextBossAtKills: 50,
@@ -469,6 +494,12 @@ function resetNetStats() {
 function clampNum(value, min, max, fallback) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
+function clamp(value, min, max) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return min;
   return Math.max(min, Math.min(max, n));
 }
 

@@ -181,6 +181,7 @@ function drawPlayer(p, t, isMe, rx, ry) {
   const x = rx - camera.x;
   const y = ry - camera.y;
   const isCompanion = Boolean(p.isCompanion);
+  const displayPlayer = isMe ? (getPredictedLocalPlayer() || p) : p;
 
   if (!p.alive) {
     drawCircle(rx, ry, 18, '#6b7280');
@@ -211,8 +212,8 @@ function drawPlayer(p, t, isMe, rx, ry) {
     const idleFrame = Math.max(0, Math.min(frameCount - 1, Number(variant.idleFrame) || 1));
     const frame = moving ? (Math.floor(t * fps + phase) % frameCount) : idleFrame;
 
-    const aimDx = (Number(p.aimX) || rx) - rx;
-    const aimDy = (Number(p.aimY) || ry) - ry;
+    const aimDx = (Number(displayPlayer.aimX) || rx) - rx;
+    const aimDy = (Number(displayPlayer.aimY) || ry) - ry;
     const hasAim = Math.hypot(aimDx, aimDy) > 0.001;
     const lookDx = hasAim ? aimDx : (isMe ? (input.pointerX - x) : (rv?.vx || 0));
     const lookDy = hasAim ? aimDy : (isMe ? (input.pointerY - y) : (rv?.vy || 0));
@@ -233,13 +234,13 @@ function drawPlayer(p, t, isMe, rx, ry) {
     drawCircle(rx, ry, 18, isMe ? '#22d3ee' : '#a78bfa');
   }
 
-  if (!isCompanion && isMe) drawJumpChargesIndicator(p, x, y);
+  if (!isCompanion && isMe) drawJumpChargesIndicator(displayPlayer, x, y);
   if (!isCompanion) drawHpBar(rx, ry, Math.max(0, p.hp / p.maxHp));
-  if (p.name) {
+  if (displayPlayer.name) {
     ctx.fillStyle = '#f8fafc';
     ctx.font = '13px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(p.name, x, y - 42);
+    ctx.fillText(displayPlayer.name, x, y - 42);
   }
 }
 function drawBossPortals(portals, nowMs) {
@@ -677,8 +678,20 @@ function render(ts) {
   const me = game.state.players.find((p) => p.id === game.myId) || game.state.players[0];
   if (me) {
     const m = getPlayerRenderPos(me);
-    camera.x = Math.max(0, Math.min(m.x - canvas.width / 2, game.world.width - canvas.width));
-    camera.y = Math.max(0, Math.min(m.y - canvas.height / 2, game.world.height - canvas.height));
+    const targetCamX = Math.max(0, Math.min(m.x - canvas.width / 2, game.world.width - canvas.width));
+    const targetCamY = Math.max(0, Math.min(m.y - canvas.height / 2, game.world.height - canvas.height));
+    const camDx = targetCamX - camera.x;
+    const camDy = targetCamY - camera.y;
+    const camDist = Math.hypot(camDx, camDy);
+
+    if (camDist >= CLIENT_CAMERA_SNAP_DIST) {
+      camera.x = targetCamX;
+      camera.y = targetCamY;
+    } else {
+      const k = 1 - Math.exp(-CLIENT_CAMERA_FOLLOW_RATE * dt);
+      camera.x += camDx * k;
+      camera.y += camDy * k;
+    }
   }
 
   drawGround();
@@ -753,7 +766,8 @@ function render(ts) {
 
   for (const p of game.state.players) {
     const rp = getPlayerRenderPos(p);
-    drawPlayer(p, ts / 1000, p.id === game.myId, rp.x, rp.y);
+    const displayPlayer = p.id === game.myId ? (getPredictedLocalPlayer() || p) : p;
+    drawPlayer(displayPlayer, ts / 1000, p.id === game.myId, rp.x, rp.y);
   }
 
   drawTrees();

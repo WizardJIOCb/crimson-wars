@@ -530,9 +530,13 @@ async function requestRecordsList(page = recordsUi.page) {
 }
 function updatePlayerInterpolation(dt) {
   if (!game.state) return;
+  simulateLocalPlayerPrediction(dt);
   const liveMap = mapById(game.state.players);
   const targetMap = game.sampledNet?.players ? new Map(game.sampledNet.players) : new Map(liveMap);
-  if (game.myId && liveMap.has(game.myId)) {
+  const predictedMe = getPredictedLocalPlayer();
+  if (predictedMe && game.myId) {
+    targetMap.set(game.myId, predictedMe);
+  } else if (game.myId && liveMap.has(game.myId)) {
     targetMap.set(game.myId, liveMap.get(game.myId));
   }
   const alpha = 1 - Math.exp(-roomSync.entityInterpRate * dt);
@@ -541,9 +545,38 @@ function updatePlayerInterpolation(dt) {
   for (const [id, p] of targetMap.entries()) {
     alive.add(id);
     let r = game.renderPlayers.get(id);
+    const localRenderPos = id === game.myId && predictedMe ? getLocalPredictedRenderPos() : null;
+    const targetX = localRenderPos ? localRenderPos.x : p.x;
+    const targetY = localRenderPos ? localRenderPos.y : p.y;
     if (!r) {
-      r = { x: p.x, y: p.y, vx: 0, vy: 0 };
+      r = { x: targetX, y: targetY, vx: 0, vy: 0 };
       game.renderPlayers.set(id, r);
+      continue;
+    }
+
+    if (id === game.myId && predictedMe) {
+      const dx = targetX - r.x;
+      const dy = targetY - r.y;
+      const dist = Math.hypot(dx, dy);
+      if (isLocalDodgeVisualActive()) {
+        r.vx = dx / Math.max(0.001, dt);
+        r.vy = dy / Math.max(0.001, dt);
+        r.x = targetX;
+        r.y = targetY;
+      } else if (dist >= CLIENT_LOCAL_RENDER_SNAP_DIST) {
+        r.vx = dx / Math.max(0.001, dt);
+        r.vy = dy / Math.max(0.001, dt);
+        r.x = targetX;
+        r.y = targetY;
+      } else {
+        const localAlpha = 1 - Math.exp(-CLIENT_LOCAL_RENDER_FOLLOW_RATE * dt);
+        const nx = r.x + dx * localAlpha;
+        const ny = r.y + dy * localAlpha;
+        r.vx = (nx - r.x) / Math.max(0.001, dt);
+        r.vy = (ny - r.y) / Math.max(0.001, dt);
+        r.x = nx;
+        r.y = ny;
+      }
       continue;
     }
 
@@ -562,6 +595,230 @@ function updatePlayerInterpolation(dt) {
 
 function getPlayerRenderPos(player) {
   return game.renderPlayers.get(player.id) || player;
+}
+
+function clonePredictedPlayerState(player) {
+  if (!player) return null;
+  return {
+    ...player,
+    x: Number(player.x) || 0,
+    y: Number(player.y) || 0,
+    aimX: Number(player.aimX) || Number(player.x) || 0,
+    aimY: Number(player.aimY) || Number(player.y) || 0,
+    moveX: Number(player.moveX) || 0,
+    moveY: Number(player.moveY) || 0,
+    shooting: Boolean(player.shooting),
+    slowUntil: Number(player.slowUntil) || 0,
+    dodgeCooldownMs: Math.max(0, Number(player.dodgeCooldownMs) || 0),
+    dodgeCharges: Math.max(0, Number(player.dodgeCharges) || 0),
+    dodgeChargesMax: Math.max(1, Number(player.dodgeChargesMax) || CLIENT_PLAYER_DODGE_MAX_CHARGES),
+    dodgeRechargeMs: Math.max(0, Number(player.dodgeRechargeMs) || 0),
+    dodgeRechargeTotalMs: Math.max(1, Number(player.dodgeRechargeTotalMs) || CLIENT_PLAYER_DODGE_COOLDOWN_MS),
+    dodgeInvulnUntil: Number(player.dodgeInvulnUntil) || 0,
+    moveSpeedMul: Math.max(0.2, Number(player.moveSpeedMul) || 1),
+    lastProcessedInputSeq: Math.max(0, Number(player.lastProcessedInputSeq) || 0),
+  };
+}
+
+function getPredictedLocalPlayer() {
+  return game.localPrediction.active ? game.localPrediction.player : null;
+}
+
+function getLocalPlayerForInput() {
+  const predicted = getPredictedLocalPlayer();
+  if (predicted) return predicted;
+  return game.state?.players?.find((p) => p.id === game.myId) || null;
+}
+
+function applyPredictedDodgeRecharge(player, dtMs) {
+  const maxCharges = Math.max(1, Number(player.dodgeChargesMax) || CLIENT_PLAYER_DODGE_MAX_CHARGES);
+  player.dodgeCharges = Math.max(0, Math.min(maxCharges, Number(player.dodgeCharges) || 0));
+  player.dodgeRechargeMs = Math.max(0, Number(player.dodgeRechargeMs) || 0);
+
+  if (player.dodgeCharges >= maxCharges) {
+    player.dodgeRechargeMs = 0;
+    player.dodgeCooldownMs = 0;
+    return;
+  }
+
+  player.dodgeRechargeMs -= dtMs;
+  while (player.dodgeRechargeMs <= 0 && player.dodgeCharges < maxCharges) {
+    player.dodgeCharges += 1;
+    if (player.dodgeCharges < maxCharges) {
+      player.dodgeRechargeMs += CLIENT_PLAYER_DODGE_COOLDOWN_MS;
+    } else {
+      player.dodgeRechargeMs = 0;
+    }
+  }
+
+  player.dodgeCooldownMs = Math.max(0, player.dodgeRechargeMs);
+}
+
+function applyPredictedDodge(player, nowMs) {
+  if (!player?.alive) return;
+  const charges = Math.max(0, Number(player.dodgeCharges) || 0);
+  if (charges <= 0) return;
+  const fromX = player.x;
+  const fromY = player.y;
+
+  let dx = Number(player.moveX) || 0;
+  let dy = Number(player.moveY) || 0;
+  if (Math.hypot(dx, dy) < 0.05) {
+    dx = (Number(player.aimX) || player.x) - player.x;
+    dy = (Number(player.aimY) || player.y) - player.y;
+  }
+  const d = Math.hypot(dx, dy) || 1;
+  const nx = dx / d;
+  const ny = dy / d;
+
+  player.x = clamp(player.x + nx * CLIENT_PLAYER_DODGE_DISTANCE, CLIENT_PLAYER_RADIUS, game.world.width - CLIENT_PLAYER_RADIUS);
+  player.y = clamp(player.y + ny * CLIENT_PLAYER_DODGE_DISTANCE, CLIENT_PLAYER_RADIUS, game.world.height - CLIENT_PLAYER_RADIUS);
+  game.localPrediction.dodgeVisual = {
+    fromX,
+    fromY,
+    dashX: player.x,
+    dashY: player.y,
+    startAt: performance.now(),
+    durationMs: CLIENT_DODGE_VISUAL_MS,
+  };
+  player.dodgeCharges = Math.max(0, charges - 1);
+  if (player.dodgeCharges < (player.dodgeChargesMax || CLIENT_PLAYER_DODGE_MAX_CHARGES) && (player.dodgeRechargeMs || 0) <= 0) {
+    player.dodgeRechargeMs = CLIENT_PLAYER_DODGE_COOLDOWN_MS;
+  }
+  player.dodgeCooldownMs = Math.max(0, player.dodgeRechargeMs || 0);
+  player.dodgeInvulnUntil = nowMs + CLIENT_PLAYER_DODGE_INVULN_MS;
+}
+
+function applyPredictedInputFrame(player, command, dtSec, nowMs) {
+  if (!player) return;
+  player.moveX = clamp(Number(command.moveX) || 0, -1, 1);
+  player.moveY = clamp(Number(command.moveY) || 0, -1, 1);
+  player.aimX = Number(command.aimX) || player.x;
+  player.aimY = Number(command.aimY) || player.y;
+  player.shooting = Boolean(command.shooting);
+
+  if (!player.alive) return;
+
+  applyPredictedDodgeRecharge(player, dtSec * 1000);
+  if (command.jump) applyPredictedDodge(player, nowMs);
+
+  const moveLen = Math.hypot(player.moveX, player.moveY);
+  const nx = moveLen > 0 ? player.moveX / moveLen : 0;
+  const ny = moveLen > 0 ? player.moveY / moveLen : 0;
+  const slowed = Number(player.slowUntil) > nowMs;
+  const speedMul = (slowed ? CLIENT_PLAYER_SLOW_FACTOR : 1) * Math.max(0.2, Number(player.moveSpeedMul) || 1);
+
+  player.x = clamp(player.x + nx * CLIENT_PLAYER_SPEED * speedMul * dtSec, CLIENT_PLAYER_RADIUS, game.world.width - CLIENT_PLAYER_RADIUS);
+  player.y = clamp(player.y + ny * CLIENT_PLAYER_SPEED * speedMul * dtSec, CLIENT_PLAYER_RADIUS, game.world.height - CLIENT_PLAYER_RADIUS);
+}
+
+function reconcileLocalPlayerPrediction(authoritativePlayer) {
+  if (!authoritativePlayer || authoritativePlayer.id !== game.myId) return;
+
+  const prediction = game.localPrediction;
+  const prevPlayer = prediction.player ? { x: prediction.player.x, y: prediction.player.y } : null;
+  const ackSeq = Math.max(0, Number(authoritativePlayer.lastProcessedInputSeq) || 0);
+  prediction.lastAckSeq = Math.max(prediction.lastAckSeq, ackSeq);
+  prediction.pendingInputs = prediction.pendingInputs.filter((cmd) => cmd.seq > prediction.lastAckSeq);
+  prediction.player = clonePredictedPlayerState(authoritativePlayer);
+  prediction.active = true;
+
+  const nowPerf = performance.now();
+  const nowMs = Date.now();
+  for (let i = 0; i < prediction.pendingInputs.length; i += 1) {
+    const cmd = prediction.pendingInputs[i];
+    const next = prediction.pendingInputs[i + 1];
+    const segStart = Math.max(0, Number(cmd.perfAt) || nowPerf);
+    const segEnd = next ? Math.max(segStart, Number(next.perfAt) || segStart) : nowPerf;
+    applyPredictedInputFrame(
+      prediction.player,
+      cmd,
+      Math.max(0, segEnd - segStart) / 1000,
+      Number(cmd.clientNowMs) || nowMs,
+    );
+  }
+
+  if (prevPlayer) {
+    const dx = prevPlayer.x - prediction.player.x;
+    const dy = prevPlayer.y - prediction.player.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > 0.001) {
+      const scale = dist > CLIENT_CORRECTION_MAX_DIST ? (CLIENT_CORRECTION_MAX_DIST / dist) : 1;
+      prediction.correctionX += dx * scale;
+      prediction.correctionY += dy * scale;
+    }
+  }
+}
+
+function simulateLocalPlayerPrediction(dt) {
+  const prediction = game.localPrediction;
+  if (!prediction.active || !prediction.player || !game.myId || !game.state) return;
+  const command = buildCurrentInputPayload(false);
+  if (!command) return;
+  applyPredictedInputFrame(prediction.player, command, dt, Date.now());
+}
+
+function getLocalPredictedRenderPos() {
+  const prediction = game.localPrediction;
+  const player = prediction.player;
+  if (!prediction.active || !player) return null;
+  const nowPerf = performance.now();
+  const prevSampleAt = Number(prediction.lastRenderSampleAt) || nowPerf;
+  const dt = Math.max(0, Math.min(0.05, (nowPerf - prevSampleAt) / 1000));
+  prediction.lastRenderSampleAt = nowPerf;
+
+  if (dt > 0) {
+    const k = 1 - Math.exp(-CLIENT_CORRECTION_BLEND_RATE * dt);
+    prediction.correctionX += (0 - prediction.correctionX) * k;
+    prediction.correctionY += (0 - prediction.correctionY) * k;
+  }
+
+  const visual = prediction.dodgeVisual;
+  if (!visual) {
+    return {
+      x: player.x + prediction.correctionX,
+      y: player.y + prediction.correctionY,
+    };
+  }
+
+  const durationMs = Math.max(1, Number(visual.durationMs) || CLIENT_DODGE_VISUAL_MS);
+  const elapsedMs = Math.max(0, performance.now() - Number(visual.startAt || 0));
+  const t = Math.max(0, Math.min(1, elapsedMs / durationMs));
+  const inv = 1 - t;
+  const eased = 1 - (inv * inv * inv);
+
+  if (t >= 1) {
+    prediction.dodgeVisual = null;
+    return {
+      x: player.x + prediction.correctionX,
+      y: player.y + prediction.correctionY,
+    };
+  }
+
+  return {
+    x: visual.fromX + ((player.x + prediction.correctionX) - visual.fromX) * eased,
+    y: visual.fromY + ((player.y + prediction.correctionY) - visual.fromY) * eased,
+  };
+}
+
+function isLocalDodgeVisualActive() {
+  return Boolean(game.localPrediction?.dodgeVisual);
+}
+
+function queuePredictedInput(command) {
+  const prediction = game.localPrediction;
+  prediction.pendingInputs.push({
+    ...command,
+    seq: Number(command.seq) || 0,
+    perfAt: performance.now(),
+    clientNowMs: Date.now(),
+  });
+  if (prediction.pendingInputs.length > 120) {
+    prediction.pendingInputs.splice(0, prediction.pendingInputs.length - 120);
+  }
+  if (prediction.player) {
+    applyPredictedInputFrame(prediction.player, command, 0, Date.now());
+  }
 }
 
 function updateEnemyInterpolation(dt) {
@@ -816,11 +1073,23 @@ function keyStateFromCode(code, isDown) {
 
 function queueJump() {
   input.jumpQueued = true;
+  requestImmediateInputSend();
 }
 
 function updateSyncSettingsVisibility() {
   if (!syncSettingsEl) return;
   syncSettingsEl.style.display = joinMode === 'create' ? '' : 'none';
+}
+
+let immediateInputSendQueued = false;
+
+function requestImmediateInputSend() {
+  if (immediateInputSendQueued) return;
+  immediateInputSendQueued = true;
+  setTimeout(() => {
+    immediateInputSendQueued = false;
+    sendInput();
+  }, 0);
 }
 
 
@@ -862,14 +1131,20 @@ window.addEventListener('keydown', (e) => {
     }
   }
 
+  const before = `${input.up}:${input.down}:${input.left}:${input.right}`;
   keyStateFromCode(e.code, true);
+  const after = `${input.up}:${input.down}:${input.left}:${input.right}`;
+  if (before !== after) requestImmediateInputSend();
   if (e.code === 'Digit1' && ws.readyState === WebSocket.OPEN) {
     sendJson({ type: 'weaponSwitch', weaponKey: 'pistol' });
   }
 });
 window.addEventListener('keyup', (e) => {
   if (isDevConsoleOpen()) return;
+  const before = `${input.up}:${input.down}:${input.left}:${input.right}`;
   keyStateFromCode(e.code, false);
+  const after = `${input.up}:${input.down}:${input.left}:${input.right}`;
+  if (before !== after) requestImmediateInputSend();
 });
 
 function setPointerFromClient(clientX, clientY) {
@@ -881,9 +1156,17 @@ canvas.addEventListener('mousedown', (e) => {
   if (e.button !== 0) return;
   input.shooting = true;
   setPointerFromClient(e.clientX, e.clientY);
+  requestImmediateInputSend();
 });
-window.addEventListener('mouseup', () => { input.shooting = false; });
-canvas.addEventListener('mousemove', (e) => { setPointerFromClient(e.clientX, e.clientY); });
+window.addEventListener('mouseup', () => {
+  if (!input.shooting) return;
+  input.shooting = false;
+  requestImmediateInputSend();
+});
+canvas.addEventListener('mousemove', (e) => {
+  setPointerFromClient(e.clientX, e.clientY);
+  if (input.shooting) requestImmediateInputSend();
+});
 
 let mobileShootTouchId = null;
 canvas.addEventListener('touchstart', (e) => {
@@ -893,6 +1176,7 @@ canvas.addEventListener('touchstart', (e) => {
   mobileShootTouchId = t.identifier;
   input.shooting = true;
   setPointerFromClient(t.clientX, t.clientY);
+  requestImmediateInputSend();
   e.preventDefault();
 }, { passive: false });
 
@@ -901,6 +1185,7 @@ canvas.addEventListener('touchmove', (e) => {
   const t = getTouchById(e.touches, mobileShootTouchId);
   if (!t) return;
   setPointerFromClient(t.clientX, t.clientY);
+  requestImmediateInputSend();
   e.preventDefault();
 }, { passive: false });
 
@@ -910,6 +1195,7 @@ const stopMobileTapShoot = (e) => {
   if (!ended) return;
   mobileShootTouchId = null;
   input.shooting = false;
+  requestImmediateInputSend();
   e.preventDefault();
 };
 canvas.addEventListener('touchend', stopMobileTapShoot, { passive: false });
@@ -955,6 +1241,15 @@ function clearLocalSessionState() {
   game.state = null;
   game.netSnapshots = [];
   game.sampledNet = null;
+  game.localPrediction.active = false;
+  game.localPrediction.player = null;
+  game.localPrediction.pendingInputs = [];
+  game.localPrediction.nextInputSeq = 0;
+  game.localPrediction.lastAckSeq = 0;
+  game.localPrediction.dodgeVisual = null;
+  game.localPrediction.correctionX = 0;
+  game.localPrediction.correctionY = 0;
+  game.localPrediction.lastRenderSampleAt = 0;
   game.renderPlayers.clear();
   game.renderEnemies.clear();
   game.renderBullets.clear();
@@ -992,6 +1287,7 @@ function clearLocalSessionState() {
   updateBottomHud();
   updateStatsPanel(null);
   updateJumpButtonUi(null);
+  immediateInputSendQueued = false;
 }
 
 function leaveActiveRoom() {
@@ -1135,6 +1431,15 @@ message: (ev) => {
     game.renderBullets.clear();
     game.netSnapshots = [];
     game.sampledNet = null;
+    game.localPrediction.active = false;
+    game.localPrediction.player = null;
+    game.localPrediction.pendingInputs = [];
+    game.localPrediction.nextInputSeq = 0;
+    game.localPrediction.lastAckSeq = 0;
+    game.localPrediction.dodgeVisual = null;
+    game.localPrediction.correctionX = 0;
+    game.localPrediction.correctionY = 0;
+    game.localPrediction.lastRenderSampleAt = 0;
     visuals.enemyPrev = new Map();
     visuals.playerPrev = new Map();
     visuals.blood = [];
@@ -1217,17 +1522,19 @@ message: (ev) => {
 
     const me = s.players.find((p) => p.id === game.myId);
     if (me) {
+      reconcileLocalPlayerPrediction(me);
+      const localMe = getPredictedLocalPlayer() || me;
       updateStatsPanel(me);
-      updateJumpButtonUi(me);
-      const dodgeCdMeta = Math.max(0, Number(me.dodgeCooldownMs) || 0);
+      updateJumpButtonUi(localMe);
+      const dodgeCdMeta = Math.max(0, Number(localMe.dodgeCooldownMs) || 0);
       const jumpMeta = dodgeCdMeta > 0 ? (dodgeCdMeta / 1000).toFixed(1) + 's' : 'ready';
       weaponMetaEl.textContent = `Weapon: ${me.weaponLabel} | Ammo: ${me.ammo === null ? 'inf' : me.ammo} | Jump: ${jumpMeta}`;
       if (movementMetaEl) {
         const nowMs = Date.now();
-        const slowed = (Number(me.slowUntil) || 0) > nowMs;
-        const slowLeft = Math.max(0, (Number(me.slowUntil) || 0) - nowMs);
-        const dodgeCd = Math.max(0, Number(me.dodgeCooldownMs) || 0);
-        const invuln = (Number(me.dodgeInvulnUntil) || 0) > nowMs;
+        const slowed = (Number(localMe.slowUntil) || 0) > nowMs;
+        const slowLeft = Math.max(0, (Number(localMe.slowUntil) || 0) - nowMs);
+        const dodgeCd = Math.max(0, Number(localMe.dodgeCooldownMs) || 0);
+        const invuln = (Number(localMe.dodgeInvulnUntil) || 0) > nowMs;
         const dodgeText = dodgeCd > 0 ? (dodgeCd / 1000).toFixed(1) + 's' : 'ready';
         const slowText = slowed ? ('SLOWED ' + (slowLeft / 1000).toFixed(1) + 's') : 'normal';
         movementMetaEl.textContent = `Move: ${slowText} | Jump: ${dodgeText}${invuln ? ' | i-frames' : ''}`;
@@ -1255,10 +1562,10 @@ message: (ev) => {
 
 void connectGameSocket(APP_ORIGIN);
 
-function sendInput() {
-  if (!game.connected || !game.myId || ws.readyState !== WebSocket.OPEN || !game.state) return;
-  const me = game.state.players.find((p) => p.id === game.myId);
-  if (!me) return;
+function buildCurrentInputPayload(includeJump = true) {
+  if (!game.connected || !game.myId || !game.state) return null;
+  const me = getLocalPlayerForInput();
+  if (!me) return null;
 
   let moveX = (input.right ? 1 : 0) - (input.left ? 1 : 0);
   let moveY = (input.down ? 1 : 0) - (input.up ? 1 : 0);
@@ -1308,18 +1615,30 @@ function sendInput() {
     }
   }
 
-  const jump = input.jumpQueued;
-
-  sendJson({
-    type: 'input',
+  return {
     moveX,
     moveY,
     aimX,
     aimY,
     shooting,
-    jump,
+    jump: includeJump ? input.jumpQueued : false,
+  };
+}
+
+function sendInput() {
+  if (!game.connected || !game.myId || ws.readyState !== WebSocket.OPEN || !game.state) return;
+  const payload = buildCurrentInputPayload(true);
+  if (!payload) return;
+  const seq = game.localPrediction.nextInputSeq + 1;
+  game.localPrediction.nextInputSeq = seq;
+
+  sendJson({
+    type: 'input',
+    seq,
+    ...payload,
   });
 
+  queuePredictedInput({ seq, ...payload });
   input.jumpQueued = false;
 }
 

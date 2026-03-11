@@ -1159,6 +1159,7 @@ function serializeRoom(room) {
     dodgeRechargeMs: Math.max(0, Math.round(p.dodgeRechargeMs || 0)),
     dodgeRechargeTotalMs: PLAYER_DODGE_COOLDOWN_MS,
     dodgeInvulnUntil: Number(p.dodgeInvulnUntil) || 0,
+    lastProcessedInputSeq: Math.max(0, Number(p.lastProcessedInputSeq) || 0),
     level: Math.max(1, Math.floor(Number(p.level) || 1)),
     xp: Math.max(0, Math.floor(Number(p.xp) || 0)),
     xpToNext: Math.max(1, Math.floor(Number(p.xpToNext) || getXpToNextLevel(p.level || 1))),
@@ -2169,6 +2170,8 @@ function joinRoom(ws, join) {
     dodgeRechargeMs: 0,
     dodgeInvulnUntil: 0,
     jumpQueued: false,
+    lastReceivedInputSeq: 0,
+    lastProcessedInputSeq: 0,
     weaponKey: 'pistol',
     weaponAmmo: null,
     playerClass,
@@ -2361,6 +2364,7 @@ wss.on('connection', (ws, req) => {
     }
 
     if (msg.type === 'input') {
+      current.lastReceivedInputSeq = Math.max(0, Number(msg.seq) || current.lastReceivedInputSeq || 0);
       current.moveX = clamp(Number(msg.moveX) || 0, -1, 1);
       current.moveY = clamp(Number(msg.moveY) || 0, -1, 1);
       current.aimX = clamp(Number(msg.aimX) || current.x, 0, WORLD_WIDTH);
@@ -2423,6 +2427,10 @@ function tickRoom(room, dtSec, now) {
   }
 
   for (const p of room.players.values()) {
+    p.lastProcessedInputSeq = Math.max(
+      Math.max(0, Number(p.lastProcessedInputSeq) || 0),
+      Math.max(0, Number(p.lastReceivedInputSeq) || 0),
+    );
     if (!p.alive) {
       if (now >= p.respawnAt) {
         const spawn = randomPlayerSpawn();
