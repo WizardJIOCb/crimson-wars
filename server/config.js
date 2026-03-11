@@ -142,6 +142,7 @@ const DEFAULT_SKILL_DEFS = {
   shockwave: { id: 'shockwave', name: 'Shockwave', kind: 'active', rarity: 'rare', maxLevel: 8, weight: 0.84, cooldownMs: 5400, cooldownMulPerLevel: 0.08, radius: 170, radiusPerLevel: 14, damage: 38, damagePerLevel: 16, desc: 'AoE blast around hero' },
   blade_orbit: { id: 'blade_orbit', name: 'Blade Orbit', kind: 'active', rarity: 'common', maxLevel: 8, weight: 1.02, cooldownMs: 1450, cooldownMulPerLevel: 0.05, radius: 190, radiusPerLevel: 12, damage: 23, damagePerLevel: 10, targets: 2, targetsPerLevel: 1, desc: 'Hits nearest enemies' },
   chain_lightning: { id: 'chain_lightning', name: 'Chain Lightning', kind: 'active', rarity: 'epic', maxLevel: 7, weight: 0.52, cooldownMs: 6200, cooldownMulPerLevel: 0.08, radius: 330, radiusPerLevel: 18, damage: 52, damagePerLevel: 19, targets: 3, targetsPerLevel: 1, desc: 'Chains to nearest enemies' },
+  homing_missiles: { id: 'homing_missiles', name: 'Homing Missiles', kind: 'active', rarity: 'epic', maxLevel: 8, weight: 0.46, cooldownMs: 7600, cooldownMulPerLevel: 0.07, radius: 520, radiusPerLevel: 26, damage: 34, damagePerLevel: 12, targets: 5, targetsPerLevel: 1, missileSpeed: 320, missileSpeedPerLevel: 24, turnRate: 5.8, turnRatePerLevel: 0.24, explosionRadius: 58, explosionRadiusPerLevel: 5, lifeMs: 2600, desc: 'Launches seeking rockets at nearby enemies' },
 };
 
 module.exports = {

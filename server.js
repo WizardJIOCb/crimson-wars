@@ -1121,6 +1121,101 @@ function nearestEnemyTo(room, x, y, maxRange = Infinity) {
   return best;
 }
 
+function wrapAngleDelta(delta) {
+  let next = Number(delta) || 0;
+  while (next > Math.PI) next -= Math.PI * 2;
+  while (next < -Math.PI) next += Math.PI * 2;
+  return next;
+}
+
+function collectSkillTargets(room, player, maxTargets, radius) {
+  return room.enemies
+    .map((e) => ({ e, d2: (e.x - player.x) ** 2 + (e.y - player.y) ** 2 }))
+    .filter((x) => x.d2 <= radius * radius)
+    .sort((a, b) => a.d2 - b.d2)
+    .slice(0, maxTargets)
+    .map((x) => x.e);
+}
+
+function castHomingMissiles(room, player, def, st, now) {
+  const lvl = Math.max(1, Number(st?.level) || 1);
+  const radius = Math.max(80, (Number(def.radius) || 520) + (Number(def.radiusPerLevel) || 0) * (lvl - 1));
+  const rocketCount = Math.max(1, Math.round((Number(def.targets) || 5) + (Number(def.targetsPerLevel) || 0) * (lvl - 1)));
+  const targets = collectSkillTargets(room, player, rocketCount, radius);
+  if (targets.length <= 0) return false;
+
+  const damage = Math.max(1, Math.round(((Number(def.damage) || 34) + (Number(def.damagePerLevel) || 0) * (lvl - 1)) * Math.max(0.2, Number(player.damageMul) || 1)));
+  const missileSpeed = Math.max(160, (Number(def.missileSpeed) || 320) + (Number(def.missileSpeedPerLevel) || 0) * (lvl - 1));
+  const turnRate = Math.max(1.8, (Number(def.turnRate) || 5.8) + (Number(def.turnRatePerLevel) || 0) * (lvl - 1));
+  const explosionRadius = Math.max(24, (Number(def.explosionRadius) || 58) + (Number(def.explosionRadiusPerLevel) || 0) * (lvl - 1));
+  const lifeMs = Math.max(900, Number(def.lifeMs) || 2600);
+  const baseAngle = Math.random() * Math.PI * 2;
+
+  for (let i = 0; i < targets.length; i += 1) {
+    const target = targets[i];
+    const angle = baseAngle + ((Math.PI * 2 * i) / Math.max(1, targets.length)) + ((Math.random() - 0.5) * 0.26);
+    const spawnDist = PLAYER_RADIUS + 12 + ((i % 2) * 7);
+    room.bullets.push({
+      id: room.nextBulletId++,
+      kind: 'rocket',
+      ownerId: player.id,
+      fromEnemy: false,
+      x: clamp(player.x + Math.cos(angle) * spawnDist, PLAYER_RADIUS, WORLD_WIDTH - PLAYER_RADIUS),
+      y: clamp(player.y + Math.sin(angle) * spawnDist, PLAYER_RADIUS, WORLD_HEIGHT - PLAYER_RADIUS),
+      vx: Math.cos(angle) * missileSpeed * 0.78,
+      vy: Math.sin(angle) * missileSpeed * 0.78,
+      speed: missileSpeed,
+      lifeMs,
+      damage,
+      radius: 6,
+      color: '#fb923c',
+      targetId: target.id,
+      turnRate,
+      wobbleAmp: 0.28 + Math.random() * 0.16,
+      wobbleFreq: 7 + Math.random() * 3.5,
+      wobblePhase: Math.random() * Math.PI * 2,
+      retargetRange: radius * 1.15,
+      explosionRadius,
+      spawnAt: now,
+    });
+  }
+
+  return true;
+}
+
+function explodeRocket(room, bullet, now) {
+  const radius = Math.max(18, Number(bullet.explosionRadius) || 54);
+  const enemies = room.enemies.slice();
+  for (const enemy of enemies) {
+    const dx = enemy.x - bullet.x;
+    const dy = enemy.y - bullet.y;
+    const reach = radius + Math.max(ENEMY_RADIUS, Number(enemy.radius) || ENEMY_RADIUS);
+    const dist = Math.hypot(dx, dy);
+    if (dist > reach) continue;
+    const falloff = 1 - Math.min(0.45, (dist / Math.max(1, reach)) * 0.45);
+    enemyTakeDamage(room, enemy, Math.max(1, Math.round((Number(bullet.damage) || 1) * falloff)), bullet.ownerId, now);
+  }
+}
+
+function castPlayerActiveSkill(room, player, def, st, now) {
+  const skillId = String(def?.id || '').toLowerCase();
+  if (skillId === 'homing_missiles') {
+    return castHomingMissiles(room, player, def, st, now);
+  }
+
+  const lvl = Math.max(1, Number(st?.level) || 1);
+  const radius = Math.max(40, (Number(def.radius) || 120) + (Number(def.radiusPerLevel) || 0) * (lvl - 1));
+  const damage = Math.max(1, (Number(def.damage) || 10) + (Number(def.damagePerLevel) || 0) * (lvl - 1));
+  const maxTargets = Math.max(1, Math.round((Number(def.targets) || 1) + (Number(def.targetsPerLevel) || 0) * (lvl - 1)));
+  const targets = collectSkillTargets(room, player, maxTargets, radius);
+  if (targets.length <= 0) return false;
+
+  for (const enemy of targets) {
+    enemyTakeDamage(room, enemy, damage * player.damageMul, player.id, now);
+  }
+  return true;
+}
+
 function serializeRoom(room) {
   const now = Date.now();
   const difficulty = getRoomDifficulty(room, now);
@@ -1251,6 +1346,8 @@ function serializeRoom(room) {
       vx: b.vx,
       vy: b.vy,
       color: b.color,
+      kind: b.kind || 'bullet',
+      radius: Math.max(2, Number(b.radius) || BULLET_RADIUS),
       fromEnemy: Boolean(b.fromEnemy),
     })),
     enemies: room.enemies.map((e) => ({
@@ -1733,26 +1830,12 @@ function tickPlayerSkills(room, player, dtSec, now) {
     if (!def || def.kind !== 'active') continue;
     st.cooldownMs = Math.max(0, (Number(st.cooldownMs) || 0) - dtSec * 1000);
     if (st.cooldownMs > 0) continue;
-
-    const lvl = st.level;
-    const radius = Math.max(40, (Number(def.radius) || 120) + (Number(def.radiusPerLevel) || 0) * (lvl - 1));
-    const damage = Math.max(1, (Number(def.damage) || 10) + (Number(def.damagePerLevel) || 0) * (lvl - 1));
-    const maxTargets = Math.max(1, Math.round((Number(def.targets) || 1) + (Number(def.targetsPerLevel) || 0) * (lvl - 1)));
-
-    const targets = room.enemies
-      .map((e) => ({ e, d2: (e.x - player.x) ** 2 + (e.y - player.y) ** 2 }))
-      .filter((x) => x.d2 <= radius * radius)
-      .sort((a, b) => a.d2 - b.d2)
-      .slice(0, maxTargets)
-      .map((x) => x.e);
-
-    for (const enemy of targets) {
-      enemyTakeDamage(room, enemy, damage * player.damageMul, player.id, now);
-    }
+    const casted = castPlayerActiveSkill(room, player, def, st, now);
+    if (!casted) continue;
 
     const baseCd = Math.max(300, Number(def.cooldownMs) || 1000);
     const cdMul = Math.max(0, Number(def.cooldownMulPerLevel) || 0);
-    const lvlCdMul = Math.max(0.2, 1 - cdMul * (lvl - 1));
+    const lvlCdMul = Math.max(0.2, 1 - cdMul * (Math.max(1, Number(st.level) || 1) - 1));
     st.maxCooldownMs = Math.max(220, Math.round(baseCd * lvlCdMul));
     st.cooldownMs = st.maxCooldownMs;
   }
@@ -2476,6 +2559,24 @@ function tickRoom(room, dtSec, now) {
 
   for (let i = room.bullets.length - 1; i >= 0; i -= 1) {
     const b = room.bullets[i];
+    if (b.kind === 'rocket' && !b.fromEnemy) {
+      const target = room.enemies.find((enemy) => enemy.id === b.targetId && enemy.hp > 0)
+        || nearestEnemyTo(room, b.x, b.y, Math.max(140, Number(b.retargetRange) || 520));
+      if (target) b.targetId = target.id;
+
+      const speed = Math.max(120, Number(b.speed) || Math.hypot(Number(b.vx) || 0, Number(b.vy) || 0) || 120);
+      let angle = Math.atan2(Number(b.vy) || 0, Number(b.vx) || speed);
+      if (target) {
+        const desiredAngle = Math.atan2(target.y - b.y, target.x - b.x);
+        const maxTurn = Math.max(0.6, Number(b.turnRate) || 5.8) * dtSec;
+        angle += clamp(wrapAngleDelta(desiredAngle - angle), -maxTurn, maxTurn);
+      }
+      const ageSec = Math.max(0, now - (Number(b.spawnAt) || now)) / 1000;
+      angle += Math.sin(ageSec * (Number(b.wobbleFreq) || 8) + (Number(b.wobblePhase) || 0)) * Math.max(0, Number(b.wobbleAmp) || 0) * dtSec;
+      b.vx = Math.cos(angle) * speed;
+      b.vy = Math.sin(angle) * speed;
+    }
+
     b.x += b.vx * dtSec;
     b.y += b.vy * dtSec;
     b.lifeMs -= dtSec * 1000;
@@ -2503,10 +2604,11 @@ function tickRoom(room, dtSec, now) {
         const e = room.enemies[ei];
         const dx = e.x - b.x;
         const dy = e.y - b.y;
-        const rr = (Number(e.radius) || ENEMY_RADIUS) + BULLET_RADIUS;
+        const rr = (Number(e.radius) || ENEMY_RADIUS) + Math.max(BULLET_RADIUS, Number(b.radius) || BULLET_RADIUS);
         if (dx * dx + dy * dy <= rr * rr) {
           hit = true;
-          enemyTakeDamage(room, e, b.damage, b.ownerId, now);
+          if (b.kind === 'rocket') explodeRocket(room, b, now);
+          else enemyTakeDamage(room, e, b.damage, b.ownerId, now);
           break;
         }
       }

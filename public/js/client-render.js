@@ -420,6 +420,28 @@ function drawFx() {
     ctx.fill();
   }
 
+  for (const s of visuals.rocketSmoke) {
+    if (!isVisibleWorld(s.x, s.y, s.r + 16)) continue;
+    const a = Math.max(0, s.life / s.ttl);
+    ctx.fillStyle = `rgba(148,163,184,${(a * 0.3).toFixed(3)})`;
+    ctx.beginPath();
+    ctx.arc(s.x - camera.x, s.y - camera.y, s.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  for (const f of visuals.rocketFire) {
+    if (!isVisibleWorld(f.x, f.y, f.r + 10)) continue;
+    const a = Math.max(0, f.life / f.ttl);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = Math.min(1, a);
+    ctx.fillStyle = f.color || '#fb923c';
+    ctx.beginPath();
+    ctx.arc(f.x - camera.x, f.y - camera.y, f.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   for (const s of visuals.skillBursts) {
     if (!isVisibleWorld(s.x, s.y, s.maxR + 12)) continue;
     const a = Math.max(0, s.life / s.ttl);
@@ -737,8 +759,10 @@ function render(ts) {
   }
   for (const b of game.state.bullets) {
     const rb = getBulletRenderPos(b);
-    if (!isVisibleWorld(rb.x, rb.y, 12)) continue;
-    if (game.bulletTracersEnabled) {
+    const bulletRadius = Math.max(2, Number(rb.radius) || Number(b.radius) || 3);
+    const isRocket = String(rb.kind || b.kind || '').toLowerCase() === 'rocket';
+    if (!isVisibleWorld(rb.x, rb.y, isRocket ? 24 : 12)) continue;
+    if (!isRocket && game.bulletTracersEnabled) {
       const speed = Math.hypot(Number(rb.vx) || 0, Number(rb.vy) || 0);
       if (speed > 8) {
         const tracerLen = Math.min(26, Math.max(10, speed * 0.028));
@@ -758,8 +782,39 @@ function render(ts) {
         ctx.restore();
       }
     }
-    drawShadowAtScreen(rb.x - camera.x, rb.y - camera.y + 3, 3, 1.8, 0.18);
-    drawCircle(rb.x, rb.y, 3, rb.color || b.color || '#f59e0b');
+    if (isRocket) {
+      const angle = Math.atan2(Number(rb.vy) || 0, Number(rb.vx) || 1);
+      const sx = rb.x - camera.x;
+      const sy = rb.y - camera.y;
+      drawShadowAtScreen(sx, sy + 5, 7, 3, 0.2);
+
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(angle);
+      ctx.fillStyle = '#475569';
+      ctx.beginPath();
+      ctx.moveTo(-8, -3.4);
+      ctx.lineTo(6, -3);
+      ctx.lineTo(9, 0);
+      ctx.lineTo(6, 3);
+      ctx.lineTo(-8, 3.4);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = rb.color || b.color || '#fb923c';
+      ctx.fillRect(-5, -2, 9, 4);
+      ctx.fillStyle = '#e2e8f0';
+      ctx.beginPath();
+      ctx.moveTo(4, -2.8);
+      ctx.lineTo(9, 0);
+      ctx.lineTo(4, 2.8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    } else {
+      drawShadowAtScreen(rb.x - camera.x, rb.y - camera.y + 3, 3, 1.8, 0.18);
+      drawCircle(rb.x, rb.y, bulletRadius, rb.color || b.color || '#f59e0b');
+    }
   }
   drawEnemies(game.state.enemies, ts / 1000);
 

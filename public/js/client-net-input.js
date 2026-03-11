@@ -610,6 +610,8 @@ function syncBulletsFromState(nextState) {
         vx: b.vx || 0,
         vy: b.vy || 0,
         color: b.color,
+        kind: b.kind || 'bullet',
+        radius: b.radius || 3,
       };
       game.renderBullets.set(id, r);
       continue;
@@ -620,6 +622,8 @@ function syncBulletsFromState(nextState) {
     r.vx = (r.vx * 0.3) + ((b.vx || 0) * 0.7);
     r.vy = (r.vy * 0.3) + ((b.vy || 0) * 0.7);
     r.color = b.color;
+    r.kind = b.kind || 'bullet';
+    r.radius = b.radius || 3;
   }
 
   for (const id of Array.from(game.renderBullets.keys())) {
@@ -644,6 +648,8 @@ function updateBulletInterpolation(dt) {
         vx: tb.vx || 0,
         vy: tb.vy || 0,
         color: tb.color,
+        kind: tb.kind || 'bullet',
+        radius: tb.radius || 3,
       };
       game.renderBullets.set(id, r);
       continue;
@@ -654,6 +660,8 @@ function updateBulletInterpolation(dt) {
     r.vx = (r.vx * 0.35) + ((tb.vx || 0) * 0.65);
     r.vy = (r.vy * 0.35) + ((tb.vy || 0) * 0.65);
     r.color = tb.color;
+    r.kind = tb.kind || 'bullet';
+    r.radius = tb.radius || 3;
 
     r.x += r.vx * dt;
     r.y += r.vy * dt;
@@ -694,6 +702,8 @@ function pushNetSnapshot(state) {
       vx: b.vx || 0,
       vy: b.vy || 0,
       color: b.color,
+      kind: b.kind || 'bullet',
+      radius: b.radius || 3,
     })),
   };
 
@@ -761,6 +771,8 @@ function sampleBufferedState() {
           vx: withVel ? (pb.vx ?? pa.vx ?? 0) : 0,
           vy: withVel ? (pb.vy ?? pa.vy ?? 0) : 0,
           color: pb.color ?? pa.color,
+          kind: pb.kind ?? pa.kind,
+          radius: pb.radius ?? pa.radius,
         });
       } else {
         out.set(id, pb || pa);
@@ -1013,11 +1025,14 @@ function clearLocalSessionState() {
   lastLevelupHtml = '';
   visuals.bossBlast = [];
   visuals.bloodMist = [];
+  visuals.rocketSmoke = [];
+  visuals.rocketFire = [];
   visuals.skillBursts = [];
   visuals.skillArcs = [];
   visuals.skillLinks = [];
   visuals.skillLabels = [];
   visuals.skillCdPrev = new Map();
+  visuals.rocketPrev = new Map();
   updateTopCenterHud(Date.now());
   updateBottomHud();
   updateStatsPanel(null);
@@ -1176,11 +1191,14 @@ message: (ev) => {
     visuals.muzzle = [];
     visuals.bossBlast = [];
     visuals.bloodMist = [];
+    visuals.rocketSmoke = [];
+    visuals.rocketFire = [];
     visuals.skillBursts = [];
     visuals.skillArcs = [];
     visuals.skillLinks = [];
     visuals.skillLabels = [];
     visuals.skillCdPrev = new Map();
+    visuals.rocketPrev = new Map();
     roomMetaEl.textContent = `Room: ${msg.roomCode}`;
     copyRoomCodeToClipboard(msg.roomCode, { silent: true });
     statusEl.textContent = `Online as ${msg.id} | tick ${roomSync.tickRate}`;

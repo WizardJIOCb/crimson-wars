@@ -100,6 +100,65 @@ function spawnBossDeathExplosion(x, y) {
   if (visuals.bloodMist.length > 160) visuals.bloodMist.splice(0, visuals.bloodMist.length - 160);
 }
 
+function spawnRocketTrailFx(x, y, vx, vy, color = '#fb923c') {
+  const speed = Math.hypot(Number(vx) || 0, Number(vy) || 0) || 1;
+  const dirX = (Number(vx) || 0) / speed;
+  const dirY = (Number(vy) || 0) / speed;
+  const tailX = x - dirX * 10;
+  const tailY = y - dirY * 10;
+
+  visuals.rocketFire.push({
+    x: tailX + (Math.random() * 3 - 1.5),
+    y: tailY + (Math.random() * 3 - 1.5),
+    vx: -dirX * (40 + Math.random() * 55) + (Math.random() * 16 - 8),
+    vy: -dirY * (40 + Math.random() * 55) + (Math.random() * 16 - 8),
+    r: 4 + Math.random() * 3,
+    life: 0.12 + Math.random() * 0.06,
+    ttl: 0.12 + Math.random() * 0.06,
+    color,
+  });
+  visuals.rocketSmoke.push({
+    x: tailX + (Math.random() * 5 - 2.5),
+    y: tailY + (Math.random() * 5 - 2.5),
+    vx: -dirX * (18 + Math.random() * 28) + (Math.random() * 10 - 5),
+    vy: -dirY * (18 + Math.random() * 28) + (Math.random() * 10 - 5),
+    r: 7 + Math.random() * 5,
+    life: 0.38 + Math.random() * 0.18,
+    ttl: 0.38 + Math.random() * 0.18,
+  });
+
+  if (visuals.rocketFire.length > 90) visuals.rocketFire.splice(0, visuals.rocketFire.length - 90);
+  if (visuals.rocketSmoke.length > 120) visuals.rocketSmoke.splice(0, visuals.rocketSmoke.length - 120);
+}
+
+function spawnRocketExplosionFx(x, y) {
+  spawnSkillBurstFx(x, y, '#fb923c', 88);
+  spawnHitFx(x, y, 16, false);
+  for (let i = 0; i < 7; i += 1) {
+    visuals.rocketFire.push({
+      x: x + (Math.random() * 8 - 4),
+      y: y + (Math.random() * 8 - 4),
+      vx: (Math.random() * 2 - 1) * (45 + Math.random() * 130),
+      vy: (Math.random() * 2 - 1) * (45 + Math.random() * 130),
+      r: 5 + Math.random() * 5,
+      life: 0.18 + Math.random() * 0.08,
+      ttl: 0.18 + Math.random() * 0.08,
+      color: Math.random() > 0.4 ? '#fb923c' : '#fde68a',
+    });
+  }
+  for (let i = 0; i < 10; i += 1) {
+    visuals.rocketSmoke.push({
+      x: x + (Math.random() * 10 - 5),
+      y: y + (Math.random() * 10 - 5),
+      vx: (Math.random() * 2 - 1) * (30 + Math.random() * 75),
+      vy: (Math.random() * 2 - 1) * (30 + Math.random() * 75),
+      r: 10 + Math.random() * 8,
+      life: 0.45 + Math.random() * 0.18,
+      ttl: 0.45 + Math.random() * 0.18,
+    });
+  }
+}
+
 function spawnHitFx(x, y, severity = 1, isPlayerHit = false) {
   if (!game.hitEffectsEnabled) return;
   const count = Math.max(1, Math.min(6, Math.floor(1 + severity * 0.2 + (isPlayerHit ? 1.2 : 0))));
@@ -205,6 +264,11 @@ function spawnSkillCastFx(skillId, caster, nextState) {
     spawnSkillLabel('Chain Lightning', caster.x, caster.y - 10);
     return;
   }
+  if (sid === 'homing_missiles') {
+    spawnSkillBurstFx(caster.x, caster.y, '#fb923c', 102);
+    spawnSkillLabel('Homing Missiles', caster.x, caster.y - 10);
+    return;
+  }
 
   spawnSkillBurstFx(caster.x, caster.y, '#a5b4fc', 120);
   const skillName = game.skillCatalog[sid]?.name || sid || 'Skill';
@@ -290,6 +354,17 @@ function processStateFx(nextState) {
 
   processSkillCastFx(nextState);
 
+  const nextRocketMap = new Map();
+  for (const bullet of nextState.bullets || []) {
+    if (String(bullet.kind || '').toLowerCase() !== 'rocket') continue;
+    nextRocketMap.set(bullet.id, { x: bullet.x, y: bullet.y });
+    spawnRocketTrailFx(bullet.x, bullet.y, bullet.vx, bullet.vy, bullet.color || '#fb923c');
+  }
+  for (const [id, prev] of visuals.rocketPrev.entries()) {
+    if (!nextRocketMap.has(id)) spawnRocketExplosionFx(prev.x, prev.y);
+  }
+  visuals.rocketPrev = nextRocketMap;
+
   const playersById = new Map(nextState.players.map((p) => [p.id, p]));
   const ids = new Set();
   for (const b of nextState.bullets) {
@@ -349,6 +424,28 @@ function updateFx(dt) {
     m.vx *= 0.965;
     m.vy *= 0.96;
     if (m.life <= 0) visuals.bloodMist.splice(i, 1);
+  }
+
+  for (let i = visuals.rocketSmoke.length - 1; i >= 0; i -= 1) {
+    const s = visuals.rocketSmoke[i];
+    s.life -= dt;
+    s.x += s.vx * dt;
+    s.y += s.vy * dt;
+    s.vx *= 0.96;
+    s.vy *= 0.96;
+    s.r += 12 * dt;
+    if (s.life <= 0) visuals.rocketSmoke.splice(i, 1);
+  }
+
+  for (let i = visuals.rocketFire.length - 1; i >= 0; i -= 1) {
+    const f = visuals.rocketFire[i];
+    f.life -= dt;
+    f.x += f.vx * dt;
+    f.y += f.vy * dt;
+    f.vx *= 0.92;
+    f.vy *= 0.92;
+    f.r *= 0.98;
+    if (f.life <= 0 || f.r <= 0.8) visuals.rocketFire.splice(i, 1);
   }
 
   for (let i = visuals.bossBlast.length - 1; i >= 0; i -= 1) {
