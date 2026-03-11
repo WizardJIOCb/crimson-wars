@@ -4,11 +4,24 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Crimson Wars - Admin</title>
+<!-- Yandex.Metrika counter -->
+<script type="text/javascript">
+    (function(m,e,t,r,i,k,a){
+        m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+        m[i].l=1*new Date();
+        for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
+        k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+    })(window, document,'script','https://mc.yandex.ru/metrika/tag.js?id=107267514', 'ym');
+
+    ym(107267514, 'init', {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", referrer: document.referrer, url: location.href, accurateTrackBounce:true, trackLinks:true});
+</script>
+<!-- /Yandex.Metrika counter -->
 <style>
 :root{--bg:#08111a;--panel:#0f1b28;--line:#2c3d4f;--text:#ebf2fb;--muted:#8fa5bb;--ok:#42d597;--warn:#ffca62;--err:#ff6f7f;--mono:"Cascadia Code",Consolas,monospace;--ui:"Segoe UI",Tahoma,sans-serif}*{box-sizing:border-box}body{margin:0;padding:16px;background:#08111a;color:var(--text);font-family:var(--ui)}button,input,select,textarea{font:inherit}input,select,textarea{width:100%;padding:10px;border-radius:10px;border:1px solid var(--line);background:#132131;color:var(--text)}option{color:#10161d;background:#fff}textarea{min-height:84px;resize:vertical}.hidden{display:none!important}.app{max-width:1500px;margin:0 auto;display:grid;gap:16px}.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px}.hero,.two{display:grid;gap:16px}.hero{grid-template-columns:1.4fr .8fr}.two{grid-template-columns:1fr 1fr}.toolbar,.meta,.grid{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.grid{display:grid;grid-template-columns:1fr 1fr}.field{display:grid;gap:6px}.label{font-size:12px;color:var(--muted);text-transform:uppercase}.btn{padding:10px 14px;border-radius:10px;border:1px solid transparent;background:#203346;color:var(--text);cursor:pointer}.btn-primary{background:#ff855b;color:#08111a;font-weight:700}.btn-primary:hover{background:#45d08f}.btn-ghost{background:transparent;border-color:var(--line)}.status{min-height:18px;font-size:13px}.ok{color:var(--ok)}.warn{color:var(--warn)}.err{color:var(--err)}table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid #233646;text-align:left;font-size:13px}th{color:var(--muted);font-size:11px;text-transform:uppercase}tbody tr{cursor:pointer}tbody tr.sel{background:#1c2b3a}.mono{font-family:var(--mono)}.pill{display:inline-block;padding:4px 8px;border-radius:999px;font-size:11px;background:#203346}.active{background:#164e3b;color:#9ff5cb}.empty{padding:18px;color:var(--muted);text-align:center}pre{white-space:pre-wrap;font:12px/1.4 var(--mono)}@media(max-width:1000px){.hero,.two,.grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
+<noscript><div><img src="https://mc.yandex.ru/watch/107267514" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
 <div id="login-view" class="app"><div class="card"><h1>Admin Login</h1><div class="field"><label class="label" for="login-name">Login</label><input id="login-name"/></div><div class="field"><label class="label" for="login-password">Password</label><input id="login-password" type="password"/></div><div class="toolbar" style="margin-top:12px"><button id="login-btn" class="btn btn-primary">Log in</button></div><div id="login-status" class="status">Use your admin login and password.</div></div></div>
 <div id="app-view" class="app hidden">
 <section class="hero"><div class="card"><h1>Skills Admin</h1><div id="hero-copy">Manage whole skill collections. One collection is active in the game at a time.</div><div class="toolbar" style="margin-top:12px"><div><div class="label">Current admin</div><div id="session-user">-</div></div><div><div class="label">Active collection</div><div id="active-collection-name">-</div></div></div></div><div class="card"><div class="toolbar"><button id="reload-all" class="btn btn-ghost">Reload</button><button id="logout-btn" class="btn btn-primary">Log out</button></div><div id="status" class="status" style="margin-top:12px">Ready.</div></div></section>
