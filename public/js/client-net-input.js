@@ -415,6 +415,8 @@ function renderRunDetailsHtml(details) {
   const list = [
     ['Character', details.playerClass || '--'],
     ['Level', Math.max(1, Number(details.level) || 1)],
+    ['Monsters killed', Math.max(0, Number(details.enemyKills) || 0)],
+    ['Bosses killed', Math.max(0, Number(details.bossKills) || 0)],
     ['XP', `${Math.max(0, Number(details.xp) || 0)} / ${Math.max(1, Number(details.xpToNext) || 1)}`],
     ['HP', `${Math.max(0, Number(details.hp) || 0)} / ${Math.max(1, Number(details.maxHp) || 1)}`],
     ['Weapon', details.weaponLabel || details.weaponKey || '--'],
@@ -428,6 +430,7 @@ function renderRunDetailsHtml(details) {
     ['Fire-rate multiplier', `x${Math.max(0.1, Number(details.fireRateMul) || 1).toFixed(2)}`],
     ['Speed multiplier', `x${Math.max(0.1, Number(details.moveSpeedMul) || 1).toFixed(2)}`],
     ['Room kills at death', Math.max(0, Number(details.totalEnemyKills) || 0)],
+    ['Bosses killed in room', Math.max(0, Number(details.totalBossKills) || 0)],
     ['Survived', `${Math.max(1, Number(details.survivedSec) || 1)}s`],
   ];
 

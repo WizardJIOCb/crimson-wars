@@ -1175,8 +1175,12 @@ function updateStatsPanel(me) {
   const damageMul = Math.max(0.2, Number(me.damageMul) || 1);
   const fireRateMul = Math.max(0.2, Number(me.fireRateMul) || 1);
   const moveSpeedMul = Math.max(0.2, Number(me.moveSpeedMul) || 1);
+  const enemyKills = Math.max(0, Number(me.enemyKills) || 0);
+  const bossKills = Math.max(0, Number(me.bossKills) || 0);
 
   statsContentEl.innerHTML = [
+    `<div class="stats-row"><span>Monsters killed</span><b>${enemyKills}</b></div>`,
+    `<div class="stats-row"><span>Bosses killed</span><b>${bossKills}</b></div>`,
     `<div class="stats-row"><span>HP</span><b>${Math.round(hp)} / ${Math.round(maxHp)}</b></div>`,
     `<div class="stats-row"><span>Damage / shot</span><b>${Math.round(Math.max(1, Number(me.shotDamage) || 1))}</b></div>`,
     `<div class="stats-row"><span>Fire rate</span><b>${fmtStatNum(shotsPerSec, 2)} shots/s</b></div>`,

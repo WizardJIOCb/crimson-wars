@@ -873,6 +873,7 @@ function getOrCreateRoom(requestedCode, requestedSync) {
       nextPortalId: 1,
       bossPortals: [],
       totalEnemyKills: 0,
+      totalBossKills: 0,
       nextBossAtKills: BOSS_KILL_INTERVAL,
       lastEnemySpawnAt: 0,
       startedAt: Date.now(),
@@ -1259,6 +1260,8 @@ function serializeRoom(room) {
     xp: Math.max(0, Math.floor(Number(p.xp) || 0)),
     xpToNext: Math.max(1, Math.floor(Number(p.xpToNext) || getXpToNextLevel(p.level || 1))),
     pendingSkillChoices: Array.isArray(p.pendingSkillChoices) ? p.pendingSkillChoices.slice(0, SKILL_PICK_OPTIONS) : [],
+    enemyKills: Math.max(0, Math.floor(Number(p.enemyKills) || 0)),
+    bossKills: Math.max(0, Math.floor(Number(p.bossKills) || 0)),
     skills: (p.skillOrder || []).map((sid) => {
       const st = p.skills?.[sid] || { level: 0, cooldownMs: 0, maxCooldownMs: 0 };
       const def = skillsStore.getById(sid) || { id: sid, name: sid, kind: 'passive', rarity: 'common', desc: '' };
@@ -1806,10 +1809,15 @@ function enemyTakeDamage(room, enemy, damage, ownerId, now) {
     room.scores.set(ownerId, (room.scores.get(ownerId) || 0) + getEnemyScoreValue(enemy));
     room.kills.set(ownerId, (room.kills.get(ownerId) || 0) + 1);
     const killer = room.players.get(ownerId);
-    if (killer) gainPlayerXp(room, killer, getEnemyXpValue(enemy), now);
+    if (killer) {
+      if (enemy.type === 'boss') killer.bossKills = Math.max(0, Number(killer.bossKills) || 0) + 1;
+      else killer.enemyKills = Math.max(0, Number(killer.enemyKills) || 0) + 1;
+      gainPlayerXp(room, killer, getEnemyXpValue(enemy), now);
+    }
   }
 
   room.totalEnemyKills = (room.totalEnemyKills || 0) + 1;
+  if (enemy.type === 'boss') room.totalBossKills = (room.totalBossKills || 0) + 1;
   maybeScheduleBossSpawn(room, now);
   spawnXpOrbs(room, enemy.x, enemy.y, getEnemyXpValue(enemy));
   maybeSpawnDrop(room, enemy.x, enemy.y);
@@ -1899,7 +1907,10 @@ function buildRunDetails(room, target, now) {
     damageMul: Math.max(0.1, Number(target.damageMul) || 1),
     fireRateMul: Math.max(0.1, Number(target.fireRateMul) || 1),
     moveSpeedMul: Math.max(0.1, Number(target.moveSpeedMul) || 1),
+    enemyKills: Math.max(0, Number(target.enemyKills) || 0),
+    bossKills: Math.max(0, Number(target.bossKills) || 0),
     totalEnemyKills: Math.max(0, Number(room.totalEnemyKills) || 0),
+    totalBossKills: Math.max(0, Number(room.totalBossKills) || 0),
     roomAlivePlayers: Math.max(0, Number(room.players?.size) || 0),
     survivedSec: Math.max(1, Math.floor((now - (target.joinedAt || now)) / 1000)),
     skills,
@@ -2272,6 +2283,8 @@ function joinRoom(ws, join) {
     moveSpeedMul: 1,
     hpRegenPerSec: 0,
     pickupRadius: PLAYER_PICKUP_RADIUS_BASE,
+    enemyKills: 0,
+    bossKills: 0,
     extraDodgeCharges: 0,
     joinedAt: Date.now(),
     devUnlocked: false,
