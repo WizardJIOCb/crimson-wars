@@ -208,6 +208,7 @@ const game = {
       lastAckSeq: 0,
       nextInputSeq: 0,
       oldestPendingMs: 0,
+      instanceId: '',
     },
   },
   roomStartedAt: 0,

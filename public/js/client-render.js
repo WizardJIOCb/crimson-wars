@@ -599,13 +599,14 @@ function drawPredictionDebugOverlay() {
     `pending: ${Math.round(Number(d.pendingInputs) || 0)}`,
     `ack/next: ${Math.round(Number(d.lastAckSeq) || 0)}/${Math.round(Number(d.nextInputSeq) || 0)}`,
     `oldest: ${Math.round(Number(d.oldestPendingMs) || 0)}ms`,
+    `inst: ${String(d.instanceId || '--')}`,
   ];
 
   ctx.save();
   ctx.fillStyle = 'rgba(5,10,18,0.8)';
-  ctx.fillRect(14, 62, 232, 164);
+  ctx.fillRect(14, 62, 250, 180);
   ctx.strokeStyle = 'rgba(120,180,220,0.35)';
-  ctx.strokeRect(14, 62, 232, 164);
+  ctx.strokeRect(14, 62, 250, 180);
   ctx.fillStyle = '#dbeafe';
   ctx.font = '12px monospace';
   ctx.textAlign = 'left';

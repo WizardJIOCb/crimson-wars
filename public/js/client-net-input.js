@@ -846,6 +846,7 @@ function updatePredictionDebugSnapshot() {
     lastAckSeq: Number(game.localPrediction.lastAckSeq) || 0,
     nextInputSeq: Number(game.localPrediction.nextInputSeq) || 0,
     oldestPendingMs: oldestPending,
+    instanceId: String(game.runtimeInstance?.instanceId || game.state?.instanceId || ''),
   };
 }
 
@@ -1331,7 +1332,7 @@ function clearLocalSessionState() {
   game.localPrediction.shotCooldownMs = 0;
   game.localPrediction.predictedBullets = [];
   game.localPrediction.debug = {
-    serverX: 0, serverY: 0, predictedX: 0, predictedY: 0, renderX: 0, renderY: 0, posError: 0, bulletError: 0, predictedBullets: 0,
+    serverX: 0, serverY: 0, predictedX: 0, predictedY: 0, renderX: 0, renderY: 0, posError: 0, bulletError: 0, predictedBullets: 0, pendingInputs: 0, lastAckSeq: 0, nextInputSeq: 0, oldestPendingMs: 0, instanceId: '',
   };
   game.renderPlayers.clear();
   game.renderEnemies.clear();
@@ -1523,7 +1524,7 @@ message: (ev) => {
     game.localPrediction.shotCooldownMs = 0;
     game.localPrediction.predictedBullets = [];
     game.localPrediction.debug = {
-      serverX: 0, serverY: 0, predictedX: 0, predictedY: 0, renderX: 0, renderY: 0, posError: 0, bulletError: 0, predictedBullets: 0,
+      serverX: 0, serverY: 0, predictedX: 0, predictedY: 0, renderX: 0, renderY: 0, posError: 0, bulletError: 0, predictedBullets: 0, pendingInputs: 0, lastAckSeq: 0, nextInputSeq: 0, oldestPendingMs: 0, instanceId: '',
     };
     visuals.enemyPrev = new Map();
     visuals.playerPrev = new Map();
