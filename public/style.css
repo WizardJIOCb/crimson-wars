@@ -114,7 +114,8 @@ body {
 #minimap-wrap {
   position: fixed;
   left: 12px;
-  bottom: calc(env(safe-area-inset-bottom) + 12px);
+  top: calc(env(safe-area-inset-top) + 12px);
+  bottom: auto;
   z-index: 12;
   pointer-events: none;
   width: 220px;
@@ -282,6 +283,10 @@ body {
 }
 
 #scoreboard {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 12px);
+  right: 12px;
+  z-index: 41;
   max-width: 360px;
   min-width: 260px;
   max-height: min(52vh, 420px);
@@ -912,8 +917,10 @@ body {
 }
 
 #toggle-info {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 12px);
+  left: 244px;
   pointer-events: auto;
-  align-self: flex-start;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -1631,7 +1638,7 @@ body {
   #toggle-info {
     position: fixed;
     top: calc(env(safe-area-inset-top) + 8px);
-    left: 8px;
+    left: 160px;
     z-index: 42;
   }
 
@@ -1651,8 +1658,8 @@ body {
 
 @media (max-width: 720px) {
   #toggle-info {
-    top: calc(env(safe-area-inset-top) + 52px);
-    left: 8px;
+    top: calc(env(safe-area-inset-top) + 8px);
+    left: 156px;
   }
 
   #fps-corner {
@@ -1689,7 +1696,7 @@ body {
 @media (max-width: 720px) {
   #toggle-info {
     top: calc(env(safe-area-inset-top) + 10px);
-    left: 12px;
+    left: 156px;
     width: 32px;
     height: 30px;
     padding: 0;
@@ -1725,7 +1732,8 @@ body {
 
   #minimap-wrap {
     left: 12px;
-    bottom: calc(env(safe-area-inset-bottom) + 148px);
+    top: calc(env(safe-area-inset-top) + 8px);
+    bottom: auto;
     width: 136px;
     height: 136px;
   }
