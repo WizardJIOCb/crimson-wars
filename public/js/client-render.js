@@ -181,7 +181,7 @@ function drawPlayer(p, t, isMe, rx, ry) {
   const x = rx - camera.x;
   const y = ry - camera.y;
   const isCompanion = Boolean(p.isCompanion);
-  const displayPlayer = isMe ? (getPredictedLocalPlayer() || p) : p;
+  const displayPlayer = p;
 
   if (!p.alive) {
     drawCircle(rx, ry, 18, '#6b7280');
@@ -795,8 +795,7 @@ function render(ts) {
 
   for (const p of game.state.players) {
     const rp = getPlayerRenderPos(p);
-    const displayPlayer = p.id === game.myId ? (getPredictedLocalPlayer() || p) : p;
-    drawPlayer(displayPlayer, ts / 1000, p.id === game.myId, rp.x, rp.y);
+    drawPlayer(p, ts / 1000, p.id === game.myId, rp.x, rp.y);
   }
 
   drawTrees();

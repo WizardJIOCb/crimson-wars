@@ -530,13 +530,9 @@ async function requestRecordsList(page = recordsUi.page) {
 }
 function updatePlayerInterpolation(dt) {
   if (!game.state) return;
-  simulateLocalPlayerPrediction(dt);
   const liveMap = mapById(game.state.players);
   const targetMap = game.sampledNet?.players ? new Map(game.sampledNet.players) : new Map(liveMap);
-  const predictedMe = getPredictedLocalPlayer();
-  if (predictedMe && game.myId) {
-    targetMap.set(game.myId, predictedMe);
-  } else if (game.myId && liveMap.has(game.myId)) {
+  if (game.myId && liveMap.has(game.myId)) {
     targetMap.set(game.myId, liveMap.get(game.myId));
   }
   const alpha = 1 - Math.exp(-roomSync.entityInterpRate * dt);
@@ -545,39 +541,9 @@ function updatePlayerInterpolation(dt) {
   for (const [id, p] of targetMap.entries()) {
     alive.add(id);
     let r = game.renderPlayers.get(id);
-    const localRenderPos = id === game.myId && predictedMe ? getLocalPredictedRenderPos() : null;
-    const targetX = localRenderPos ? localRenderPos.x : p.x;
-    const targetY = localRenderPos ? localRenderPos.y : p.y;
     if (!r) {
-      r = { x: targetX, y: targetY, vx: 0, vy: 0 };
+      r = { x: p.x, y: p.y, vx: 0, vy: 0 };
       game.renderPlayers.set(id, r);
-      continue;
-    }
-
-    if (id === game.myId && predictedMe) {
-      const dx = targetX - r.x;
-      const dy = targetY - r.y;
-      const dist = Math.hypot(dx, dy);
-      if (!isLocalDodgeVisualActive() && dist >= CLIENT_LOCAL_RENDER_HARD_SNAP_DIST) {
-        r.vx = dx / Math.max(0.001, dt);
-        r.vy = dy / Math.max(0.001, dt);
-        r.x = targetX;
-        r.y = targetY;
-      } else if (dist > 0.0001) {
-        const localAlpha = 1 - Math.exp(-CLIENT_LOCAL_RENDER_FOLLOW_RATE * dt);
-        const followStep = dist * localAlpha;
-        const maxStep = CLIENT_LOCAL_RENDER_MAX_CORRECTION_SPEED * dt;
-        const step = Math.min(dist, Math.max(followStep, maxStep));
-        const nx = r.x + (dx / dist) * step;
-        const ny = r.y + (dy / dist) * step;
-        r.vx = (nx - r.x) / Math.max(0.001, dt);
-        r.vy = (ny - r.y) / Math.max(0.001, dt);
-        r.x = nx;
-        r.y = ny;
-      } else {
-        r.vx = 0;
-        r.vy = 0;
-      }
       continue;
     }
 
@@ -1552,19 +1518,17 @@ message: (ev) => {
 
     const me = s.players.find((p) => p.id === game.myId);
     if (me) {
-      reconcileLocalPlayerPrediction(me);
-      const localMe = getPredictedLocalPlayer() || me;
       updateStatsPanel(me);
-      updateJumpButtonUi(localMe);
-      const dodgeCdMeta = Math.max(0, Number(localMe.dodgeCooldownMs) || 0);
+      updateJumpButtonUi(me);
+      const dodgeCdMeta = Math.max(0, Number(me.dodgeCooldownMs) || 0);
       const jumpMeta = dodgeCdMeta > 0 ? (dodgeCdMeta / 1000).toFixed(1) + 's' : 'ready';
       weaponMetaEl.textContent = `Weapon: ${me.weaponLabel} | Ammo: ${me.ammo === null ? 'inf' : me.ammo} | Jump: ${jumpMeta}`;
       if (movementMetaEl) {
         const nowMs = Date.now();
-        const slowed = (Number(localMe.slowUntil) || 0) > nowMs;
-        const slowLeft = Math.max(0, (Number(localMe.slowUntil) || 0) - nowMs);
-        const dodgeCd = Math.max(0, Number(localMe.dodgeCooldownMs) || 0);
-        const invuln = (Number(localMe.dodgeInvulnUntil) || 0) > nowMs;
+        const slowed = (Number(me.slowUntil) || 0) > nowMs;
+        const slowLeft = Math.max(0, (Number(me.slowUntil) || 0) - nowMs);
+        const dodgeCd = Math.max(0, Number(me.dodgeCooldownMs) || 0);
+        const invuln = (Number(me.dodgeInvulnUntil) || 0) > nowMs;
         const dodgeText = dodgeCd > 0 ? (dodgeCd / 1000).toFixed(1) + 's' : 'ready';
         const slowText = slowed ? ('SLOWED ' + (slowLeft / 1000).toFixed(1) + 's') : 'normal';
         movementMetaEl.textContent = `Move: ${slowText} | Jump: ${dodgeText}${invuln ? ' | i-frames' : ''}`;
@@ -1594,7 +1558,7 @@ void connectGameSocket(APP_ORIGIN);
 
 function buildCurrentInputPayload(includeJump = true) {
   if (!game.connected || !game.myId || !game.state) return null;
-  const me = getLocalPlayerForInput();
+  const me = game.state.players.find((p) => p.id === game.myId);
   if (!me) return null;
 
   let moveX = (input.right ? 1 : 0) - (input.left ? 1 : 0);
