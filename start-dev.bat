@@ -38,5 +38,5 @@ for /f %%P in ('powershell -NoProfile -Command "(Get-NetTCPConnection -LocalPort
 start "Crimson Wars Server" cmd.exe /k "cd /d ""%~dp0"" && set ""ADMIN_BOOTSTRAP_LOGIN=%ADMIN_BOOTSTRAP_LOGIN_LOCAL%"" && set ""ADMIN_BOOTSTRAP_PASSWORD=%ADMIN_BOOTSTRAP_PASSWORD_LOCAL%"" && echo Using admin login %ADMIN_BOOTSTRAP_LOGIN_LOCAL% && node server.js"
 
 timeout /t 2 /nobreak >nul
-start "" "%APP_URL%"
+&start "" "%APP_URL%"
 exit /b 0
