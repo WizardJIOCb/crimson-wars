@@ -146,6 +146,48 @@ sudo certbot --nginx -d crimson.rodion.pro
 Проверьте соответствие лицензий вашей коммерческой модели перед релизом.
 
 ## Полезно для продакшена
-- Логи сервиса: `journalctl -u crimson-wars -f`
-- Перезапуск: `sudo systemctl restart crimson-wars`
-- Проверка порта: `ss -ltnp | grep 8080`
+- SSH: `ssh root@82.146.42.213`
+- Директория проекта: `cd /var/www/crimson.rodion.pro`
+- Обновить код на проде:
+  ```bash
+  git fetch origin main
+  git checkout main
+  git pull --ff-only origin main
+  ```
+- Перезапустить весь прод:
+  ```bash
+  ./deploy/restart-crimson-services.sh
+  ```
+- Проверить, что все инстансы поднялись:
+  ```bash
+  systemctl is-active crimson-wars crimson-wars-2 crimson-wars-3 crimson-wars-4
+  ```
+- Логи основного инстанса: `journalctl -u crimson-wars -f`
+- Логи всех инстансов:
+  ```bash
+  journalctl -u crimson-wars -u crimson-wars-2 -u crimson-wars-3 -u crimson-wars-4 -n 120 --no-pager
+  ```
+- Проверка портов:
+  ```bash
+  ss -ltnp | grep -E ':8080|:8081|:8082|:8083'
+  ```
+
+### Очистка таблицы рейтинга на проде
+
+База рекордов находится в:
+
+```bash
+/var/www/crimson.rodion.pro/data/records.db
+```
+
+Очистить все записи рейтинга:
+
+```bash
+sqlite3 /var/www/crimson.rodion.pro/data/records.db "DELETE FROM records; DELETE FROM sqlite_sequence WHERE name = 'records';"
+```
+
+Проверить, что таблица пуста:
+
+```bash
+sqlite3 /var/www/crimson.rodion.pro/data/records.db "SELECT COUNT(*) FROM records;"
+```
