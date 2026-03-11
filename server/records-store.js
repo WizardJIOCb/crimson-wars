@@ -152,6 +152,10 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
   }
 
   function listRecordsForLobby(page = 1, pageSize = leaderboardPageSize) {
+    // Multiple production instances write to the same SQLite DB, so refresh
+    // the in-memory leaderboard before serving the lobby list.
+    if (recordsDb && stmtTopRecords) loadRecordsFromDb();
+
     const total = records.length;
     const size = Math.max(1, Math.min(50, Math.floor(pageSize) || leaderboardPageSize));
     const totalPages = Math.max(1, Math.ceil(total / size));
