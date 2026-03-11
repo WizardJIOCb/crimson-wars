@@ -254,6 +254,22 @@ for (const el of [syncTickrateEl, syncStateRateEl, syncRenderDelayEl, syncMaxExt
 async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
   const mode = joinSync ? 'create' : 'join';
   const skipRouting = options?.skipRouting === true;
+  const source = options?.source || 'menu';
+  if (typeof window.cwSetPendingJoinAnalytics === 'function') {
+    window.cwSetPendingJoinAnalytics(mode, roomCode, source);
+  }
+  if (typeof window.cwTrackMetrikaGoal === 'function') {
+    window.cwTrackMetrikaGoal(mode === 'create' ? 'create_room_attempt' : 'join_room_attempt', {
+      source,
+      room_code: String(roomCode || '').trim().toUpperCase() || 'AUTO',
+      sync_preset: joinSync ? String(syncPresetEl?.value || 'custom') : 'none',
+    });
+    window.cwTrackMetrikaGoal('game_start_attempt', {
+      mode,
+      source,
+      room_code: String(roomCode || '').trim().toUpperCase() || 'AUTO',
+    });
+  }
   clearJoinFeedback();
   if (!skipRouting) {
     try {
@@ -326,6 +342,9 @@ async function copyRoomCodeToClipboard(roomCode, { silent = false } = {}) {
 if (roomMetaEl) { roomMetaEl.style.cursor = 'pointer'; roomMetaEl.title = 'Click to copy room code'; }
 roomMetaEl?.addEventListener('click', () => {
   if (!game.roomCode) return;
+  if (typeof window.cwTrackMetrikaGoal === 'function') {
+    window.cwTrackMetrikaGoal('room_code_copy', { room_code: game.roomCode });
+  }
   copyRoomCodeToClipboard(game.roomCode, { silent: false });
 });
 function renderPresence(presence) {
@@ -365,7 +384,13 @@ function renderRoomsList(rooms) {
     joinBtn.addEventListener('click', () => {
       roomCodeInput.value = room.code;
       joinMode = 'join';
-      void sendJoinRequest(room.code, null);
+      if (typeof window.cwTrackMetrikaGoal === 'function') {
+        window.cwTrackMetrikaGoal('room_search_result_click', {
+          room_code: room.code,
+          players: Number(room.players) || 0,
+        });
+      }
+      void sendJoinRequest(room.code, null, { source: 'rooms_list' });
     });
 
     row.appendChild(code);
@@ -978,7 +1003,7 @@ joinForm.addEventListener('submit', (e) => {
   if (ws.readyState !== WebSocket.OPEN) return;
   const roomCode = joinMode === 'create' ? '' : roomCodeInput.value.trim();
   const joinSync = joinMode === 'create' ? configFromSyncUi() : null;
-  void sendJoinRequest(roomCode, joinSync);
+  void sendJoinRequest(roomCode, joinSync, { source: 'join_form' });
 });
 
 function handleSkillOptionInteract(e) {
@@ -989,6 +1014,9 @@ function handleSkillOptionInteract(e) {
   const sid = card.dataset.skillId;
   if (!sid || ws.readyState !== WebSocket.OPEN || !game.myId) return;
   if (typeof e.preventDefault === 'function') e.preventDefault();
+  if (typeof window.cwTrackMetrikaGoal === 'function') {
+    window.cwTrackMetrikaGoal('skill_pick', { skill_id: sid });
+  }
   sendJson({ type: 'skillPick', skillId: sid });
 }
 
@@ -1089,6 +1117,14 @@ function openDeathMenuAfterCinematic() {
 }
 
 function openDeathOverlay(result) {
+  if (typeof window.cwTrackMetrikaGoal === 'function') {
+    window.cwTrackMetrikaGoal('player_death', {
+      room_code: result?.roomCode || '-',
+      kills: Number(result?.kills) || 0,
+      score: Number(result?.score) || 0,
+      survival_sec: Number(result?.survivalSec) || 0,
+    });
+  }
   leaveActiveRoom();
   joinOverlay.style.display = 'grid';
   joinOverlay.classList.add('death-mode');
@@ -1097,11 +1133,17 @@ function openDeathOverlay(result) {
 }
 
 deathContinueBtn?.addEventListener('click', () => {
+  if (typeof window.cwTrackMetrikaGoal === 'function') {
+    window.cwTrackMetrikaGoal('death_overlay_continue', { source: 'death_cinematic' });
+  }
   openDeathMenuAfterCinematic();
 });
 
 
 refreshRoomsBtn?.addEventListener('click', () => {
+  if (typeof window.cwTrackMetrikaGoal === 'function') {
+    window.cwTrackMetrikaGoal('room_search_manual', { source: 'refresh_button' });
+  }
   requestRoomsList();
 });
 refreshRecordsBtn?.addEventListener('click', () => {
@@ -1209,6 +1251,35 @@ message: (ev) => {
     roomMetaEl.textContent = `Room: ${msg.roomCode}`;
     copyRoomCodeToClipboard(msg.roomCode, { silent: true });
     statusEl.textContent = `Online as ${msg.id} | tick ${roomSync.tickRate}`;
+    const pendingJoin = game.analytics?.pendingJoin || null;
+    if (typeof window.cwTrackMetrikaGoal === 'function') {
+      const mode = pendingJoin?.mode || (joinMode === 'create' ? 'create' : 'join');
+      const source = pendingJoin?.source || 'unknown';
+      window.cwTrackMetrikaGoal('room_connected', {
+        mode,
+        source,
+        room_code: msg.roomCode,
+      });
+      window.cwTrackMetrikaGoal('game_start_success', {
+        mode,
+        source,
+        room_code: msg.roomCode,
+      });
+      if (mode === 'create') {
+        window.cwTrackMetrikaGoal('room_created', {
+          source,
+          room_code: msg.roomCode,
+        });
+      } else {
+        window.cwTrackMetrikaGoal('room_join_success', {
+          source,
+          room_code: msg.roomCode,
+        });
+      }
+    }
+    if (typeof window.cwClearPendingJoinAnalytics === 'function') {
+      window.cwClearPendingJoinAnalytics();
+    }
     if (msg.me?.name && !game.playerAuth?.player) {
       game.playerAuth.nicknameStatus = {
         nickname: msg.me.name,
@@ -1224,6 +1295,18 @@ message: (ev) => {
     waitingForFirstStateSince = 0;
     statusEl.textContent = msg.message;
     setJoinFeedback(msg.message);
+    if (typeof window.cwTrackMetrikaGoal === 'function') {
+      const pendingJoin = game.analytics?.pendingJoin || null;
+      window.cwTrackMetrikaGoal('room_join_error', {
+        mode: pendingJoin?.mode || joinMode || 'unknown',
+        source: pendingJoin?.source || 'unknown',
+        room_code: msg.roomCode || pendingJoin?.roomCode || roomCodeInput?.value?.trim()?.toUpperCase() || 'AUTO',
+        error_code: String(msg.code || 'unknown'),
+      });
+    }
+    if (!msg.redirectUrl && typeof window.cwClearPendingJoinAnalytics === 'function') {
+      window.cwClearPendingJoinAnalytics();
+    }
     if (msg.redirectUrl) {
       try {
         const redirectedOrigin = normalizeOrigin(msg.redirectUrl);
@@ -1265,6 +1348,12 @@ message: (ev) => {
     game.nextBossAtKills = Number(s.nextBossAtKills) || game.nextBossAtKills || 50;
     game.nextBossSpawnAt = Number(s.nextBossSpawnAt) || 0;
     game.bossAlive = Boolean(s.bossAlive);
+    if (game.bossAlive && typeof window.cwTrackMetrikaGoalOnce === 'function') {
+      window.cwTrackMetrikaGoalOnce(`boss_encounter:${s.roomCode}`, 'boss_encounter', {
+        room_code: s.roomCode,
+        total_enemy_kills: Number(s.totalEnemyKills) || 0,
+      });
+    }
     game.roomDifficulty = s.roomDifficulty || game.roomDifficulty;
     if (s.sync) applyRoomSync(s.sync);
     roomMetaEl.textContent = `Room: ${s.roomCode}`;

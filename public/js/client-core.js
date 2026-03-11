@@ -101,6 +101,7 @@ ctx.imageSmoothingEnabled = false;
 
 const APP_ORIGIN = window.location.origin;
 let currentWorkerOrigin = APP_ORIGIN;
+const METRIKA_COUNTER_ID = 107267514;
 let ws = {
   readyState: WebSocket.CLOSED,
   close() {},
@@ -194,6 +195,10 @@ const game = {
     busy: false,
     checkingNickname: false,
   },
+  analytics: {
+    pendingJoin: null,
+    sentKeys: new Set(),
+  },
 };
 
 const camera = { x: 0, y: 0 };
@@ -253,6 +258,42 @@ const devConsoleHistory = [];
 let devConsoleHistoryIndex = -1;
 const DEV_KEY_BINDINGS_STORAGE_KEY = 'cw:devKeyBindings';
 let devKeyBindings = {};
+
+function trackMetrikaGoal(goal, params = {}) {
+  if (typeof window.ym !== 'function') return false;
+  try {
+    window.ym(METRIKA_COUNTER_ID, 'reachGoal', goal, params);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function trackMetrikaGoalOnce(key, goal, params = {}) {
+  if (!key) return trackMetrikaGoal(goal, params);
+  if (game.analytics.sentKeys.has(key)) return false;
+  const sent = trackMetrikaGoal(goal, params);
+  if (sent) game.analytics.sentKeys.add(key);
+  return sent;
+}
+
+function setPendingJoinAnalytics(mode, roomCode = '', source = 'menu') {
+  game.analytics.pendingJoin = {
+    mode: mode === 'create' ? 'create' : 'join',
+    roomCode: String(roomCode || '').trim().toUpperCase(),
+    source,
+    startedAt: Date.now(),
+  };
+}
+
+function clearPendingJoinAnalytics() {
+  game.analytics.pendingJoin = null;
+}
+
+window.cwTrackMetrikaGoal = trackMetrikaGoal;
+window.cwTrackMetrikaGoalOnce = trackMetrikaGoalOnce;
+window.cwSetPendingJoinAnalytics = setPendingJoinAnalytics;
+window.cwClearPendingJoinAnalytics = clearPendingJoinAnalytics;
 
 function loadDevConsoleHistory() {
   try {
@@ -866,11 +907,13 @@ async function loginPlayerAccount() {
   }
   clearAuthFeedback();
   setPlayerAuthBusy(true);
+  trackMetrikaGoal('player_login_attempt', { auth_mode: 'login' });
   try {
     const data = await apiJson('/api/player/login', {
       method: 'POST',
       body: JSON.stringify({ nickname, password }),
     });
+    trackMetrikaGoal('player_login_success', { auth_mode: 'login' });
     game.playerAuth.player = data.player || null;
     game.playerAuth.identities = Array.isArray(data.identities) ? data.identities : [];
     if (authLoginPasswordEl) authLoginPasswordEl.value = '';
@@ -898,11 +941,13 @@ async function registerPlayerAccount() {
   }
   clearAuthFeedback();
   setPlayerAuthBusy(true);
+  trackMetrikaGoal('player_register_attempt', { auth_mode: 'register' });
   try {
     const data = await apiJson('/api/player/register', {
       method: 'POST',
       body: JSON.stringify({ nickname, password }),
     });
+    trackMetrikaGoal('player_register_success', { auth_mode: 'register' });
     game.playerAuth.player = data.player || null;
     game.playerAuth.identities = Array.isArray(data.identities) ? data.identities : [];
     if (authRegisterPasswordEl) authRegisterPasswordEl.value = '';
@@ -922,8 +967,10 @@ async function registerPlayerAccount() {
 async function logoutPlayerAccount() {
   setPlayerAuthBusy(true);
   clearAuthFeedback();
+  trackMetrikaGoal('player_logout_click', { auth_mode: game.playerAuth.player ? 'account' : 'guest' });
   try {
     await apiJson('/api/player/logout', { method: 'POST', body: '{}' });
+    trackMetrikaGoal('player_logout_success', { auth_mode: 'account' });
     game.playerAuth.player = null;
     game.playerAuth.identities = [];
     game.playerAuth.nicknameStatus = null;
