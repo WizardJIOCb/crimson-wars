@@ -131,6 +131,10 @@ function setInfoPanelHidden(hidden) {
     toggleInfoBtn.title = 'Show menu';
     toggleInfoBtn.classList.toggle('hidden', !infoPanelHidden);
   }
+  if (devConsoleToggleBtn) {
+    const overlayOpen = getComputedStyle(joinOverlay).display !== 'none';
+    devConsoleToggleBtn.classList.toggle('hidden', !mobile.enabled || overlayOpen || !infoPanelHidden);
+  }
   localStorage.setItem('cw:infoPanelHidden', infoPanelHidden ? '1' : '0');
 }
 

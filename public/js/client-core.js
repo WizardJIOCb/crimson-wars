@@ -1027,6 +1027,34 @@ function rarityColor(r) {
   return '#d1d5db';
 }
 
+function skillBadgeLabel(skill) {
+  const id = String(skill?.id || '').toLowerCase();
+  const named = {
+    weapon_mastery: 'DMG',
+    rapid_reload: 'RLD',
+    vitality: 'HP',
+    haste: 'SPD',
+    magnetism: 'MAG',
+    bloodlust: 'BLD',
+    regeneration: 'REG',
+    dodge_instinct: 'JMP',
+    pistol_buddy: 'P',
+    smg_buddy: 'SMG',
+    shotgun_buddy: 'SG',
+    sniper_buddy: 'SN',
+    shockwave: 'SW',
+    blade_orbit: 'ORB',
+    chain_lightning: 'CL',
+    homing_missiles: 'HM',
+  };
+  if (named[id]) return named[id];
+  const name = String(skill?.name || id || '?').replace(/[^A-Za-z0-9]+/g, ' ').trim();
+  if (!name) return '?';
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return parts[0].slice(0, 3).toUpperCase();
+}
+
 function renderLevelupChoices() {
   if (!levelupOverlayEl || !levelupOptionsEl) return;
   const choices = Array.isArray(game.mySkillChoices) ? game.mySkillChoices : [];
@@ -1090,9 +1118,16 @@ function updateBottomHud() {
 
   const skills = Array.isArray(me.skills) ? me.skills : [];
   if (skillBarEl) {
+    const compactSkills = mobile.enabled;
     const chips = skills.map((s) => {
       const cd = Math.max(0, Number(s.cooldownMs) || 0);
       const rarity = (s.rarity || 'common').toLowerCase();
+      if (compactSkills) {
+        const badge = skillBadgeLabel(s);
+        const stateText = s.kind === 'active' ? (cd > 0 ? `${Math.max(0.1, cd / 1000).toFixed(1)}` : 'R') : '';
+        const label = `${s.name} Lv${s.level}${stateText ? `, ${stateText === 'R' ? 'ready' : `${stateText}s cooldown`}` : ''}`;
+        return `<div class="skill-chip compact" title="${label}" aria-label="${label}" style="border-color:${rarityColor(rarity)}66"><span class="skill-chip-icon">${badge}</span><span class="skill-chip-level">Lv${s.level}</span>${stateText ? `<span class="skill-chip-state${stateText === 'R' ? ' ready' : ''}">${stateText}</span>` : ''}</div>`;
+      }
       const cdText = s.kind === 'active' ? (cd > 0 ? `${(cd / 1000).toFixed(1)}s` : 'ready') : `Lv${s.level}`;
       return `<div class="skill-chip" style="border-color:${rarityColor(rarity)}66"><div>${s.name} Lv${s.level}</div><div class="cd">${cdText}</div></div>`;
     });
@@ -1705,7 +1740,9 @@ function updateFpsCornerVisibility(overlayOpen = null) {
 function updateMinimapVisibility(overlayOpen = null) {
   if (!minimapWrapEl) return;
   const menuOpen = overlayOpen === null ? (getComputedStyle(joinOverlay).display !== 'none') : Boolean(overlayOpen);
-  minimapWrapEl.classList.toggle('hidden', menuOpen || !game.showMinimapEnabled);
+  const minimapDisabled = !game.showMinimapEnabled;
+  minimapWrapEl.classList.toggle('hidden', menuOpen || minimapDisabled);
+  if (toggleInfoBtn) toggleInfoBtn.classList.toggle('minimap-hidden', minimapDisabled);
 }
 
 function updateHudVisibility(overlayOpen) {

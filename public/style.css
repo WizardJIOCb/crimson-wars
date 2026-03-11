@@ -96,6 +96,10 @@ body {
   bottom: calc(env(safe-area-inset-bottom) + 12px);
   z-index: 12;
   pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  max-width: max-content;
   padding: 5px 8px;
   border-radius: 8px;
   border: 1px solid rgba(255,255,255,0.2);
@@ -104,6 +108,7 @@ body {
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.2px;
+  white-space: nowrap;
   backdrop-filter: blur(6px);
 }
 
@@ -163,6 +168,71 @@ body {
 .skill-chip .cd {
   color: #fcd34d;
   font-weight: 700;
+}
+
+.skill-chip.compact {
+  position: relative;
+  min-width: 42px;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: rgba(7, 12, 20, 0.9);
+  box-shadow: 0 8px 18px rgba(0,0,0,0.24);
+}
+
+.skill-chip-icon {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  color: #e5e7eb;
+}
+
+.skill-chip-level {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  min-width: 20px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.96);
+  border: 1px solid rgba(255,255,255,0.18);
+  color: #f8fafc;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.skill-chip-state {
+  position: absolute;
+  left: 50%;
+  top: -6px;
+  transform: translateX(-50%);
+  min-width: 20px;
+  height: 14px;
+  padding: 0 4px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(127, 29, 29, 0.96);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  color: #fee2e2;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.skill-chip-state.ready {
+  background: rgba(20, 83, 45, 0.96);
+  border-color: rgba(74, 222, 128, 0.4);
+  color: #dcfce7;
 }
 
 #xp-wrap {
@@ -711,6 +781,18 @@ body {
 }
 
 @media (max-width: 720px) {
+  #skill-bar {
+    gap: 6px;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding: 8px 0 10px;
+    scrollbar-width: none;
+  }
+
+  #skill-bar::-webkit-scrollbar {
+    display: none;
+  }
+
   #hud {
     flex-direction: column;
     right: auto;
@@ -728,7 +810,7 @@ body {
     justify-content: center;
     flex-wrap: wrap;
     font-size: 12px;
-    padding: 7px 10px;
+    padding: 7px 10px 7px 42px;
   }
 
   .panel {
@@ -944,6 +1026,10 @@ body {
 
 #toggle-info.hidden {
   display: none;
+}
+
+#toggle-info.minimap-hidden {
+  left: 12px;
 }
 
 #toggle-info .menu-burger {
@@ -1427,8 +1513,11 @@ body {
 /* Keep mobile HUD layout overrides at the very end so base rules above don't override them. */
 @media (max-width: 720px) {
   #bottom-hud {
-    width: calc(100vw - 14px);
-    bottom: calc(env(safe-area-inset-bottom) + 6px);
+    left: 7px;
+    right: 7px;
+    transform: none;
+    width: auto;
+    bottom: calc(env(safe-area-inset-bottom) + 20px);
   }
 
   #fps-corner {
@@ -1659,6 +1748,10 @@ body {
     width: calc(100vw - 16px);
     max-height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 18px);
   }
+
+  #toggle-info.minimap-hidden {
+    left: 8px;
+  }
 }
 
 @media (max-width: 720px) {
@@ -1669,17 +1762,29 @@ body {
 
   #fps-corner {
     left: 8px;
-    bottom: calc(env(safe-area-inset-bottom) + 82px);
+    bottom: calc(env(safe-area-inset-bottom) + 120px);
   }
 
   #stats-toggle {
     right: 8px;
-    bottom: calc(env(safe-area-inset-bottom) + 82px);
+    bottom: calc(env(safe-area-inset-bottom) + 120px);
   }
 
   #stats-panel {
     right: 8px;
-    bottom: calc(env(safe-area-inset-bottom) + 126px);
+    bottom: calc(env(safe-area-inset-bottom) + 146px);
+  }
+
+  #bottom-hud {
+    bottom: calc(env(safe-area-inset-bottom) + 6px);
+  }
+
+  #skill-bar {
+    position: fixed;
+    left: 7px;
+    right: 7px;
+    bottom: calc(env(safe-area-inset-bottom) + 66px);
+    margin-bottom: 0;
   }
 
   #mobile-controls {
@@ -1691,8 +1796,9 @@ body {
   }
 
   #minimap-wrap {
-    left: 8px;
-    bottom: calc(env(safe-area-inset-bottom) + 152px);
+    left: 12px;
+    top: calc(env(safe-area-inset-top) + 52px);
+    bottom: auto;
     width: 140px;
     height: 140px;
   }
@@ -1701,7 +1807,7 @@ body {
 @media (max-width: 720px) {
   #toggle-info {
     top: calc(env(safe-area-inset-top) + 10px);
-    left: 156px;
+    left: 12px;
     width: 32px;
     height: 30px;
     padding: 0;
@@ -1726,6 +1832,10 @@ body {
     color: #e5e7eb;
   }
 
+  #toggle-info.minimap-hidden {
+    left: 12px;
+  }
+
   #mobile-controls {
     bottom: calc(env(safe-area-inset-bottom) + 152px);
   }
@@ -1737,7 +1847,7 @@ body {
 
   #minimap-wrap {
     left: 12px;
-    top: calc(env(safe-area-inset-top) + 8px);
+    top: calc(env(safe-area-inset-top) + 52px);
     bottom: auto;
     width: 136px;
     height: 136px;
@@ -1835,7 +1945,7 @@ body {
   position: fixed;
   right: 12px;
   bottom: 62px;
-  z-index: 61;
+  z-index: 10;
   min-width: 44px;
   height: 34px;
   border-radius: 10px;
@@ -1848,6 +1958,10 @@ body {
 
 #dev-console-toggle.hidden {
   display: none;
+}
+
+body.levelup-open #dev-console-toggle {
+  display: none !important;
 }
 
 @media (max-width: 720px) {
