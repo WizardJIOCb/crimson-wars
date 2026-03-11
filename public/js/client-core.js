@@ -129,8 +129,8 @@ const CLIENT_PLAYER_DODGE_MAX_CHARGES = 2;
 const CLIENT_PLAYER_DODGE_INVULN_MS = 220;
 const CLIENT_PLAYER_SLOW_FACTOR = 0.8;
 const CLIENT_DODGE_VISUAL_MS = 180;
-const CLIENT_LOCAL_RENDER_FOLLOW_RATE = 28;
-const CLIENT_LOCAL_RENDER_SNAP_DIST = 72;
+const CLIENT_LOCAL_RENDER_FOLLOW_RATE = 20;
+const CLIENT_LOCAL_RENDER_SNAP_DIST = 110;
 const CLIENT_MAX_PREDICTION_AHEAD_MS = 140;
 const CLIENT_CAMERA_FOLLOW_RATE = 14;
 const CLIENT_CAMERA_SNAP_DIST = 140;
@@ -193,7 +193,7 @@ const game = {
     dodgeVisual: null,
     shotCooldownMs: 0,
     predictedBullets: [],
-    debugEnabled: true,
+    debugEnabled: false,
     debug: {
       serverX: 0,
       serverY: 0,

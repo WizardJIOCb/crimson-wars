@@ -747,65 +747,8 @@ function simulateLocalPlayerPrediction(dt) {
   if (!prediction.active || !prediction.player || !game.myId || !game.state) return;
   const command = buildCurrentInputPayload(false);
   if (!command) return;
-  prediction.shotCooldownMs = Math.max(0, Number(prediction.shotCooldownMs) || 0);
-  prediction.shotCooldownMs = Math.max(0, prediction.shotCooldownMs - dt * 1000);
   applyPredictedInputFrame(prediction.player, command, dt, Date.now());
-  updatePredictedLocalShots(prediction.player, command, dt);
   updatePredictionDebugSnapshot();
-}
-
-function spawnPredictedLocalShot(player, command) {
-  const me = game.state?.players?.find((p) => p.id === game.myId);
-  if (!player || !me) return;
-  const weaponKey = me.weaponKey || 'pistol';
-  const shotIntervalMs = Math.max(35, Number(me.shotIntervalMs) || 170);
-  const bulletColor = weaponKey === 'sniper' ? '#e5e7eb' : (weaponKey === 'shotgun' ? '#f97316' : (weaponKey === 'smg' ? '#38bdf8' : '#f59e0b'));
-  const bulletSpeed = weaponKey === 'sniper' ? 1220 : (weaponKey === 'shotgun' ? 770 : (weaponKey === 'smg' ? 860 : 920));
-  const bulletLifeMs = weaponKey === 'sniper' ? 1700 : (weaponKey === 'shotgun' ? 470 : (weaponKey === 'smg' ? 950 : 1300));
-  const aimDx = (Number(command.aimX) || player.x) - player.x;
-  const aimDy = (Number(command.aimY) || player.y) - player.y;
-  const len = Math.hypot(aimDx, aimDy) || 1;
-  const vx = (aimDx / len) * bulletSpeed;
-  const vy = (aimDy / len) * bulletSpeed;
-  const ang = Math.atan2(vy, vx);
-
-  predictionBulletCleanup();
-  game.localPrediction.predictedBullets.push({
-    id: `pred-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    x: player.x,
-    y: player.y,
-    vx,
-    vy,
-    color: bulletColor,
-    lifeMs: Math.min(180, bulletLifeMs),
-    ttlMs: Math.min(180, bulletLifeMs),
-    ownerId: game.myId,
-  });
-  visuals.muzzle.push({ x: player.x + Math.cos(ang) * 20, y: player.y + Math.sin(ang) * 20, a: ang, c: bulletColor, life: 0.05, ttl: 0.05 });
-  game.localPrediction.shotCooldownMs = shotIntervalMs;
-}
-
-function predictionBulletCleanup() {
-  if (game.localPrediction.predictedBullets.length > 32) {
-    game.localPrediction.predictedBullets.splice(0, game.localPrediction.predictedBullets.length - 32);
-  }
-}
-
-function updatePredictedLocalShots(player, command, dt) {
-  const prediction = game.localPrediction;
-  if (command.shooting && prediction.shotCooldownMs <= 0) {
-    spawnPredictedLocalShot(player, command);
-  }
-
-  for (let i = prediction.predictedBullets.length - 1; i >= 0; i -= 1) {
-    const b = prediction.predictedBullets[i];
-    b.x += b.vx * dt;
-    b.y += b.vy * dt;
-    b.lifeMs -= dt * 1000;
-    if (b.lifeMs <= 0 || b.x < 0 || b.y < 0 || b.x > game.world.width || b.y > game.world.height) {
-      prediction.predictedBullets.splice(i, 1);
-    }
-  }
 }
 
 function updatePredictionDebugSnapshot() {
