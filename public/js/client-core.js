@@ -131,8 +131,6 @@ const CLIENT_PLAYER_SLOW_FACTOR = 0.8;
 const CLIENT_DODGE_VISUAL_MS = 180;
 const CLIENT_LOCAL_RENDER_FOLLOW_RATE = 28;
 const CLIENT_LOCAL_RENDER_SNAP_DIST = 72;
-const CLIENT_CORRECTION_BLEND_RATE = 16;
-const CLIENT_CORRECTION_MAX_DIST = 36;
 const CLIENT_CAMERA_FOLLOW_RATE = 14;
 const CLIENT_CAMERA_SNAP_DIST = 140;
 const mobile = {
@@ -192,9 +190,6 @@ const game = {
     nextInputSeq: 0,
     lastAckSeq: 0,
     dodgeVisual: null,
-    correctionX: 0,
-    correctionY: 0,
-    lastRenderSampleAt: 0,
   },
   roomStartedAt: 0,
   totalEnemyKills: 0,

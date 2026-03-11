@@ -716,7 +716,6 @@ function reconcileLocalPlayerPrediction(authoritativePlayer) {
   if (!authoritativePlayer || authoritativePlayer.id !== game.myId) return;
 
   const prediction = game.localPrediction;
-  const prevPlayer = prediction.player ? { x: prediction.player.x, y: prediction.player.y } : null;
   const ackSeq = Math.max(0, Number(authoritativePlayer.lastProcessedInputSeq) || 0);
   prediction.lastAckSeq = Math.max(prediction.lastAckSeq, ackSeq);
   prediction.pendingInputs = prediction.pendingInputs.filter((cmd) => cmd.seq > prediction.lastAckSeq);
@@ -737,17 +736,6 @@ function reconcileLocalPlayerPrediction(authoritativePlayer) {
       Number(cmd.clientNowMs) || nowMs,
     );
   }
-
-  if (prevPlayer) {
-    const dx = prevPlayer.x - prediction.player.x;
-    const dy = prevPlayer.y - prediction.player.y;
-    const dist = Math.hypot(dx, dy);
-    if (dist > 0.001) {
-      const scale = dist > CLIENT_CORRECTION_MAX_DIST ? (CLIENT_CORRECTION_MAX_DIST / dist) : 1;
-      prediction.correctionX += dx * scale;
-      prediction.correctionY += dy * scale;
-    }
-  }
 }
 
 function simulateLocalPlayerPrediction(dt) {
@@ -762,22 +750,12 @@ function getLocalPredictedRenderPos() {
   const prediction = game.localPrediction;
   const player = prediction.player;
   if (!prediction.active || !player) return null;
-  const nowPerf = performance.now();
-  const prevSampleAt = Number(prediction.lastRenderSampleAt) || nowPerf;
-  const dt = Math.max(0, Math.min(0.05, (nowPerf - prevSampleAt) / 1000));
-  prediction.lastRenderSampleAt = nowPerf;
-
-  if (dt > 0) {
-    const k = 1 - Math.exp(-CLIENT_CORRECTION_BLEND_RATE * dt);
-    prediction.correctionX += (0 - prediction.correctionX) * k;
-    prediction.correctionY += (0 - prediction.correctionY) * k;
-  }
 
   const visual = prediction.dodgeVisual;
   if (!visual) {
     return {
-      x: player.x + prediction.correctionX,
-      y: player.y + prediction.correctionY,
+      x: player.x,
+      y: player.y,
     };
   }
 
@@ -790,14 +768,14 @@ function getLocalPredictedRenderPos() {
   if (t >= 1) {
     prediction.dodgeVisual = null;
     return {
-      x: player.x + prediction.correctionX,
-      y: player.y + prediction.correctionY,
+      x: player.x,
+      y: player.y,
     };
   }
 
   return {
-    x: visual.fromX + ((player.x + prediction.correctionX) - visual.fromX) * eased,
-    y: visual.fromY + ((player.y + prediction.correctionY) - visual.fromY) * eased,
+    x: visual.fromX + (player.x - visual.fromX) * eased,
+    y: visual.fromY + (player.y - visual.fromY) * eased,
   };
 }
 
@@ -1247,9 +1225,6 @@ function clearLocalSessionState() {
   game.localPrediction.nextInputSeq = 0;
   game.localPrediction.lastAckSeq = 0;
   game.localPrediction.dodgeVisual = null;
-  game.localPrediction.correctionX = 0;
-  game.localPrediction.correctionY = 0;
-  game.localPrediction.lastRenderSampleAt = 0;
   game.renderPlayers.clear();
   game.renderEnemies.clear();
   game.renderBullets.clear();
@@ -1437,9 +1412,6 @@ message: (ev) => {
     game.localPrediction.nextInputSeq = 0;
     game.localPrediction.lastAckSeq = 0;
     game.localPrediction.dodgeVisual = null;
-    game.localPrediction.correctionX = 0;
-    game.localPrediction.correctionY = 0;
-    game.localPrediction.lastRenderSampleAt = 0;
     visuals.enemyPrev = new Map();
     visuals.playerPrev = new Map();
     visuals.blood = [];
