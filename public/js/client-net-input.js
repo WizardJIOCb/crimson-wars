@@ -425,8 +425,908 @@ function updateRecordsPager() {
   if (recordsNextBtn) recordsNextBtn.disabled = recordsUi.page >= recordsUi.totalPages;
 }
 
+function buildReplayShareUrl(recordId) {
+  const id = Math.max(0, Number(recordId) || 0);
+  const url = new URL(window.location.href);
+  url.searchParams.delete('room');
+  url.searchParams.delete('mode');
+  url.searchParams.delete('routed');
+  if (id > 0) url.searchParams.set('replay', String(id));
+  else url.searchParams.delete('replay');
+  return url.toString();
+}
+
+function formatReplayClock(ms) {
+  const totalSec = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
+  const mins = Math.floor(totalSec / 60);
+  const secs = totalSec % 60;
+  return `${mins}:${String(secs).padStart(2, '0')}`;
+}
+
+function stopRecordReplayPlayback(resetElapsed = false) {
+  if (recordReplay.rafId) cancelAnimationFrame(recordReplay.rafId);
+  recordReplay.rafId = 0;
+  recordReplay.playing = false;
+  if (resetElapsed) recordReplay.elapsedMs = 0;
+  if (recordReplayPlayBtn) recordReplayPlayBtn.textContent = recordReplay.loaded ? 'Play Replay' : 'Load Replay';
+}
+
+function setRecordReplaySpeed(speed) {
+  const nextSpeed = Math.max(1, Number(speed) || 1);
+  recordReplay.speed = nextSpeed;
+  const buttons = recordReplaySpeedsEl ? Array.from(recordReplaySpeedsEl.querySelectorAll('[data-replay-speed]')) : [];
+  for (const btn of buttons) {
+    btn.classList.toggle('active', Number(btn.dataset.replaySpeed) === nextSpeed);
+  }
+  if (recordReplayMetaEl && recordReplay.loaded && !recordReplay.playing) {
+    const replayDurationMs = Number(recordReplay.payload?.durationSec || 0) * 1000 || Number(recordReplay.payload?.frames?.at(-1)?.t || 0);
+    recordReplayMetaEl.textContent = `Ready. ${formatReplayClock(replayDurationMs)} total | speed x${recordReplay.speed}`;
+  }
+}
+
+function resizeRecordReplayCanvas() {
+  if (!recordReplayCanvasEl) return null;
+  const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  const cssWidth = Math.max(280, Math.round(recordReplayCanvasEl.clientWidth || 520));
+  const cssHeight = Math.max(180, Math.round(cssWidth / 1.625));
+  const width = Math.round(cssWidth * dpr);
+  const height = Math.round(cssHeight * dpr);
+  if (recordReplayCanvasEl.width !== width || recordReplayCanvasEl.height !== height) {
+    recordReplayCanvasEl.width = width;
+    recordReplayCanvasEl.height = height;
+  }
+  const replayCtx = recordReplayCanvasEl.getContext('2d');
+  if (!replayCtx) return null;
+  replayCtx.setTransform(1, 0, 0, 1, 0, 0);
+  replayCtx.scale(dpr, dpr);
+  return { ctx: replayCtx, width: cssWidth, height: cssHeight };
+}
+
+function pickReplayFramePair(frames, elapsedMs) {
+  if (!Array.isArray(frames) || frames.length <= 0) return { current: null, next: null, alpha: 0 };
+  if (frames.length === 1 || elapsedMs <= Number(frames[0]?.t || 0)) return { current: frames[0], next: frames[0], alpha: 0 };
+  let lo = 0;
+  let hi = frames.length - 1;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (Number(frames[mid]?.t || 0) <= elapsedMs) lo = mid;
+    else hi = mid - 1;
+  }
+  const current = frames[lo] || frames[frames.length - 1];
+  const next = frames[Math.min(frames.length - 1, lo + 1)] || current;
+  const currentT = Number(current?.t || 0);
+  const nextT = Math.max(currentT, Number(next?.t || currentT));
+  const alpha = nextT > currentT ? Math.max(0, Math.min(1, (elapsedMs - currentT) / (nextT - currentT))) : 0;
+  return { current, next, alpha, index: lo };
+}
+
+function frameEntityMap(frameList) {
+  const map = new Map();
+  for (const item of Array.isArray(frameList) ? frameList : []) {
+    map.set(item[0], item);
+  }
+  return map;
+}
+
+function lerp(a, b, alpha) {
+  return a + (b - a) * alpha;
+}
+
+function getReplayDurationMs(payload) {
+  return Number(payload?.durationSec || 0) * 1000
+    || Math.max(0, Number(payload?.frames?.at(-1)?.t || 0));
+}
+
+function updateReplayGameButtons() {
+  if (replayGameToggleBtn) replayGameToggleBtn.textContent = replayGame.playing ? 'Pause' : 'Continue';
+}
+
+function seekReplayGame(elapsedMs, { keepPaused = null } = {}) {
+  const totalMs = getReplayDurationMs(replayGame.payload);
+  replayGame.elapsedMs = Math.max(0, Math.min(totalMs, Number(elapsedMs) || 0));
+  replayGame.startedAt = performance.now() - (replayGame.elapsedMs / Math.max(1, replayGame.speed || 1));
+  if (typeof keepPaused === 'boolean') replayGame.playing = !keepPaused;
+  visuals.enemyPrev = new Map();
+  visuals.playerPrev = new Map();
+  visuals.rocketPrev = new Map();
+  visuals.bulletIds = new Set();
+  visuals.skillCdPrev = new Map();
+  visuals.blood = [];
+  visuals.bloodPuddles = [];
+  visuals.gore = [];
+  visuals.hitFx = [];
+  visuals.muzzle = [];
+  visuals.bossBlast = [];
+  visuals.bloodMist = [];
+  visuals.rocketSmoke = [];
+  visuals.rocketFire = [];
+  visuals.skillBursts = [];
+  visuals.skillArcs = [];
+  visuals.skillLinks = [];
+  visuals.skillLabels = [];
+  replayGame.fxFrameIndex = -1;
+  tickReplayGame(performance.now());
+  updateReplayGameButtons();
+}
+
+function makeReplayBulletId(kind, fromEnemy, x, y, matchIndex) {
+  return `${kind}:${fromEnemy ? 1 : 0}:${Math.round(x / 8)}:${Math.round(y / 8)}:${matchIndex}`;
+}
+
+function isNewReplayBulletTuple(bullet) {
+  return Array.isArray(bullet) && (typeof bullet[0] === 'string' || typeof bullet[0] === 'number') && bullet.length >= 8;
+}
+
+function buildReplayCollisionTargets(enemiesRaw, playersRaw, bullet) {
+  const targets = [];
+  const hitPlayers = Boolean(bullet?.[7]);
+  if (hitPlayers) {
+    for (const player of Array.isArray(playersRaw) ? playersRaw : []) {
+      if (!player?.[4]) continue;
+      targets.push({
+        x: Number(player[1]) || 0,
+        y: Number(player[2]) || 0,
+        r: 18,
+      });
+    }
+    return targets;
+  }
+
+  for (const enemy of Array.isArray(enemiesRaw) ? enemiesRaw : []) {
+    targets.push({
+      x: Number(enemy[2]) || 0,
+      y: Number(enemy[3]) || 0,
+      r: Math.max(18, Number(enemy[6]) || 18),
+    });
+  }
+  return targets;
+}
+
+function findReplayBulletImpactPoint(bullet, dtSec, enemiesRaw, playersRaw) {
+  const x1 = Number(bullet?.[1]) || 0;
+  const y1 = Number(bullet?.[2]) || 0;
+  const vx = Number(bullet?.[3]) || 0;
+  const vy = Number(bullet?.[4]) || 0;
+  const bulletRadius = Math.max(2, Number(bullet?.[8]) || 3);
+  const x2 = x1 + vx * dtSec;
+  const y2 = y1 + vy * dtSec;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const segLenSq = dx * dx + dy * dy;
+  if (segLenSq <= 0.0001) return { x: x1, y: y1 };
+
+  const targets = buildReplayCollisionTargets(enemiesRaw, playersRaw, bullet);
+  let bestT = 1;
+  for (const target of targets) {
+    const rr = Math.max(4, bulletRadius + Math.max(8, Number(target.r) || 0));
+    const tx = Number(target.x) || 0;
+    const ty = Number(target.y) || 0;
+    const proj = ((tx - x1) * dx + (ty - y1) * dy) / segLenSq;
+    const t = Math.max(0, Math.min(1, proj));
+    const px = x1 + dx * t;
+    const py = y1 + dy * t;
+    const ddx = tx - px;
+    const ddy = ty - py;
+    if ((ddx * ddx + ddy * ddy) <= rr * rr) {
+      bestT = Math.min(bestT, Math.max(0, t - 0.06));
+    }
+  }
+
+  return {
+    x: x1 + dx * bestT,
+    y: y1 + dy * bestT,
+  };
+}
+
+function interpolateReplayBullets(currentBullets, nextBullets, alpha, currentT, nextT, currentEnemies, nextEnemies, currentPlayers, nextPlayers) {
+  const source = Array.isArray(currentBullets) ? currentBullets : [];
+  const target = Array.isArray(nextBullets) ? nextBullets : [];
+  if (source.some(isNewReplayBulletTuple)) {
+    const targetById = new Map();
+    for (const nextBullet of target) {
+      if (!isNewReplayBulletTuple(nextBullet)) continue;
+      targetById.set(String(nextBullet[0]), nextBullet);
+    }
+    const dtSec = Math.max(0.001, (Math.max(currentT, nextT) - currentT) / 1000 || 0.2);
+    return source.map((bullet, index) => {
+      if (!isNewReplayBulletTuple(bullet)) {
+        return {
+          id: `legacy-${index}`,
+          ownerId: '',
+          x: Number(bullet?.[0]) || 0,
+          y: Number(bullet?.[1]) || 0,
+          vx: 0,
+          vy: 0,
+          color: bullet?.[3] ? '#fb7185' : ((bullet?.[2] || 'bullet') === 'rocket' ? '#fb923c' : '#f8fafc'),
+          kind: bullet?.[2] || 'bullet',
+          radius: (bullet?.[2] || 'bullet') === 'rocket' ? 6 : 3,
+          fromEnemy: Boolean(bullet?.[3]),
+        };
+      }
+      const nextBullet = targetById.get(String(bullet[0])) || bullet;
+      const x1 = Number(bullet[1]) || 0;
+      const y1 = Number(bullet[2]) || 0;
+      let x2 = Number(nextBullet[1]) || 0;
+      let y2 = Number(nextBullet[2]) || 0;
+      if (targetById.has(String(bullet[0]))) {
+        x2 = Number(nextBullet[1]) || x1;
+        y2 = Number(nextBullet[2]) || y1;
+      } else {
+        const impact = findReplayBulletImpactPoint(
+          bullet,
+          dtSec,
+          Array.isArray(currentEnemies) && currentEnemies.length ? currentEnemies : nextEnemies,
+          Array.isArray(currentPlayers) && currentPlayers.length ? currentPlayers : nextPlayers,
+        );
+        x2 = impact.x;
+        y2 = impact.y;
+      }
+      return {
+        id: String(bullet[0]),
+        ownerId: bullet[9] || '',
+        x: lerp(x1, x2, alpha),
+        y: lerp(y1, y2, alpha),
+        vx: Number(bullet[3]) || 0,
+        vy: Number(bullet[4]) || 0,
+        color: bullet[5] || (bullet[7] ? '#fb7185' : ((bullet[6] || 'bullet') === 'rocket' ? '#fb923c' : '#f8fafc')),
+        kind: bullet[6] || 'bullet',
+        radius: Math.max(2, Number(bullet[8]) || ((bullet[6] || 'bullet') === 'rocket' ? 6 : 3)),
+        fromEnemy: Boolean(bullet[7]),
+      };
+    });
+  }
+  const used = new Set();
+  const out = [];
+  const dtSec = Math.max(0.001, (Math.max(currentT, nextT) - currentT) / 1000 || 0.2);
+
+  for (let i = 0; i < source.length; i += 1) {
+    const bullet = source[i];
+    let bestIndex = -1;
+    let bestScore = Infinity;
+    for (let j = 0; j < target.length; j += 1) {
+      if (used.has(j)) continue;
+      const nextBullet = target[j];
+      if ((bullet?.[2] || 'bullet') !== (nextBullet?.[2] || 'bullet')) continue;
+      if ((bullet?.[3] ? 1 : 0) !== (nextBullet?.[3] ? 1 : 0)) continue;
+      const dx = (Number(nextBullet?.[0]) || 0) - (Number(bullet?.[0]) || 0);
+      const dy = (Number(nextBullet?.[1]) || 0) - (Number(bullet?.[1]) || 0);
+      const score = dx * dx + dy * dy;
+      if (score < bestScore) {
+        bestScore = score;
+        bestIndex = j;
+      }
+    }
+
+    const nextBullet = bestIndex >= 0 ? target[bestIndex] : null;
+    if (bestIndex >= 0) used.add(bestIndex);
+    const x1 = Number(bullet?.[0]) || 0;
+    const y1 = Number(bullet?.[1]) || 0;
+    const x2 = Number(nextBullet?.[0]) || x1;
+    const y2 = Number(nextBullet?.[1]) || y1;
+    out.push({
+      id: makeReplayBulletId(bullet?.[2] || 'bullet', Boolean(bullet?.[3]), x1, y1, bestIndex >= 0 ? bestIndex : i),
+      ownerId: '',
+      x: lerp(x1, x2, alpha),
+      y: lerp(y1, y2, alpha),
+      vx: (x2 - x1) / dtSec,
+      vy: (y2 - y1) / dtSec,
+      color: bullet?.[3] ? '#fb7185' : ((bullet?.[2] || 'bullet') === 'rocket' ? '#fb923c' : '#f8fafc'),
+      kind: bullet?.[2] || 'bullet',
+      radius: (bullet?.[2] || 'bullet') === 'rocket' ? 6 : 3,
+      fromEnemy: Boolean(bullet?.[3]),
+    });
+  }
+
+  return out;
+}
+
+function updateReplayGameSpeed(speed) {
+  const nextSpeed = Math.max(1, Number(speed) || 1);
+  replayGame.speed = nextSpeed;
+  const buttons = replayGameSpeedsEl ? Array.from(replayGameSpeedsEl.querySelectorAll('[data-replay-game-speed]')) : [];
+  for (const btn of buttons) {
+    btn.classList.toggle('active', Number(btn.dataset.replayGameSpeed) === nextSpeed);
+  }
+  if (replayGameMetaEl && replayGame.active) {
+    const totalMs = Number(replayGame.payload?.durationSec || 0) * 1000
+      || Math.max(0, Number(replayGame.payload?.frames?.at(-1)?.t || 0));
+    replayGameMetaEl.textContent = `Replay ${formatReplayClock(replayGame.elapsedMs)} / ${formatReplayClock(totalMs)} | x${replayGame.speed}`;
+  }
+}
+
+function buildReplayState(payload, elapsedMs) {
+  const frames = Array.isArray(payload?.frames) ? payload.frames : [];
+  const pair = pickReplayFramePair(frames, elapsedMs);
+  const { current, next, alpha, index } = pair;
+  if (!current) return null;
+
+  const nowMs = Number(payload?.startedAt || Date.now()) + Math.max(0, Number(elapsedMs) || 0);
+  const nextPlayers = frameEntityMap(next?.p);
+  const nextEnemies = frameEntityMap(next?.e);
+  const nextCompanions = frameEntityMap(next?.c);
+  const playerList = [];
+
+  for (const player of Array.isArray(current.p) ? current.p : []) {
+    const nextPlayer = nextPlayers.get(player[0]) || player;
+    const x = lerp(player[1], nextPlayer[1], alpha);
+    const y = lerp(player[2], nextPlayer[2], alpha);
+    const aimX = lerp(x, nextPlayer[1], 0.65);
+    const aimY = lerp(y, nextPlayer[2], 0.65);
+    const skills = (Array.isArray(player[9]) ? player[9] : []).map((skill) => ({
+      id: skill[0] || '',
+      level: Math.max(0, Number(skill[1]) || 0),
+      cooldownMs: Math.max(0, Number(skill[2]) || 0),
+      maxCooldownMs: Math.max(0, Number(skill[3]) || 0),
+      kind: skill[4] || 'passive',
+      rarity: skill[5] || 'common',
+      name: skill[6] || skill[0] || 'Skill',
+      desc: '',
+    }));
+    playerList.push({
+      id: player[0],
+      name: player[0] === payload?.playerId ? (payload?.playerName || 'Replay') : `Player ${String(player[0]).slice(0, 4)}`,
+      x,
+      y,
+      hp: Math.max(0, Number(player[3]) || 0),
+      maxHp: 100,
+      alive: Boolean(player[4]),
+      score: Math.max(0, Number(player[8]) || 0),
+      kills: Math.max(0, Number(player[7]) || 0),
+      weaponKey: player[5] || 'pistol',
+      weaponLabel: player[5] || 'pistol',
+      ammo: null,
+      aimX,
+      aimY,
+      shooting: false,
+      damageMul: 1,
+      fireRateMul: 1,
+      moveSpeedMul: 1,
+      pickupRadius: 0,
+      hpRegenPerSec: 0,
+      moveSpeed: 0,
+      shotDamage: 1,
+      shotIntervalMs: 170,
+      playerClass: player[6] || 'cyber',
+      netQuality: 0,
+      netPingMs: 0,
+      slowUntil: 0,
+      dodgeCooldownMs: 0,
+      dodgeCharges: Math.max(0, Number(player[10]) || 0),
+      dodgeChargesMax: Math.max(1, Number(player[11]) || 1),
+      dodgeRechargeMs: Math.max(0, Number(player[12]) || 0),
+      dodgeRechargeTotalMs: Math.max(1, Number(player[13]) || 1200),
+      dodgeInvulnUntil: 0,
+      level: 1,
+      xp: 0,
+      xpToNext: 1,
+      pendingSkillChoices: [],
+      enemyKills: Math.max(0, Number(player[7]) || 0),
+      bossKills: 0,
+      skills,
+    });
+  }
+
+  for (const companion of Array.isArray(current.c) ? current.c : []) {
+    const nextCompanion = nextCompanions.get(companion[0]) || companion;
+    playerList.push({
+      id: companion[0],
+      name: '',
+      x: lerp(companion[1], nextCompanion[1], alpha),
+      y: lerp(companion[2], nextCompanion[2], alpha),
+      hp: 1,
+      maxHp: 1,
+      alive: true,
+      score: 0,
+      kills: 0,
+      weaponKey: companion[3] || 'pistol',
+      weaponLabel: companion[3] || 'pistol',
+      ammo: null,
+      aimX: lerp(companion[1], nextCompanion[1], alpha) + 10,
+      aimY: lerp(companion[2], nextCompanion[2], alpha),
+      shooting: false,
+      damageMul: 1,
+      fireRateMul: 1,
+      moveSpeedMul: 1,
+      pickupRadius: 0,
+      hpRegenPerSec: 0,
+      moveSpeed: 0,
+      shotDamage: 1,
+      shotIntervalMs: 170,
+      playerClass: payload?.playerClass || 'cyber',
+      netQuality: 0,
+      netPingMs: 0,
+      slowUntil: 0,
+      dodgeCooldownMs: 0,
+      dodgeCharges: 0,
+      dodgeChargesMax: 0,
+      dodgeRechargeMs: 0,
+      dodgeRechargeTotalMs: 1200,
+      dodgeInvulnUntil: 0,
+      level: 1,
+      xp: 0,
+      xpToNext: 1,
+      pendingSkillChoices: [],
+      skills: [],
+      isCompanion: true,
+      ownerId: companion[4] || '',
+    });
+  }
+
+  const enemies = (Array.isArray(current.e) ? current.e : []).map((enemy) => {
+    const nextEnemy = nextEnemies.get(enemy[0]) || enemy;
+    return {
+      id: enemy[0],
+      type: enemy[1] || 'normal',
+      x: lerp(enemy[2], nextEnemy[2], alpha),
+      y: lerp(enemy[3], nextEnemy[3], alpha),
+      hp: Math.max(0, Number(enemy[4]) || 0),
+      maxHp: Math.max(1, Number(enemy[5]) || 1),
+      radius: Math.max(18, Number(enemy[6]) || 18),
+      spriteScale: enemy[1] === 'boss' ? 1.8 : 1,
+    };
+  });
+
+  const bullets = interpolateReplayBullets(
+    current.b,
+    next?.b,
+    alpha,
+    Number(current?.t || 0),
+    Number(next?.t || current?.t || 0),
+    current.e,
+    next?.e,
+    current.p,
+    next?.p,
+  );
+
+  const drops = (Array.isArray(current.d) ? current.d : []).map((drop, index) => ({
+    id: `rd-${index}`,
+    x: Number(drop[0]) || 0,
+    y: Number(drop[1]) || 0,
+    weaponKey: drop[2] || 'pistol',
+    weaponLabel: drop[2] || 'pistol',
+    ttlMs: 999999,
+    ttlMaxMs: 999999,
+  }));
+
+  const xpOrbs = (Array.isArray(current.x) ? current.x : []).map((orb, index) => ({
+    id: `rx-${index}`,
+    x: Number(orb[0]) || 0,
+    y: Number(orb[1]) || 0,
+    xp: Math.max(1, Number(orb[2]) || 1),
+    ttlMs: 999999,
+    ttlMaxMs: 999999,
+  }));
+
+  const bossPortals = (Array.isArray(current.bp) ? current.bp : []).map((portal, index) => ({
+    id: `rp-${index}`,
+    x: Number(portal[0]) || 0,
+    y: Number(portal[1]) || 0,
+    spawnAt: nowMs + Math.max(0, Number(portal[2]) || 0),
+    ttlMs: Math.max(0, Number(portal[2]) || 0),
+  }));
+
+  return {
+    replayFrameIndex: index,
+    now: nowMs,
+    roomCode: payload?.roomCode || 'REPLAY',
+    roomStartedAt: Number(payload?.roomStartedAt || payload?.startedAt || nowMs),
+    totalEnemyKills: Math.max(0, Number(current.te) || 0),
+    nextBossAtKills: Math.max(50, Math.max(0, Number(current.te) || 0) + 25),
+    bossAlive: Boolean(current.ba),
+    nextBossSpawnAt: 0,
+    roomDifficulty: {
+      level: 1 + Math.floor(Math.max(0, Number(elapsedMs) || 0) / 60000),
+      hpMul: 1,
+      speedMul: 1,
+      damageMul: 1,
+      attackRateMul: 1,
+      spawnIntervalMs: Number(payload?.captureIntervalMs) || 200,
+    },
+    world: payload?.world || { width: 2400, height: 1400 },
+    sync: { tickRate: 45, stateSendHz: 30, netRenderDelayMs: 0 },
+    players: playerList,
+    bullets,
+    enemies,
+    bossPortals,
+    drops,
+    xpOrbs,
+    decor: { trees: game.sortedTrees || [] },
+  };
+}
+
+function stopReplayGame({ showMenu = true } = {}) {
+  replayGame.active = false;
+  replayGame.recordId = 0;
+  replayGame.payload = null;
+  replayGame.playing = true;
+  replayGame.startedAt = 0;
+  replayGame.elapsedMs = 0;
+  replayGame.fxFrameIndex = -1;
+  replayGame.seeking = false;
+  if (replayGameControlsEl) replayGameControlsEl.classList.add('hidden');
+  if (replayGameMetaEl) replayGameMetaEl.textContent = 'Replay';
+  if (replayGameProgressEl) replayGameProgressEl.value = '0';
+  updateReplayGameButtons();
+  if (showMenu) {
+    clearLocalSessionState();
+    joinOverlay.style.display = 'grid';
+    joinOverlay.classList.remove('death-mode');
+    setDeathCinematicActive(false);
+    updateMobileControlsVisibility();
+  }
+  document.body.classList.remove('replay-game-active');
+}
+
+function tickReplayGame(ts) {
+  if (!replayGame.active || !replayGame.payload) return;
+  if (replayGame.playing) {
+    if (!replayGame.startedAt) replayGame.startedAt = ts - (replayGame.elapsedMs / replayGame.speed);
+    const totalMs = getReplayDurationMs(replayGame.payload);
+    replayGame.elapsedMs = Math.max(0, (ts - replayGame.startedAt) * replayGame.speed);
+    if (replayGame.elapsedMs >= totalMs) {
+      replayGame.elapsedMs = totalMs;
+      replayGame.playing = false;
+      updateReplayGameButtons();
+    }
+  }
+  const totalMs = getReplayDurationMs(replayGame.payload);
+  const nextState = buildReplayState(replayGame.payload, replayGame.elapsedMs);
+  if (nextState) {
+    if (nextState.replayFrameIndex !== replayGame.fxFrameIndex) {
+      processStateFx(nextState);
+      replayGame.fxFrameIndex = nextState.replayFrameIndex;
+    }
+    game.state = nextState;
+    game.world = nextState.world;
+    game.roomCode = nextState.roomCode;
+    game.roomStartedAt = nextState.roomStartedAt;
+    game.totalEnemyKills = nextState.totalEnemyKills;
+    game.nextBossAtKills = nextState.nextBossAtKills;
+    game.nextBossSpawnAt = nextState.nextBossSpawnAt;
+    game.bossAlive = nextState.bossAlive;
+    game.roomDifficulty = nextState.roomDifficulty;
+    game.sortedTrees = Array.isArray(nextState.decor?.trees) ? nextState.decor.trees.slice().sort((a, b) => a.y - b.y) : [];
+    updateScoreboard(nextState.players || []);
+    updateStatsPanel((nextState.players || []).find((p) => p.id === game.myId) || (nextState.players || [])[0] || null);
+    updateJumpButtonUi((nextState.players || []).find((p) => p.id === game.myId) || null);
+    roomMetaEl.textContent = `Replay: ${nextState.roomCode}`;
+    weaponMetaEl.textContent = 'Replay mode';
+    if (movementMetaEl) movementMetaEl.textContent = 'Controls disabled';
+  }
+  if (replayGameMetaEl) {
+    replayGameMetaEl.textContent = `Replay ${formatReplayClock(replayGame.elapsedMs)} / ${formatReplayClock(totalMs)} | x${replayGame.speed}`;
+  }
+  if (replayGameProgressEl && !replayGame.seeking) {
+    const value = totalMs > 0 ? Math.round((replayGame.elapsedMs / totalMs) * 1000) : 0;
+    replayGameProgressEl.value = String(Math.max(0, Math.min(1000, value)));
+  }
+}
+
+function startReplayGame(payload, record) {
+  if (!payload || !Array.isArray(payload.frames) || payload.frames.length <= 0) return false;
+  if (game.myId || game.connected) leaveActiveRoom();
+  clearLocalSessionState();
+  closeRecordDetailsModal();
+  replayGame.active = true;
+  replayGame.recordId = Math.max(0, Number(record?.id) || 0);
+  replayGame.payload = payload;
+  replayGame.playing = true;
+  replayGame.startedAt = 0;
+  replayGame.elapsedMs = 0;
+  replayGame.fxFrameIndex = -1;
+  game.connected = false;
+  game.myId = payload.playerId || 'replay-player';
+  game.roomCode = payload.roomCode || 'REPLAY';
+  visuals.enemyPrev = new Map();
+  visuals.playerPrev = new Map();
+  visuals.rocketPrev = new Map();
+  visuals.bulletIds = new Set();
+  visuals.blood = [];
+  visuals.bloodPuddles = [];
+  visuals.gore = [];
+  visuals.hitFx = [];
+  visuals.muzzle = [];
+  visuals.bossBlast = [];
+  visuals.bloodMist = [];
+  visuals.rocketSmoke = [];
+  visuals.rocketFire = [];
+  visuals.skillBursts = [];
+  visuals.skillArcs = [];
+  visuals.skillLinks = [];
+  visuals.skillLabels = [];
+  visuals.skillCdPrev = new Map();
+  joinOverlay.style.display = 'none';
+  document.body.classList.add('replay-game-active');
+  if (replayGameControlsEl) replayGameControlsEl.classList.remove('hidden');
+  if (replayGameProgressEl) replayGameProgressEl.value = '0';
+  updateReplayGameSpeed(replayGame.speed || 1);
+  updateReplayGameButtons();
+  updateMobileControlsVisibility();
+  tickReplayGame(performance.now());
+  return true;
+}
+
+async function maybeStartReplayFromUrl() {
+  const recordId = Math.max(0, Number(pendingReplayRecordId) || 0);
+  if (recordId <= 0) return;
+  pendingReplayRecordId = 0;
+  try {
+    statusEl.textContent = 'Loading replay...';
+    const payload = await fetchReplayPayloadByRecordId(recordId);
+    const replay = payload?.replay || null;
+    const record = payload?.record || { id: recordId };
+    if (!replay || !Array.isArray(replay.frames) || replay.frames.length <= 0) {
+      throw new Error('Replay not found.');
+    }
+    startReplayGame(replay, record);
+    statusEl.textContent = `Replay loaded: ${record?.name || 'Record'} #${recordId}`;
+  } catch (err) {
+    joinOverlay.style.display = 'grid';
+    joinOverlay.classList.remove('death-mode');
+    setDeathCinematicActive(false);
+    updateMobileControlsVisibility();
+    statusEl.textContent = err?.message || 'Failed to load replay.';
+  }
+}
+
+function drawRecordReplay() {
+  if (!recordReplayCanvasEl) return;
+  const sized = resizeRecordReplayCanvas();
+  if (!sized) return;
+  const replayCtx = sized.ctx;
+  const width = sized.width;
+  const height = sized.height;
+  replayCtx.clearRect(0, 0, width, height);
+  replayCtx.fillStyle = '#08131d';
+  replayCtx.fillRect(0, 0, width, height);
+
+  const payload = recordReplay.payload;
+  const frames = Array.isArray(payload?.frames) ? payload.frames : [];
+  const world = payload?.world || { width: 2400, height: 1400 };
+  const worldW = Math.max(1, Number(world.width) || 2400);
+  const worldH = Math.max(1, Number(world.height) || 1400);
+  const scale = Math.min(width / worldW, height / worldH);
+  const offsetX = (width - worldW * scale) * 0.5;
+  const offsetY = (height - worldH * scale) * 0.5;
+  const toScreenX = (x) => offsetX + (Number(x) || 0) * scale;
+  const toScreenY = (y) => offsetY + (Number(y) || 0) * scale;
+
+  replayCtx.strokeStyle = 'rgba(148, 163, 184, 0.16)';
+  replayCtx.lineWidth = 1;
+  const gridStep = 240;
+  for (let x = 0; x <= worldW; x += gridStep) {
+    const sx = toScreenX(x);
+    replayCtx.beginPath();
+    replayCtx.moveTo(sx, offsetY);
+    replayCtx.lineTo(sx, offsetY + worldH * scale);
+    replayCtx.stroke();
+  }
+  for (let y = 0; y <= worldH; y += gridStep) {
+    const sy = toScreenY(y);
+    replayCtx.beginPath();
+    replayCtx.moveTo(offsetX, sy);
+    replayCtx.lineTo(offsetX + worldW * scale, sy);
+    replayCtx.stroke();
+  }
+
+  const { current, next, alpha } = pickReplayFramePair(frames, recordReplay.elapsedMs);
+  if (!current) {
+    replayCtx.fillStyle = '#94a3b8';
+    replayCtx.font = '14px Segoe UI';
+    replayCtx.fillText('Replay has no frames.', 18, 24);
+    return;
+  }
+
+  const nextPlayers = frameEntityMap(next?.p);
+  const nextEnemies = frameEntityMap(next?.e);
+  const nextCompanions = frameEntityMap(next?.c);
+  const previewBullets = interpolateReplayBullets(
+    current.b,
+    next?.b,
+    alpha,
+    Number(current?.t || 0),
+    Number(next?.t || current?.t || 0),
+    current.e,
+    next?.e,
+    current.p,
+    next?.p,
+  );
+
+  for (const portal of Array.isArray(current.bp) ? current.bp : []) {
+    const sx = toScreenX(portal[0]);
+    const sy = toScreenY(portal[1]);
+    replayCtx.fillStyle = 'rgba(251, 191, 36, 0.12)';
+    replayCtx.beginPath();
+    replayCtx.arc(sx, sy, 16, 0, Math.PI * 2);
+    replayCtx.fill();
+    replayCtx.strokeStyle = 'rgba(251, 191, 36, 0.5)';
+    replayCtx.stroke();
+  }
+
+  for (const drop of Array.isArray(current.d) ? current.d : []) {
+    const sx = toScreenX(drop[0]);
+    const sy = toScreenY(drop[1]);
+    replayCtx.fillStyle = '#f59e0b';
+    replayCtx.fillRect(sx - 4, sy - 4, 8, 8);
+  }
+
+  for (const orb of Array.isArray(current.x) ? current.x : []) {
+    const sx = toScreenX(orb[0]);
+    const sy = toScreenY(orb[1]);
+    replayCtx.fillStyle = '#60a5fa';
+    replayCtx.beginPath();
+    replayCtx.arc(sx, sy, 3.5, 0, Math.PI * 2);
+    replayCtx.fill();
+  }
+
+  for (const bullet of previewBullets) {
+    const sx = toScreenX(bullet.x);
+    const sy = toScreenY(bullet.y);
+    replayCtx.fillStyle = bullet.fromEnemy ? '#fb7185' : (bullet.kind === 'rocket' ? '#f59e0b' : '#f8fafc');
+    replayCtx.beginPath();
+    replayCtx.arc(sx, sy, bullet.kind === 'rocket' ? 4 : 2.2, 0, Math.PI * 2);
+    replayCtx.fill();
+  }
+
+  for (const enemy of Array.isArray(current.e) ? current.e : []) {
+    const nextEnemy = nextEnemies.get(enemy[0]) || enemy;
+    const sx = toScreenX(lerp(enemy[2], nextEnemy[2], alpha));
+    const sy = toScreenY(lerp(enemy[3], nextEnemy[3], alpha));
+    const radius = Math.max(5, (Number(enemy[6]) || 18) * scale * 0.55);
+    replayCtx.fillStyle = enemy[1] === 'boss' ? '#dc2626' : (enemy[1] === 'ranged' ? '#fb7185' : (enemy[1] === 'charger' ? '#f97316' : '#ef4444'));
+    replayCtx.beginPath();
+    replayCtx.arc(sx, sy, radius, 0, Math.PI * 2);
+    replayCtx.fill();
+  }
+
+  for (const companion of Array.isArray(current.c) ? current.c : []) {
+    const nextCompanion = nextCompanions.get(companion[0]) || companion;
+    const sx = toScreenX(lerp(companion[1], nextCompanion[1], alpha));
+    const sy = toScreenY(lerp(companion[2], nextCompanion[2], alpha));
+    replayCtx.fillStyle = '#22c55e';
+    replayCtx.beginPath();
+    replayCtx.arc(sx, sy, 5.5, 0, Math.PI * 2);
+    replayCtx.fill();
+  }
+
+  for (const player of Array.isArray(current.p) ? current.p : []) {
+    const nextPlayer = nextPlayers.get(player[0]) || player;
+    const sx = toScreenX(lerp(player[1], nextPlayer[1], alpha));
+    const sy = toScreenY(lerp(player[2], nextPlayer[2], alpha));
+    const isTracked = player[0] === payload?.playerId;
+    replayCtx.fillStyle = isTracked ? '#22d3ee' : '#e2e8f0';
+    replayCtx.beginPath();
+    replayCtx.arc(sx, sy, isTracked ? 8 : 6, 0, Math.PI * 2);
+    replayCtx.fill();
+    if (!player[4]) {
+      replayCtx.strokeStyle = 'rgba(248, 113, 113, 0.95)';
+      replayCtx.lineWidth = 2;
+      replayCtx.beginPath();
+      replayCtx.moveTo(sx - 7, sy - 7);
+      replayCtx.lineTo(sx + 7, sy + 7);
+      replayCtx.moveTo(sx + 7, sy - 7);
+      replayCtx.lineTo(sx - 7, sy + 7);
+      replayCtx.stroke();
+    }
+  }
+
+  replayCtx.fillStyle = '#e2e8f0';
+  replayCtx.font = '12px Segoe UI';
+  replayCtx.fillText(`Time ${formatReplayClock(recordReplay.elapsedMs)}`, 14, 20);
+  replayCtx.fillText(`Kills ${Math.max(0, Number(current.te) || 0)} | Bosses ${Math.max(0, Number(current.tb) || 0)}`, 14, 38);
+  replayCtx.fillText(`Speed x${recordReplay.speed}${payload?.truncated ? ' | truncated' : ''}`, width - 118, 20);
+}
+
+function tickRecordReplayFrame(ts) {
+  if (!recordReplay.playing || !recordReplay.payload) return;
+  if (!recordReplay.startedAt) recordReplay.startedAt = ts - (recordReplay.elapsedMs / recordReplay.speed);
+  const totalMs = Number(recordReplay.payload?.durationSec || 0) * 1000
+    || Math.max(0, Number(recordReplay.payload?.frames?.[recordReplay.payload.frames.length - 1]?.t || 0));
+  recordReplay.elapsedMs = Math.max(0, (ts - recordReplay.startedAt) * recordReplay.speed);
+  if (recordReplay.elapsedMs >= totalMs) {
+    recordReplay.elapsedMs = totalMs;
+    stopRecordReplayPlayback(false);
+  }
+  drawRecordReplay();
+  if (recordReplayMetaEl) {
+    recordReplayMetaEl.textContent = `${formatReplayClock(recordReplay.elapsedMs)} / ${formatReplayClock(totalMs)} | speed x${recordReplay.speed}`;
+  }
+  if (recordReplay.playing) {
+    recordReplay.rafId = requestAnimationFrame(tickRecordReplayFrame);
+  }
+}
+
+function startRecordReplayPlayback() {
+  if (!recordReplay.payload) return;
+  if (recordReplay.elapsedMs >= (Number(recordReplay.payload.durationSec) || 0) * 1000) {
+    recordReplay.elapsedMs = 0;
+  }
+  recordReplay.playing = true;
+  recordReplay.startedAt = 0;
+  if (recordReplayPlayBtn) recordReplayPlayBtn.textContent = 'Pause Replay';
+  recordReplay.rafId = requestAnimationFrame(tickRecordReplayFrame);
+}
+
+function resetRecordReplayUi(recordId = 0) {
+  stopRecordReplayPlayback(true);
+  recordReplay.recordId = Math.max(0, Number(recordId) || 0);
+  recordReplay.record = null;
+  recordReplay.loading = false;
+  recordReplay.loaded = false;
+  recordReplay.payload = null;
+  recordReplay.startedAt = 0;
+  if (recordReplayPanelEl) recordReplayPanelEl.classList.toggle('hidden', recordReplay.recordId <= 0);
+  if (recordReplaySpeedsEl) recordReplaySpeedsEl.classList.add('hidden');
+  if (recordReplayMetaEl) {
+    recordReplayMetaEl.textContent = recordReplay.recordId > 0
+      ? 'Replay is available on demand.'
+      : 'Replay is unavailable for this record.';
+  }
+  drawRecordReplay();
+  setRecordReplaySpeed(1);
+}
+
+async function loadRecordReplay(recordId) {
+  const id = Math.max(0, Number(recordId) || 0);
+  if (id <= 0) return false;
+  recordReplay.loading = true;
+  if (recordReplayPlayBtn) {
+    recordReplayPlayBtn.disabled = true;
+    recordReplayPlayBtn.textContent = 'Loading...';
+  }
+  if (recordReplayMetaEl) recordReplayMetaEl.textContent = 'Loading replay data...';
+  try {
+    const payload = await fetchReplayPayloadByRecordId(id);
+    recordReplay.payload = payload?.replay || null;
+    recordReplay.loaded = Boolean(recordReplay.payload && Array.isArray(recordReplay.payload.frames) && recordReplay.payload.frames.length > 0);
+    recordReplay.elapsedMs = 0;
+    drawRecordReplay();
+    if (!recordReplay.loaded) throw new Error('empty replay');
+    if (recordReplaySpeedsEl) recordReplaySpeedsEl.classList.remove('hidden');
+    const totalMs = Number(recordReplay.payload?.durationSec || 0) * 1000
+      || Math.max(0, Number(recordReplay.payload?.frames?.[recordReplay.payload.frames.length - 1]?.t || 0));
+    if (recordReplayMetaEl) recordReplayMetaEl.textContent = `Replay loaded. ${formatReplayClock(totalMs)} total | speed x${recordReplay.speed}`;
+    if (recordReplayPlayBtn) recordReplayPlayBtn.textContent = 'Play Replay';
+    return true;
+  } catch {
+    recordReplay.payload = null;
+    recordReplay.loaded = false;
+    if (recordReplayMetaEl) recordReplayMetaEl.textContent = 'Replay is not available for this record.';
+    if (recordReplayPlayBtn) recordReplayPlayBtn.textContent = 'Replay Unavailable';
+    return false;
+  } finally {
+    recordReplay.loading = false;
+    if (recordReplayPlayBtn) recordReplayPlayBtn.disabled = false;
+  }
+}
+
+async function fetchReplayPayloadByRecordId(recordId) {
+  const id = Math.max(0, Number(recordId) || 0);
+  if (id <= 0) return null;
+  const res = await fetch(`/api/records/${id}/replay`, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+async function copyReplayLink(recordId) {
+  const id = Math.max(0, Number(recordId) || 0);
+  if (id <= 0 || !navigator.clipboard?.writeText) {
+    if (recordReplayMetaEl) recordReplayMetaEl.textContent = 'Replay link is unavailable.';
+    return false;
+  }
+  try {
+    await navigator.clipboard.writeText(buildReplayShareUrl(id));
+    if (recordReplayMetaEl) recordReplayMetaEl.textContent = 'Replay link copied.';
+    return true;
+  } catch {
+    if (recordReplayMetaEl) recordReplayMetaEl.textContent = 'Failed to copy replay link.';
+    return false;
+  }
+}
+
 function closeRecordDetailsModal() {
   if (!recordDetailsModalEl) return;
+  resetRecordReplayUi(0);
   recordDetailsModalEl.classList.add('hidden');
 }
 
@@ -479,6 +1379,8 @@ function openRecordDetailsModal(record, rankLabel) {
   recordDetailsTitleEl.textContent = `${rankLabel} ${name} | ${kills} K | ${score} pts`;
   const summary = `<div class="rd-summary">Room ${roomCode} | ${durationSec}s</div>`;
   recordDetailsBodyEl.innerHTML = summary + renderRunDetailsHtml(record?.runDetails || null);
+  resetRecordReplayUi(record?.id);
+  recordReplay.record = record || null;
   recordDetailsModalEl.classList.remove('hidden');
 }
 
@@ -537,6 +1439,104 @@ recordDetailsCloseBtn?.addEventListener('click', () => {
 
 recordDetailsModalEl?.addEventListener('click', (e) => {
   if (e.target === recordDetailsModalEl) closeRecordDetailsModal();
+});
+recordReplayPlayBtn?.addEventListener('click', async () => {
+  if (recordReplay.loading) return;
+  if (!recordReplay.loaded) {
+    const ok = await loadRecordReplay(recordReplay.recordId);
+    if (!ok) return;
+  }
+  if (recordReplay.playing) {
+    stopRecordReplayPlayback(false);
+    drawRecordReplay();
+    if (recordReplayMetaEl) {
+      const totalMs = Number(recordReplay.payload?.durationSec || 0) * 1000
+        || Math.max(0, Number(recordReplay.payload?.frames?.[recordReplay.payload.frames.length - 1]?.t || 0));
+      recordReplayMetaEl.textContent = `${formatReplayClock(recordReplay.elapsedMs)} / ${formatReplayClock(totalMs)} | speed x${recordReplay.speed}`;
+    }
+    return;
+  }
+  startRecordReplayPlayback();
+});
+recordReplayInGameBtn?.addEventListener('click', async () => {
+  if (recordReplay.loading) return;
+  if (!recordReplay.loaded) {
+    const ok = await loadRecordReplay(recordReplay.recordId);
+    if (!ok) return;
+  }
+  startReplayGame(recordReplay.payload, recordReplay.record);
+});
+recordReplayCopyLinkBtn?.addEventListener('click', async () => {
+  await copyReplayLink(recordReplay.recordId);
+});
+recordReplaySpeedsEl?.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-replay-speed]');
+  if (!btn) return;
+  const nextSpeed = Math.max(1, Number(btn.dataset.replaySpeed) || 1);
+  const prevElapsed = recordReplay.elapsedMs;
+  setRecordReplaySpeed(nextSpeed);
+  if (recordReplay.playing) {
+    const nowTs = performance.now();
+    recordReplay.startedAt = nowTs - (prevElapsed / nextSpeed);
+  } else {
+    drawRecordReplay();
+  }
+});
+replayGameExitBtn?.addEventListener('click', () => {
+  stopReplayGame({ showMenu: true });
+});
+replayGameStartBtn?.addEventListener('click', () => {
+  if (!replayGame.payload) return;
+  replayGame.playing = false;
+  seekReplayGame(0, { keepPaused: true });
+});
+replayGameBackBtn?.addEventListener('click', () => {
+  if (!replayGame.payload) return;
+  replayGame.playing = false;
+  seekReplayGame(replayGame.elapsedMs - 5000, { keepPaused: true });
+});
+replayGameToggleBtn?.addEventListener('click', () => {
+  if (!replayGame.payload) return;
+  replayGame.playing = !replayGame.playing;
+  replayGame.startedAt = performance.now() - (replayGame.elapsedMs / Math.max(1, replayGame.speed || 1));
+  updateReplayGameButtons();
+  tickReplayGame(performance.now());
+});
+replayGameForwardBtn?.addEventListener('click', () => {
+  if (!replayGame.payload) return;
+  replayGame.playing = false;
+  seekReplayGame(replayGame.elapsedMs + 5000, { keepPaused: true });
+});
+replayGameEndBtn?.addEventListener('click', () => {
+  if (!replayGame.payload) return;
+  replayGame.playing = false;
+  seekReplayGame(getReplayDurationMs(replayGame.payload), { keepPaused: true });
+});
+replayGameSpeedsEl?.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-replay-game-speed]');
+  if (!btn) return;
+  const nextSpeed = Math.max(1, Number(btn.dataset.replayGameSpeed) || 1);
+  const prevElapsed = replayGame.elapsedMs;
+  updateReplayGameSpeed(nextSpeed);
+  if (replayGame.active) {
+    replayGame.startedAt = performance.now() - (prevElapsed / nextSpeed);
+    tickReplayGame(performance.now());
+  }
+});
+replayGameProgressEl?.addEventListener('input', () => {
+  if (!replayGame.payload) return;
+  replayGame.seeking = true;
+  const totalMs = getReplayDurationMs(replayGame.payload);
+  const ratio = Math.max(0, Math.min(1, (Number(replayGameProgressEl.value) || 0) / 1000));
+  replayGame.playing = false;
+  seekReplayGame(totalMs * ratio, { keepPaused: true });
+});
+replayGameProgressEl?.addEventListener('change', () => {
+  replayGame.seeking = false;
+});
+window.addEventListener('resize', () => {
+  if (!recordReplayPanelEl || recordReplayPanelEl.classList.contains('hidden')) return;
+  drawRecordReplay();
 });
 async function requestRecordsList(page = recordsUi.page) {
   if (!recordsListEl) return;
@@ -695,6 +1695,12 @@ function updateBulletInterpolation(dt) {
     r.kind = tb.kind || 'bullet';
     r.radius = tb.radius || 3;
 
+    if (replayGame.active) {
+      r.x = tb.x;
+      r.y = tb.y;
+      continue;
+    }
+
     r.x += r.vx * dt;
     r.y += r.vy * dt;
 
@@ -845,7 +1851,8 @@ function updateScoreboard(players) {
   const nextHtml = scoreboardMinimized
     ? `<div class="score-head"><div class="score-title">${titleText}</div><button type="button" class="panel-close panel-close-sm scoreboard-toggle" aria-label="${toggleLabel}" title="${toggleLabel}">${toggleIcon}</button></div>`
     : `<div class="score-head"><div class="score-title">${titleText}</div><button type="button" class="panel-close panel-close-sm scoreboard-toggle" aria-label="${toggleLabel}" title="${toggleLabel}">${toggleIcon}</button></div>${rows.join('')}`;
-  if (scoreboardEl.matches(':hover')) return;
+  const allowPinnedHover = !replayGame.active && !mobile.enabled;
+  if (allowPinnedHover && scoreboardEl.matches(':hover')) return;
   if (nextHtml === lastScoreboardHtml) return;
   lastScoreboardHtml = nextHtml;
   scoreboardEl.innerHTML = nextHtml;
@@ -1479,5 +2486,7 @@ function sendInput() {
 
   input.jumpQueued = false;
 }
+
+void maybeStartReplayFromUrl();
 
 

@@ -662,6 +662,7 @@ function drawMinimap() {
 function render(ts) {
   const dt = Math.min(0.05, (ts - lastFrameTs) / 1000);
   lastFrameTs = ts;
+  const simDt = replayGame.active ? (dt * Math.max(1, Number(replayGame.speed) || 1)) : dt;
   const overlayOpen = getComputedStyle(joinOverlay).display !== 'none';
 
   if (overlayOpen) {
@@ -678,6 +679,10 @@ function render(ts) {
     return;
   }
 
+  if (replayGame.active) {
+    tickReplayGame(ts);
+  }
+
   fpsFrameCount += 1;
   fpsAccumSec += dt;
   if (fpsAccumSec >= FPS_UI_UPDATE_SEC) {
@@ -688,10 +693,10 @@ function render(ts) {
   }
 
   game.sampledNet = sampleBufferedState();
-  updateFx(dt);
-  updatePlayerInterpolation(dt);
-  updateEnemyInterpolation(dt);
-  updateBulletInterpolation(dt);
+  updateFx(simDt);
+  updatePlayerInterpolation(simDt);
+  updateEnemyInterpolation(simDt);
+  updateBulletInterpolation(simDt);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   updateTopCenterHud(Number(game.state.now) || Date.now());

@@ -118,6 +118,28 @@
       <span id="difficulty-meta">Threat Lv1</span>
     </div>
   </div>
+  <div id="replay-game-controls" class="hidden" aria-live="polite">
+    <div class="replay-game-row">
+      <button id="replay-game-exit" type="button" class="mini">Exit Replay</button>
+      <div id="replay-game-meta">Replay</div>
+      <div id="replay-game-speeds" class="record-replay-speeds">
+        <button type="button" class="mini active" data-replay-game-speed="1">x1</button>
+        <button type="button" class="mini" data-replay-game-speed="2">x2</button>
+        <button type="button" class="mini" data-replay-game-speed="3">x3</button>
+        <button type="button" class="mini" data-replay-game-speed="5">x5</button>
+      </div>
+    </div>
+    <div class="replay-game-row replay-game-row-bottom">
+      <div class="replay-game-nav">
+        <button id="replay-game-start" type="button" class="mini" title="To start">|&lt;</button>
+        <button id="replay-game-back" type="button" class="mini" title="Back 5s">&lt;&lt;</button>
+        <button id="replay-game-toggle" type="button" class="mini" title="Pause or continue">Pause</button>
+        <button id="replay-game-forward" type="button" class="mini" title="Forward 5s">&gt;&gt;</button>
+        <button id="replay-game-end" type="button" class="mini" title="To end">&gt;|</button>
+      </div>
+      <input id="replay-game-progress" type="range" min="0" max="1000" value="0" step="1" />
+    </div>
+  </div>
   <div id="bottom-hud" aria-live="polite">
     <div id="skill-bar"></div>
     <div id="xp-wrap">
@@ -266,6 +288,21 @@
           <button id="record-details-close" type="button" class="mini">Close</button>
         </div>
         <div id="record-details-body" class="record-details-body">No data.</div>
+        <div id="record-replay-panel" class="record-replay-panel hidden">
+          <div class="record-replay-toolbar">
+            <button id="record-replay-play" type="button" class="mini">Play Replay</button>
+            <button id="record-replay-ingame" type="button" class="mini">Show Replay In Game</button>
+            <button id="record-replay-copy-link" type="button" class="mini">Copy Replay Link</button>
+            <div id="record-replay-speeds" class="record-replay-speeds hidden">
+              <button type="button" class="mini active" data-replay-speed="1">x1</button>
+              <button type="button" class="mini" data-replay-speed="2">x2</button>
+              <button type="button" class="mini" data-replay-speed="3">x3</button>
+              <button type="button" class="mini" data-replay-speed="5">x5</button>
+            </div>
+          </div>
+          <div id="record-replay-meta" class="record-replay-meta">Replay not loaded.</div>
+          <canvas id="record-replay-canvas" class="record-replay-canvas" width="520" height="320"></canvas>
+        </div>
       </div>
     </div>
   </div>

@@ -114,6 +114,8 @@ let isShuttingDown = false;
 let shutdownStartedAt = 0;
 let forceShutdownTimer = null;
 const processStartedAt = Date.now();
+const REPLAY_CAPTURE_INTERVAL_MS = 200;
+const REPLAY_FRAME_LIMIT = 7200;
 const adminAuthStore = createAdminAuthStore({
   dataDir: DATA_DIR,
   dbPath: ADMIN_AUTH_DB_PATH,
@@ -638,6 +640,32 @@ app.get('/api/records', (req, res) => {
     pageSize: payload.pageSize,
     total: payload.total,
     totalPages: payload.totalPages,
+    now: Date.now(),
+  });
+});
+
+app.get('/api/records/:id/replay', (req, res) => {
+  const payload = recordsStore.getRecordReplay(req.params.id);
+  if (!payload?.replay) {
+    res.status(404).json({
+      error: 'Replay not found.',
+      recordId: Math.max(0, Number(req.params.id) || 0),
+      now: Date.now(),
+    });
+    return;
+  }
+
+  res.json({
+    record: {
+      id: payload.id,
+      name: payload.name,
+      kills: payload.kills,
+      score: payload.score,
+      roomCode: payload.roomCode,
+      durationSec: payload.durationSec,
+      at: payload.at,
+    },
+    replay: payload.replay,
     now: Date.now(),
   });
 });
@@ -1715,6 +1743,164 @@ function rebuildPlayerDerivedStats(player) {
   player.dodgeCharges = Math.max(0, Math.min(player.dodgeChargesMax, Number(player.dodgeCharges) || player.dodgeChargesMax));
 }
 
+function roundReplayCoord(value) {
+  return Math.max(0, Math.round(Number(value) || 0));
+}
+
+function createRunReplay(room, player, now) {
+  return {
+    version: 1,
+    captureIntervalMs: REPLAY_CAPTURE_INTERVAL_MS,
+    startedAt: now,
+    endedAt: now,
+    durationSec: 0,
+    roomCode: room.code,
+    roomStartedAt: room.startedAt,
+    playerId: player.id,
+    playerName: player.name,
+    playerClass: player.playerClass || 'cyber',
+    world: { width: WORLD_WIDTH, height: WORLD_HEIGHT },
+    meta: {
+      tickRate: room.sync?.tickRate || DEFAULT_ROOM_SYNC.tickRate,
+      stateSendHz: room.sync?.stateSendHz || DEFAULT_ROOM_SYNC.stateSendHz,
+    },
+    frames: [],
+    truncated: false,
+    lastCaptureAt: 0,
+  };
+}
+
+function captureReplayFrame(room, replay, now) {
+  if (!replay || replay.truncated) return;
+  if (replay.frames.length > 0 && now - replay.lastCaptureAt < replay.captureIntervalMs) return;
+  if (replay.frames.length >= REPLAY_FRAME_LIMIT) {
+    replay.truncated = true;
+    replay.endedAt = now;
+    replay.durationSec = Math.max(1, Math.floor((now - replay.startedAt) / 1000));
+    return;
+  }
+
+  const players = Array.from(room.players.values()).map((p) => {
+    const skills = [];
+    if (p.skills && typeof p.skills === 'object') {
+      for (const sid of p.skillOrder || Object.keys(p.skills)) {
+        const st = p.skills[sid];
+        if (!st) continue;
+        const def = skillsStore.getById(sid);
+        skills.push([
+          sid,
+          Math.max(0, Math.floor(Number(st.level) || 0)),
+          Math.max(0, Math.round(Number(st.cooldownMs) || 0)),
+          Math.max(0, Math.round(Number(st.maxCooldownMs) || 0)),
+          def?.kind || 'passive',
+          def?.rarity || 'common',
+          def?.name || sid,
+        ]);
+      }
+    }
+
+    return [
+      p.id,
+      roundReplayCoord(p.x),
+      roundReplayCoord(p.y),
+      Math.max(0, Math.round(Number(p.hp) || 0)),
+      p.alive ? 1 : 0,
+      p.weaponKey || 'pistol',
+      p.playerClass || 'cyber',
+      Math.max(0, Number(room.kills.get(p.id)) || 0),
+      Math.max(0, Number(room.scores.get(p.id)) || 0),
+      skills,
+      Math.max(0, Math.round(Number(p.dodgeCharges) || 0)),
+      Math.max(1, Math.round(Number(p.dodgeChargesMax) || PLAYER_DODGE_MAX_CHARGES)),
+      Math.max(0, Math.round(Number(p.dodgeRechargeMs ?? p.dodgeCooldownMs) || 0)),
+      PLAYER_DODGE_COOLDOWN_MS,
+    ];
+  });
+  const companions = (room.companions || []).map((companion) => ([
+    companion.id,
+    roundReplayCoord(companion.x),
+    roundReplayCoord(companion.y),
+    companion.weaponKey || 'pistol',
+    companion.ownerId || '',
+  ]));
+  const enemies = room.enemies.map((e) => ([
+    e.id,
+    e.type || 'normal',
+    roundReplayCoord(e.x),
+    roundReplayCoord(e.y),
+    Math.max(0, Math.round(Number(e.hp) || 0)),
+    Math.max(1, Math.round(Number(e.maxHp) || 1)),
+    Math.max(ENEMY_RADIUS, Math.round(Number(e.radius) || ENEMY_RADIUS)),
+  ]));
+  const bullets = room.bullets.map((b) => ([
+    b.id || '',
+    roundReplayCoord(b.x),
+    roundReplayCoord(b.y),
+    Math.round(Number(b.vx) || 0),
+    Math.round(Number(b.vy) || 0),
+    b.color || '',
+    b.kind || 'bullet',
+    b.fromEnemy ? 1 : 0,
+    Math.max(2, Math.round(Number(b.radius) || BULLET_RADIUS)),
+    b.ownerId || '',
+  ]));
+  const drops = room.drops.map((d) => ([
+    roundReplayCoord(d.x),
+    roundReplayCoord(d.y),
+    d.weaponKey || 'pistol',
+  ]));
+  const xpOrbs = room.xpOrbs.map((o) => ([
+    roundReplayCoord(o.x),
+    roundReplayCoord(o.y),
+    Math.max(1, Math.round(Number(o.xp) || 1)),
+  ]));
+  const bossPortals = room.bossPortals.map((bp) => ([
+    roundReplayCoord(bp.x),
+    roundReplayCoord(bp.y),
+    Math.max(0, Math.round((Number(bp.spawnAt) || now) - now)),
+  ]));
+
+  replay.frames.push({
+    t: Math.max(0, now - replay.startedAt),
+    te: Math.max(0, Number(room.totalEnemyKills) || 0),
+    tb: Math.max(0, Number(room.totalBossKills) || 0),
+    ba: hasAliveBoss(room) ? 1 : 0,
+    p: players,
+    c: companions,
+    e: enemies,
+    b: bullets,
+    d: drops,
+    x: xpOrbs,
+    bp: bossPortals,
+  });
+  replay.lastCaptureAt = now;
+  replay.endedAt = now;
+  replay.durationSec = Math.max(1, Math.floor((now - replay.startedAt) / 1000));
+}
+
+function finalizeRunReplay(room, replay, now) {
+  if (!replay) return null;
+  captureReplayFrame(room, replay, now);
+  if (replay.frames.length <= 0) return null;
+
+  return {
+    version: replay.version,
+    captureIntervalMs: replay.captureIntervalMs,
+    startedAt: replay.startedAt,
+    endedAt: replay.endedAt,
+    durationSec: replay.durationSec,
+    roomCode: replay.roomCode,
+    roomStartedAt: replay.roomStartedAt,
+    playerId: replay.playerId,
+    playerName: replay.playerName,
+    playerClass: replay.playerClass,
+    world: replay.world,
+    meta: replay.meta,
+    truncated: Boolean(replay.truncated),
+    frames: replay.frames.slice(),
+  };
+}
+
 function weightedSkillPick(pool) {
   let total = 0;
   for (const s of pool) total += Math.max(0.01, Number(s.weight) || 1);
@@ -1918,6 +2104,7 @@ function buildRunDetails(room, target, now) {
 }
 
 function downPlayer(room, target, now) {
+  const runReplay = finalizeRunReplay(room, target.runReplay, now);
   target.hp = 0;
   target.alive = false;
   target.respawnAt = now + 3000;
@@ -1937,6 +2124,7 @@ function downPlayer(room, target, now) {
     durationSec: Math.max(1, Math.floor((now - (target.joinedAt || now)) / 1000)),
     at: now,
     runDetails: buildRunDetails(room, target, now),
+    runReplay,
   });
   broadcastRoom(room, { type: 'system', message: `${target.name} was downed.` });
 }
@@ -2291,10 +2479,13 @@ function joinRoom(ws, join) {
     godMode: false,
     playerAccountId: identity.playerAccountId || null,
     isRegisteredNickname: !!identity.isRegistered,
+    runReplay: null,
   };
 
   rebuildPlayerDerivedStats(player);
+  player.runReplay = createRunReplay(room, player, Date.now());
   room.players.set(id, player);
+  captureReplayFrame(room, player.runReplay, Date.now());
   room.scores.set(id, 0);
   room.kills.set(id, 0);
   publishRuntimeRegistry();
@@ -2787,6 +2978,10 @@ function tickRoom(room, dtSec, now) {
     }
 
     if (picked) continue;
+  }
+
+  for (const p of room.players.values()) {
+    captureReplayFrame(room, p.runReplay, now);
   }
 }
 

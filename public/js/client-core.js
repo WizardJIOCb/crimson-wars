@@ -55,6 +55,23 @@ const recordDetailsModalEl = document.getElementById('record-details-modal');
 const recordDetailsTitleEl = document.getElementById('record-details-title');
 const recordDetailsBodyEl = document.getElementById('record-details-body');
 const recordDetailsCloseBtn = document.getElementById('record-details-close');
+const recordReplayPanelEl = document.getElementById('record-replay-panel');
+const recordReplayPlayBtn = document.getElementById('record-replay-play');
+const recordReplayInGameBtn = document.getElementById('record-replay-ingame');
+const recordReplayCopyLinkBtn = document.getElementById('record-replay-copy-link');
+const recordReplaySpeedsEl = document.getElementById('record-replay-speeds');
+const recordReplayMetaEl = document.getElementById('record-replay-meta');
+const recordReplayCanvasEl = document.getElementById('record-replay-canvas');
+const replayGameControlsEl = document.getElementById('replay-game-controls');
+const replayGameExitBtn = document.getElementById('replay-game-exit');
+const replayGameMetaEl = document.getElementById('replay-game-meta');
+const replayGameSpeedsEl = document.getElementById('replay-game-speeds');
+const replayGameStartBtn = document.getElementById('replay-game-start');
+const replayGameBackBtn = document.getElementById('replay-game-back');
+const replayGameToggleBtn = document.getElementById('replay-game-toggle');
+const replayGameForwardBtn = document.getElementById('replay-game-forward');
+const replayGameEndBtn = document.getElementById('replay-game-end');
+const replayGameProgressEl = document.getElementById('replay-game-progress');
 const deathResultEl = document.getElementById('death-result');
 const deathCinematicEl = document.getElementById('death-cinematic');
 const deathContinueBtn = document.getElementById('death-continue');
@@ -251,7 +268,31 @@ let nicknameCheckTimer = null;
 let restartReloadTimer = null;
 let pendingAutoJoin = false;
 let pendingAutoCreate = false;
+let pendingReplayRecordId = 0;
 let routedIntent = null;
+const recordReplay = {
+  recordId: 0,
+  record: null,
+  loading: false,
+  loaded: false,
+  playing: false,
+  speed: 1,
+  payload: null,
+  startedAt: 0,
+  elapsedMs: 0,
+  rafId: 0,
+};
+const replayGame = {
+  active: false,
+  recordId: 0,
+  payload: null,
+  speed: 1,
+  playing: true,
+  startedAt: 0,
+  elapsedMs: 0,
+  fxFrameIndex: -1,
+  seeking: false,
+};
 const DEV_CMD_HISTORY_LIMIT = 60;
 const DEV_CMD_HISTORY_STORAGE_KEY = 'cw:devConsoleHistory';
 const devConsoleHistory = [];
@@ -655,9 +696,11 @@ function renderInstanceMeta() {
 
 function applyInitialRoomIntent() {
   const params = new URLSearchParams(window.location.search);
+  const replay = Math.max(0, Number(params.get('replay')) || 0);
   const room = (params.get('room') || '').trim().toUpperCase();
   const mode = (params.get('mode') || '').trim().toLowerCase();
   const routed = params.get('routed') === '1';
+  pendingReplayRecordId = replay;
   if (roomCodeInput && room) roomCodeInput.value = room.slice(0, 10);
   if (mode === 'join' || (room && !mode)) {
     joinMode = 'join';
@@ -666,6 +709,10 @@ function applyInitialRoomIntent() {
   }
   pendingAutoJoin = Boolean(room && joinMode === 'join');
   pendingAutoCreate = Boolean(!room && joinMode === 'create' && routed);
+  if (pendingReplayRecordId > 0) {
+    pendingAutoJoin = false;
+    pendingAutoCreate = false;
+  }
   routedIntent = routed ? { mode: joinMode, room } : null;
 }
 
@@ -1802,6 +1849,7 @@ function updateHudVisibility(overlayOpen) {
   if (topCenterHudEl) topCenterHudEl.classList.toggle('hidden', Boolean(overlayOpen));
   if (bottomHudEl) bottomHudEl.classList.toggle('hidden', Boolean(overlayOpen));
   if (statsToggleBtn) statsToggleBtn.classList.toggle('hidden', Boolean(overlayOpen));
+  if (replayGameControlsEl) replayGameControlsEl.classList.toggle('hidden', Boolean(overlayOpen) || !replayGame.active);
   if (overlayOpen) {
     if (statsPanelEl) statsPanelEl.classList.add('hidden');
   } else {
