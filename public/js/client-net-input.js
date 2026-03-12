@@ -453,6 +453,7 @@ function stopRecordReplayPlayback(resetElapsed = false) {
   recordReplay.playing = false;
   if (resetElapsed) recordReplay.elapsedMs = 0;
   if (recordReplayPlayBtn) recordReplayPlayBtn.textContent = recordReplay.loaded ? 'Play Replay' : 'Load Replay';
+  updateRecordReplayButtons();
 }
 
 function setRecordReplaySpeed(speed) {
@@ -466,6 +467,26 @@ function setRecordReplaySpeed(speed) {
     const replayDurationMs = getReplayDurationMs(recordReplay.payload);
     recordReplayMetaEl.textContent = `Ready. ${formatReplayClock(replayDurationMs)} total | speed x${recordReplay.speed}`;
   }
+}
+
+function updateRecordReplayButtons() {
+  if (recordReplayToggleBtn) recordReplayToggleBtn.textContent = recordReplay.playing ? 'Pause' : 'Continue';
+}
+
+function seekRecordReplay(elapsedMs, { keepPaused = null } = {}) {
+  const totalMs = getReplayDurationMs(recordReplay.payload);
+  recordReplay.elapsedMs = Math.max(0, Math.min(totalMs, Number(elapsedMs) || 0));
+  recordReplay.startedAt = performance.now() - (recordReplay.elapsedMs / Math.max(1, recordReplay.speed || 1));
+  if (typeof keepPaused === 'boolean') recordReplay.playing = !keepPaused;
+  drawRecordReplay();
+  if (recordReplayMetaEl) {
+    recordReplayMetaEl.textContent = `${formatReplayClock(recordReplay.elapsedMs)} / ${formatReplayClock(totalMs)} | speed x${recordReplay.speed}`;
+  }
+  if (recordReplayProgressEl && !recordReplay.seeking) {
+    const value = totalMs > 0 ? Math.round((recordReplay.elapsedMs / totalMs) * 1000) : 0;
+    recordReplayProgressEl.value = String(Math.max(0, Math.min(1000, value)));
+  }
+  updateRecordReplayButtons();
 }
 
 function resizeRecordReplayCanvas() {
@@ -1247,6 +1268,10 @@ function tickRecordReplayFrame(ts) {
   if (recordReplayMetaEl) {
     recordReplayMetaEl.textContent = `${formatReplayClock(recordReplay.elapsedMs)} / ${formatReplayClock(totalMs)} | speed x${recordReplay.speed}`;
   }
+  if (recordReplayProgressEl && !recordReplay.seeking) {
+    const value = totalMs > 0 ? Math.round((recordReplay.elapsedMs / totalMs) * 1000) : 0;
+    recordReplayProgressEl.value = String(Math.max(0, Math.min(1000, value)));
+  }
   if (recordReplay.playing) {
     recordReplay.rafId = requestAnimationFrame(tickRecordReplayFrame);
   }
@@ -1254,12 +1279,13 @@ function tickRecordReplayFrame(ts) {
 
 function startRecordReplayPlayback() {
   if (!recordReplay.payload) return;
-  if (recordReplay.elapsedMs >= (Number(recordReplay.payload.durationSec) || 0) * 1000) {
+  if (recordReplay.elapsedMs >= getReplayDurationMs(recordReplay.payload)) {
     recordReplay.elapsedMs = 0;
   }
   recordReplay.playing = true;
   recordReplay.startedAt = 0;
   if (recordReplayPlayBtn) recordReplayPlayBtn.textContent = 'Pause Replay';
+  updateRecordReplayButtons();
   recordReplay.rafId = requestAnimationFrame(tickRecordReplayFrame);
 }
 
@@ -1271,8 +1297,11 @@ function resetRecordReplayUi(recordId = 0) {
   recordReplay.loaded = false;
   recordReplay.payload = null;
   recordReplay.startedAt = 0;
+  recordReplay.seeking = false;
   if (recordReplayPanelEl) recordReplayPanelEl.classList.toggle('hidden', recordReplay.recordId <= 0);
   if (recordReplaySpeedsEl) recordReplaySpeedsEl.classList.add('hidden');
+  if (recordReplayControlsEl) recordReplayControlsEl.classList.add('hidden');
+  if (recordReplayProgressEl) recordReplayProgressEl.value = '0';
   if (recordReplayMetaEl) {
     recordReplayMetaEl.textContent = recordReplay.recordId > 0
       ? 'Replay is available on demand.'
@@ -1280,6 +1309,7 @@ function resetRecordReplayUi(recordId = 0) {
   }
   drawRecordReplay();
   setRecordReplaySpeed(1);
+  updateRecordReplayButtons();
 }
 
 async function loadRecordReplay(recordId) {
@@ -1299,15 +1329,20 @@ async function loadRecordReplay(recordId) {
     drawRecordReplay();
     if (!recordReplay.loaded) throw new Error('empty replay');
     if (recordReplaySpeedsEl) recordReplaySpeedsEl.classList.remove('hidden');
+    if (recordReplayControlsEl) recordReplayControlsEl.classList.remove('hidden');
+    if (recordReplayProgressEl) recordReplayProgressEl.value = '0';
     const totalMs = getReplayDurationMs(recordReplay.payload);
     if (recordReplayMetaEl) recordReplayMetaEl.textContent = `Replay loaded. ${formatReplayClock(totalMs)} total | speed x${recordReplay.speed}`;
     if (recordReplayPlayBtn) recordReplayPlayBtn.textContent = 'Play Replay';
+    updateRecordReplayButtons();
     return true;
   } catch {
     recordReplay.payload = null;
     recordReplay.loaded = false;
+    if (recordReplayControlsEl) recordReplayControlsEl.classList.add('hidden');
     if (recordReplayMetaEl) recordReplayMetaEl.textContent = 'Replay is not available for this record.';
     if (recordReplayPlayBtn) recordReplayPlayBtn.textContent = 'Replay Unavailable';
+    updateRecordReplayButtons();
     return false;
   } finally {
     recordReplay.loading = false;
@@ -1496,6 +1531,44 @@ recordReplaySpeedsEl?.addEventListener('click', (e) => {
   } else {
     drawRecordReplay();
   }
+});
+recordReplayStartBtn?.addEventListener('click', () => {
+  if (!recordReplay.payload) return;
+  recordReplay.playing = false;
+  seekRecordReplay(0, { keepPaused: true });
+});
+recordReplayBackBtn?.addEventListener('click', () => {
+  if (!recordReplay.payload) return;
+  recordReplay.playing = false;
+  seekRecordReplay(recordReplay.elapsedMs - 5000, { keepPaused: true });
+});
+recordReplayToggleBtn?.addEventListener('click', () => {
+  if (!recordReplay.payload) return;
+  recordReplay.playing = !recordReplay.playing;
+  recordReplay.startedAt = performance.now() - (recordReplay.elapsedMs / Math.max(1, recordReplay.speed || 1));
+  updateRecordReplayButtons();
+  if (recordReplay.playing) tickRecordReplayFrame(performance.now());
+});
+recordReplayForwardBtn?.addEventListener('click', () => {
+  if (!recordReplay.payload) return;
+  recordReplay.playing = false;
+  seekRecordReplay(recordReplay.elapsedMs + 5000, { keepPaused: true });
+});
+recordReplayEndBtn?.addEventListener('click', () => {
+  if (!recordReplay.payload) return;
+  recordReplay.playing = false;
+  seekRecordReplay(getReplayDurationMs(recordReplay.payload), { keepPaused: true });
+});
+recordReplayProgressEl?.addEventListener('input', () => {
+  if (!recordReplay.payload) return;
+  recordReplay.seeking = true;
+  const totalMs = getReplayDurationMs(recordReplay.payload);
+  const ratio = Math.max(0, Math.min(1, (Number(recordReplayProgressEl.value) || 0) / 1000));
+  recordReplay.playing = false;
+  seekRecordReplay(totalMs * ratio, { keepPaused: true });
+});
+recordReplayProgressEl?.addEventListener('change', () => {
+  recordReplay.seeking = false;
 });
 replayGameExitBtn?.addEventListener('click', () => {
   stopReplayGame({ showMenu: true });

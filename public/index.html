@@ -127,6 +127,8 @@
         <button type="button" class="mini" data-replay-game-speed="2">x2</button>
         <button type="button" class="mini" data-replay-game-speed="3">x3</button>
         <button type="button" class="mini" data-replay-game-speed="5">x5</button>
+        <button type="button" class="mini" data-replay-game-speed="10">x10</button>
+        <button type="button" class="mini" data-replay-game-speed="20">x20</button>
       </div>
     </div>
     <div class="replay-game-row replay-game-row-bottom">
@@ -298,7 +300,19 @@
               <button type="button" class="mini" data-replay-speed="2">x2</button>
               <button type="button" class="mini" data-replay-speed="3">x3</button>
               <button type="button" class="mini" data-replay-speed="5">x5</button>
+              <button type="button" class="mini" data-replay-speed="10">x10</button>
+              <button type="button" class="mini" data-replay-speed="20">x20</button>
             </div>
+          </div>
+          <div id="record-replay-controls" class="record-replay-controls hidden">
+            <div class="replay-game-nav">
+              <button id="record-replay-start" type="button" class="mini" title="To start">|&lt;</button>
+              <button id="record-replay-back" type="button" class="mini" title="Back 5s">&lt;&lt;</button>
+              <button id="record-replay-toggle" type="button" class="mini" title="Pause or continue">Pause</button>
+              <button id="record-replay-forward" type="button" class="mini" title="Forward 5s">&gt;&gt;</button>
+              <button id="record-replay-end" type="button" class="mini" title="To end">&gt;|</button>
+            </div>
+            <input id="record-replay-progress" type="range" min="0" max="1000" value="0" step="1" />
           </div>
           <div id="record-replay-meta" class="record-replay-meta">Replay not loaded.</div>
           <canvas id="record-replay-canvas" class="record-replay-canvas" width="520" height="320"></canvas>

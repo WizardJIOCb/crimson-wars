@@ -60,6 +60,13 @@ const recordReplayPlayBtn = document.getElementById('record-replay-play');
 const recordReplayInGameBtn = document.getElementById('record-replay-ingame');
 const recordReplayCopyLinkBtn = document.getElementById('record-replay-copy-link');
 const recordReplaySpeedsEl = document.getElementById('record-replay-speeds');
+const recordReplayControlsEl = document.getElementById('record-replay-controls');
+const recordReplayStartBtn = document.getElementById('record-replay-start');
+const recordReplayBackBtn = document.getElementById('record-replay-back');
+const recordReplayToggleBtn = document.getElementById('record-replay-toggle');
+const recordReplayForwardBtn = document.getElementById('record-replay-forward');
+const recordReplayEndBtn = document.getElementById('record-replay-end');
+const recordReplayProgressEl = document.getElementById('record-replay-progress');
 const recordReplayMetaEl = document.getElementById('record-replay-meta');
 const recordReplayCanvasEl = document.getElementById('record-replay-canvas');
 const replayGameControlsEl = document.getElementById('replay-game-controls');
@@ -282,6 +289,7 @@ const recordReplay = {
   startedAt: 0,
   elapsedMs: 0,
   rafId: 0,
+  seeking: false,
 };
 const replayGame = {
   active: false,

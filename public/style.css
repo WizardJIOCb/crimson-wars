@@ -1773,6 +1773,23 @@ body.replay-game-active #scoreboard {
   font-size: 12px;
 }
 
+.record-replay-controls {
+  display: grid;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(10, 16, 26, 0.72);
+}
+
+.record-replay-controls.hidden {
+  display: none;
+}
+
+#record-replay-progress {
+  width: 100%;
+}
+
 .record-replay-canvas {
   width: 100%;
   aspect-ratio: 13 / 8;
