@@ -447,6 +447,51 @@ function formatReplayClock(ms) {
   return `${mins}:${String(secs).padStart(2, '0')}`;
 }
 
+function formatReplayBytes(bytes) {
+  const value = Math.max(0, Number(bytes) || 0);
+  if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  if (value >= 1024) return `${Math.round(value / 1024)} KB`;
+  return `${value} B`;
+}
+
+function describeReplayLoadProgress(info) {
+  const received = Math.max(0, Number(info?.received) || 0);
+  const total = Math.max(0, Number(info?.total) || 0);
+  const percent = total > 0 ? Math.max(0, Math.min(100, Math.round((received / total) * 100))) : null;
+  if (total > 0) return `${formatReplayBytes(received)} / ${formatReplayBytes(total)}${percent !== null ? ` (${percent}%)` : ''}`;
+  if (received > 0) return `${formatReplayBytes(received)} loaded`;
+  return 'Preparing replay data...';
+}
+
+function showReplayLoadOverlay(label, meta = 'Preparing replay data...') {
+  if (replayLoadLabelEl) replayLoadLabelEl.textContent = label || 'Loading replay...';
+  if (replayLoadMetaEl) replayLoadMetaEl.textContent = meta;
+  if (replayLoadFillEl) {
+    replayLoadFillEl.style.width = '0%';
+    replayLoadFillEl.classList.add('indeterminate');
+  }
+  if (replayLoadOverlayEl) replayLoadOverlayEl.classList.remove('hidden');
+}
+
+function updateReplayLoadOverlay(info) {
+  if (replayLoadMetaEl) replayLoadMetaEl.textContent = describeReplayLoadProgress(info);
+  if (!replayLoadFillEl) return;
+  const total = Math.max(0, Number(info?.total) || 0);
+  const received = Math.max(0, Math.min(total || Number.MAX_SAFE_INTEGER, Number(info?.received) || 0));
+  if (total > 0) {
+    const percent = Math.max(0, Math.min(100, (received / total) * 100));
+    replayLoadFillEl.classList.remove('indeterminate');
+    replayLoadFillEl.style.width = `${percent.toFixed(1)}%`;
+    return;
+  }
+  replayLoadFillEl.style.width = '35%';
+  replayLoadFillEl.classList.add('indeterminate');
+}
+
+function hideReplayLoadOverlay() {
+  if (replayLoadOverlayEl) replayLoadOverlayEl.classList.add('hidden');
+}
+
 function stopRecordReplayPlayback(resetElapsed = false) {
   if (recordReplay.rafId) cancelAnimationFrame(recordReplay.rafId);
   recordReplay.rafId = 0;
@@ -1090,7 +1135,14 @@ async function maybeStartReplayFromUrl() {
   pendingReplayStartSec = 0;
   try {
     statusEl.textContent = 'Loading replay...';
-    const payload = await fetchReplayPayloadByRecordId(recordId);
+    showReplayLoadOverlay(`Loading replay #${recordId}`, 'Preparing replay data...');
+    const payload = await fetchReplayPayloadByRecordId(recordId, {
+      onProgress(info) {
+        const text = describeReplayLoadProgress(info);
+        updateReplayLoadOverlay(info);
+        statusEl.textContent = `Loading replay... ${text}`;
+      },
+    });
     const replay = payload?.replay || null;
     const record = payload?.record || { id: recordId };
     if (!replay || !Array.isArray(replay.frames) || replay.frames.length <= 0) {
@@ -1104,6 +1156,8 @@ async function maybeStartReplayFromUrl() {
     setDeathCinematicActive(false);
     updateMobileControlsVisibility();
     statusEl.textContent = err?.message || 'Failed to load replay.';
+  } finally {
+    hideReplayLoadOverlay();
   }
 }
 
@@ -1321,8 +1375,15 @@ async function loadRecordReplay(recordId) {
     recordReplayPlayBtn.textContent = 'Loading...';
   }
   if (recordReplayMetaEl) recordReplayMetaEl.textContent = 'Loading replay data...';
+  showReplayLoadOverlay(`Loading replay #${id}`, 'Preparing replay data...');
   try {
-    const payload = await fetchReplayPayloadByRecordId(id);
+    const payload = await fetchReplayPayloadByRecordId(id, {
+      onProgress(info) {
+        const text = describeReplayLoadProgress(info);
+        updateReplayLoadOverlay(info);
+        if (recordReplayMetaEl) recordReplayMetaEl.textContent = `Loading replay data... ${text}`;
+      },
+    });
     recordReplay.payload = payload?.replay || null;
     recordReplay.loaded = Boolean(recordReplay.payload && Array.isArray(recordReplay.payload.frames) && recordReplay.payload.frames.length > 0);
     recordReplay.elapsedMs = 0;
@@ -1346,16 +1407,46 @@ async function loadRecordReplay(recordId) {
     return false;
   } finally {
     recordReplay.loading = false;
+    hideReplayLoadOverlay();
     if (recordReplayPlayBtn) recordReplayPlayBtn.disabled = false;
   }
 }
 
-async function fetchReplayPayloadByRecordId(recordId) {
+async function fetchReplayPayloadByRecordId(recordId, options = {}) {
   const id = Math.max(0, Number(recordId) || 0);
   if (id <= 0) return null;
+  const onProgress = typeof options?.onProgress === 'function' ? options.onProgress : null;
   const res = await fetch(`/api/records/${id}/replay`, { cache: 'no-store' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  const total = Math.max(0, Number(res.headers.get('content-length')) || 0);
+  if (!res.body || typeof res.body.getReader !== 'function') {
+    onProgress?.({ received: total, total, done: true });
+    return res.json();
+  }
+
+  const reader = res.body.getReader();
+  const chunks = [];
+  let received = 0;
+  onProgress?.({ received, total, done: false });
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    if (value?.length) {
+      chunks.push(value);
+      received += value.length;
+      onProgress?.({ received, total, done: false });
+    }
+  }
+  onProgress?.({ received: total > 0 ? total : received, total, done: true });
+
+  const bytes = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+  const text = new TextDecoder().decode(bytes);
+  return JSON.parse(text);
 }
 
 async function copyReplayLink(recordId) {
