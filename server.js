@@ -1815,6 +1815,11 @@ function captureReplayFrame(room, replay, now, options = {}) {
       Math.max(1, Math.round(Number(p.dodgeChargesMax) || PLAYER_DODGE_MAX_CHARGES)),
       Math.max(0, Math.round(Number(p.dodgeRechargeMs ?? p.dodgeCooldownMs) || 0)),
       PLAYER_DODGE_COOLDOWN_MS,
+      Math.max(1, Math.floor(Number(p.level) || 1)),
+      Math.max(0, Math.floor(Number(p.xp) || 0)),
+      Math.max(1, Math.floor(Number(p.xpToNext) || getXpToNextLevel(p.level || 1))),
+      Math.max(1, Math.round(Number(p.maxHp) || PLAYER_HP_MAX)),
+      Math.max(0, Math.floor(Number(p.bossKills) || 0)),
     ];
   });
   const companions = (room.companions || []).map((companion) => ([

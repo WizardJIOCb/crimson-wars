@@ -829,6 +829,8 @@ function buildReplayState(payload, elapsedMs) {
     const nextPlayer = nextPlayers.get(player[0]) || player;
     const x = lerp(player[1], nextPlayer[1], alpha);
     const y = lerp(player[2], nextPlayer[2], alpha);
+    const level = Math.max(1, Math.floor(Number(player[14]) || 1));
+    const xpToNext = Math.max(1, Math.floor(Number(player[16]) || 1));
     const aimX = lerp(x, nextPlayer[1], 0.65);
     const aimY = lerp(y, nextPlayer[2], 0.65);
     const skills = (Array.isArray(player[9]) ? player[9] : []).map((skill) => ({
@@ -847,7 +849,7 @@ function buildReplayState(payload, elapsedMs) {
       x,
       y,
       hp: Math.max(0, Number(player[3]) || 0),
-      maxHp: 100,
+      maxHp: Math.max(1, Number(player[17]) || 100),
       alive: Boolean(player[4]),
       score: Math.max(0, Number(player[8]) || 0),
       kills: Math.max(0, Number(player[7]) || 0),
@@ -875,12 +877,12 @@ function buildReplayState(payload, elapsedMs) {
       dodgeRechargeMs: Math.max(0, Number(player[12]) || 0),
       dodgeRechargeTotalMs: Math.max(1, Number(player[13]) || 1200),
       dodgeInvulnUntil: 0,
-      level: 1,
-      xp: 0,
-      xpToNext: 1,
+      level,
+      xp: Math.max(0, Math.floor(Number(player[15]) || 0)),
+      xpToNext,
       pendingSkillChoices: [],
       enemyKills: Math.max(0, Number(player[7]) || 0),
-      bossKills: 0,
+      bossKills: Math.max(0, Math.floor(Number(player[18]) || 0)),
       skills,
     });
   }
