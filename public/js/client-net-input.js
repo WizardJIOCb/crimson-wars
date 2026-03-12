@@ -492,6 +492,14 @@ function hideReplayLoadOverlay() {
   if (replayLoadOverlayEl) replayLoadOverlayEl.classList.add('hidden');
 }
 
+function updateRecordReplayStageButton() {
+  if (!recordReplayStageLoadBtn) return;
+  const shouldShow = recordReplay.recordId > 0 && !recordReplay.loaded;
+  recordReplayStageLoadBtn.classList.toggle('hidden', !shouldShow);
+  recordReplayStageLoadBtn.disabled = recordReplay.loading;
+  recordReplayStageLoadBtn.textContent = recordReplay.loading ? 'Loading...' : 'Load Replay';
+}
+
 function stopRecordReplayPlayback(resetElapsed = false) {
   if (recordReplay.rafId) cancelAnimationFrame(recordReplay.rafId);
   recordReplay.rafId = 0;
@@ -499,6 +507,7 @@ function stopRecordReplayPlayback(resetElapsed = false) {
   if (resetElapsed) recordReplay.elapsedMs = 0;
   if (recordReplayPlayBtn) recordReplayPlayBtn.textContent = recordReplay.loaded ? 'Play Replay' : 'Load Replay';
   updateRecordReplayButtons();
+  updateRecordReplayStageButton();
 }
 
 function setRecordReplaySpeed(speed) {
@@ -1306,7 +1315,7 @@ function drawRecordReplay() {
   replayCtx.font = '12px Segoe UI';
   replayCtx.fillText(`Time ${formatReplayClock(recordReplay.elapsedMs)}`, 14, 20);
   replayCtx.fillText(`Kills ${Math.max(0, Number(current.te) || 0)} | Bosses ${Math.max(0, Number(current.tb) || 0)}`, 14, 38);
-  replayCtx.fillText(`Speed x${recordReplay.speed}${payload?.truncated ? ' | truncated' : ''}`, width - 118, 20);
+  if (payload?.truncated) replayCtx.fillText('Truncated', width - 72, 20);
 }
 
 function tickRecordReplayFrame(ts) {
@@ -1364,11 +1373,13 @@ function resetRecordReplayUi(recordId = 0) {
   drawRecordReplay();
   setRecordReplaySpeed(1);
   updateRecordReplayButtons();
+  updateRecordReplayStageButton();
 }
 
-async function loadRecordReplay(recordId) {
+async function loadRecordReplay(recordId, options = {}) {
   const id = Math.max(0, Number(recordId) || 0);
   if (id <= 0) return false;
+  const autoPlay = options?.autoPlay === true;
   recordReplay.loading = true;
   if (recordReplayPlayBtn) {
     recordReplayPlayBtn.disabled = true;
@@ -1376,6 +1387,7 @@ async function loadRecordReplay(recordId) {
   }
   if (recordReplayMetaEl) recordReplayMetaEl.textContent = 'Loading replay data...';
   showReplayLoadOverlay(`Loading replay #${id}`, 'Preparing replay data...');
+  updateRecordReplayStageButton();
   try {
     const payload = await fetchReplayPayloadByRecordId(id, {
       onProgress(info) {
@@ -1396,6 +1408,8 @@ async function loadRecordReplay(recordId) {
     if (recordReplayMetaEl) recordReplayMetaEl.textContent = `Replay loaded. ${formatReplayClock(totalMs)} total | speed x${recordReplay.speed}`;
     if (recordReplayPlayBtn) recordReplayPlayBtn.textContent = 'Play Replay';
     updateRecordReplayButtons();
+    updateRecordReplayStageButton();
+    if (autoPlay) startRecordReplayPlayback();
     return true;
   } catch {
     recordReplay.payload = null;
@@ -1404,11 +1418,13 @@ async function loadRecordReplay(recordId) {
     if (recordReplayMetaEl) recordReplayMetaEl.textContent = 'Replay is not available for this record.';
     if (recordReplayPlayBtn) recordReplayPlayBtn.textContent = 'Replay Unavailable';
     updateRecordReplayButtons();
+    updateRecordReplayStageButton();
     return false;
   } finally {
     recordReplay.loading = false;
     hideReplayLoadOverlay();
     if (recordReplayPlayBtn) recordReplayPlayBtn.disabled = false;
+    updateRecordReplayStageButton();
   }
 }
 
@@ -1585,8 +1601,8 @@ recordDetailsModalEl?.addEventListener('click', (e) => {
 recordReplayPlayBtn?.addEventListener('click', async () => {
   if (recordReplay.loading) return;
   if (!recordReplay.loaded) {
-    const ok = await loadRecordReplay(recordReplay.recordId);
-    if (!ok) return;
+    await loadRecordReplay(recordReplay.recordId, { autoPlay: true });
+    return;
   }
   if (recordReplay.playing) {
     stopRecordReplayPlayback(false);
@@ -1609,6 +1625,10 @@ recordReplayInGameBtn?.addEventListener('click', async () => {
 });
 recordReplayCopyLinkBtn?.addEventListener('click', async () => {
   await copyReplayLink(recordReplay.recordId);
+});
+recordReplayStageLoadBtn?.addEventListener('click', async () => {
+  if (recordReplay.loading || recordReplay.loaded) return;
+  await loadRecordReplay(recordReplay.recordId, { autoPlay: true });
 });
 recordReplaySpeedsEl?.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-replay-speed]');

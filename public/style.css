@@ -1832,6 +1832,29 @@ body.replay-game-active #scoreboard {
   font-size: 12px;
 }
 
+.record-replay-stage {
+  position: relative;
+}
+
+.record-replay-stage-load {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  min-width: 132px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(8, 14, 24, 0.9);
+  color: #f8fafc;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.record-replay-stage-load.hidden {
+  display: none;
+}
+
 .record-replay-controls {
   display: grid;
   gap: 8px;

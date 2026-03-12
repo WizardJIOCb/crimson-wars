@@ -69,6 +69,7 @@ const recordReplayEndBtn = document.getElementById('record-replay-end');
 const recordReplayProgressEl = document.getElementById('record-replay-progress');
 const recordReplayMetaEl = document.getElementById('record-replay-meta');
 const recordReplayCanvasEl = document.getElementById('record-replay-canvas');
+const recordReplayStageLoadBtn = document.getElementById('record-replay-stage-load');
 const replayGameControlsEl = document.getElementById('replay-game-controls');
 const replayGameExitBtn = document.getElementById('replay-game-exit');
 const replayGameMetaEl = document.getElementById('replay-game-meta');
