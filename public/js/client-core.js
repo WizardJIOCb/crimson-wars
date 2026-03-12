@@ -269,6 +269,7 @@ let restartReloadTimer = null;
 let pendingAutoJoin = false;
 let pendingAutoCreate = false;
 let pendingReplayRecordId = 0;
+let pendingReplayStartSec = 0;
 let routedIntent = null;
 const recordReplay = {
   recordId: 0,
@@ -697,10 +698,12 @@ function renderInstanceMeta() {
 function applyInitialRoomIntent() {
   const params = new URLSearchParams(window.location.search);
   const replay = Math.max(0, Number(params.get('replay')) || 0);
+  const replayAt = Math.max(0, Number(params.get('replayAt')) || Number(params.get('t')) || 0);
   const room = (params.get('room') || '').trim().toUpperCase();
   const mode = (params.get('mode') || '').trim().toLowerCase();
   const routed = params.get('routed') === '1';
   pendingReplayRecordId = replay;
+  pendingReplayStartSec = replayAt;
   if (roomCodeInput && room) roomCodeInput.value = room.slice(0, 10);
   if (mode === 'join' || (room && !mode)) {
     joinMode = 'join';

@@ -1770,9 +1770,10 @@ function createRunReplay(room, player, now) {
   };
 }
 
-function captureReplayFrame(room, replay, now) {
+function captureReplayFrame(room, replay, now, options = {}) {
+  const force = options.force === true;
   if (!replay || replay.truncated) return;
-  if (replay.frames.length > 0 && now - replay.lastCaptureAt < replay.captureIntervalMs) return;
+  if (!force && replay.frames.length > 0 && now - replay.lastCaptureAt < replay.captureIntervalMs) return;
   if (replay.frames.length >= REPLAY_FRAME_LIMIT) {
     replay.truncated = true;
     replay.endedAt = now;
@@ -1880,7 +1881,7 @@ function captureReplayFrame(room, replay, now) {
 
 function finalizeRunReplay(room, replay, now) {
   if (!replay) return null;
-  captureReplayFrame(room, replay, now);
+  captureReplayFrame(room, replay, now, { force: true });
   if (replay.frames.length <= 0) return null;
 
   return {
@@ -2104,7 +2105,7 @@ function buildRunDetails(room, target, now) {
 }
 
 function downPlayer(room, target, now) {
-  const runReplay = finalizeRunReplay(room, target.runReplay, now);
+  const weaponKeyBeforeDown = target.weaponKey;
   target.hp = 0;
   target.alive = false;
   target.respawnAt = now + 3000;
@@ -2115,6 +2116,8 @@ function downPlayer(room, target, now) {
   target.dodgeRechargeMs = 0;
   target.dodgeInvulnUntil = 0;
   target.jumpQueued = false;
+  const runReplay = finalizeRunReplay(room, target.runReplay, now);
+  const runDetails = buildRunDetails(room, { ...target, weaponKey: weaponKeyBeforeDown }, now);
   setPlayerWeapon(target, 'pistol');
   recordsStore.pushRecord({
     name: target.name,
@@ -2123,7 +2126,7 @@ function downPlayer(room, target, now) {
     roomCode: room.code,
     durationSec: Math.max(1, Math.floor((now - (target.joinedAt || now)) / 1000)),
     at: now,
-    runDetails: buildRunDetails(room, target, now),
+    runDetails,
     runReplay,
   });
   broadcastRoom(room, { type: 'system', message: `${target.name} was downed.` });

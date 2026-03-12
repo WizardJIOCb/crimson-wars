@@ -425,14 +425,18 @@ function updateRecordsPager() {
   if (recordsNextBtn) recordsNextBtn.disabled = recordsUi.page >= recordsUi.totalPages;
 }
 
-function buildReplayShareUrl(recordId) {
+function buildReplayShareUrl(recordId, startSec = 0) {
   const id = Math.max(0, Number(recordId) || 0);
+  const at = Math.max(0, Number(startSec) || 0);
   const url = new URL(window.location.href);
   url.searchParams.delete('room');
   url.searchParams.delete('mode');
   url.searchParams.delete('routed');
   if (id > 0) url.searchParams.set('replay', String(id));
   else url.searchParams.delete('replay');
+  if (at > 0) url.searchParams.set('replayAt', String(at));
+  else url.searchParams.delete('replayAt');
+  url.searchParams.delete('t');
   return url.toString();
 }
 
@@ -459,7 +463,7 @@ function setRecordReplaySpeed(speed) {
     btn.classList.toggle('active', Number(btn.dataset.replaySpeed) === nextSpeed);
   }
   if (recordReplayMetaEl && recordReplay.loaded && !recordReplay.playing) {
-    const replayDurationMs = Number(recordReplay.payload?.durationSec || 0) * 1000 || Number(recordReplay.payload?.frames?.at(-1)?.t || 0);
+    const replayDurationMs = getReplayDurationMs(recordReplay.payload);
     recordReplayMetaEl.textContent = `Ready. ${formatReplayClock(replayDurationMs)} total | speed x${recordReplay.speed}`;
   }
 }
@@ -513,8 +517,9 @@ function lerp(a, b, alpha) {
 }
 
 function getReplayDurationMs(payload) {
-  return Number(payload?.durationSec || 0) * 1000
-    || Math.max(0, Number(payload?.frames?.at(-1)?.t || 0));
+  const secondsMs = Math.max(0, Number(payload?.durationSec || 0) * 1000);
+  const lastFrameMs = Math.max(0, Number(payload?.frames?.at(-1)?.t || 0));
+  return Math.max(secondsMs, lastFrameMs);
 }
 
 function updateReplayGameButtons() {
@@ -728,8 +733,7 @@ function updateReplayGameSpeed(speed) {
     btn.classList.toggle('active', Number(btn.dataset.replayGameSpeed) === nextSpeed);
   }
   if (replayGameMetaEl && replayGame.active) {
-    const totalMs = Number(replayGame.payload?.durationSec || 0) * 1000
-      || Math.max(0, Number(replayGame.payload?.frames?.at(-1)?.t || 0));
+    const totalMs = getReplayDurationMs(replayGame.payload);
     replayGameMetaEl.textContent = `Replay ${formatReplayClock(replayGame.elapsedMs)} / ${formatReplayClock(totalMs)} | x${replayGame.speed}`;
   }
 }
@@ -1046,10 +1050,23 @@ function startReplayGame(payload, record) {
   return true;
 }
 
+function startReplayGameAt(payload, record, startSec = 0) {
+  const started = startReplayGame(payload, record);
+  if (!started) return false;
+  const atMs = Math.max(0, Math.round((Number(startSec) || 0) * 1000));
+  if (atMs > 0) {
+    replayGame.playing = false;
+    seekReplayGame(atMs, { keepPaused: true });
+  }
+  return true;
+}
+
 async function maybeStartReplayFromUrl() {
   const recordId = Math.max(0, Number(pendingReplayRecordId) || 0);
+  const startSec = Math.max(0, Number(pendingReplayStartSec) || 0);
   if (recordId <= 0) return;
   pendingReplayRecordId = 0;
+  pendingReplayStartSec = 0;
   try {
     statusEl.textContent = 'Loading replay...';
     const payload = await fetchReplayPayloadByRecordId(recordId);
@@ -1058,8 +1075,8 @@ async function maybeStartReplayFromUrl() {
     if (!replay || !Array.isArray(replay.frames) || replay.frames.length <= 0) {
       throw new Error('Replay not found.');
     }
-    startReplayGame(replay, record);
-    statusEl.textContent = `Replay loaded: ${record?.name || 'Record'} #${recordId}`;
+    startReplayGameAt(replay, record, startSec);
+    statusEl.textContent = `Replay loaded: ${record?.name || 'Record'} #${recordId}${startSec > 0 ? ` from ${startSec}s` : ''}`;
   } catch (err) {
     joinOverlay.style.display = 'grid';
     joinOverlay.classList.remove('death-mode');
@@ -1220,8 +1237,7 @@ function drawRecordReplay() {
 function tickRecordReplayFrame(ts) {
   if (!recordReplay.playing || !recordReplay.payload) return;
   if (!recordReplay.startedAt) recordReplay.startedAt = ts - (recordReplay.elapsedMs / recordReplay.speed);
-  const totalMs = Number(recordReplay.payload?.durationSec || 0) * 1000
-    || Math.max(0, Number(recordReplay.payload?.frames?.[recordReplay.payload.frames.length - 1]?.t || 0));
+  const totalMs = getReplayDurationMs(recordReplay.payload);
   recordReplay.elapsedMs = Math.max(0, (ts - recordReplay.startedAt) * recordReplay.speed);
   if (recordReplay.elapsedMs >= totalMs) {
     recordReplay.elapsedMs = totalMs;
@@ -1283,8 +1299,7 @@ async function loadRecordReplay(recordId) {
     drawRecordReplay();
     if (!recordReplay.loaded) throw new Error('empty replay');
     if (recordReplaySpeedsEl) recordReplaySpeedsEl.classList.remove('hidden');
-    const totalMs = Number(recordReplay.payload?.durationSec || 0) * 1000
-      || Math.max(0, Number(recordReplay.payload?.frames?.[recordReplay.payload.frames.length - 1]?.t || 0));
+    const totalMs = getReplayDurationMs(recordReplay.payload);
     if (recordReplayMetaEl) recordReplayMetaEl.textContent = `Replay loaded. ${formatReplayClock(totalMs)} total | speed x${recordReplay.speed}`;
     if (recordReplayPlayBtn) recordReplayPlayBtn.textContent = 'Play Replay';
     return true;
@@ -1314,9 +1329,10 @@ async function copyReplayLink(recordId) {
     if (recordReplayMetaEl) recordReplayMetaEl.textContent = 'Replay link is unavailable.';
     return false;
   }
+  const startSec = Math.max(0, Math.floor((Number(recordReplay.elapsedMs) || 0) / 1000));
   try {
-    await navigator.clipboard.writeText(buildReplayShareUrl(id));
-    if (recordReplayMetaEl) recordReplayMetaEl.textContent = 'Replay link copied.';
+    await navigator.clipboard.writeText(buildReplayShareUrl(id, startSec));
+    if (recordReplayMetaEl) recordReplayMetaEl.textContent = `Replay link copied${startSec > 0 ? ` from ${startSec}s` : ''}.`;
     return true;
   } catch {
     if (recordReplayMetaEl) recordReplayMetaEl.textContent = 'Failed to copy replay link.';
@@ -1450,8 +1466,7 @@ recordReplayPlayBtn?.addEventListener('click', async () => {
     stopRecordReplayPlayback(false);
     drawRecordReplay();
     if (recordReplayMetaEl) {
-      const totalMs = Number(recordReplay.payload?.durationSec || 0) * 1000
-        || Math.max(0, Number(recordReplay.payload?.frames?.[recordReplay.payload.frames.length - 1]?.t || 0));
+      const totalMs = getReplayDurationMs(recordReplay.payload);
       recordReplayMetaEl.textContent = `${formatReplayClock(recordReplay.elapsedMs)} / ${formatReplayClock(totalMs)} | speed x${recordReplay.speed}`;
     }
     return;
