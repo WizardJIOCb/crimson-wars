@@ -1553,7 +1553,7 @@ function openRecordDetailsModal(record, rankLabel) {
   const roomCode = (record?.roomCode || '-').toString();
   const playedAt = formatRecordDateTime(record?.at);
 
-  recordDetailsTitleEl.textContent = `${rankLabel} ${name} | ${kills} K | ${score} pts`;
+  recordDetailsTitleEl.textContent = `${rankLabel} ${name} | ${kills} kills | ${score} pts`;
   const summary = `<div class="rd-summary">${playedAt} | Room ${roomCode} | ${durationSec}s</div>`;
   recordDetailsBodyEl.innerHTML = summary + renderRunDetailsHtml(record?.runDetails || null);
   resetRecordReplayUi(record?.id);
@@ -1597,7 +1597,7 @@ function renderRecordsList(items, page = 1, totalPages = 1, total = 0) {
 
     const meta = document.createElement('div');
     meta.className = 'record-meta';
-    meta.textContent = `${kills}K / ${score}pts`;
+    meta.textContent = `${kills} kills / ${score} pts`;
 
     row.addEventListener('click', () => {
       openRecordDetailsModal(r, rankLabel);
