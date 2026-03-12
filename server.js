@@ -2208,7 +2208,7 @@ function applyDevCheatCommand(room, player, rawCommand, now = Date.now()) {
   const args = parts;
 
   if (cmd === 'help') {
-    sendDevConsole(player, 'Commands: room|roomcode, unlock <room-secret>, lock, god [on|off], weapon <pistol|smg|shotgun|sniper> [ammo], ammo <n>, heal [n], hp <n>, xp <n>, levelup [n], skills, skill <id> [levels], bots|buddies [levels], nobots|clearbots, spawn <normal|charger|ranged|boss> [count], killall, status');
+    sendDevConsole(player, 'Commands: room|roomcode, unlock <room-secret>, lock, god [on|off], weapon <pistol|smg|shotgun|sniper> [ammo], ammo <n>, heal [n], hp <n>, xp <n>, levelup [n], skills, skill <id> [levels], bots|buddies [levels], nobots|clearbots, spawn <normal|charger|ranged|boss> [count], killall, playerpass <nickname> <newpassword>, status');
     return;
   }
 
@@ -2398,6 +2398,22 @@ function applyDevCheatCommand(room, player, rawCommand, now = Date.now()) {
       }
     }
     sendDevConsole(player, `Killed ${killed} enemies.`);
+    return;
+  }
+
+  if (cmd === 'playerpass') {
+    const nickname = String(args[0] || '').trim();
+    const nextPassword = args.slice(1).join(' ').trim();
+    if (!nickname || !nextPassword) {
+      sendDevConsole(player, 'Usage: playerpass <nickname> <newpassword>', false);
+      return;
+    }
+    const result = playerAuthStore.updatePassword(nickname, nextPassword);
+    if (!result?.ok) {
+      sendDevConsole(player, result?.message || 'Failed to update password.', false);
+      return;
+    }
+    sendDevConsole(player, result.message || `Password updated for ${nickname}.`);
     return;
   }
 

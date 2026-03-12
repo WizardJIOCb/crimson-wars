@@ -131,6 +131,7 @@ function createPlayerAuthStore({ dataDir, dbPath }) {
     'VALUES (@nickname, @nicknameKey, @passwordHash, 1, @createdAt, @updatedAt, 0)',
   ].join('\n'));
   const stmtUpdateLastLogin = db.prepare('UPDATE player_accounts SET last_login_at = ?, updated_at = ? WHERE id = ?');
+  const stmtUpdatePasswordHash = db.prepare('UPDATE player_accounts SET password_hash = ?, updated_at = ? WHERE id = ?');
   const stmtInsertSession = db.prepare([
     'INSERT INTO player_sessions (player_id, token_hash, created_at, expires_at, last_seen_at)',
     'VALUES (@playerId, @tokenHash, @createdAt, @expiresAt, @lastSeenAt)',
@@ -255,6 +256,29 @@ function createPlayerAuthStore({ dataDir, dbPath }) {
     };
   }
 
+  function updatePassword(nickname, password) {
+    const validation = validateNickname(nickname);
+    if (!validation.ok) {
+      return { ok: false, code: 400, message: validation.message };
+    }
+    const normalizedPassword = (password || '').toString();
+    if (normalizedPassword.length < PASSWORD_MIN_LENGTH) {
+      return { ok: false, code: 400, message: `Password must be at least ${PASSWORD_MIN_LENGTH} chars` };
+    }
+    const row = getAccountWithSecretByNickname(validation.nickname);
+    if (!row || !row.is_active) {
+      return { ok: false, code: 404, message: 'Player not found' };
+    }
+    const now = nowMs();
+    stmtUpdatePasswordHash.run(hashPassword(normalizedPassword), now, row.id);
+    stmtDeleteSessionsByPlayerId.run(row.id);
+    return {
+      ok: true,
+      player: parsePlayerRow({ ...row, updated_at: now }),
+      message: `Password updated for ${validation.nickname}`,
+    };
+  }
+
   function getNicknameStatus(nickname) {
     const validation = validateNickname(nickname);
     if (!validation.ok) {
@@ -312,6 +336,7 @@ function createPlayerAuthStore({ dataDir, dbPath }) {
     deleteSession,
     register,
     authenticate,
+    updatePassword,
     createProviderPlaceholder,
   };
 }
