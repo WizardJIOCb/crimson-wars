@@ -1911,8 +1911,10 @@ loadDevConsoleHistory();
 loadDevKeyBindings();
 function updateMobileControlsVisibility() {
   const overlayOpen = getComputedStyle(joinOverlay).display !== 'none';
+  const replayMobile = mobile.enabled && replayGame.active;
   updateHudVisibility(overlayOpen);
   if (devConsoleToggleBtn) devConsoleToggleBtn.classList.toggle('hidden', !mobile.enabled || overlayOpen);
+  if (mobileControlsEl) mobileControlsEl.classList.toggle('replay-active', replayMobile);
 
   if (!mobile.enabled) {
     setMobileControlsVisible(false);

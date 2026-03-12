@@ -2095,13 +2095,34 @@ body.replay-game-active #scoreboard {
     grid-template-columns: 1fr auto;
   }
 
+  #mobile-controls.replay-active.active {
+    grid-template-columns: 1fr auto;
+  }
+
   body.replay-game-active #mobile-controls .stick {
+    display: none;
+  }
+
+  #mobile-controls.replay-active .stick {
     display: none;
   }
 
   body.replay-game-active #jump-btn {
     grid-column: 2;
     justify-self: end;
+  }
+
+  #mobile-controls.replay-active #jump-btn {
+    grid-column: 2;
+    justify-self: end;
+  }
+
+  body.replay-game-active #jump-btn {
+    display: none;
+  }
+
+  #mobile-controls.replay-active #jump-btn {
+    display: none;
   }
 }
 
