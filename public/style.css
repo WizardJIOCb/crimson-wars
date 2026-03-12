@@ -2005,7 +2005,7 @@ body.replay-game-active #scoreboard {
   }
 
   body.replay-game-active #minimap-wrap {
-    top: calc(env(safe-area-inset-top) + 152px);
+    top: calc(env(safe-area-inset-top) + 182px);
     bottom: auto;
   }
 
