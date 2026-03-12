@@ -74,10 +74,10 @@ function validateNickname(nickname) {
   if (normalized.length < NICKNAME_MIN_LENGTH) {
     return { ok: false, message: `Nickname must be at least ${NICKNAME_MIN_LENGTH} chars` };
   }
-  if (!/^[A-Za-z0-9 _-]+$/.test(normalized)) {
+  if (!/^[\p{L}\p{N} _-]+$/u.test(normalized)) {
     return { ok: false, message: 'Nickname may use letters, numbers, space, _ and -' };
   }
-  if (!/[A-Za-z0-9]/.test(normalized)) {
+  if (!/[\p{L}\p{N}]/u.test(normalized)) {
     return { ok: false, message: 'Nickname must contain letters or numbers' };
   }
   return { ok: true, nickname: normalized, nicknameKey: normalizeNicknameKey(normalized) };
