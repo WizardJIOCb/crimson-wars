@@ -126,6 +126,7 @@ function createPlayerAuthStore({ dataDir, dbPath }) {
 
   const stmtGetByNicknameKey = db.prepare('SELECT * FROM player_accounts WHERE nickname_key = ?');
   const stmtGetById = db.prepare('SELECT * FROM player_accounts WHERE id = ?');
+  const stmtCountAccounts = db.prepare('SELECT COUNT(*) AS total FROM player_accounts WHERE is_active = 1');
   const stmtInsertAccount = db.prepare([
     'INSERT INTO player_accounts (nickname, nickname_key, password_hash, is_active, created_at, updated_at, last_login_at)',
     'VALUES (@nickname, @nicknameKey, @passwordHash, 1, @createdAt, @updatedAt, 0)',
@@ -301,6 +302,11 @@ function createPlayerAuthStore({ dataDir, dbPath }) {
     };
   }
 
+  function countAccounts() {
+    const row = stmtCountAccounts.get();
+    return Math.max(0, Number(row?.total) || 0);
+  }
+
   function createProviderPlaceholder(playerId, provider, providerUserId, providerEmail = '') {
     const normalizedProvider = (provider || '').toString().trim().toLowerCase();
     if (!PROVIDERS.has(normalizedProvider)) {
@@ -332,6 +338,7 @@ function createPlayerAuthStore({ dataDir, dbPath }) {
     getAccountById,
     getAccountByNickname,
     getNicknameStatus,
+    countAccounts,
     getSession,
     deleteSession,
     register,

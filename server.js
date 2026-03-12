@@ -182,7 +182,10 @@ function normalizeRoomSync(raw) {
 }
 
 function getPresenceStats() {
-  return runtimeRegistryStore.getPresence();
+  return {
+    ...runtimeRegistryStore.getPresence(),
+    registered: playerAuthStore.countAccounts(),
+  };
 }
 
 function listRoomsForLobby() {
