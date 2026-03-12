@@ -255,6 +255,22 @@ function readPlayerSession(req) {
   return session || null;
 }
 
+function isConsoleAdmin(ws, player = null) {
+  const adminLoginKey = normalizeNickname(ADMIN_BOOTSTRAP_LOGIN).toLowerCase();
+  const adminUserLoginKey = (ws?.adminSession?.user?.login || '').toString().trim().toLowerCase();
+  if (adminUserLoginKey && adminUserLoginKey === adminLoginKey) return true;
+
+  const sessionNicknameKey = (ws?.playerSession?.player?.nickname || '').toString().trim().toLowerCase();
+  if (sessionNicknameKey && sessionNicknameKey === adminLoginKey) return true;
+
+  const playerNicknameKey = (player?.name || '').toString().trim().toLowerCase();
+  if (playerNicknameKey && playerNicknameKey === adminLoginKey && ws?.playerSession?.player?.nickname) {
+    return sessionNicknameKey === adminLoginKey;
+  }
+
+  return false;
+}
+
 function attachAdminAuth(req, _res, next) {
   const session = readAdminSession(req);
   req.adminSession = session;
@@ -2159,6 +2175,51 @@ function sendDevConsole(player, text, ok = true) {
   sendTo(player.ws, { type: 'devConsole', ok: Boolean(ok), text: String(text || '') });
 }
 
+function sendDevConsoleWs(ws, text, ok = true) {
+  if (!ws) return;
+  sendTo(ws, { type: 'devConsole', ok: Boolean(ok), text: String(text || '') });
+}
+
+function applyGlobalDevCommand(ws, rawCommand) {
+  const command = String(rawCommand || '').trim();
+  if (!command) {
+    sendDevConsoleWs(ws, 'Empty command.', false);
+    return true;
+  }
+
+  const parts = command.split(/\s+/);
+  const cmd = (parts.shift() || '').toLowerCase();
+  const args = parts;
+
+  if (cmd === 'help') {
+    sendDevConsoleWs(ws, 'Menu commands: help, playerpass <nickname> <newpassword>. Join a room for gameplay cheats.');
+    return true;
+  }
+
+  if (cmd === 'playerpass') {
+    if (!isConsoleAdmin(ws)) {
+      sendDevConsoleWs(ws, 'Forbidden. Admin access required.', false);
+      return true;
+    }
+    const nickname = String(args[0] || '').trim();
+    const nextPassword = args.slice(1).join(' ').trim();
+    if (!nickname || !nextPassword) {
+      sendDevConsoleWs(ws, 'Usage: playerpass <nickname> <newpassword>', false);
+      return true;
+    }
+    const result = playerAuthStore.updatePassword(nickname, nextPassword);
+    if (!result?.ok) {
+      sendDevConsoleWs(ws, result?.message || 'Failed to update password.', false);
+      return true;
+    }
+    sendDevConsoleWs(ws, result.message || `Password updated for ${nickname}.`);
+    return true;
+  }
+
+  sendDevConsoleWs(ws, 'Join a room first for gameplay console commands. Type help.', false);
+  return true;
+}
+
 function isBuddySkillDef(def) {
   return Boolean(def && String(def.companionWeaponKey || '').trim());
 }
@@ -2402,6 +2463,10 @@ function applyDevCheatCommand(room, player, rawCommand, now = Date.now()) {
   }
 
   if (cmd === 'playerpass') {
+    if (!isConsoleAdmin(player?.ws, player)) {
+      sendDevConsole(player, 'Forbidden. Admin access required.', false);
+      return;
+    }
     const nickname = String(args[0] || '').trim();
     const nextPassword = args.slice(1).join(' ').trim();
     if (!nickname || !nextPassword) {
@@ -2659,6 +2724,7 @@ wss.on('connection', (ws, req) => {
   }
   activeSockets.add(ws);
   publishRuntimeRegistry();
+  ws.adminSession = readAdminSession(req);
   ws.playerSession = readPlayerSession(req);
   let player = null;
 
@@ -2676,6 +2742,11 @@ wss.on('connection', (ws, req) => {
 
     if (msg.type === 'join' && !player) {
       player = joinRoom(ws, msg);
+      return;
+    }
+
+    if (msg.type === 'devCheat' && !player) {
+      applyGlobalDevCommand(ws, msg.command);
       return;
     }
 
