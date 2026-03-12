@@ -670,10 +670,29 @@ body.replay-game-active #scoreboard {
 
 .auth-tab {
   background: rgba(22, 30, 42, 0.78);
+  cursor: pointer;
+  transition: background .18s ease, border-color .18s ease, transform .18s ease, box-shadow .18s ease, color .18s ease, opacity .18s ease;
+  opacity: .78;
+}
+
+.auth-tab:hover {
+  border-color: rgba(255,255,255,0.3);
+  opacity: .94;
 }
 
 .auth-tab.active {
   background: linear-gradient(135deg, #0f766e, #059669);
+  border-color: rgba(110, 231, 183, 0.95);
+  color: #f0fdf4;
+  opacity: 1;
+  box-shadow: 0 0 0 1px rgba(110, 231, 183, 0.28), 0 12px 24px rgba(5, 150, 105, 0.22);
+  transform: translateY(-1px);
+}
+
+.auth-tab:focus-visible {
+  outline: none;
+  border-color: rgba(148, 163, 184, 0.9);
+  box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.22);
 }
 
 .auth-panel {

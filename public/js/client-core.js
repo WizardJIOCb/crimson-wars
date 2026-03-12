@@ -776,7 +776,9 @@ function setPlayerAuthBusy(busy) {
 function setAuthTab(mode) {
   game.playerAuth.mode = mode === 'login' || mode === 'register' ? mode : 'guest';
   for (const button of authTabButtons) {
-    button.classList.toggle('active', button.dataset.authTab === game.playerAuth.mode);
+    const isActive = button.dataset.authTab === game.playerAuth.mode;
+    button.classList.toggle('active', isActive);
+    button.setAttribute('aria-selected', isActive ? 'true' : 'false');
   }
   for (const panel of authPanels) {
     panel.classList.toggle('active', panel.dataset.authPanel === game.playerAuth.mode);
