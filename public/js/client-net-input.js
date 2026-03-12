@@ -352,7 +352,11 @@ function renderPresence(presence) {
   const online = Number(presence?.online) || 0;
   const inGame = Number(presence?.inGame) || 0;
   const inMenu = Number(presence?.inMenu) || 0;
-  presenceMetaEl.textContent = `Online: ${online} | In game: ${inGame} | In menu: ${inMenu}`;
+  const renderCount = (value) => {
+    const cls = value > 1 ? 'presence-count hot' : 'presence-count';
+    return `<span class="${cls}">${value}</span>`;
+  };
+  presenceMetaEl.innerHTML = `Online: ${renderCount(online)} | In game: ${renderCount(inGame)} | In menu: ${renderCount(inMenu)}`;
 }
 
 function renderRoomsList(rooms) {
