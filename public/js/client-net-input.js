@@ -356,7 +356,7 @@ function renderPresence(presence) {
   const registered = hasRegistered ? Math.max(0, Number(presence?.registered) || 0) : null;
   const renderCount = (value) => {
     if (value === null) return '<span class="presence-count">--</span>';
-    const cls = value > 1 ? 'presence-count hot' : 'presence-count';
+    const cls = value > 0 ? 'presence-count hot' : 'presence-count';
     return `<span class="${cls}">${value}</span>`;
   };
   presenceMetaEl.innerHTML = `Online: ${renderCount(online)} | In game: ${renderCount(inGame)} | In menu: ${renderCount(inMenu)} | Registered: ${renderCount(registered)}`;
