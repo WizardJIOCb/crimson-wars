@@ -246,10 +246,18 @@ function spawnChainLightningFx(caster, nextState) {
   if (visuals.skillLinks.length > 60) visuals.skillLinks.splice(0, visuals.skillLinks.length - 60);
 }
 
-function spawnSkillCastFx(skillId, caster, nextState) {
+function shockwaveFxRadius(skill) {
+  const def = game.skillCatalog?.shockwave || {};
+  const lvl = Math.max(1, Number(skill?.level) || 1);
+  const base = Math.max(40, Number(def.radius) || 170);
+  const perLevel = Math.max(0, Number(def.radiusPerLevel) || 14);
+  return Math.max(70, base + perLevel * (lvl - 1));
+}
+
+function spawnSkillCastFx(skillId, caster, nextState, skill) {
   const sid = String(skillId || '').toLowerCase();
   if (sid === 'shockwave') {
-    spawnSkillBurstFx(caster.x, caster.y, '#86efac', 190);
+    spawnSkillBurstFx(caster.x, caster.y, '#86efac', shockwaveFxRadius(skill));
     spawnHitFx(caster.x, caster.y, 12, caster.id === game.myId);
     spawnSkillLabel('Shockwave', caster.x, caster.y - 12);
     return;
@@ -290,7 +298,7 @@ function processSkillCastFx(nextState) {
 
       if (Number.isFinite(prev)) {
         const casted = cur > 180 && (prev <= 120 || (cur - prev) > 220);
-        if (casted) spawnSkillCastFx(sid, p, nextState);
+        if (casted) spawnSkillCastFx(sid, p, nextState, s);
       }
       visuals.skillCdPrev.set(key, cur);
     }

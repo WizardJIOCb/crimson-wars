@@ -1166,6 +1166,14 @@ function collectSkillTargets(room, player, maxTargets, radius) {
     .map((x) => x.e);
 }
 
+function collectEnemiesInRadius(room, x, y, radius) {
+  return room.enemies
+    .map((enemy) => ({ enemy, d2: (enemy.x - x) ** 2 + (enemy.y - y) ** 2 }))
+    .filter((item) => item.d2 <= radius * radius)
+    .sort((a, b) => a.d2 - b.d2)
+    .map((item) => item.enemy);
+}
+
 function castHomingMissiles(room, player, def, st, now) {
   const lvl = Math.max(1, Number(st?.level) || 1);
   const radius = Math.max(80, (Number(def.radius) || 520) + (Number(def.radiusPerLevel) || 0) * (lvl - 1));
@@ -1235,6 +1243,15 @@ function castPlayerActiveSkill(room, player, def, st, now) {
   const lvl = Math.max(1, Number(st?.level) || 1);
   const radius = Math.max(40, (Number(def.radius) || 120) + (Number(def.radiusPerLevel) || 0) * (lvl - 1));
   const damage = Math.max(1, (Number(def.damage) || 10) + (Number(def.damagePerLevel) || 0) * (lvl - 1));
+  if (skillId === 'shockwave') {
+    const targets = collectEnemiesInRadius(room, player.x, player.y, radius);
+    if (targets.length <= 0) return false;
+    for (const enemy of targets) {
+      enemyTakeDamage(room, enemy, damage * player.damageMul, player.id, now);
+    }
+    return true;
+  }
+
   const maxTargets = Math.max(1, Math.round((Number(def.targets) || 1) + (Number(def.targetsPerLevel) || 0) * (lvl - 1)));
   const targets = collectSkillTargets(room, player, maxTargets, radius);
   if (targets.length <= 0) return false;

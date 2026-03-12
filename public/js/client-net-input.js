@@ -1490,6 +1490,22 @@ function closeRecordDetailsModal() {
   recordDetailsModalEl.classList.add('hidden');
 }
 
+function formatRecordDateTime(ts) {
+  const value = Math.max(0, Number(ts) || 0);
+  if (value <= 0) return '--';
+  try {
+    return new Intl.DateTimeFormat('ru-RU', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(value));
+  } catch {
+    return new Date(value).toLocaleString();
+  }
+}
+
 function renderRunDetailsHtml(details) {
   if (!details || typeof details !== 'object') {
     return '<div class="record-details-empty">No detailed run stats for this record.</div>';
@@ -1535,9 +1551,10 @@ function openRecordDetailsModal(record, rankLabel) {
   const score = Number(record?.score) || 0;
   const durationSec = Number(record?.durationSec) || 0;
   const roomCode = (record?.roomCode || '-').toString();
+  const playedAt = formatRecordDateTime(record?.at);
 
   recordDetailsTitleEl.textContent = `${rankLabel} ${name} | ${kills} K | ${score} pts`;
-  const summary = `<div class="rd-summary">Room ${roomCode} | ${durationSec}s</div>`;
+  const summary = `<div class="rd-summary">${playedAt} | Room ${roomCode} | ${durationSec}s</div>`;
   recordDetailsBodyEl.innerHTML = summary + renderRunDetailsHtml(record?.runDetails || null);
   resetRecordReplayUi(record?.id);
   recordReplay.record = record || null;
