@@ -4,22 +4,25 @@ const minimapCtx = minimapCanvasEl?.getContext('2d');
 if (minimapCtx) minimapCtx.imageSmoothingEnabled = false;
 
 const renderDiag = {
-  enabled: new URLSearchParams(window.location.search).get('rdiag') === '1',
   frames: 0,
   totals: { frame: 0, fx: 0, indicators: 0, minimap: 0 },
 };
 
+function isRenderDiagEnabled() {
+  return Boolean(game?.showFpsEnabled && fpsCornerEl);
+}
+
 function renderDiagStart() {
-  return renderDiag.enabled ? performance.now() : 0;
+  return isRenderDiagEnabled() ? performance.now() : 0;
 }
 
 function renderDiagEnd(key, startedAt) {
-  if (!renderDiag.enabled || !startedAt) return;
+  if (!isRenderDiagEnabled() || !startedAt) return;
   renderDiag.totals[key] = (Number(renderDiag.totals[key]) || 0) + (performance.now() - startedAt);
 }
 
 function renderDiagBuildText() {
-  if (!renderDiag.enabled || renderDiag.frames <= 0) return '';
+  if (!isRenderDiagEnabled() || renderDiag.frames <= 0) return '';
   const f = Math.max(1, renderDiag.frames);
   const frameMs = (renderDiag.totals.frame / f).toFixed(2);
   const fxMs = (renderDiag.totals.fx / f).toFixed(2);
@@ -1175,7 +1178,7 @@ function render(ts) {
   renderDiagEnd('minimap', diagStartedAt);
 
   renderDiagEnd('frame', frameDiagStartedAt);
-  if (renderDiag.enabled) renderDiag.frames += 1;
+  if (isRenderDiagEnabled()) renderDiag.frames += 1;
 
   scheduleNextFrame();
 }
