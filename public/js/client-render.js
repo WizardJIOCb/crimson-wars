@@ -1057,8 +1057,12 @@ function render(ts) {
   }
   drawEnemies(game.state.enemies, ts / 1000);
 
-  for (const p of game.state.players) {
-    const rp = getPlayerRenderPos(p);
+  const playersByDepth = (game.state.players || [])
+    .map((p) => ({ p, rp: getPlayerRenderPos(p) }))
+    .sort((a, b) => (Number(a.rp.y) || 0) - (Number(b.rp.y) || 0));
+  for (const item of playersByDepth) {
+    const p = item.p;
+    const rp = item.rp;
     drawPlayer(p, ts / 1000, p.id === game.myId, rp.x, rp.y);
   }
 

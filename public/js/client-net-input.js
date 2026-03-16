@@ -1946,8 +1946,10 @@ function updateBulletInterpolation(dt) {
 
     r.serverX = tb.x;
     r.serverY = tb.y;
-    r.vx = (r.vx * 0.35) + ((tb.vx || 0) * 0.65);
-    r.vy = (r.vy * 0.35) + ((tb.vy || 0) * 0.65);
+    const isRocket = String(tb.kind || r.kind || '').toLowerCase() === 'rocket';
+    const velBlend = isRocket ? 0.45 : 0.65;
+    r.vx = (r.vx * (1 - velBlend)) + ((tb.vx || 0) * velBlend);
+    r.vy = (r.vy * (1 - velBlend)) + ((tb.vy || 0) * velBlend);
     r.color = tb.color;
     r.kind = tb.kind || 'bullet';
     r.radius = tb.radius || 3;
@@ -1965,8 +1967,11 @@ function updateBulletInterpolation(dt) {
     const dy = r.serverY - r.y;
     const dist = Math.hypot(dx, dy);
     if (dist > 0.001) {
-      const correction = Math.min(dist, Math.max(8, Math.hypot(r.vx, r.vy) * dt * 1.4));
-      const k = (correction / dist) * Math.min(1, roomSync.bulletCorrectionRate * dt);
+      const speed = Math.hypot(r.vx, r.vy);
+      const maxStep = Math.max(isRocket ? 5 : 8, speed * dt * (isRocket ? 1.05 : 1.4));
+      const correction = Math.min(dist, maxStep);
+      const corrRate = roomSync.bulletCorrectionRate * (isRocket ? 0.58 : 1);
+      const k = (correction / dist) * Math.min(1, corrRate * dt);
       r.x += dx * k;
       r.y += dy * k;
     }
