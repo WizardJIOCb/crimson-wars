@@ -340,10 +340,10 @@ function drawEnemies(enemies, t) {
 function drawXpOrbs(orbs, nowMs) {
   if (!Array.isArray(orbs)) return;
   for (const o of orbs) {
-    if (!isVisibleWorld(o.x, o.y, 20)) continue;
-    const x = o.x - camera.x;
-    const y = o.y - camera.y;
-    const ttl = Math.max(1, Number(o.ttlMaxMs) || 22000);
+    const ro = getXpOrbRenderPos(o);
+    if (!isVisibleWorld(ro.x, ro.y, 20)) continue;
+    const x = ro.x - camera.x;
+    const y = ro.y - camera.y;
     const left = Math.max(0, Number(o.ttlMs) || 0);
     const blink = left < 3000 && Math.sin(nowMs / 80) < 0;
     if (blink) continue;
@@ -427,6 +427,72 @@ function drawSkillOfferOrbs(orbs, nowMs) {
     ctx.fillText(label, sx, sy - 22);
     ctx.restore();
   }
+}
+function drawBossPortalEdgeIndicator(portals, nowMs) {
+  const enemies = Array.isArray(game.state?.enemies) ? game.state.enemies : [];
+  const aliveBoss = enemies.find((e) => e && e.type === 'boss' && Number(e.hp) > 0);
+
+  let targetX = null;
+  let targetY = null;
+  let text = 'BOSS';
+
+  if (aliveBoss) {
+    const rb = getEnemyRenderPos(aliveBoss);
+    targetX = rb.x;
+    targetY = rb.y;
+    text = 'BOSS';
+  } else if (Array.isArray(portals) && portals.length > 0) {
+    const portal = portals[0];
+    targetX = Number(portal.x);
+    targetY = Number(portal.y);
+    const leftSec = Math.max(0, (Number(portal.spawnAt) - nowMs) / 1000);
+    text = `BOSS ${leftSec.toFixed(1)}s`;
+  }
+
+  if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) return;
+
+  const sx = targetX - camera.x;
+  const sy = targetY - camera.y;
+  const margin = 18;
+  if (sx >= margin && sx <= canvas.width - margin && sy >= margin && sy <= canvas.height - margin) return;
+
+  const cx = canvas.width * 0.5;
+  const cy = canvas.height * 0.5;
+  const pad = 44;
+  const boundX = Math.max(20, cx - pad);
+  const boundY = Math.max(20, cy - pad);
+  const dx = sx - cx;
+  const dy = sy - cy;
+  const absDx = Math.max(0.001, Math.abs(dx));
+  const absDy = Math.max(0.001, Math.abs(dy));
+  const t = Math.min(boundX / absDx, boundY / absDy);
+  const ax = cx + dx * t;
+  const ay = cy + dy * t;
+  const ang = Math.atan2(dy, dx);
+
+  ctx.save();
+  ctx.translate(ax, ay);
+  ctx.rotate(ang);
+  ctx.fillStyle = '#ef4444';
+  ctx.beginPath();
+  ctx.moveTo(14, 0);
+  ctx.lineTo(-10, -8);
+  ctx.lineTo(-10, 8);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  const textX = ax - Math.cos(ang) * 40;
+  const textY = ay - Math.sin(ang) * 40;
+  ctx.save();
+  ctx.font = 'bold 12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.strokeStyle = 'rgba(2, 6, 14, 0.9)';
+  ctx.lineWidth = 3;
+  ctx.strokeText(text, textX, textY);
+  ctx.fillStyle = '#fca5a5';
+  ctx.fillText(text, textX, textY);
+  ctx.restore();
 }
 function drawSkillOrbEdgeIndicators(orbs) {
   if (!Array.isArray(orbs) || orbs.length <= 0) return;
@@ -769,7 +835,25 @@ function drawMinimap() {
   }
 
   for (const drop of game.state.drops || []) {
-    dot(drop.x, drop.y, Math.max(1.8 * dpr, 1.6), '#f59e0b');
+    const dotColor = drop.kind === 'xp_vacuum' ? '#a78bfa' : '#f59e0b';
+    dot(drop.x, drop.y, Math.max(1.8 * dpr, 1.6), dotColor);
+  }
+
+  for (const portal of game.state.bossPortals || []) {
+    const mx = toMapX(portal.x);
+    const my = toMapY(portal.y);
+    const coreR = Math.max(3.6 * dpr, 3.2);
+
+    minimapCtx.fillStyle = '#ef4444';
+    minimapCtx.beginPath();
+    minimapCtx.arc(mx, my, coreR, 0, Math.PI * 2);
+    minimapCtx.fill();
+
+    minimapCtx.strokeStyle = 'rgba(254, 202, 202, 0.95)';
+    minimapCtx.lineWidth = Math.max(1.1, dpr);
+    minimapCtx.beginPath();
+    minimapCtx.arc(mx, my, coreR + Math.max(2, dpr * 1.8), 0, Math.PI * 2);
+    minimapCtx.stroke();
   }
 
   for (const enemy of game.state.enemies || []) {
@@ -829,6 +913,7 @@ function render(ts) {
   updatePlayerInterpolation(simDt);
   updateEnemyInterpolation(simDt);
   updateBulletInterpolation(simDt);
+  updateXpOrbInterpolation(simDt);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   updateTopCenterHud(Number(game.state.now) || Date.now());
@@ -863,7 +948,10 @@ function render(ts) {
     if (!isVisibleWorld(d.x, d.y, 50)) continue;
     const x = d.x - camera.x;
     const y = d.y - camera.y;
-    const glow = d.weaponKey === 'sniper' ? '#e5e7eb' : (d.weaponKey === 'shotgun' ? '#f97316' : (d.weaponKey === 'smg' ? '#38bdf8' : '#22c55e'));
+    const isXpVacuum = d.kind === 'xp_vacuum';
+    const glow = isXpVacuum
+      ? '#a78bfa'
+      : (d.weaponKey === 'sniper' ? '#e5e7eb' : (d.weaponKey === 'shotgun' ? '#f97316' : (d.weaponKey === 'smg' ? '#38bdf8' : '#22c55e')));
 
     const ttlMs = Math.max(0, Number(d.ttlMs) || 0);
     const blink = ttlMs > 0 && ttlMs <= 5000;
@@ -878,11 +966,24 @@ function render(ts) {
     ctx.lineWidth = 1;
     ctx.strokeRect(x - 26, y - 28, 52, 12);
 
-    drawWeaponIcon(x - 17, y - 22, d.weaponKey);
+    if (isXpVacuum) {
+      ctx.fillStyle = '#ddd6fe';
+      ctx.beginPath();
+      ctx.arc(x - 14, y - 21, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#a78bfa';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.arc(x - 14, y - 21, 5.6, 0, Math.PI * 2);
+      ctx.stroke();
+    } else {
+      drawWeaponIcon(x - 17, y - 22, d.weaponKey);
+    }
+
     ctx.fillStyle = blink ? '#fecaca' : '#e2e8f0';
     ctx.font = '10px sans-serif';
     ctx.textAlign = 'left';
-    const label = d.weaponLabel || 'Weapon';
+    const label = d.weaponLabel || (isXpVacuum ? 'XP Surge' : 'Weapon');
     const warnSec = blink ? Math.max(0, Math.ceil(ttlMs / 1000)) : 0;
     ctx.fillText(blink ? `${label} ${warnSec}s` : label, x - 10, y - 18);
 
@@ -963,6 +1064,7 @@ function render(ts) {
 
   drawTrees();
   drawFx();
+  drawBossPortalEdgeIndicator(game.state.bossPortals || [], Number(game.state.now) || Date.now());
   drawSkillOrbEdgeIndicators(game.state.skillOrbs || []);
 
   ctx.strokeStyle = 'rgba(255,255,255,0.16)';
@@ -977,6 +1079,7 @@ startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 setInterval(sendNetStatsReport, 1500);
 scheduleNextFrame();
+
 
 
 

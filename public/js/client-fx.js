@@ -403,8 +403,11 @@ function processStateFx(nextState) {
   const nextRocketMap = new Map();
   for (const bullet of nextState.bullets || []) {
     if (String(bullet.kind || '').toLowerCase() !== 'rocket') continue;
+    const prevRocket = visuals.rocketPrev.get(bullet.id);
+    const fxX = prevRocket ? prevRocket.x : bullet.x;
+    const fxY = prevRocket ? prevRocket.y : bullet.y;
     nextRocketMap.set(bullet.id, { x: bullet.x, y: bullet.y });
-    spawnRocketTrailFx(bullet.x, bullet.y, bullet.vx, bullet.vy, bullet.color || '#fb923c');
+    spawnRocketTrailFx(fxX, fxY, bullet.vx, bullet.vy, bullet.color || '#fb923c');
   }
   for (const [id, prev] of visuals.rocketPrev.entries()) {
     if (!nextRocketMap.has(id)) spawnRocketExplosionFx(prev.x, prev.y);

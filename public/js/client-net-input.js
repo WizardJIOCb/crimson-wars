@@ -992,15 +992,20 @@ function buildReplayState(payload, elapsedMs) {
     next?.p,
   );
 
-  const drops = (Array.isArray(current.d) ? current.d : []).map((drop, index) => ({
-    id: `rd-${index}`,
-    x: Number(drop[0]) || 0,
-    y: Number(drop[1]) || 0,
-    weaponKey: drop[2] || 'pistol',
-    weaponLabel: drop[2] || 'pistol',
-    ttlMs: 999999,
-    ttlMaxMs: 999999,
-  }));
+  const drops = (Array.isArray(current.d) ? current.d : []).map((drop, index) => {
+    const kind = drop[3] || 'weapon';
+    const weaponKey = drop[2] || 'pistol';
+    return {
+      id: `rd-${index}`,
+      x: Number(drop[0]) || 0,
+      y: Number(drop[1]) || 0,
+      kind,
+      weaponKey: kind === 'xp_vacuum' ? null : weaponKey,
+      weaponLabel: kind === 'xp_vacuum' ? 'XP Surge' : weaponKey,
+      ttlMs: 999999,
+      ttlMaxMs: 999999,
+    };
+  });
 
   const xpOrbs = (Array.isArray(current.x) ? current.x : []).map((orb, index) => ({
     id: `rx-${index}`,
@@ -1972,6 +1977,30 @@ function updateBulletInterpolation(dt) {
   }
 }
 
+function updateXpOrbInterpolation(dt) {
+  if (!game.state) return;
+  const targetMap = game.sampledNet?.xpOrbs || mapById(game.state.xpOrbs || []);
+  const alpha = 1 - Math.exp(-roomSync.entityInterpRate * dt * 0.9);
+  const alive = new Set();
+  for (const [id, o] of targetMap.entries()) {
+    alive.add(id);
+    let r = game.renderXpOrbs.get(id);
+    if (!r) {
+      r = { x: o.x, y: o.y };
+      game.renderXpOrbs.set(id, r);
+      continue;
+    }
+    r.x += (o.x - r.x) * alpha;
+    r.y += (o.y - r.y) * alpha;
+  }
+  for (const id of Array.from(game.renderXpOrbs.keys())) {
+    if (!alive.has(id)) game.renderXpOrbs.delete(id);
+  }
+}
+function getXpOrbRenderPos(orb) {
+  return game.renderXpOrbs.get(orb.id) || orb;
+}
+
 function getEnemyRenderPos(enemy) {
   return game.renderEnemies.get(enemy.id) || enemy;
 }
@@ -1995,6 +2024,7 @@ function pushNetSnapshot(state) {
       kind: b.kind || 'bullet',
       radius: b.radius || 3,
     })),
+    xpOrbs: state.xpOrbs.map((o) => ({ id: o.id, x: o.x, y: o.y })),
   };
 
   game.netSnapshots.push(snap);
@@ -2038,6 +2068,7 @@ function sampleBufferedState() {
       players: mapById(latest.players),
       enemies: mapById(latest.enemies),
       bullets: mapById(bullets),
+      xpOrbs: mapById(latest.xpOrbs || []),
     };
   }
 
@@ -2076,6 +2107,7 @@ function sampleBufferedState() {
     players: lerpMap(a.players, b.players, false),
     enemies: lerpMap(a.enemies, b.enemies, false),
     bullets: lerpMap(a.bullets, b.bullets, true),
+    xpOrbs: lerpMap(a.xpOrbs || [], b.xpOrbs || [], false),
   };
 }
 function isVisibleWorld(x, y, pad = 0) {
@@ -2294,6 +2326,7 @@ function clearLocalSessionState() {
   game.renderPlayers.clear();
   game.renderEnemies.clear();
   game.renderBullets.clear();
+  game.renderXpOrbs.clear();
   game.roomStartedAt = 0;
   game.totalEnemyKills = 0;
   game.nextBossAtKills = 50;
@@ -2488,6 +2521,7 @@ message: (ev) => {
     game.renderPlayers.clear();
     game.renderEnemies.clear();
     game.renderBullets.clear();
+    game.renderXpOrbs.clear();
     game.netSnapshots = [];
     game.sampledNet = null;
     game.nextInputSeq = 0;

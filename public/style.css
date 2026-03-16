@@ -52,6 +52,9 @@ body {
   transform: translateX(-50%);
   z-index: 11;
   pointer-events: none;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
 }
 
 #top-center-hud.hidden {
@@ -74,6 +77,33 @@ body {
 #top-center-hud .top-sep {
   opacity: 0.55;
   margin: 0 6px;
+}
+
+.boss-spawn-alert {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 240px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(248, 113, 113, 0.72);
+  background: linear-gradient(180deg, rgba(127, 29, 29, 0.9), rgba(69, 10, 10, 0.92));
+  color: #fecaca;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  box-shadow: 0 0 0 1px rgba(153, 27, 27, 0.35), 0 8px 18px rgba(127, 29, 29, 0.36), inset 0 0 18px rgba(220, 38, 38, 0.24);
+  animation: bossAlertPulse 0.8s ease-in-out infinite;
+}
+
+.boss-spawn-alert.hidden {
+  display: none;
+}
+
+@keyframes bossAlertPulse {
+  0%, 100% { transform: translateY(0); filter: brightness(1); }
+  50% { transform: translateY(-1px); filter: brightness(1.08); }
 }
 
 .replay-load-overlay {
@@ -934,6 +964,14 @@ body.replay-game-active #scoreboard {
     flex-wrap: wrap;
     font-size: 12px;
     padding: 7px 10px 7px 42px;
+  }
+
+  .boss-spawn-alert {
+    width: min(92vw, 380px);
+    min-width: 0;
+    font-size: 11px;
+    padding: 5px 10px;
+    letter-spacing: 0.45px;
   }
 
   .panel {
@@ -2367,3 +2405,4 @@ body.levelup-open #dev-console-toggle {
     z-index: 44;
   }
 }
+

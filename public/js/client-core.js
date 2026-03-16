@@ -105,6 +105,7 @@ const topCenterHudEl = document.getElementById('top-center-hud');
 const matchTimerEl = document.getElementById('match-timer');
 const bossProgressEl = document.getElementById('boss-progress');
 const difficultyMetaEl = document.getElementById('difficulty-meta');
+const bossSpawnAlertEl = document.getElementById('boss-spawn-alert');
 const replayLoadOverlayEl = document.getElementById('replay-load-overlay');
 const replayLoadLabelEl = document.getElementById('replay-load-label');
 const replayLoadFillEl = document.getElementById('replay-load-fill');
@@ -201,6 +202,7 @@ const game = {
   renderPlayers: new Map(),
   renderEnemies: new Map(),
   renderBullets: new Map(),
+  renderXpOrbs: new Map(),
   netSnapshots: [],
   sampledNet: null,
   nextInputSeq: 0,
@@ -1112,6 +1114,7 @@ function updateTopCenterHud(nowMs = Date.now()) {
     matchTimerEl.textContent = 'Time 00:00';
     bossProgressEl.textContent = 'Boss in -- kills';
     difficultyMetaEl.textContent = 'Threat Lv1';
+    if (bossSpawnAlertEl) bossSpawnAlertEl.classList.add('hidden');
     return;
   }
 
@@ -1134,6 +1137,18 @@ function updateTopCenterHud(nowMs = Date.now()) {
   const level = Math.max(1, Number(diff.level) || 1);
   const hpMul = Math.max(1, Number(diff.hpMul) || 1);
   difficultyMetaEl.textContent = `Threat Lv${level} x${hpMul.toFixed(2)}`;
+
+  if (bossSpawnAlertEl) {
+    const portals = Array.isArray(game.state?.bossPortals) ? game.state.bossPortals : [];
+    const portal = portals[0] || null;
+    if (!bossAlive && portal) {
+      const leftSec = Math.max(0, (Number(portal.spawnAt) - nowMs) / 1000);
+      bossSpawnAlertEl.textContent = `BOSS TELEPORT IN ${leftSec.toFixed(1)}s`;
+      bossSpawnAlertEl.classList.remove('hidden');
+    } else {
+      bossSpawnAlertEl.classList.add('hidden');
+    }
+  }
 }
 
 

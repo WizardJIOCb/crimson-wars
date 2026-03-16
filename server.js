@@ -120,6 +120,9 @@ let forceShutdownTimer = null;
 const processStartedAt = Date.now();
 const REPLAY_CAPTURE_INTERVAL_MS = 200;
 const REPLAY_FRAME_LIMIT = 7200;
+const XP_SURGE_DURATION_MS = 3200;
+const XP_SURGE_PULL_MIN_MUL = 0.22;
+const XP_SURGE_PULL_MAX_MUL = 3.9;
 const adminAuthStore = createAdminAuthStore({
   dataDir: DATA_DIR,
   dbPath: ADMIN_AUTH_DB_PATH,
@@ -915,6 +918,9 @@ function getOrCreateRoom(requestedCode, requestedSync) {
       drops: [],
       xpOrbs: [],
       skillOrbs: [],
+      xpMagnetPlayerId: '',
+      xpMagnetUntil: 0,
+      xpMagnetStartedAt: 0,
       scores: new Map(),
       kills: new Map(),
       nextEnemyId: 1,
@@ -1464,8 +1470,9 @@ function serializeRoom(room) {
       id: d.id,
       x: d.x,
       y: d.y,
-      weaponKey: d.weaponKey,
-      weaponLabel: WEAPONS[d.weaponKey].label,
+      kind: d.kind || 'weapon',
+      weaponKey: d.weaponKey || null,
+      weaponLabel: d.kind === 'xp_vacuum' ? 'XP Surge' : (WEAPONS[d.weaponKey]?.label || 'Drop'),
       ttlMs: Math.max(0, Math.round(d.ttlMs || 0)),
       ttlMaxMs: DROP_LIFETIME_MS,
     })),
@@ -1624,10 +1631,24 @@ function getEnemyAttackCooldownMs(enemy) {
 }
 
 function maybeSpawnDrop(room, x, y) {
+  const bonusRoll = Math.random();
+  if (bonusRoll <= 0.045) {
+    room.drops.push({
+      id: room.nextDropId++,
+      kind: 'xp_vacuum',
+      x,
+      y,
+      weaponKey: null,
+      ttlMs: DROP_LIFETIME_MS,
+    });
+    return;
+  }
+
   if (Math.random() > 0.22) return;
   const weaponKey = DROP_WEAPON_KEYS[Math.floor(Math.random() * DROP_WEAPON_KEYS.length)];
   room.drops.push({
     id: room.nextDropId++,
+    kind: 'weapon',
     x,
     y,
     weaponKey,
@@ -1925,6 +1946,7 @@ function captureReplayFrame(room, replay, now, options = {}) {
     roundReplayCoord(d.x),
     roundReplayCoord(d.y),
     d.weaponKey || 'pistol',
+    d.kind || 'weapon',
   ]));
   const xpOrbs = room.xpOrbs.map((o) => ([
     roundReplayCoord(o.x),
@@ -3117,6 +3139,23 @@ function tickRoom(room, dtSec, now) {
   }
 
 
+  let magnetTarget = null;
+  let magnetPullMul = 1;
+  if (Number(room.xpMagnetUntil) > now) {
+    const candidate = room.players.get(room.xpMagnetPlayerId);
+    if (candidate && candidate.alive) {
+      magnetTarget = candidate;
+      const startedAt = Number(room.xpMagnetStartedAt) || now;
+      const progress = Math.max(0, Math.min(1, (now - startedAt) / XP_SURGE_DURATION_MS));
+      const eased = progress * progress * (3 - 2 * progress);
+      magnetPullMul = XP_SURGE_PULL_MIN_MUL + (XP_SURGE_PULL_MAX_MUL - XP_SURGE_PULL_MIN_MUL) * eased;
+    } else {
+      room.xpMagnetPlayerId = '';
+      room.xpMagnetUntil = 0;
+      room.xpMagnetStartedAt = 0;
+    }
+  }
+
   for (let i = room.xpOrbs.length - 1; i >= 0; i -= 1) {
     const orb = room.xpOrbs[i];
     orb.ttlMs -= dtSec * 1000;
@@ -3125,33 +3164,70 @@ function tickRoom(room, dtSec, now) {
       continue;
     }
 
-    let target = null;
+    let target = magnetTarget;
     let bestD2 = Infinity;
-    for (const p of room.players.values()) {
-      if (!p.alive) continue;
-      const dx = p.x - orb.x;
-      const dy = p.y - orb.y;
-      const d2 = dx * dx + dy * dy;
-      if (d2 < bestD2) {
-        bestD2 = d2;
-        target = p;
+
+    if (target) {
+      const dx = target.x - orb.x;
+      const dy = target.y - orb.y;
+      bestD2 = dx * dx + dy * dy;
+    } else {
+      for (const p of room.players.values()) {
+        if (!p.alive) continue;
+        const dx = p.x - orb.x;
+        const dy = p.y - orb.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestD2) {
+          bestD2 = d2;
+          target = p;
+        }
       }
     }
+
     if (!target) continue;
 
     const pickupR = Math.max(30, Number(target.pickupRadius) || PLAYER_PICKUP_RADIUS_BASE);
+    const collectR = Math.max(2, PLAYER_RADIUS * 0.1);
+    const collectR2 = collectR * collectR;
     const dist = Math.sqrt(bestD2);
-    if (dist <= PLAYER_RADIUS + 8) {
+    if (dist <= collectR) {
       gainPlayerXp(room, target, orb.xp, now);
       room.xpOrbs.splice(i, 1);
       continue;
     }
 
-    if (dist <= pickupR) {
+    const pullAll = target === magnetTarget;
+    if (pullAll || dist <= pickupR) {
       const nx = dist > 0.001 ? (target.x - orb.x) / dist : 0;
       const ny = dist > 0.001 ? (target.y - orb.y) / dist : 0;
-      orb.x += nx * XP_ORB_PULL_SPEED * dtSec;
-      orb.y += ny * XP_ORB_PULL_SPEED * dtSec;
+      const speedMul = pullAll ? magnetPullMul : 1;
+      const desiredSpeed = XP_ORB_PULL_SPEED * speedMul;
+
+      const prevPullSpeed = Math.max(0, Number(orb.pullSpeed) || 0);
+      const startSpeed = Math.min(desiredSpeed * 0.32, desiredSpeed);
+      const accel = Math.max(0.08, Math.min(1, dtSec * 8));
+      const nextPullSpeed = prevPullSpeed > 0
+        ? (prevPullSpeed + (desiredSpeed - prevPullSpeed) * accel)
+        : startSpeed;
+      orb.pullSpeed = nextPullSpeed;
+
+      const moveStep = nextPullSpeed * dtSec;
+      const maxNoOvershoot = Math.max(0, dist - collectR);
+      const step = Math.min(moveStep, maxNoOvershoot);
+      if (step > 0) {
+        orb.x += nx * step;
+        orb.y += ny * step;
+      }
+
+      const dxAfter = target.x - orb.x;
+      const dyAfter = target.y - orb.y;
+      if (dxAfter * dxAfter + dyAfter * dyAfter <= collectR2) {
+        gainPlayerXp(room, target, orb.xp, now);
+        room.xpOrbs.splice(i, 1);
+        continue;
+      }
+    } else {
+      orb.pullSpeed = 0;
     }
   }
 
@@ -3170,9 +3246,18 @@ function tickRoom(room, dtSec, now) {
       const dy = p.y - drop.y;
       const rr = PLAYER_RADIUS + DROP_RADIUS;
       if (dx * dx + dy * dy <= rr * rr) {
-        setPlayerWeapon(p, drop.weaponKey);
-        sendTo(p.ws, { type: 'system', message: `Picked ${WEAPONS[drop.weaponKey].label}` });
-        broadcastRoom(room, { type: 'system', message: `${p.name} picked ${WEAPONS[drop.weaponKey].label}.` });
+        if (drop.kind === 'xp_vacuum') {
+          room.xpMagnetPlayerId = p.id;
+          room.xpMagnetStartedAt = now;
+          room.xpMagnetUntil = now + XP_SURGE_DURATION_MS;
+          sendTo(p.ws, { type: 'system', message: 'XP Surge: all XP crystals are flying to you!' });
+          broadcastRoom(room, { type: 'system', message: `${p.name} activated XP Surge.` });
+        } else {
+          setPlayerWeapon(p, drop.weaponKey);
+          const weaponLabel = WEAPONS[drop.weaponKey]?.label || 'Weapon';
+          sendTo(p.ws, { type: 'system', message: `Picked ${weaponLabel}` });
+          broadcastRoom(room, { type: 'system', message: `${p.name} picked ${weaponLabel}.` });
+        }
         room.drops.splice(i, 1);
         picked = true;
         break;
