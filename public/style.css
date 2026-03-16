@@ -2419,3 +2419,21 @@ body.levelup-open #dev-console-toggle {
   }
 }
 
+
+@media (max-width: 720px) {
+  #join-overlay {
+    place-items: start center;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    padding: calc(env(safe-area-inset-top) + 8px) 6px calc(env(safe-area-inset-bottom) + 8px);
+  }
+
+  #join-form {
+    margin: 0 auto;
+    width: calc(100vw - 12px);
+    max-height: none;
+    min-height: 0;
+    overflow: visible;
+  }
+}
