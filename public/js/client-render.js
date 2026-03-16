@@ -1,4 +1,4 @@
-﻿const MENU_IDLE_FRAME_MS = 180;
+const MENU_IDLE_FRAME_MS = 180;
 const FPS_UI_UPDATE_SEC = 0.75;
 const minimapCtx = minimapCanvasEl?.getContext('2d');
 if (minimapCtx) minimapCtx.imageSmoothingEnabled = false;
@@ -744,7 +744,28 @@ function drawMinimap() {
 
   for (const orb of game.state.skillOrbs || []) {
     const own = orb.ownerId === game.myId;
-    dot(orb.x, orb.y, own ? Math.max(2.8 * dpr, 2.4) : Math.max(2.1 * dpr, 1.8), own ? '#34d399' : '#9ca3af');
+    const sx = toMapX(orb.x);
+    const sy = toMapY(orb.y);
+    const core = own ? '#ff3ea5' : '#fbbf24';
+    const glow = own ? 'rgba(255, 62, 165, 0.38)' : 'rgba(251, 191, 36, 0.34)';
+    const coreR = own ? Math.max(3.4 * dpr, 3) : Math.max(2.7 * dpr, 2.4);
+    const glowR = coreR + Math.max(1.8 * dpr, 1.6);
+
+    minimapCtx.fillStyle = glow;
+    minimapCtx.beginPath();
+    minimapCtx.arc(sx, sy, glowR, 0, Math.PI * 2);
+    minimapCtx.fill();
+
+    minimapCtx.fillStyle = core;
+    minimapCtx.beginPath();
+    minimapCtx.arc(sx, sy, coreR, 0, Math.PI * 2);
+    minimapCtx.fill();
+
+    minimapCtx.strokeStyle = 'rgba(255,255,255,0.92)';
+    minimapCtx.lineWidth = Math.max(1, dpr * 0.9);
+    minimapCtx.beginPath();
+    minimapCtx.arc(sx, sy, Math.max(1.5, coreR - Math.max(0.8, dpr * 0.45)), 0, Math.PI * 2);
+    minimapCtx.stroke();
   }
 
   for (const drop of game.state.drops || []) {
