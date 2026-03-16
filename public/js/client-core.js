@@ -242,6 +242,7 @@ const visuals = {
   muzzle: [],
   rocketSmoke: [],
   rocketFire: [],
+  rocketBlast: [],
   hitFx: [],
   bossBlast: [],
   bloodMist: [],

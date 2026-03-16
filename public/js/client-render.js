@@ -3,6 +3,38 @@ const FPS_UI_UPDATE_SEC = 0.75;
 const minimapCtx = minimapCanvasEl?.getContext('2d');
 if (minimapCtx) minimapCtx.imageSmoothingEnabled = false;
 
+const renderDiag = {
+  enabled: new URLSearchParams(window.location.search).get('rdiag') === '1',
+  frames: 0,
+  totals: { frame: 0, fx: 0, indicators: 0, minimap: 0 },
+};
+
+function renderDiagStart() {
+  return renderDiag.enabled ? performance.now() : 0;
+}
+
+function renderDiagEnd(key, startedAt) {
+  if (!renderDiag.enabled || !startedAt) return;
+  renderDiag.totals[key] = (Number(renderDiag.totals[key]) || 0) + (performance.now() - startedAt);
+}
+
+function renderDiagBuildText() {
+  if (!renderDiag.enabled || renderDiag.frames <= 0) return '';
+  const f = Math.max(1, renderDiag.frames);
+  const frameMs = (renderDiag.totals.frame / f).toFixed(2);
+  const fxMs = (renderDiag.totals.fx / f).toFixed(2);
+  const indMs = (renderDiag.totals.indicators / f).toFixed(2);
+  const mapMs = (renderDiag.totals.minimap / f).toFixed(2);
+  return ` | R ${frameMs}ms (fx ${fxMs} ind ${indMs} map ${mapMs})`;
+}
+
+function renderDiagReset() {
+  renderDiag.frames = 0;
+  renderDiag.totals.frame = 0;
+  renderDiag.totals.fx = 0;
+  renderDiag.totals.indicators = 0;
+  renderDiag.totals.minimap = 0;
+}
 function scheduleNextFrame(delayMs = 0) {
   if (delayMs > 0) {
     setTimeout(() => requestAnimationFrame(render), delayMs);
@@ -496,17 +528,44 @@ function drawBossPortalEdgeIndicator(portals, nowMs) {
 }
 function drawSkillOrbEdgeIndicators(orbs) {
   if (!Array.isArray(orbs) || orbs.length <= 0) return;
-  const ownOrbs = orbs.filter((orb) => orb.ownerId === game.myId);
+  const ownOrbs = [];
+  for (const orb of orbs) {
+    if (orb?.ownerId === game.myId) ownOrbs.push(orb);
+  }
   if (ownOrbs.length <= 0) return;
+
   const cx = canvas.width * 0.5;
   const cy = canvas.height * 0.5;
   const pad = 46;
   const boundX = Math.max(20, cx - pad);
   const boundY = Math.max(20, cy - pad);
+
+  const offscreen = [];
   for (const orb of ownOrbs) {
     const sx = orb.x - camera.x;
     const sy = orb.y - camera.y;
     if (sx >= 0 && sx <= canvas.width && sy >= 0 && sy <= canvas.height) continue;
+    const dx = sx - cx;
+    const dy = sy - cy;
+    offscreen.push({ orb, sx, sy, d2: dx * dx + dy * dy });
+  }
+  if (offscreen.length <= 0) return;
+
+  // Draw only nearest indicators to avoid expensive text rendering spikes when many orbs exist.
+  offscreen.sort((a, b) => a.d2 - b.d2);
+  const maxIndicators = 4;
+  const visibleCount = Math.min(maxIndicators, offscreen.length);
+
+  ctx.font = 'bold 12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.strokeStyle = 'rgba(2, 6, 14, 0.9)';
+  ctx.lineWidth = 3;
+
+  for (let i = 0; i < visibleCount; i += 1) {
+    const item = offscreen[i];
+    const orb = item.orb;
+    const sx = item.sx;
+    const sy = item.sy;
     const dx = sx - cx;
     const dy = sy - cy;
     const absDx = Math.max(0.001, Math.abs(dx));
@@ -517,6 +576,7 @@ function drawSkillOrbEdgeIndicators(orbs) {
     const ang = Math.atan2(dy, dx);
     const info = skillOrbDisplayData(orb.skillId);
     const color = rarityColor(info.rarity);
+
     ctx.save();
     ctx.translate(ax, ay);
     ctx.rotate(ang);
@@ -528,17 +588,25 @@ function drawSkillOrbEdgeIndicators(orbs) {
     ctx.closePath();
     ctx.fill();
     ctx.restore();
-    const textX = ax - Math.cos(ang) * 34;
-    const textY = ay - Math.sin(ang) * 34;
-    ctx.save();
-    ctx.font = 'bold 12px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.strokeStyle = 'rgba(2, 6, 14, 0.9)';
-    ctx.lineWidth = 3;
-    ctx.strokeText(info.name, textX, textY);
-    ctx.fillStyle = color;
-    ctx.fillText(info.name, textX, textY);
-    ctx.restore();
+
+    // Text is one of the most expensive canvas operations; keep labels only for closest 2.
+    if (i < 2) {
+      const textX = ax - Math.cos(ang) * 34;
+      const textY = ay - Math.sin(ang) * 34;
+      ctx.strokeText(info.name, textX, textY);
+      ctx.fillStyle = color;
+      ctx.fillText(info.name, textX, textY);
+    }
+  }
+
+  if (offscreen.length > visibleCount) {
+    const more = offscreen.length - visibleCount;
+    const txt = `+${more}`;
+    const x = canvas.width - 24;
+    const y = 28;
+    ctx.strokeText(txt, x, y);
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fillText(txt, x, y);
   }
 }
 function drawBloodPuddles() {
@@ -610,6 +678,19 @@ function drawFx() {
     ctx.fillStyle = f.color || '#fb923c';
     ctx.beginPath();
     ctx.arc(f.x - camera.x, f.y - camera.y, f.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  for (const p of visuals.rocketBlast) {
+    if (!isVisibleWorld(p.ox, p.oy, p.r + 10)) continue;
+    const a = Math.max(0, p.life / p.ttl);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = Math.min(1, a);
+    ctx.fillStyle = p.color || '#fb923c';
+    ctx.beginPath();
+    ctx.arc(p.ox - camera.x, p.oy - camera.y, p.r, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -884,6 +965,7 @@ function render(ts) {
   if (overlayOpen) {
     fpsFrameCount = 0;
     fpsAccumSec = 0;
+    renderDiagReset();
     scheduleNextFrame(MENU_IDLE_FRAME_MS);
     return;
   }
@@ -891,6 +973,7 @@ function render(ts) {
   if (!game.state) {
     fpsFrameCount = 0;
     fpsAccumSec = 0;
+    renderDiagReset();
     scheduleNextFrame();
     return;
   }
@@ -899,13 +982,19 @@ function render(ts) {
     tickReplayGame(ts);
   }
 
+  const frameDiagStartedAt = renderDiagStart();
+
   fpsFrameCount += 1;
   fpsAccumSec += dt;
   if (fpsAccumSec >= FPS_UI_UPDATE_SEC) {
-    if (fpsCornerEl && game.showFpsEnabled) fpsCornerEl.textContent = `FPS: ${Math.round(fpsFrameCount / fpsAccumSec)}`;
+    if (fpsCornerEl && game.showFpsEnabled) {
+      const fpsText = `FPS: ${Math.round(fpsFrameCount / fpsAccumSec)}`;
+      fpsCornerEl.textContent = fpsText + renderDiagBuildText();
+    }
     updateNetMetaUi();
     fpsFrameCount = 0;
     fpsAccumSec = 0;
+    renderDiagReset();
   }
 
   game.sampledNet = sampleBufferedState();
@@ -1067,15 +1156,26 @@ function render(ts) {
   }
 
   drawTrees();
+
+  let diagStartedAt = renderDiagStart();
   drawFx();
+  renderDiagEnd('fx', diagStartedAt);
+
+  diagStartedAt = renderDiagStart();
   drawBossPortalEdgeIndicator(game.state.bossPortals || [], Number(game.state.now) || Date.now());
   drawSkillOrbEdgeIndicators(game.state.skillOrbs || []);
+  renderDiagEnd('indicators', diagStartedAt);
 
   ctx.strokeStyle = 'rgba(255,255,255,0.16)';
   ctx.lineWidth = 2;
   ctx.strokeRect(-camera.x, -camera.y, game.world.width, game.world.height);
 
+  diagStartedAt = renderDiagStart();
   drawMinimap();
+  renderDiagEnd('minimap', diagStartedAt);
+
+  renderDiagEnd('frame', frameDiagStartedAt);
+  if (renderDiag.enabled) renderDiag.frames += 1;
 
   scheduleNextFrame();
 }
@@ -1083,13 +1183,3 @@ startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 setInterval(sendNetStatsReport, 1500);
 scheduleNextFrame();
-
-
-
-
-
-
-
-
-
-

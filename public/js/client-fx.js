@@ -131,32 +131,36 @@ function spawnRocketTrailFx(x, y, vx, vy, color = '#fb923c') {
   if (visuals.rocketSmoke.length > 120) visuals.rocketSmoke.splice(0, visuals.rocketSmoke.length - 120);
 }
 
+function spawnRocketNovaFx(x, y) {
+  const count = 40;
+  for (let i = 0; i < count; i += 1) {
+    const ang = (Math.PI * 2 * i) / count + (Math.random() * 0.12 - 0.06);
+    const targetR = 330 + Math.random() * 320;
+    const startR = 14 + Math.random() * 24;
+    visuals.rocketBlast.push({
+      x,
+      y,
+      ox: x + Math.cos(ang) * startR,
+      oy: y + Math.sin(ang) * startR,
+      tx: x + Math.cos(ang) * targetR,
+      ty: y + Math.sin(ang) * targetR,
+      vx: Math.cos(ang) * (140 + Math.random() * 200),
+      vy: Math.sin(ang) * (140 + Math.random() * 200),
+      spring: 8.2 + Math.random() * 3.4,
+      friction: 0.83 + Math.random() * 0.09,
+      r: 12.8 + Math.random() * 8.4,
+      rDecay: 0.94 + Math.random() * 0.025,
+      life: 0.55 + Math.random() * 0.4,
+      ttl: 0.55 + Math.random() * 0.4,
+      color: Math.random() > 0.35 ? '#fb923c' : '#fde68a',
+    });
+  }
+  if (visuals.rocketBlast.length > 520) visuals.rocketBlast.splice(0, visuals.rocketBlast.length - 520);
+}
+
 function spawnRocketExplosionFx(x, y) {
   spawnSkillBurstFx(x, y, '#fb923c', 88);
-  spawnHitFx(x, y, 16, false);
-  for (let i = 0; i < 7; i += 1) {
-    visuals.rocketFire.push({
-      x: x + (Math.random() * 8 - 4),
-      y: y + (Math.random() * 8 - 4),
-      vx: (Math.random() * 2 - 1) * (45 + Math.random() * 130),
-      vy: (Math.random() * 2 - 1) * (45 + Math.random() * 130),
-      r: 5 + Math.random() * 5,
-      life: 0.18 + Math.random() * 0.08,
-      ttl: 0.18 + Math.random() * 0.08,
-      color: Math.random() > 0.4 ? '#fb923c' : '#fde68a',
-    });
-  }
-  for (let i = 0; i < 10; i += 1) {
-    visuals.rocketSmoke.push({
-      x: x + (Math.random() * 10 - 5),
-      y: y + (Math.random() * 10 - 5),
-      vx: (Math.random() * 2 - 1) * (30 + Math.random() * 75),
-      vy: (Math.random() * 2 - 1) * (30 + Math.random() * 75),
-      r: 10 + Math.random() * 8,
-      life: 0.45 + Math.random() * 0.18,
-      ttl: 0.45 + Math.random() * 0.18,
-    });
-  }
+  spawnRocketNovaFx(x, y);
 }
 
 function spawnHitFx(x, y, severity = 1, isPlayerHit = false) {
@@ -510,6 +514,19 @@ function updateFx(dt) {
     if (f.life <= 0 || f.r <= 0.8) visuals.rocketFire.splice(i, 1);
   }
 
+  for (let i = visuals.rocketBlast.length - 1; i >= 0; i -= 1) {
+    const p = visuals.rocketBlast[i];
+    p.life -= dt;
+    const ax = (p.tx - p.ox) * p.spring;
+    const ay = (p.ty - p.oy) * p.spring;
+    p.vx = (p.vx + ax * dt) * p.friction;
+    p.vy = (p.vy + ay * dt) * p.friction;
+    p.ox += p.vx * dt;
+    p.oy += p.vy * dt;
+    p.r *= p.rDecay;
+    if (p.life <= 0 || p.r <= 0.45) visuals.rocketBlast.splice(i, 1);
+  }
+
   for (let i = visuals.bossBlast.length - 1; i >= 0; i -= 1) {
     const b = visuals.bossBlast[i];
     b.life -= dt;
@@ -560,6 +577,8 @@ function updateFx(dt) {
     if (visuals.hitFx[i].life <= 0) visuals.hitFx.splice(i, 1);
   }
 }
+
+
 
 
 

@@ -653,6 +653,7 @@ function seekReplayGame(elapsedMs, { keepPaused = null } = {}) {
   visuals.bloodMist = [];
   visuals.rocketSmoke = [];
   visuals.rocketFire = [];
+  visuals.rocketBlast = [];
   visuals.skillBursts = [];
   visuals.skillArcs = [];
   visuals.skillLinks = [];
@@ -1149,6 +1150,7 @@ function startReplayGame(payload, record) {
   visuals.bloodMist = [];
   visuals.rocketSmoke = [];
   visuals.rocketFire = [];
+  visuals.rocketBlast = [];
   visuals.skillBursts = [];
   visuals.skillArcs = [];
   visuals.skillLinks = [];
@@ -2359,6 +2361,7 @@ function clearLocalSessionState() {
   visuals.bloodMist = [];
   visuals.rocketSmoke = [];
   visuals.rocketFire = [];
+  visuals.rocketBlast = [];
   visuals.skillBursts = [];
   visuals.skillArcs = [];
   visuals.skillLinks = [];
@@ -2541,6 +2544,7 @@ message: (ev) => {
     visuals.bloodMist = [];
     visuals.rocketSmoke = [];
     visuals.rocketFire = [];
+    visuals.rocketBlast = [];
     visuals.skillBursts = [];
     visuals.skillArcs = [];
     visuals.skillLinks = [];
@@ -2781,6 +2785,7 @@ function sendInput() {
 }
 
 void maybeStartReplayFromUrl();
+
 
 
 
