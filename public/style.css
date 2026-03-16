@@ -1359,13 +1359,26 @@ body.replay-game-active #scoreboard {
 }
 
 #move-stick {
-  grid-column: 1;
-  justify-self: start;
+  grid-column: 3 !important;
+  justify-self: end !important;
 }
 
 #aim-stick {
-  grid-column: 3;
-  justify-self: end;
+  grid-column: 1 !important;
+  justify-self: start !important;
+}
+
+#aim-stick[hidden] {
+  display: block !important;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+#move-stick,
+#aim-stick {
+  grid-row: 1 !important;
+  align-self: end;
+  margin-bottom: 0 !important;
 }
 
 #mobile-controls .stick-knob {

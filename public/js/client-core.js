@@ -11,6 +11,7 @@ const netMetaEl = document.getElementById('net-meta');
 const showFpsToggleEl = document.getElementById('show-fps-toggle');
 const fpsCornerEl = document.getElementById('fps-corner');
 const showMinimapToggleEl = document.getElementById('show-minimap-toggle');
+const showAimStickToggleEl = document.getElementById('show-aim-stick-toggle');
 const minimapWrapEl = document.getElementById('minimap-wrap');
 const minimapCanvasEl = document.getElementById('minimap');
 const qualitySelect = document.getElementById('quality-select');
@@ -195,10 +196,11 @@ const game = {
   enemyHpBarsEnabled: getToggleDefaultOn('cw:enemyHpBarsEnabled'),
   extraBloodEnabled: getToggleDefaultOn('cw:extraBloodEnabled'),
   hitEffectsEnabled: getToggleDefaultOn('cw:hitEffectsEnabled'),
-  autoFireEnabled: localStorage.getItem('cw:autoFireEnabled') === '1',
+  autoFireEnabled: getToggleDefaultOn('cw:autoFireEnabled'),
   connectionIndicatorEnabled: getToggleDefaultOn('cw:connectionIndicatorEnabled'),
   showFpsEnabled: getToggleDefaultOn('cw:showFpsEnabled'),
   showMinimapEnabled: getToggleDefaultOn('cw:showMinimapEnabled'),
+  showAimStickEnabled: getToggleDefaultOn('cw:showAimStickEnabled'),
   renderPlayers: new Map(),
   renderEnemies: new Map(),
   renderBullets: new Map(),
@@ -1934,6 +1936,18 @@ showMinimapToggleEl?.addEventListener('change', () => {
 });
 setShowMinimapEnabled(game.showMinimapEnabled);
 
+function setShowAimStickEnabled(enabled) {
+  game.showAimStickEnabled = Boolean(enabled);
+  if (showAimStickToggleEl) showAimStickToggleEl.checked = game.showAimStickEnabled;
+  localStorage.setItem('cw:showAimStickEnabled', game.showAimStickEnabled ? '1' : '0');
+  updateAimStickVisibility();
+}
+
+showAimStickToggleEl?.addEventListener('change', () => {
+  setShowAimStickEnabled(showAimStickToggleEl.checked);
+});
+setShowAimStickEnabled(game.showAimStickEnabled);
+
 function resizeCanvas() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
@@ -1949,6 +1963,11 @@ function setMobileControlsVisible(visible) {
 }
 
 
+
+function updateAimStickVisibility() {
+  if (!aimStickEl) return;
+  aimStickEl.hidden = !mobile.enabled || !game.showAimStickEnabled;
+}
 function isDevConsoleOpen() {
   return Boolean(devConsoleOpen);
 }
@@ -2127,6 +2146,7 @@ function updateMobileControlsVisibility() {
   updateHudVisibility(overlayOpen);
   if (devConsoleToggleBtn) devConsoleToggleBtn.classList.toggle('hidden', !mobile.enabled);
   if (mobileControlsEl) mobileControlsEl.classList.toggle('replay-active', replayMobile);
+  updateAimStickVisibility();
 
   if (!mobile.enabled) {
     setMobileControlsVisible(false);
