@@ -1358,27 +1358,45 @@ body.replay-game-active #scoreboard {
   user-select: none;
 }
 
+#move-stick,
+#aim-stick {
+  position: fixed;
+  bottom: calc(env(safe-area-inset-bottom) + 8px);
+  margin-bottom: 0 !important;
+  grid-row: 1 !important;
+}
+
 #move-stick {
+  right: 12px !important;
+  left: auto !important;
   grid-column: 3 !important;
   justify-self: end !important;
 }
 
 #aim-stick {
+  left: 12px !important;
+  right: auto !important;
   grid-column: 1 !important;
   justify-self: start !important;
+}
+
+#move-stick.dynamic-active,
+#aim-stick.dynamic-active {
+  position: fixed !important;
+  transform: translate(-50%, -50%);
+  margin: 0 !important;
+  z-index: 34;
+  grid-column: auto !important;
+  justify-self: auto !important;
+  left: auto;
+  right: auto;
+  bottom: auto;
 }
 
 #aim-stick[hidden] {
   display: block !important;
   visibility: hidden;
   pointer-events: none;
-}
-
-#move-stick,
-#aim-stick {
-  grid-row: 1 !important;
-  align-self: end;
-  margin-bottom: 0 !important;
 }
 
 #mobile-controls .stick-knob {
@@ -2436,4 +2454,26 @@ body.levelup-open #dev-console-toggle {
     min-height: 0;
     overflow: visible;
   }
+}
+
+#mobile-controls.sticks-ghost .stick {
+  opacity: 0;
+}
+
+#mobile-controls.sticks-ghost .stick-knob,
+#mobile-controls.sticks-ghost .stick-label {
+  opacity: 0;
+}
+
+
+
+
+#mobile-controls.dynamic-enabled .stick:not(.dynamic-active) {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#mobile-controls.dynamic-enabled .stick:not(.dynamic-active) .stick-knob,
+#mobile-controls.dynamic-enabled .stick:not(.dynamic-active) .stick-label {
+  opacity: 0;
 }

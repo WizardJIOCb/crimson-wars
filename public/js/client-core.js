@@ -12,6 +12,7 @@ const showFpsToggleEl = document.getElementById('show-fps-toggle');
 const fpsCornerEl = document.getElementById('fps-corner');
 const showMinimapToggleEl = document.getElementById('show-minimap-toggle');
 const showAimStickToggleEl = document.getElementById('show-aim-stick-toggle');
+const dynamicSticksToggleEl = document.getElementById('dynamic-sticks-toggle');
 const minimapWrapEl = document.getElementById('minimap-wrap');
 const minimapCanvasEl = document.getElementById('minimap');
 const qualitySelect = document.getElementById('quality-select');
@@ -183,6 +184,15 @@ function getToggleDefaultOn(key) {
   return stored !== '0';
 }
 
+function getToggleDefaultOff(key) {
+  const stored = localStorage.getItem(key);
+  if (stored === null) {
+    localStorage.setItem(key, '0');
+    return false;
+  }
+  return stored === '1';
+}
+
 const game = {
   myId: null,
   roomCode: null,
@@ -201,6 +211,7 @@ const game = {
   showFpsEnabled: getToggleDefaultOn('cw:showFpsEnabled'),
   showMinimapEnabled: getToggleDefaultOn('cw:showMinimapEnabled'),
   showAimStickEnabled: getToggleDefaultOn('cw:showAimStickEnabled'),
+  dynamicSticksEnabled: getToggleDefaultOff('cw:dynamicSticksEnabled'),
   renderPlayers: new Map(),
   renderEnemies: new Map(),
   renderBullets: new Map(),
@@ -1949,6 +1960,21 @@ showAimStickToggleEl?.addEventListener('change', () => {
 });
 setShowAimStickEnabled(game.showAimStickEnabled);
 
+function setDynamicSticksEnabled(enabled) {
+  game.dynamicSticksEnabled = Boolean(enabled);
+  if (dynamicSticksToggleEl) dynamicSticksToggleEl.checked = game.dynamicSticksEnabled;
+  localStorage.setItem('cw:dynamicSticksEnabled', game.dynamicSticksEnabled ? '1' : '0');
+  if (mobileControlsEl) {
+    mobileControlsEl.classList.toggle('dynamic-enabled', game.dynamicSticksEnabled);
+    mobileControlsEl.classList.remove('sticks-ghost');
+  }
+}
+
+dynamicSticksToggleEl?.addEventListener('change', () => {
+  setDynamicSticksEnabled(dynamicSticksToggleEl.checked);
+});
+setDynamicSticksEnabled(game.dynamicSticksEnabled);
+
 function resizeCanvas() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
@@ -1960,6 +1986,8 @@ resizeCanvas();
 function setMobileControlsVisible(visible) {
   if (!mobileControlsEl) return;
   mobileControlsEl.classList.toggle('active', Boolean(visible));
+  mobileControlsEl.classList.toggle('dynamic-enabled', game.dynamicSticksEnabled);
+  mobileControlsEl.classList.remove('sticks-ghost');
   mobileControlsEl.setAttribute('aria-hidden', visible ? 'false' : 'true');
 }
 

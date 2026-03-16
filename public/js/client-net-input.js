@@ -4,11 +4,25 @@ function resetMobileStick(kind) {
     mobile.moveX = 0;
     mobile.moveY = 0;
     mobile.moveStrength = 0;
+    if (moveStickEl) {
+      moveStickEl.classList.remove('dynamic-active');
+      moveStickEl.style.removeProperty('left');
+      moveStickEl.style.removeProperty('top');
+      moveStickEl.style.removeProperty('right');
+      moveStickEl.style.removeProperty('bottom');
+    }
     if (moveKnobEl) moveKnobEl.style.transform = 'translate(-50%, -50%)';
     return;
   }
   mobile.aimId = null;
   mobile.aimStrength = 0;
+  if (aimStickEl) {
+    aimStickEl.classList.remove('dynamic-active');
+    aimStickEl.style.removeProperty('left');
+    aimStickEl.style.removeProperty('top');
+    aimStickEl.style.removeProperty('right');
+    aimStickEl.style.removeProperty('bottom');
+  }
   if (aimKnobEl) aimKnobEl.style.transform = 'translate(-50%, -50%)';
 }
 
@@ -59,6 +73,36 @@ function getTouchById(touchList, id) {
   return null;
 }
 
+
+function canUseDynamicStickStart(kind, targetEl) {
+  const isMove = kind === 'move';
+  const stickEl = isMove ? moveStickEl : aimStickEl;
+  if (!mobile.enabled || !stickEl || !mobileControlsEl) return false;
+  if (isMove ? (mobile.moveId !== null) : (mobile.aimId !== null)) return false;
+  if (!mobileControlsEl.classList.contains('active')) return false;
+  if (!game.dynamicSticksEnabled) return false;
+  if (!isMove && (!game.showAimStickEnabled || aimStickEl?.hidden)) return false;
+  if (!(targetEl instanceof Element)) return false;
+  if (targetEl.closest('#join-overlay') || targetEl.closest('#stats-panel') || targetEl.closest('#dev-console')) return false;
+  if (targetEl.closest('#move-stick') || targetEl.closest('#aim-stick') || targetEl.closest('#jump-btn')) return false;
+  if (targetEl.closest('button, input, select, textarea, details, summary, a, label')) return false;
+  return true;
+}
+
+function placeStickAt(kind, clientX, clientY) {
+  const stickEl = kind === 'move' ? moveStickEl : aimStickEl;
+  if (!stickEl) return;
+  const currentRect = stickEl.getBoundingClientRect();
+  const radius = Math.max(42, currentRect.width / 2);
+  const margin = 6;
+  const x = Math.max(radius + margin, Math.min(window.innerWidth - radius - margin, clientX));
+  const y = Math.max(radius + margin, Math.min(window.innerHeight - radius - margin, clientY));
+  stickEl.classList.add('dynamic-active');
+  stickEl.style.setProperty('left', x.toFixed(1) + 'px', 'important');
+  stickEl.style.setProperty('top', y.toFixed(1) + 'px', 'important');
+  stickEl.style.setProperty('right', 'auto', 'important');
+  stickEl.style.setProperty('bottom', 'auto', 'important');
+}
 function initMobileControls() {
   if (!mobile.enabled || !moveStickEl || !aimStickEl) {
     setMobileControlsVisible(false);
@@ -71,10 +115,12 @@ function initMobileControls() {
     if (!touch) return;
 
     if (kind === 'move' && mobile.moveId === null) {
+      if (game.dynamicSticksEnabled) placeStickAt('move', touch.clientX, touch.clientY);
       mobile.moveId = touch.identifier;
       updateMobileStick('move', touch.clientX, touch.clientY);
     }
     if (kind === 'aim' && mobile.aimId === null) {
+      if (game.dynamicSticksEnabled) placeStickAt('aim', touch.clientX, touch.clientY);
       mobile.aimId = touch.identifier;
       updateMobileStick('aim', touch.clientX, touch.clientY);
     }
@@ -82,6 +128,24 @@ function initMobileControls() {
 
   moveStickEl.addEventListener('touchstart', (e) => onStart('move', e), { passive: false });
   aimStickEl.addEventListener('touchstart', (e) => onStart('aim', e), { passive: false });
+
+  const onGlobalStart = (e) => {
+    const touch = e.changedTouches && e.changedTouches[0];
+    if (!touch) return;
+    const isMove = touch.clientX >= window.innerWidth * 0.5;
+    const kind = isMove ? 'move' : 'aim';
+    if (!canUseDynamicStickStart(kind, e.target)) return;
+    if (kind === 'move') mobile.moveId = touch.identifier;
+    else mobile.aimId = touch.identifier;
+    placeStickAt(kind, touch.clientX, touch.clientY);
+    updateMobileStick(kind, touch.clientX, touch.clientY);
+    if (kind === 'aim') {
+      input.shooting = mobile.aimStrength > 0.2;
+      requestImmediateInputSend();
+    }
+    e.preventDefault();
+  };
+  window.addEventListener('touchstart', onGlobalStart, { passive: false, capture: true });
 
   const onMove = (e) => {
     if (mobile.moveId === null && mobile.aimId === null) return;
@@ -106,7 +170,9 @@ function initMobileControls() {
         changed = true;
       }
     }
-    if (changed) e.preventDefault();
+    if (changed) {
+      e.preventDefault();
+    }
   };
 
   window.addEventListener('touchmove', onMove, { passive: false });
@@ -2258,6 +2324,7 @@ canvas.addEventListener('touchstart', (e) => {
   if (!mobile.enabled) return;
   const t = e.changedTouches[0];
   if (!t) return;
+  if (t.identifier === mobile.moveId || t.identifier === mobile.aimId) return;
   mobileShootTouchId = t.identifier;
   input.shooting = true;
   setPointerFromClient(t.clientX, t.clientY);
