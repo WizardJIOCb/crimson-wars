@@ -25,10 +25,10 @@
     <div class="panel" id="info-panel">
       <div class="panel-head">
         <h1>Crimson Wars</h1>
-        <button id="info-panel-close" class="panel-close" type="button" aria-label="Hide menu" title="Hide menu">×</button>
+        <button id="info-panel-close" class="panel-close" type="button" aria-label="Hide menu" title="Hide menu">&times;</button>
       </div>
       <p>WASD move, mouse aim, LMB fire</p>
-      <p>Press `1` for pistol, `Space` jump, `H` hide menu</p>
+      <p>Press `Space` jump, `H` hide menu</p>
       <p id="status">Connecting...</p>
       <p id="instance-meta">Instance: --</p>
       <p id="room-meta"></p>
@@ -43,64 +43,66 @@
           <option value="high">High</option>
         </select>
       </p>
-      <p class="shadow-option">
-        <label>
-          <input id="shadow-toggle" type="checkbox" checked />
-          Shadows
-        </label>
-      </p>
-      <p class="shadow-option">
-        <label>
-          <input id="show-minimap-toggle" type="checkbox" checked />
-          Show minimap
-        </label>
-      </p>
-      <p class="shadow-option">
-        <label>
-          <input id="bullet-tracers-toggle" type="checkbox" checked />
-          Bullet tracers
-        </label>
-      </p>
-      <p class="shadow-option">
-        <label>
-          <input id="enemy-hp-toggle" type="checkbox" checked />
-          Enemy HP Bars
-        </label>
-      </p>
-      <p class="shadow-option">
-        <label>
-          <input id="extra-blood-toggle" type="checkbox" checked />
-          Extra blood
-        </label>
-      </p>
-      <p class="shadow-option">
-        <label>
-          <input id="hit-effects-toggle" type="checkbox" checked />
-          Hit effects
-        </label>
-      </p>
-      <p class="shadow-option">
-        <label>
-          <input id="auto-fire-toggle" type="checkbox" />
-          Auto fire
-        </label>
-      </p>
-      <p class="shadow-option">
-        <label>
-          <input id="conn-indicator-toggle" type="checkbox" checked />
-          Connection indicator
-        </label>
-      </p>
-      <p class="shadow-option">
-        <label>
-          <input id="show-fps-toggle" type="checkbox" checked />
-          Show FPS
-        </label>
-      </p>
+      <div class="settings-toggles">
+        <p class="shadow-option">
+          <label>
+            <input id="shadow-toggle" type="checkbox" checked />
+            Shadows
+          </label>
+        </p>
+        <p class="shadow-option">
+          <label>
+            <input id="show-minimap-toggle" type="checkbox" checked />
+            Show minimap
+          </label>
+        </p>
+        <p class="shadow-option">
+          <label>
+            <input id="bullet-tracers-toggle" type="checkbox" checked />
+            Bullet tracers
+          </label>
+        </p>
+        <p class="shadow-option">
+          <label>
+            <input id="enemy-hp-toggle" type="checkbox" checked />
+            Enemy HP Bars
+          </label>
+        </p>
+        <p class="shadow-option">
+          <label>
+            <input id="extra-blood-toggle" type="checkbox" checked />
+            Extra blood
+          </label>
+        </p>
+        <p class="shadow-option">
+          <label>
+            <input id="hit-effects-toggle" type="checkbox" checked />
+            Hit effects
+          </label>
+        </p>
+        <p class="shadow-option">
+          <label>
+            <input id="auto-fire-toggle" type="checkbox" />
+            Auto fire
+          </label>
+        </p>
+        <p class="shadow-option">
+          <label>
+            <input id="conn-indicator-toggle" type="checkbox" checked />
+            Connection indicator
+          </label>
+        </p>
+        <p class="shadow-option">
+          <label>
+            <input id="show-fps-toggle" type="checkbox" checked />
+            Show FPS
+          </label>
+        </p>
+      </div>
     </div>
     <button id="toggle-info" class="hud-toggle" type="button" aria-label="Menu">
-      <span class="menu-burger" aria-hidden="true">☰</span>
-      <span class="menu-label">☰</span>
+      <span class="menu-burger" aria-hidden="true">&#9776;</span>
+      <span class="menu-label">Menu</span>
     </button>
     <div class="panel" id="scoreboard"></div>
   </div>
@@ -166,6 +168,10 @@
   <canvas id="game" width="1280" height="720"></canvas>
 
   <div id="join-overlay">
+    <button id="join-toggle-info" class="hud-toggle" type="button" aria-label="Show menu" title="Show menu">
+      <span class="menu-burger" aria-hidden="true">&#9776;</span>
+      <span class="menu-label">Menu</span>
+    </button>
     <div id="death-cinematic" class="death-cinematic" aria-hidden="true">
       <div id="death-text" class="death-text">YOU DIE!!!</div>
       <div class="death-impact"></div>

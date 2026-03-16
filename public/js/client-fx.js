@@ -246,6 +246,39 @@ function spawnChainLightningFx(caster, nextState) {
   if (visuals.skillLinks.length > 60) visuals.skillLinks.splice(0, visuals.skillLinks.length - 60);
 }
 
+function spawnLaserStrikeFx(caster, nextState, skill) {
+  const def = game.skillCatalog?.laser_strike || {};
+  const lvl = Math.max(1, Number(skill?.level) || 1);
+  const radius = Math.max(90, (Number(def.radius) || 320) + (Number(def.radiusPerLevel) || 0) * (lvl - 1));
+  const maxTargets = Math.max(1, Math.round((Number(def.targets) || 1) + (Number(def.targetsPerLevel) || 0) * (lvl - 1)));
+  const enemies = Array.isArray(nextState?.enemies) ? nextState.enemies : [];
+  const targets = enemies
+    .map((e) => {
+      const dx = e.x - caster.x;
+      const dy = e.y - caster.y;
+      return { e, d2: dx * dx + dy * dy };
+    })
+    .filter((it) => it.d2 <= radius * radius)
+    .sort((a, b) => a.d2 - b.d2)
+    .slice(0, maxTargets);
+
+  spawnSkillBurstFx(caster.x, caster.y, '#f9a8d4', Math.min(170, 80 + maxTargets * 14));
+  for (const t of targets) {
+    visuals.skillLinks.push({
+      x1: caster.x,
+      y1: caster.y - 7,
+      x2: t.e.x,
+      y2: t.e.y - 10,
+      life: 0.14,
+      ttl: 0.14,
+      color: '#f472b6',
+      phase: Math.random() * Math.PI * 2,
+    });
+    spawnHitFx(t.e.x, t.e.y, 8, false);
+  }
+  if (visuals.skillLinks.length > 90) visuals.skillLinks.splice(0, visuals.skillLinks.length - 90);
+}
+
 function shockwaveFxRadius(skill) {
   const def = game.skillCatalog?.shockwave || {};
   const lvl = Math.max(1, Number(skill?.level) || 1);
@@ -270,6 +303,11 @@ function spawnSkillCastFx(skillId, caster, nextState, skill) {
   if (sid === 'chain_lightning') {
     spawnChainLightningFx(caster, nextState);
     spawnSkillLabel('Chain Lightning', caster.x, caster.y - 10);
+    return;
+  }
+  if (sid === 'laser_strike') {
+    spawnLaserStrikeFx(caster, nextState, skill);
+    spawnSkillLabel('Laser Strike', caster.x, caster.y - 10);
     return;
   }
   if (sid === 'homing_missiles') {
@@ -372,6 +410,19 @@ function processStateFx(nextState) {
     if (!nextRocketMap.has(id)) spawnRocketExplosionFx(prev.x, prev.y);
   }
   visuals.rocketPrev = nextRocketMap;
+
+  const prevOfferMap = visuals.skillOfferPrev || new Map();
+  const nextOfferMap = new Map();
+  for (const orb of nextState.skillOrbs || []) {
+    nextOfferMap.set(orb.id, { x: orb.x, y: orb.y, ownerId: orb.ownerId });
+  }
+  for (const [id, prev] of prevOfferMap.entries()) {
+    if (!nextOfferMap.has(id)) {
+      const color = prev.ownerId === game.myId ? '#86efac' : '#9ca3af';
+      spawnSkillBurstFx(prev.x, prev.y, color, 92);
+    }
+  }
+  visuals.skillOfferPrev = nextOfferMap;
 
   const playersById = new Map(nextState.players.map((p) => [p.id, p]));
   const ids = new Set();
@@ -506,3 +557,7 @@ function updateFx(dt) {
     if (visuals.hitFx[i].life <= 0) visuals.hitFx.splice(i, 1);
   }
 }
+
+
+
+

@@ -246,6 +246,7 @@ const visuals = {
   skillLinks: [],
   skillLabels: [],
   skillCdPrev: new Map(),
+  skillOfferPrev: new Map(),
   enemyPrev: new Map(),
   playerPrev: new Map(),
   rocketPrev: new Map(),
@@ -275,6 +276,10 @@ let waitingForFirstState = false;
 let waitingForFirstStateSince = 0;
 let lastScoreboardHtml = '';
 let lastLevelupHtml = '';
+let skillTooltipEl = null;
+let skillTooltipChip = null;
+let skillTooltipPinned = false;
+let lastSkillBarHtml = '';
 let devConsoleOpen = false;
 let nicknameCheckTimer = null;
 let restartReloadTimer = null;
@@ -1157,6 +1162,7 @@ function skillBadgeLabel(skill) {
     shockwave: 'SW',
     blade_orbit: 'ORB',
     chain_lightning: 'CL',
+    laser_strike: 'LS',
     homing_missiles: 'HM',
   };
   if (named[id]) return named[id];
@@ -1167,46 +1173,207 @@ function skillBadgeLabel(skill) {
   return parts[0].slice(0, 3).toUpperCase();
 }
 
-function renderLevelupChoices() {
-  if (!levelupOverlayEl || !levelupOptionsEl) return;
-  const choices = Array.isArray(game.mySkillChoices) ? game.mySkillChoices : [];
-  const levelupOpen = choices.length > 0 && Boolean(game.state);
-  document.body.classList.toggle('levelup-open', levelupOpen);
-  if (!levelupOpen) {
-    levelupOverlayEl.classList.add('hidden');
-    if (lastLevelupHtml !== '') {
-      levelupOptionsEl.innerHTML = '';
-      lastLevelupHtml = '';
+function escapeHtml(text) {
+  return String(text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function ensureSkillTooltipElement() {
+  if (skillTooltipEl) return skillTooltipEl;
+  const el = document.createElement('div');
+  el.className = 'skill-tooltip hidden';
+  document.body.appendChild(el);
+  skillTooltipEl = el;
+  return el;
+}
+
+function hideSkillTooltip(resetPinned = true) {
+  if (!skillTooltipEl) return;
+  skillTooltipEl.classList.add('hidden');
+  skillTooltipChip = null;
+  if (resetPinned) skillTooltipPinned = false;
+}
+
+function positionSkillTooltipForChip(chip) {
+  if (!skillTooltipEl || !chip) return;
+  const rect = chip.getBoundingClientRect();
+  const tipRect = skillTooltipEl.getBoundingClientRect();
+  let x = rect.left + (rect.width * 0.5) - (tipRect.width * 0.5);
+  x = Math.max(8, Math.min(window.innerWidth - tipRect.width - 8, x));
+  let y = rect.top - tipRect.height - 10;
+  if (y < 8) y = rect.bottom + 10;
+  skillTooltipEl.style.left = x + 'px';
+  skillTooltipEl.style.top = y + 'px';
+}
+
+function fmtSkillNumber(value, digits = 2) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '--';
+  return Number(n.toFixed(digits)).toString();
+}
+
+function buildSkillCurrentStatLines(skill, def) {
+  const lvl = Math.max(1, Number(skill?.level) || 1);
+  const lines = [];
+
+  if ((def?.kind || skill?.kind) === 'active') {
+    const damage = (Number(def?.damage) || 0) + (Number(def?.damagePerLevel) || 0) * (lvl - 1);
+    const radius = (Number(def?.radius) || 0) + (Number(def?.radiusPerLevel) || 0) * (lvl - 1);
+    const targets = (Number(def?.targets) || 0) + (Number(def?.targetsPerLevel) || 0) * (lvl - 1);
+    if (damage > 0) lines.push('Damage: ' + Math.round(damage));
+    if (radius > 0) lines.push('Radius: ' + Math.round(radius));
+    if (targets > 0) lines.push('Targets: ' + Math.max(1, Math.round(targets)));
+
+    const baseCd = Math.max(0, Number(def?.cooldownMs) || 0);
+    const cdMul = Math.max(0, Number(def?.cooldownMulPerLevel) || 0);
+    if (baseCd > 0) {
+      const currentCd = Math.max(220, Math.round(baseCd * Math.max(0.2, 1 - cdMul * (lvl - 1))));
+      lines.push('Cooldown: ' + fmtSkillNumber(currentCd / 1000, 2) + 's');
     }
+
+    if (Number(def?.missileSpeed) > 0) {
+      const missileSpeed = (Number(def?.missileSpeed) || 0) + (Number(def?.missileSpeedPerLevel) || 0) * (lvl - 1);
+      lines.push('Missile speed: ' + Math.round(missileSpeed));
+    }
+    if (Number(def?.explosionRadius) > 0) {
+      const explosionRadius = (Number(def?.explosionRadius) || 0) + (Number(def?.explosionRadiusPerLevel) || 0) * (lvl - 1);
+      lines.push('Explosion radius: ' + Math.round(explosionRadius));
+    }
+  } else {
+    const dmgPct = (Number(def?.damageMulPerLevel) || 0) * lvl * 100;
+    const firePct = (Number(def?.fireRateMulPerLevel) || 0) * lvl * 100;
+    const movePct = (Number(def?.moveSpeedMulPerLevel) || 0) * lvl * 100;
+    const hpFlat = (Number(def?.maxHpFlatPerLevel) || 0) * lvl;
+    const pickupFlat = (Number(def?.pickupRadiusPerLevel) || 0) * lvl;
+    const regen = (Number(def?.hpRegenPerSecPerLevel) || 0) * lvl;
+    const dodge = (Number(def?.extraDodgeChargesPerLevel) || 0) * lvl;
+
+    if (dmgPct !== 0) lines.push('Damage: +' + fmtSkillNumber(dmgPct, 1) + '%');
+    if (firePct !== 0) lines.push('Fire rate: +' + fmtSkillNumber(firePct, 1) + '%');
+    if (movePct !== 0) lines.push('Move speed: +' + fmtSkillNumber(movePct, 1) + '%');
+    if (hpFlat !== 0) lines.push('Max HP: +' + Math.round(hpFlat));
+    if (pickupFlat !== 0) lines.push('Pickup radius: +' + Math.round(pickupFlat));
+    if (regen !== 0) lines.push('HP regen: +' + fmtSkillNumber(regen, 2) + '/s');
+    if (dodge !== 0) lines.push('Jump charges: +' + Math.round(dodge));
+  }
+
+  const cdLeft = Math.max(0, Number(skill?.cooldownMs) || 0);
+  if ((skill?.kind || def?.kind) === 'active') {
+    lines.push(cdLeft > 0 ? ('Current CD: ' + fmtSkillNumber(cdLeft / 1000, 2) + 's') : 'Current CD: ready');
+  }
+
+  return lines;
+}
+
+function showSkillTooltip(chip) {
+  if (!(chip instanceof HTMLElement)) {
+    hideSkillTooltip();
+    return;
+  }
+  const sid = String(chip.dataset.skillId || '').toLowerCase();
+  if (!sid) {
+    hideSkillTooltip();
+    return;
+  }
+  const me = game.state?.players?.find((p) => p.id === game.myId);
+  const skills = Array.isArray(me?.skills) ? me.skills : [];
+  const skill = skills.find((s) => String(s.id || '').toLowerCase() === sid);
+  if (!skill) {
+    hideSkillTooltip();
     return;
   }
 
-  levelupOverlayEl.classList.remove('hidden');
-  const cards = choices.map((id, idx) => {
-    const def = game.skillCatalog[id] || { id, name: id, kind: 'passive', rarity: 'common', desc: '' };
-    const me = game.state.players.find((p) => p.id === game.myId);
-    const existing = (me?.skills || []).find((s) => s.id === id);
-    const nextLvl = (Number(existing?.level) || 0) + 1;
-    const rarity = (def.rarity || 'common').toLowerCase();
-    const hotkey = idx + 1;
-    return `<button class="skill-option" data-skill-id="${id}" data-hotkey="${hotkey}" style="border-color:${rarityColor(rarity)}55"><div class="nm" style="color:${rarityColor(rarity)}">[${hotkey}] ${def.name}</div><div class="meta">Press ${hotkey} | ${def.kind.toUpperCase()} | ${rarity.toUpperCase()} | Lv ${nextLvl}</div><div class="desc">${def.desc || 'No description'}</div></button>`;
-  });
-  const nextHtml = cards.join('');
-  if (nextHtml !== lastLevelupHtml) {
-    levelupOptionsEl.innerHTML = nextHtml;
-    lastLevelupHtml = nextHtml;
+  const def = game.skillCatalog?.[sid] || {};
+  const rarity = String(skill.rarity || def.rarity || 'common').toLowerCase();
+  const color = rarityColor(rarity);
+  const desc = String(skill.desc || def.desc || 'No description').trim();
+  const lines = buildSkillCurrentStatLines(skill, def);
+
+  const tip = ensureSkillTooltipElement();
+  const linesHtml = lines.map((line) => '<div class="skill-tooltip-line">' + escapeHtml(line) + '</div>').join('');
+  tip.innerHTML = '<div class="skill-tooltip-title" style="color:' + color + '">' + escapeHtml(skill.name || sid) + ' Lv' + Math.max(1, Number(skill.level) || 1) + '</div>'
+    + '<div class="skill-tooltip-desc">' + escapeHtml(desc) + '</div>'
+    + '<div class="skill-tooltip-stats">' + linesHtml + '</div>';
+  tip.classList.remove('hidden');
+  skillTooltipChip = chip;
+  positionSkillTooltipForChip(chip);
+}
+
+skillBarEl?.addEventListener('pointerover', (event) => {
+  if (mobile.enabled || skillTooltipPinned) return;
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  const chip = target.closest('.skill-chip');
+  if (!(chip instanceof HTMLElement)) return;
+  showSkillTooltip(chip);
+});
+
+skillBarEl?.addEventListener('pointermove', (event) => {
+  if (mobile.enabled || skillTooltipPinned) return;
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  const chip = target.closest('.skill-chip');
+  if (!(chip instanceof HTMLElement)) {
+    hideSkillTooltip(false);
+    return;
+  }
+  if (chip !== skillTooltipChip) {
+    showSkillTooltip(chip);
+    return;
+  }
+  positionSkillTooltipForChip(chip);
+});
+
+skillBarEl?.addEventListener('pointerleave', () => {
+  if (!skillTooltipPinned) hideSkillTooltip(false);
+});
+
+skillBarEl?.addEventListener('click', (event) => {
+  if (!mobile.enabled) return;
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  const chip = target.closest('.skill-chip');
+  if (!(chip instanceof HTMLElement)) {
+    hideSkillTooltip();
+    return;
+  }
+  if (skillTooltipPinned && chip === skillTooltipChip) {
+    hideSkillTooltip();
+    return;
+  }
+  showSkillTooltip(chip);
+  skillTooltipPinned = true;
+  event.preventDefault();
+  event.stopPropagation();
+});
+
+document.addEventListener('click', (event) => {
+  if (!mobile.enabled) return;
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  if (target.closest('#skill-bar')) return;
+  hideSkillTooltip();
+});
+
+function renderLevelupChoices() {
+  if (!levelupOverlayEl || !levelupOptionsEl) return;
+  document.body.classList.remove('levelup-open');
+  levelupOverlayEl.classList.add('hidden');
+  if (lastLevelupHtml !== '') {
+    levelupOptionsEl.innerHTML = '';
+    lastLevelupHtml = '';
   }
 }
 
-
 function chooseSkillByIndex(idx) {
-  const choices = Array.isArray(game.mySkillChoices) ? game.mySkillChoices : [];
-  if (idx < 1 || idx > choices.length) return false;
-  const sid = choices[idx - 1];
-  if (!sid || ws.readyState !== WebSocket.OPEN || !game.myId) return false;
-  sendJson({ type: 'skillPick', skillId: sid });
-  return true;
+  void idx;
+  return false;
 }
+
 function updateBottomHud() {
   if (!bottomHudEl) return;
   const me = game.state?.players?.find((p) => p.id === game.myId);
@@ -1216,7 +1383,11 @@ function updateBottomHud() {
     if (xpLevelEl) xpLevelEl.textContent = 'Lv1';
     if (xpFillEl) xpFillEl.style.width = '0%';
     if (xpTextEl) xpTextEl.textContent = '0 / 0 XP';
-    if (skillBarEl) skillBarEl.innerHTML = '';
+    if (skillBarEl && lastSkillBarHtml !== '') {
+      skillBarEl.innerHTML = '';
+      lastSkillBarHtml = '';
+    }
+    hideSkillTooltip();
     renderLevelupChoices();
     return;
   }
@@ -1238,15 +1409,31 @@ function updateBottomHud() {
         const badge = skillBadgeLabel(s);
         const stateText = s.kind === 'active' ? (cd > 0 ? `${Math.max(0.1, cd / 1000).toFixed(1)}` : 'R') : '';
         const label = `${s.name} Lv${s.level}${stateText ? `, ${stateText === 'R' ? 'ready' : `${stateText}s cooldown`}` : ''}`;
-        return `<div class="skill-chip compact" title="${label}" aria-label="${label}" style="border-color:${rarityColor(rarity)}66"><span class="skill-chip-icon">${badge}</span><span class="skill-chip-level">Lv${s.level}</span>${stateText ? `<span class="skill-chip-state${stateText === 'R' ? ' ready' : ''}">${stateText}</span>` : ''}</div>`;
+        return `<div class="skill-chip compact" data-skill-id="${s.id}" title="${label}" aria-label="${label}" style="border-color:${rarityColor(rarity)}66"><span class="skill-chip-icon">${badge}</span><span class="skill-chip-level">Lv${s.level}</span>${stateText ? `<span class="skill-chip-state${stateText === 'R' ? ' ready' : ''}">${stateText}</span>` : ''}</div>`;
       }
       const cdText = s.kind === 'active' ? (cd > 0 ? `${(cd / 1000).toFixed(1)}s` : 'ready') : `Lv${s.level}`;
-      return `<div class="skill-chip" style="border-color:${rarityColor(rarity)}66"><div>${s.name} Lv${s.level}</div><div class="cd">${cdText}</div></div>`;
+      return `<div class="skill-chip" data-skill-id="${s.id}" style="border-color:${rarityColor(rarity)}66"><div>${s.name} Lv${s.level}</div><div class="cd">${cdText}</div></div>`;
     });
-    skillBarEl.innerHTML = chips.join('');
+    const nextSkillBarHtml = chips.join('');
+    if (nextSkillBarHtml !== lastSkillBarHtml) {
+      skillBarEl.innerHTML = nextSkillBarHtml;
+      lastSkillBarHtml = nextSkillBarHtml;
+      if (skillTooltipPinned) {
+        const sid = String(skillTooltipChip?.dataset?.skillId || '').toLowerCase();
+        const nextChip = sid ? skillBarEl.querySelector('.skill-chip[data-skill-id="' + sid + '"]') : null;
+        if (nextChip instanceof HTMLElement) {
+          showSkillTooltip(nextChip);
+          skillTooltipPinned = true;
+        } else {
+          hideSkillTooltip();
+        }
+      } else {
+        hideSkillTooltip(false);
+      }
+    }
   }
 
-  game.mySkillChoices = Array.isArray(me.pendingSkillChoices) ? me.pendingSkillChoices : [];
+
   renderLevelupChoices();
 }
 
@@ -1523,7 +1710,9 @@ function updateNetMetaUi() {
   const lossPct = delivered > 0 ? (netStats.lostPings * 100) / delivered : 0;
   const interpMs = game.netSnapshots.length > 0 ? roomSync.netRenderDelayMs : 0;
 
-  netMetaEl.textContent = 'NET: ping ' + Math.round(netStats.rttMs) + 'ms | jitter ' + Math.round(netStats.jitterMs) + 'ms | loss ' + lossPct.toFixed(1) + '% | state ' + netStats.stateHz.toFixed(1) + 'Hz | delay ' + Math.round(netStats.stateDelayMs) + 'ms | interp ' + interpMs + 'ms | rx ' + netStats.rxKBps.toFixed(1) + 'KB/s (' + formatBytesTotal(netStats.rxTotalBytes) + ') | tx ' + netStats.txKBps.toFixed(1) + 'KB/s (' + formatBytesTotal(netStats.txTotalBytes) + ')';
+  const netLine1 = 'NET: ping ' + Math.round(netStats.rttMs) + 'ms | jitter ' + Math.round(netStats.jitterMs) + 'ms | loss ' + lossPct.toFixed(1) + '%';
+  const netLine2 = 'state ' + netStats.stateHz.toFixed(1) + 'Hz | delay ' + Math.round(netStats.stateDelayMs) + 'ms | interp ' + interpMs + 'ms | rx ' + netStats.rxKBps.toFixed(1) + 'KB/s (' + formatBytesTotal(netStats.rxTotalBytes) + ') | tx ' + netStats.txKBps.toFixed(1) + 'KB/s (' + formatBytesTotal(netStats.txTotalBytes) + ')';
+  netMetaEl.innerHTML = '<span class="net-line">' + netLine1 + '</span><span class="net-line">' + netLine2 + '</span>';
 }
 
 function computeConnectionQualityLevel(rttMs, jitterMs, lossPct, stateDelayMs) {
@@ -1862,21 +2051,27 @@ function updateMinimapVisibility(overlayOpen = null) {
 }
 
 function updateHudVisibility(overlayOpen) {
-  canvas.classList.toggle('hidden', Boolean(overlayOpen));
-  if (hudEl) hudEl.classList.toggle('menu-hidden', Boolean(overlayOpen));
-  if (topCenterHudEl) topCenterHudEl.classList.toggle('hidden', Boolean(overlayOpen));
-  if (bottomHudEl) bottomHudEl.classList.toggle('hidden', Boolean(overlayOpen));
-  if (statsToggleBtn) statsToggleBtn.classList.toggle('hidden', Boolean(overlayOpen));
-  if (replayGameControlsEl) replayGameControlsEl.classList.toggle('hidden', Boolean(overlayOpen) || !replayGame.active);
-  if (overlayOpen) {
+  const menuOpen = Boolean(overlayOpen);
+  const showHudPanel = !menuOpen || !infoPanelHidden;
+  canvas.classList.toggle('hidden', menuOpen);
+  if (hudEl) hudEl.classList.toggle('menu-hidden', !showHudPanel);
+  if (toggleInfoBtn) toggleInfoBtn.classList.toggle('hidden', !infoPanelHidden || menuOpen);
+  const joinToggleInfoBtn = document.getElementById('join-toggle-info');
+  if (joinToggleInfoBtn) joinToggleInfoBtn.classList.toggle('hidden', !menuOpen || !infoPanelHidden);
+  if (scoreboardEl) scoreboardEl.classList.toggle('hidden', menuOpen);
+  if (topCenterHudEl) topCenterHudEl.classList.toggle('hidden', menuOpen);
+  if (bottomHudEl) bottomHudEl.classList.toggle('hidden', menuOpen);
+  if (statsToggleBtn) statsToggleBtn.classList.toggle('hidden', menuOpen);
+  if (replayGameControlsEl) replayGameControlsEl.classList.toggle('hidden', menuOpen || !replayGame.active);
+  if (menuOpen) {
     if (statsPanelEl) statsPanelEl.classList.add('hidden');
   } else {
     setStatsPanelOpen(statsPanelOpen);
   }
-  if (overlayOpen && levelupOverlayEl) levelupOverlayEl.classList.add('hidden');
-  if (overlayOpen) document.body.classList.remove('levelup-open');
-  updateFpsCornerVisibility(overlayOpen);
-  updateMinimapVisibility(overlayOpen);
+  if (menuOpen && levelupOverlayEl) levelupOverlayEl.classList.add('hidden');
+  if (menuOpen) document.body.classList.remove('levelup-open');
+  updateFpsCornerVisibility(menuOpen);
+  updateMinimapVisibility(menuOpen);
 }
 
 
@@ -1924,3 +2119,7 @@ function updateMobileControlsVisibility() {
   }
   setMobileControlsVisible(!overlayOpen);
 }
+
+
+
+

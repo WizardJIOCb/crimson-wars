@@ -79,6 +79,10 @@ const {
   XP_ORB_PULL_SPEED,
   PLAYER_PICKUP_RADIUS_BASE,
   SKILL_PICK_OPTIONS,
+  SKILL_OFFER_TTL_MS,
+  SKILL_OFFER_PICKUP_RADIUS,
+  SKILL_OFFER_SPAWN_MIN_DIST,
+  SKILL_OFFER_SPAWN_MAX_DIST,
   PLAYER_SLOW_FACTOR,
   PLAYER_SLOW_DURATION_MS,
   DROP_LIFETIME_MS,
@@ -910,6 +914,7 @@ function getOrCreateRoom(requestedCode, requestedSync) {
       enemies: [],
       drops: [],
       xpOrbs: [],
+      skillOrbs: [],
       scores: new Map(),
       kills: new Map(),
       nextEnemyId: 1,
@@ -917,6 +922,7 @@ function getOrCreateRoom(requestedCode, requestedSync) {
       nextBulletId: 1,
       nextDropId: 1,
       nextXpOrbId: 1,
+      nextSkillOrbId: 1,
       nextPortalId: 1,
       bossPortals: [],
       totalEnemyKills: 0,
@@ -1239,6 +1245,23 @@ function castHomingMissiles(room, player, def, st, now) {
   return true;
 }
 
+function castLaserStrike(room, player, def, st, now) {
+  const lvl = Math.max(1, Number(st?.level) || 1);
+  const radius = Math.max(90, (Number(def.radius) || 320) + (Number(def.radiusPerLevel) || 0) * (lvl - 1));
+  const maxTargets = Math.max(1, Math.round((Number(def.targets) || 1) + (Number(def.targetsPerLevel) || 0) * (lvl - 1)));
+  const targets = collectSkillTargets(room, player, maxTargets, radius);
+  if (targets.length <= 0) return false;
+
+  const baseDamage = (Number(def.damage) || 40) + (Number(def.damagePerLevel) || 0) * (lvl - 1);
+  const damageMul = Math.max(0.2, Number(player.damageMul) || 1);
+  const damage = Math.max(1, Math.round(baseDamage * damageMul));
+
+  for (const enemy of targets) {
+    enemyTakeDamage(room, enemy, damage, player.id, now);
+  }
+  return true;
+}
+
 function explodeRocket(room, bullet, now) {
   const radius = Math.max(18, Number(bullet.explosionRadius) || 54);
   const enemies = room.enemies.slice();
@@ -1257,6 +1280,9 @@ function castPlayerActiveSkill(room, player, def, st, now) {
   const skillId = String(def?.id || '').toLowerCase();
   if (skillId === 'homing_missiles') {
     return castHomingMissiles(room, player, def, st, now);
+  }
+  if (skillId === 'laser_strike') {
+    return castLaserStrike(room, player, def, st, now);
   }
 
   const lvl = Math.max(1, Number(st?.level) || 1);
@@ -1323,7 +1349,7 @@ function serializeRoom(room) {
     level: Math.max(1, Math.floor(Number(p.level) || 1)),
     xp: Math.max(0, Math.floor(Number(p.xp) || 0)),
     xpToNext: Math.max(1, Math.floor(Number(p.xpToNext) || getXpToNextLevel(p.level || 1))),
-    pendingSkillChoices: Array.isArray(p.pendingSkillChoices) ? p.pendingSkillChoices.slice(0, SKILL_PICK_OPTIONS) : [],
+    pendingSkillChoices: [],
     enemyKills: Math.max(0, Math.floor(Number(p.enemyKills) || 0)),
     bossKills: Math.max(0, Math.floor(Number(p.bossKills) || 0)),
     skills: (p.skillOrder || []).map((sid) => {
@@ -1450,6 +1476,15 @@ function serializeRoom(room) {
       xp: o.xp,
       ttlMs: Math.max(0, Math.round(o.ttlMs || 0)),
       ttlMaxMs: XP_ORB_LIFETIME_MS,
+    })),
+    skillOrbs: room.skillOrbs.map((o) => ({
+      id: o.id,
+      ownerId: o.ownerId,
+      skillId: o.skillId,
+      x: o.x,
+      y: o.y,
+      ttlMs: Math.max(0, Math.round(o.ttlMs || 0)),
+      ttlMaxMs: Math.max(1, Math.round(o.ttlMaxMs || SKILL_OFFER_TTL_MS)),
     })),
     decor: {
       trees: room.trees,
@@ -1970,10 +2005,58 @@ function rollSkillChoices(player, count = SKILL_PICK_OPTIONS) {
   return out;
 }
 
-function queueSkillChoices(player) {
-  if ((player.pendingSkillChoices?.length || 0) > 0) return;
+function hasActiveSkillOffer(room, playerId) {
+  if (!room || !playerId) return false;
+  return room.skillOrbs.some((orb) => orb.ownerId === playerId);
+}
+
+function clearSkillOffersForOwner(room, playerId) {
+  if (!room || !playerId) return 0;
+  const before = room.skillOrbs.length;
+  room.skillOrbs = room.skillOrbs.filter((orb) => orb.ownerId !== playerId);
+  return Math.max(0, before - room.skillOrbs.length);
+}
+
+function randomSkillOfferPosition(player, used = []) {
+  const minDist = Math.max(40, Number(SKILL_OFFER_SPAWN_MIN_DIST) || 120);
+  const maxDist = Math.max(minDist + 20, Number(SKILL_OFFER_SPAWN_MAX_DIST) || 420);
+  for (let i = 0; i < 28; i += 1) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = minDist + Math.random() * (maxDist - minDist);
+    const x = clamp(player.x + Math.cos(angle) * dist, PLAYER_RADIUS + 16, WORLD_WIDTH - PLAYER_RADIUS - 16);
+    const y = clamp(player.y + Math.sin(angle) * dist, PLAYER_RADIUS + 16, WORLD_HEIGHT - PLAYER_RADIUS - 16);
+    const tooClose = used.some((pos) => ((pos.x - x) ** 2 + (pos.y - y) ** 2) <= (84 * 84));
+    if (!tooClose) return { x, y };
+  }
+  return {
+    x: clamp(player.x + (Math.random() - 0.5) * 260, PLAYER_RADIUS + 16, WORLD_WIDTH - PLAYER_RADIUS - 16),
+    y: clamp(player.y + (Math.random() - 0.5) * 260, PLAYER_RADIUS + 16, WORLD_HEIGHT - PLAYER_RADIUS - 16),
+  };
+}
+
+function ensureSkillOffer(room, player, now = Date.now()) {
+  if (!room || !player || !player.alive) return false;
+  if ((Number(player.unspentLevelUps) || 0) <= 0) return false;
+  if (hasActiveSkillOffer(room, player.id)) return false;
   const picks = rollSkillChoices(player, SKILL_PICK_OPTIONS);
-  player.pendingSkillChoices = picks;
+  if (!Array.isArray(picks) || picks.length <= 0) return false;
+
+  const used = [];
+  for (const skillId of picks) {
+    const pos = randomSkillOfferPosition(player, used);
+    used.push(pos);
+    room.skillOrbs.push({
+      id: room.nextSkillOrbId++,
+      ownerId: player.id,
+      skillId,
+      x: pos.x,
+      y: pos.y,
+      ttlMs: SKILL_OFFER_TTL_MS,
+      ttlMaxMs: SKILL_OFFER_TTL_MS,
+      createdAt: now,
+    });
+  }
+  return true;
 }
 
 function gainPlayerXp(room, player, amount, now) {
@@ -1989,8 +2072,8 @@ function gainPlayerXp(room, player, amount, now) {
     player.level = Math.max(1, Math.floor(Number(player.level) || 1) + 1);
     player.unspentLevelUps = Math.max(0, Math.floor(Number(player.unspentLevelUps) || 0) + 1);
     player.xpToNext = getXpToNextLevel(player.level);
-    queueSkillChoices(player);
-    sendTo(player.ws, { type: 'system', message: `Level up ${player.level}! Choose a skill.` });
+    const offerCreated = ensureSkillOffer(room, player, now);
+    sendTo(player.ws, { type: 'system', message: offerCreated ? ('Level up ' + player.level + '! Collect a skill orb.') : ('Level up ' + player.level + '!') });
   }
 }
 
@@ -2078,10 +2161,11 @@ function tickPlayerSkills(room, player, dtSec, now) {
 }
 
 
-function playerSelectSkill(player, skillId) {
+function playerSelectSkill(room, player, skillId, now = Date.now()) {
+  if (!room || !player) return false;
   const pickId = (skillId || '').toString().trim().toLowerCase();
   if (!pickId) return false;
-  const options = Array.isArray(player.pendingSkillChoices) ? player.pendingSkillChoices : [];
+  const options = room.skillOrbs.filter((orb) => orb.ownerId === player.id).map((orb) => String(orb.skillId || '').toLowerCase());
   if (!options.includes(pickId)) return false;
   const def = skillsStore.getById(pickId);
   if (!def) return false;
@@ -2091,9 +2175,11 @@ function playerSelectSkill(player, skillId) {
   st.maxCooldownMs = Math.max(0, Number(st.maxCooldownMs) || 0);
   if (!Array.isArray(player.skillOrder)) player.skillOrder = [];
   if (!player.skillOrder.includes(pickId)) player.skillOrder.push(pickId);
+
+  clearSkillOffersForOwner(room, player.id);
   player.pendingSkillChoices = [];
   player.unspentLevelUps = Math.max(0, (Number(player.unspentLevelUps) || 0) - 1);
-  if (player.unspentLevelUps > 0) queueSkillChoices(player);
+  if (player.unspentLevelUps > 0) ensureSkillOffer(room, player, now);
   rebuildPlayerDerivedStats(player);
   return true;
 }
@@ -2627,6 +2713,7 @@ function removePlayer(player) {
   const room = rooms.get(player.roomCode);
   if (!room) return;
   room.players.delete(player.id);
+  clearSkillOffersForOwner(room, player.id);
   room.companions = (room.companions || []).filter((companion) => companion.ownerId !== player.id);
   room.scores.delete(player.id);
   room.kills.delete(player.id);
@@ -2784,7 +2871,7 @@ wss.on('connection', (ws, req) => {
     }
 
     if (msg.type === 'skillPick') {
-      const picked = playerSelectSkill(current, msg.skillId);
+      const picked = playerSelectSkill(room, current, msg.skillId, Date.now());
       if (picked) sendTo(current.ws, { type: 'system', message: 'Skill upgraded.' });
       return;
     }
@@ -3095,6 +3182,38 @@ function tickRoom(room, dtSec, now) {
     if (picked) continue;
   }
 
+  for (let i = room.skillOrbs.length - 1; i >= 0; i -= 1) {
+    const orb = room.skillOrbs[i];
+    orb.ttlMs -= dtSec * 1000;
+    if (orb.ttlMs <= 0) room.skillOrbs.splice(i, 1);
+  }
+
+  const pickupReach = PLAYER_RADIUS + Math.max(6, Number(SKILL_OFFER_PICKUP_RADIUS) || 22);
+  const pickupReachSq = pickupReach * pickupReach;
+  for (const p of room.players.values()) {
+    if (!p.alive) continue;
+    let pickOrb = null;
+    let bestD2 = Infinity;
+    for (const orb of room.skillOrbs) {
+      if (orb.ownerId !== p.id) continue;
+      const dx = p.x - orb.x;
+      const dy = p.y - orb.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        pickOrb = orb;
+      }
+    }
+    if (!pickOrb || bestD2 > pickupReachSq) continue;
+    const picked = playerSelectSkill(room, p, pickOrb.skillId, now);
+    if (picked) sendTo(p.ws, { type: 'system', message: 'Skill upgraded.' });
+  }
+
+  for (const p of room.players.values()) {
+    if (!p.alive) continue;
+    if ((Number(p.unspentLevelUps) || 0) > 0) ensureSkillOffer(room, p, now);
+  }
+
   for (const p of room.players.values()) {
     captureReplayFrame(room, p.runReplay, now);
   }
@@ -3151,5 +3270,3 @@ server.listen(PORT, () => {
     console.log(`Bootstrap admin password: ${ADMIN_BOOTSTRAP_PASSWORD}`);
   }
 });
-
-

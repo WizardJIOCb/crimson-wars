@@ -1,4 +1,4 @@
-const MENU_IDLE_FRAME_MS = 180;
+﻿const MENU_IDLE_FRAME_MS = 180;
 const FPS_UI_UPDATE_SEC = 0.75;
 const minimapCtx = minimapCanvasEl?.getContext('2d');
 if (minimapCtx) minimapCtx.imageSmoothingEnabled = false;
@@ -369,6 +369,112 @@ function drawXpOrbs(orbs, nowMs) {
   }
 }
 
+function skillOrbDisplayData(skillId) {
+  const sid = String(skillId || '').toLowerCase();
+  const def = game.skillCatalog?.[sid] || game.skillCatalog?.[skillId] || {};
+  const rarity = String(def.rarity || 'common').toLowerCase();
+  return {
+    name: String(def.name || sid || 'Skill'),
+    rarity,
+  };
+}
+function drawSkillOfferOrbs(orbs, nowMs) {
+  if (!Array.isArray(orbs)) return;
+  for (const orb of orbs) {
+    if (!isVisibleWorld(orb.x, orb.y, 80)) continue;
+    const own = orb.ownerId === game.myId;
+    const info = skillOrbDisplayData(orb.skillId);
+    const baseColor = own ? rarityColor(info.rarity) : '#9ca3af';
+    const ttlMs = Math.max(0, Number(orb.ttlMs) || 0);
+    const ttlMaxMs = Math.max(1, Number(orb.ttlMaxMs) || 15000);
+    const lowTtl = ttlMs <= 3500;
+    const blinkHidden = lowTtl && Math.sin(nowMs / 85 + (Number(orb.id) || 0)) < -0.28;
+    if (blinkHidden) continue;
+    const sx = orb.x - camera.x;
+    const sy = orb.y - camera.y;
+    const pulse = 1 + Math.sin((nowMs / 170) + (Number(orb.id) || 0)) * 0.16;
+    const auraR = 18 * pulse;
+    ctx.save();
+    if (!own) ctx.globalAlpha = 0.52;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = `${baseColor}55`;
+    ctx.beginPath();
+    ctx.arc(sx, sy, auraR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = own ? (baseColor + 'cc') : '#9ca3af';
+    ctx.beginPath();
+    ctx.arc(sx, sy, 8.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = baseColor;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(sx, sy, 12.5, 0, Math.PI * 2);
+    ctx.stroke();
+    const progress = Math.max(0, Math.min(1, ttlMs / ttlMaxMs));
+    ctx.strokeStyle = lowTtl ? '#f87171' : (baseColor + 'cc');
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(sx, sy, 15.5, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * progress));
+    ctx.stroke();
+    const label = info.name;
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.strokeStyle = 'rgba(7, 12, 20, 0.88)';
+    ctx.lineWidth = 3;
+    ctx.strokeText(label, sx, sy - 22);
+    ctx.fillStyle = own ? (baseColor + 'cc') : '#9ca3af';
+    ctx.fillText(label, sx, sy - 22);
+    ctx.restore();
+  }
+}
+function drawSkillOrbEdgeIndicators(orbs) {
+  if (!Array.isArray(orbs) || orbs.length <= 0) return;
+  const ownOrbs = orbs.filter((orb) => orb.ownerId === game.myId);
+  if (ownOrbs.length <= 0) return;
+  const cx = canvas.width * 0.5;
+  const cy = canvas.height * 0.5;
+  const pad = 46;
+  const boundX = Math.max(20, cx - pad);
+  const boundY = Math.max(20, cy - pad);
+  for (const orb of ownOrbs) {
+    const sx = orb.x - camera.x;
+    const sy = orb.y - camera.y;
+    if (sx >= 0 && sx <= canvas.width && sy >= 0 && sy <= canvas.height) continue;
+    const dx = sx - cx;
+    const dy = sy - cy;
+    const absDx = Math.max(0.001, Math.abs(dx));
+    const absDy = Math.max(0.001, Math.abs(dy));
+    const t = Math.min(boundX / absDx, boundY / absDy);
+    const ax = cx + dx * t;
+    const ay = cy + dy * t;
+    const ang = Math.atan2(dy, dx);
+    const info = skillOrbDisplayData(orb.skillId);
+    const color = rarityColor(info.rarity);
+    ctx.save();
+    ctx.translate(ax, ay);
+    ctx.rotate(ang);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(13, 0);
+    ctx.lineTo(-9, -7);
+    ctx.lineTo(-9, 7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    const textX = ax - Math.cos(ang) * 34;
+    const textY = ay - Math.sin(ang) * 34;
+    ctx.save();
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.strokeStyle = 'rgba(2, 6, 14, 0.9)';
+    ctx.lineWidth = 3;
+    ctx.strokeText(info.name, textX, textY);
+    ctx.fillStyle = color;
+    ctx.fillText(info.name, textX, textY);
+    ctx.restore();
+  }
+}
 function drawBloodPuddles() {
   for (const p of visuals.bloodPuddles) {
     if (!isVisibleWorld(p.x, p.y, 34)) continue;
@@ -636,6 +742,11 @@ function drawMinimap() {
     dot(orb.x, orb.y, Math.max(1.6 * dpr, 1.5), '#38bdf8');
   }
 
+  for (const orb of game.state.skillOrbs || []) {
+    const own = orb.ownerId === game.myId;
+    dot(orb.x, orb.y, own ? Math.max(2.8 * dpr, 2.4) : Math.max(2.1 * dpr, 1.8), own ? '#34d399' : '#9ca3af');
+  }
+
   for (const drop of game.state.drops || []) {
     dot(drop.x, drop.y, Math.max(1.8 * dpr, 1.6), '#f59e0b');
   }
@@ -725,6 +836,7 @@ function render(ts) {
   drawBloodPuddles();
   drawXpOrbs(game.state.xpOrbs || [], Number(game.state.now) || Date.now());
   drawBossPortals(game.state.bossPortals || [], Number(game.state.now) || Date.now());
+  drawSkillOfferOrbs(game.state.skillOrbs || [], Number(game.state.now) || Date.now());
 
   for (const d of game.state.drops || []) {
     if (!isVisibleWorld(d.x, d.y, 50)) continue;
@@ -830,6 +942,7 @@ function render(ts) {
 
   drawTrees();
   drawFx();
+  drawSkillOrbEdgeIndicators(game.state.skillOrbs || []);
 
   ctx.strokeStyle = 'rgba(255,255,255,0.16)';
   ctx.lineWidth = 2;
@@ -843,3 +956,12 @@ startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 setInterval(sendNetStatsReport, 1500);
 scheduleNextFrame();
+
+
+
+
+
+
+
+
+

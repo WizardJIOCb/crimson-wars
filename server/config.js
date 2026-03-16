@@ -53,6 +53,10 @@ const XP_ORB_LIFETIME_MS = 22000;
 const XP_ORB_PULL_SPEED = 520;
 const PLAYER_PICKUP_RADIUS_BASE = 74;
 const SKILL_PICK_OPTIONS = 3;
+const SKILL_OFFER_TTL_MS = 15000;
+const SKILL_OFFER_PICKUP_RADIUS = 22;
+const SKILL_OFFER_SPAWN_MIN_DIST = 140;
+const SKILL_OFFER_SPAWN_MAX_DIST = 420;
 const PLAYER_SLOW_FACTOR = 0.8;
 const PLAYER_SLOW_DURATION_MS = 600;
 const DROP_LIFETIME_MS = 30000;
@@ -142,7 +146,8 @@ const DEFAULT_SKILL_DEFS = {
   shockwave: { id: 'shockwave', name: 'Shockwave', kind: 'active', rarity: 'rare', maxLevel: 8, weight: 0.84, cooldownMs: 5400, cooldownMulPerLevel: 0.08, radius: 170, radiusPerLevel: 14, damage: 38, damagePerLevel: 16, desc: 'AoE blast around hero' },
   blade_orbit: { id: 'blade_orbit', name: 'Blade Orbit', kind: 'active', rarity: 'common', maxLevel: 8, weight: 1.02, cooldownMs: 1450, cooldownMulPerLevel: 0.05, radius: 190, radiusPerLevel: 12, damage: 23, damagePerLevel: 10, targets: 2, targetsPerLevel: 1, desc: 'Hits nearest enemies' },
   chain_lightning: { id: 'chain_lightning', name: 'Chain Lightning', kind: 'active', rarity: 'epic', maxLevel: 7, weight: 0.52, cooldownMs: 6200, cooldownMulPerLevel: 0.08, radius: 330, radiusPerLevel: 18, damage: 52, damagePerLevel: 19, targets: 3, targetsPerLevel: 1, desc: 'Chains to nearest enemies' },
-  homing_missiles: { id: 'homing_missiles', name: 'Homing Missiles', kind: 'active', rarity: 'epic', maxLevel: 8, weight: 0.46, cooldownMs: 7600, cooldownMulPerLevel: 0.07, radius: 520, radiusPerLevel: 26, damage: 34, damagePerLevel: 12, targets: 5, targetsPerLevel: 1, missileSpeed: 320, missileSpeedPerLevel: 24, turnRate: 5.8, turnRatePerLevel: 0.24, explosionRadius: 58, explosionRadiusPerLevel: 5, lifeMs: 2600, desc: 'Launches seeking rockets at nearby enemies' },
+  laser_strike: { id: 'laser_strike', name: 'Laser Strike', kind: 'active', rarity: 'rare', maxLevel: 8, weight: 0.72, cooldownMs: 2600, cooldownMulPerLevel: 0.06, radius: 320, radiusPerLevel: 34, damage: 40, damagePerLevel: 15, targets: 1, targetsPerLevel: 1, desc: 'Instantly zaps nearest enemies' },
+  homing_missiles: { id: 'homing_missiles', name: 'Homing Missiles', kind: 'active', rarity: 'epic', maxLevel: 8, weight: 0.46, cooldownMs: 7600, cooldownMulPerLevel: 0.07, radius: 1560, radiusPerLevel: 78, damage: 34, damagePerLevel: 12, targets: 5, targetsPerLevel: 1, missileSpeed: 640, missileSpeedPerLevel: 48, turnRate: 5.8, turnRatePerLevel: 0.24, explosionRadius: 58, explosionRadiusPerLevel: 5, lifeMs: 2600, desc: 'Launches seeking rockets at nearby enemies' },
 };
 
 module.exports = {
@@ -198,6 +203,10 @@ module.exports = {
   XP_ORB_PULL_SPEED,
   PLAYER_PICKUP_RADIUS_BASE,
   SKILL_PICK_OPTIONS,
+  SKILL_OFFER_TTL_MS,
+  SKILL_OFFER_PICKUP_RADIUS,
+  SKILL_OFFER_SPAWN_MIN_DIST,
+  SKILL_OFFER_SPAWN_MAX_DIST,
   PLAYER_SLOW_FACTOR,
   PLAYER_SLOW_DURATION_MS,
   DROP_LIFETIME_MS,
@@ -215,3 +224,4 @@ module.exports = {
   DROP_WEAPON_KEYS,
   DEFAULT_SKILL_DEFS,
 };
+

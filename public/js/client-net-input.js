@@ -122,24 +122,49 @@ updateMobileControlsVisibility();
 jumpBtnEl?.addEventListener('touchstart', (e) => { e.preventDefault(); queueJump(); }, { passive: false });
 jumpBtnEl?.addEventListener('mousedown', (e) => { e.preventDefault(); queueJump(); });
 
+const joinToggleInfoBtn = document.getElementById('join-toggle-info');
+
+function applyMenuButtonGlyph(buttonEl) {
+  if (!(buttonEl instanceof HTMLElement)) return;
+  const burger = buttonEl.querySelector('.menu-burger');
+  const label = buttonEl.querySelector('.menu-label');
+  if (burger) burger.textContent = '\u2630';
+  if (label) label.textContent = 'Menu';
+  buttonEl.setAttribute('aria-label', 'Show menu');
+  buttonEl.title = 'Show menu';
+}
+
 function setInfoPanelHidden(hidden) {
   infoPanelHidden = Boolean(hidden);
+  const overlayOpen = getComputedStyle(joinOverlay).display !== 'none';
   if (infoPanelEl) infoPanelEl.classList.toggle('is-hidden', infoPanelHidden);
+
+  applyMenuButtonGlyph(toggleInfoBtn);
+  applyMenuButtonGlyph(joinToggleInfoBtn);
+
   if (toggleInfoBtn) {
-    toggleInfoBtn.textContent = '☰';
-    toggleInfoBtn.setAttribute('aria-label', 'Show menu');
-    toggleInfoBtn.title = 'Show menu';
-    toggleInfoBtn.classList.toggle('hidden', !infoPanelHidden);
+    toggleInfoBtn.classList.toggle('hidden', !infoPanelHidden || overlayOpen);
   }
+  if (joinToggleInfoBtn) {
+    joinToggleInfoBtn.classList.toggle('hidden', !overlayOpen || !infoPanelHidden);
+  }
+
   if (devConsoleToggleBtn) {
-    const overlayOpen = getComputedStyle(joinOverlay).display !== 'none';
     devConsoleToggleBtn.classList.toggle('hidden', !mobile.enabled || overlayOpen || !infoPanelHidden);
   }
+
+  updateHudVisibility(overlayOpen);
   localStorage.setItem('cw:infoPanelHidden', infoPanelHidden ? '1' : '0');
 }
 
 if (toggleInfoBtn) {
   toggleInfoBtn.addEventListener('click', () => {
+    setInfoPanelHidden(!infoPanelHidden);
+  });
+}
+
+if (joinToggleInfoBtn) {
+  joinToggleInfoBtn.addEventListener('click', () => {
     setInfoPanelHidden(!infoPanelHidden);
   });
 }
@@ -618,6 +643,7 @@ function seekReplayGame(elapsedMs, { keepPaused = null } = {}) {
   visuals.rocketPrev = new Map();
   visuals.bulletIds = new Set();
   visuals.skillCdPrev = new Map();
+  visuals.skillOfferPrev = new Map();
   visuals.blood = [];
   visuals.bloodPuddles = [];
   visuals.gore = [];
@@ -1123,6 +1149,7 @@ function startReplayGame(payload, record) {
   visuals.skillLinks = [];
   visuals.skillLabels = [];
   visuals.skillCdPrev = new Map();
+  visuals.skillOfferPrev = new Map();
   joinOverlay.style.display = 'none';
   document.body.classList.add('replay-game-active');
   if (replayGameControlsEl) replayGameControlsEl.classList.remove('hidden');
@@ -2299,6 +2326,7 @@ function clearLocalSessionState() {
   visuals.skillLinks = [];
   visuals.skillLabels = [];
   visuals.skillCdPrev = new Map();
+  visuals.skillOfferPrev = new Map();
   visuals.rocketPrev = new Map();
   updateTopCenterHud(Date.now());
   updateBottomHud();
@@ -2479,6 +2507,7 @@ message: (ev) => {
     visuals.skillLinks = [];
     visuals.skillLabels = [];
     visuals.skillCdPrev = new Map();
+    visuals.skillOfferPrev = new Map();
     visuals.rocketPrev = new Map();
     roomMetaEl.textContent = `Room: ${msg.roomCode}`;
     copyRoomCodeToClipboard(msg.roomCode, { silent: true });
@@ -2713,5 +2742,7 @@ function sendInput() {
 }
 
 void maybeStartReplayFromUrl();
+
+
 
 
