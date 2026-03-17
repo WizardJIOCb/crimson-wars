@@ -82,6 +82,8 @@ function createAccountProgressionStore({
     '  unlocked_heroes_json TEXT NOT NULL,',
     '  hero_nodes_json TEXT NOT NULL,',
     '  hero_cards_json TEXT NOT NULL DEFAULT "{}",',
+    '  total_runs INTEGER NOT NULL DEFAULT 0,',
+    '  hero_runs_json TEXT NOT NULL DEFAULT "{}",',
     '  created_at INTEGER NOT NULL,',
     '  updated_at INTEGER NOT NULL,',
     '  FOREIGN KEY(player_id) REFERENCES player_accounts(id) ON DELETE CASCADE',
@@ -92,13 +94,19 @@ function createAccountProgressionStore({
   if (!columns.some((col) => col.name === 'hero_cards_json')) {
     db.exec('ALTER TABLE account_progression ADD COLUMN hero_cards_json TEXT NOT NULL DEFAULT "{}"');
   }
+  if (!columns.some((col) => col.name === 'total_runs')) {
+    db.exec('ALTER TABLE account_progression ADD COLUMN total_runs INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!columns.some((col) => col.name === 'hero_runs_json')) {
+    db.exec('ALTER TABLE account_progression ADD COLUMN hero_runs_json TEXT NOT NULL DEFAULT "{}"');
+  }
 
   const stmtGet = db.prepare('SELECT * FROM account_progression WHERE player_id = ? LIMIT 1');
   const stmtInsert = db.prepare([
     'INSERT INTO account_progression (',
-    '  player_id, account_xp, account_level, account_skill_points, shards, active_hero, unlocked_heroes_json, hero_nodes_json, hero_cards_json, created_at, updated_at',
+    '  player_id, account_xp, account_level, account_skill_points, shards, active_hero, unlocked_heroes_json, hero_nodes_json, hero_cards_json, total_runs, hero_runs_json, created_at, updated_at',
     ') VALUES (',
-    '  @playerId, @accountXp, @accountLevel, @accountSkillPoints, @shards, @activeHero, @unlockedHeroesJson, @heroNodesJson, @heroCardsJson, @createdAt, @updatedAt',
+    '  @playerId, @accountXp, @accountLevel, @accountSkillPoints, @shards, @activeHero, @unlockedHeroesJson, @heroNodesJson, @heroCardsJson, @totalRuns, @heroRunsJson, @createdAt, @updatedAt',
     ')',
   ].join('\n'));
   const stmtUpdate = db.prepare([
@@ -111,6 +119,8 @@ function createAccountProgressionStore({
     '  unlocked_heroes_json=@unlockedHeroesJson,',
     '  hero_nodes_json=@heroNodesJson,',
     '  hero_cards_json=@heroCardsJson,',
+    '  total_runs=@totalRuns,',
+    '  hero_runs_json=@heroRunsJson,',
     '  updated_at=@updatedAt',
     'WHERE player_id=@playerId',
   ].join('\n'));
@@ -134,6 +144,8 @@ function createAccountProgressionStore({
       unlockedHeroes: [fallbackHeroId],
       heroNodes: {},
       heroCards: {},
+      totalRuns: 0,
+      heroRuns: {},
       createdAt: now,
       updatedAt: now,
     };
@@ -184,11 +196,23 @@ function createAccountProgressionStore({
     return out;
   }
 
+  function normalizeHeroRuns(raw) {
+    const source = raw && typeof raw === 'object' ? raw : {};
+    const out = {};
+    for (const heroId of Object.keys(source)) {
+      if (!heroMap[heroId]) continue;
+      const runs = clampInt(source[heroId], 0);
+      if (runs > 0) out[heroId] = runs;
+    }
+    return out;
+  }
+
   function normalizeProgressionRow(row) {
     if (!row) return null;
     const unlockedHeroes = normalizeUnlockedHeroes(safeJsonParse(row.unlocked_heroes_json, []));
     const heroNodes = normalizeHeroNodes(safeJsonParse(row.hero_nodes_json, {}));
     const heroCards = normalizeHeroCards(safeJsonParse(row.hero_cards_json, {}));
+    const heroRuns = normalizeHeroRuns(safeJsonParse(row.hero_runs_json, {}));
     const activeHeroRaw = String(row.active_hero || '').trim();
     const activeHero = unlockedHeroes.includes(activeHeroRaw) ? activeHeroRaw : unlockedHeroes[0];
     return {
@@ -201,6 +225,8 @@ function createAccountProgressionStore({
       unlockedHeroes,
       heroNodes,
       heroCards,
+      totalRuns: clampInt(row.total_runs, 0),
+      heroRuns,
       createdAt: clampInt(row.created_at, 0),
       updatedAt: clampInt(row.updated_at, 0),
     };
@@ -217,6 +243,8 @@ function createAccountProgressionStore({
       unlockedHeroesJson: JSON.stringify(normalizeUnlockedHeroes(progression.unlockedHeroes)),
       heroNodesJson: JSON.stringify(normalizeHeroNodes(progression.heroNodes)),
       heroCardsJson: JSON.stringify(normalizeHeroCards(progression.heroCards)),
+      totalRuns: clampInt(progression.totalRuns, 0),
+      heroRunsJson: JSON.stringify(normalizeHeroRuns(progression.heroRuns)),
       createdAt: clampInt(progression.createdAt || nowMs(), 0),
       updatedAt: nowMs(),
     };
@@ -273,6 +301,8 @@ function createAccountProgressionStore({
       unlockedHeroes: progression.unlockedHeroes.slice(),
       heroNodes: progression.heroNodes,
       heroCards: progression.heroCards,
+      totalRuns: clampInt(progression.totalRuns, 0),
+      heroRuns: normalizeHeroRuns(progression.heroRuns),
       accountXpToNext: xpToNextLevel(progression.accountLevel),
     };
   }
@@ -361,6 +391,8 @@ function createAccountProgressionStore({
     const kills = clampInt(runStats?.kills, 0);
     const bossKills = clampInt(runStats?.bossKills, 0);
     const survivalSec = clampInt(runStats?.survivalSec, 0);
+    const runHeroIdRaw = String(runStats?.heroId || progression.activeHero || fallbackHeroId).trim();
+    const runHeroId = heroMap[runHeroIdRaw] ? runHeroIdRaw : fallbackHeroId;
 
     const gainedXp = Math.max(0, Math.round(
       score * Number(xpFromScoreMul)
@@ -378,6 +410,9 @@ function createAccountProgressionStore({
 
     progression.accountXp += gainedXp;
     progression.shards += gainedShards;
+    progression.totalRuns = clampInt(progression.totalRuns, 0) + 1;
+    progression.heroRuns = normalizeHeroRuns(progression.heroRuns);
+    progression.heroRuns[runHeroId] = clampInt(progression.heroRuns[runHeroId], 0) + 1;
     const gainedCards = grantHeroCardsForRun(progression, runStats);
 
     let levelsGained = 0;

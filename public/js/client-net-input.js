@@ -1003,14 +1003,17 @@ function renderProfilePanel(heroes, progression, unlockedHeroes) {
   const points = Math.max(0, Number(progression.accountSkillPoints) || 0);
   const unlockedCount = unlockedHeroes.size;
   const heroLevels = progression.heroLevels && typeof progression.heroLevels === 'object' ? progression.heroLevels : {};
+  const totalRuns = Math.max(0, Number(progression.totalRuns) || 0);
+  const heroRuns = progression.heroRuns && typeof progression.heroRuns === 'object' ? progression.heroRuns : {};
 
-  profileSummaryEl.innerHTML = `<b>Profile Lv${level}</b><div>XP ${xp}/${xpToNext} | Skill points: ${points} | Shards: ${shards} | Heroes: ${unlockedCount}/${heroes.length}</div>`;
+  profileSummaryEl.innerHTML = `<b>Profile Lv${level}</b><div>XP ${xp}/${xpToNext} | Skill points: ${points} | Shards: ${shards} | Heroes: ${unlockedCount}/${heroes.length} | Runs: ${totalRuns}</div>`;
   profileAchievementsEl.innerHTML = '<b>Achievements</b><div>First Blood, Survivor, Boss Hunter and account milestones can be shown here.</div>';
 
   const rows = heroes.map((hero) => {
     const heroLvl = Math.max(1, Number(heroLevels[hero.id]) || 1);
+    const runs = Math.max(0, Number(heroRuns[hero.id]) || 0);
     const unlocked = unlockedHeroes.has(hero.id) ? 'Unlocked' : 'Locked';
-    return `<div class="profile-hero-row"><span>${escapeHtml(hero.name)}</span><span>Lv${heroLvl}</span><span>${unlocked}</span></div>`;
+    return `<div class="profile-hero-row"><span>${escapeHtml(hero.name)}</span><span>Lv${heroLvl} | Runs: ${runs}</span><span>${unlocked}</span></div>`;
   }).join('');
   profileCharacterStatsEl.innerHTML = `<b>Hero stats</b><div class="profile-hero-list">${rows}</div>`;
   renderProfileRunHistory();
@@ -1822,7 +1825,7 @@ function buildReplayState(payload, elapsedMs) {
     bossPortals,
     drops,
     xpOrbs,
-    decor: { trees: game.sortedTrees || [] },
+    decor: { trees: Array.isArray(payload?.decor?.trees) ? payload.decor.trees : [] },
   };
 }
 
@@ -3816,3 +3819,4 @@ function sendInput() {
 }
 
 void maybeStartReplayFromUrl();
+

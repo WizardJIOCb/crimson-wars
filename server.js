@@ -2081,6 +2081,13 @@ function createRunReplay(room, player, now) {
     playerName: player.name,
     playerClass: player.playerClass || 'cyber',
     world: { width: WORLD_WIDTH, height: WORLD_HEIGHT },
+    decor: {
+      trees: (room.trees || []).map((tree) => ({
+        x: roundReplayCoord(tree?.x),
+        y: roundReplayCoord(tree?.y),
+        scale: Math.max(0.1, Number(tree?.scale) || 1),
+      })),
+    },
     meta: {
       tickRate: room.sync?.tickRate || DEFAULT_ROOM_SYNC.tickRate,
       stateSendHz: room.sync?.stateSendHz || DEFAULT_ROOM_SYNC.stateSendHz,
@@ -2223,6 +2230,7 @@ function finalizeRunReplay(room, replay, now) {
     playerName: replay.playerName,
     playerClass: replay.playerClass,
     world: replay.world,
+    decor: replay.decor,
     meta: replay.meta,
     truncated: Boolean(replay.truncated),
     frames: replay.frames.slice(),
@@ -2548,6 +2556,7 @@ function downPlayer(room, target, now) {
       kills,
       bossKills: target.bossKills,
       survivalSec,
+      heroId: target.playerClass,
     });
     if (rewardResult?.progression) {
       target.accountProgression = rewardResult.progression;
