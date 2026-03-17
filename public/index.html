@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -254,6 +254,7 @@
         <button type="button" class="main-menu-tab" data-menu-tab="characters">Персонажи</button>
         <button type="button" class="main-menu-tab" data-menu-tab="skills">Навыки</button>
         <button type="button" class="main-menu-tab" data-menu-tab="profile">Профиль</button>        
+        <button type="button" class="main-menu-tab" data-menu-tab="rating">Рейтинг</button>
         <button type="button" class="main-menu-tab" data-menu-tab="news">Новости</button>
       </div>
 
@@ -324,13 +325,11 @@
 
       
       <section id="menu-panel-characters" class="menu-panel" data-menu-panel="characters">
-        <!-- <div class="panel-variant-title">Вариант 2: карточная лента</div> -->
         <div id="hero-gallery-v2" class="hero-gallery-v2" aria-live="polite"></div>
       </section>
 
       <section id="menu-panel-skills" class="menu-panel" data-menu-panel="skills">
         <label id="character-label">Character</label>
-        <!--<div class="panel-variant-title">Вариант 1: колесо героев</div>-->
         <div id="account-progress-summary" class="account-progress-summary"></div>
         <div id="character-select" class="character-select"></div>
         <div id="hero-tree-panel" class="hero-tree-panel"></div>
@@ -342,6 +341,10 @@
         <div id="profile-achievements" class="profile-card">Achievements: soon</div>
         <div id="profile-character-stats" class="profile-card">Character stats: soon</div>
         <div id="profile-run-history" class="profile-card">Run history: loading...</div>
+      </section>
+
+      <section id="menu-panel-rating" class="menu-panel" data-menu-panel="rating">
+        <div id="rating-board" class="profile-card">Loading leaderboard...</div>
       </section>
 
       <section id="menu-panel-news" class="menu-panel" data-menu-panel="news">
@@ -427,6 +430,7 @@
   <script src="/js/client-render.js?v=20260317t"></script>
 </body>
 </html>
+
 
 
 

@@ -303,6 +303,78 @@ function createNewsStore({ dataDir, filePath }) {
     };
   }
 
+
+
+  function deleteComment(newsId, { commentId, parentId, authorAccountId }) {
+    const targetId = toId(newsId);
+    if (!targetId) return { ok: false, code: 400, message: 'Invalid news id' };
+    const targetCommentId = toId(commentId);
+    if (!targetCommentId) return { ok: false, code: 400, message: 'Invalid comment id' };
+    const actorId = clampInt(authorAccountId, 0);
+    if (!actorId) return { ok: false, code: 401, message: 'Authentication required' };
+
+    const all = readAll();
+    const idx = all.findIndex((x) => x.id === targetId && x.isPublished);
+    if (idx < 0) return { ok: false, code: 404, message: 'News not found' };
+
+    const item = normalizeNewsItem(all[idx], all[idx]);
+    const parentKey = toId(parentId);
+    let removed = false;
+
+    if (parentKey) {
+      const parent = item.comments.find((c) => c.id === parentKey);
+      if (!parent) return { ok: false, code: 404, message: 'Parent comment not found' };
+      const replyIdx = (parent.replies || []).findIndex((r) => r.id === targetCommentId);
+      if (replyIdx < 0) return { ok: false, code: 404, message: 'Comment not found' };
+      const target = parent.replies[replyIdx];
+      if (clampInt(target?.authorAccountId, 0) !== actorId) {
+        return { ok: false, code: 403, message: 'You can delete only your own comment' };
+      }
+      parent.replies.splice(replyIdx, 1);
+      removed = true;
+    } else {
+      const topIdx = item.comments.findIndex((c) => c.id === targetCommentId);
+      if (topIdx >= 0) {
+        const target = item.comments[topIdx];
+        if (clampInt(target?.authorAccountId, 0) !== actorId) {
+          return { ok: false, code: 403, message: 'You can delete only your own comment' };
+        }
+        item.comments.splice(topIdx, 1);
+        removed = true;
+      } else {
+        for (const parent of item.comments) {
+          const replyIdx = (parent.replies || []).findIndex((r) => r.id === targetCommentId);
+          if (replyIdx < 0) continue;
+          const target = parent.replies[replyIdx];
+          if (clampInt(target?.authorAccountId, 0) !== actorId) {
+            return { ok: false, code: 403, message: 'You can delete only your own comment' };
+          }
+          parent.replies.splice(replyIdx, 1);
+          removed = true;
+          break;
+        }
+      }
+    }
+
+    if (!removed) return { ok: false, code: 404, message: 'Comment not found' };
+
+    item.updatedAt = nowMs();
+    all[idx] = item;
+    writeAll(all);
+    return {
+      ok: true,
+      item: {
+        id: item.id,
+        title: item.title,
+        summary: item.summary,
+        items: item.items,
+        publishedAt: item.publishedAt,
+        views: item.views,
+        commentsCount: countComments(item),
+        comments: item.comments,
+      },
+    };
+  }
   return {
     listPublic,
     listAdmin,
@@ -311,6 +383,7 @@ function createNewsStore({ dataDir, filePath }) {
     update,
     remove,
     addComment,
+    deleteComment,
   };
 }
 

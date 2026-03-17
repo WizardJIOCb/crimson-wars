@@ -1,7 +1,8 @@
-﻿const path = require('path');
+const path = require('path');
 const http = require('http');
 const crypto = require('crypto');
 const express = require('express');
+const Database = require('better-sqlite3');
 const WebSocket = require('ws');
 
 const { WebSocketServer } = WebSocket;
@@ -207,6 +208,120 @@ const newsStore = createNewsStore({
 });
 const progressionCatalog = accountProgressionStore.getCatalogPayload();
 const heroDefsById = Object.fromEntries((progressionCatalog.heroes || []).map((hero) => [hero.id, hero]));
+
+const LEADERBOARD_CATEGORIES = {
+  best_kills_run: { key: 'best_kills_run', title: '\u0423\u0431\u0438\u0442\u043e \u0437\u0430 \u0437\u0430\u0431\u0435\u0433', source: 'runs', unit: 'kills' },
+  runs_count: { key: 'runs_count', title: '\u041a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e \u0437\u0430\u0431\u0435\u0433\u043e\u0432', source: 'account', unit: 'runs' },
+  best_score_run: { key: 'best_score_run', title: '\u041b\u0443\u0447\u0448\u0438\u0439 \u0437\u0430\u0431\u0435\u0433 \u043f\u043e pts', source: 'runs', unit: 'pts' },
+  best_dps_run: { key: 'best_dps_run', title: '\u041b\u0443\u0447\u0448\u0438\u0439 DPS \u0437\u0430 \u0437\u0430\u0431\u0435\u0433', source: 'runs', unit: 'dps' },
+  total_pts: { key: 'total_pts', title: '\u0421\u0443\u043c\u043c\u0430 pts (\u0432\u0441\u0435 \u0437\u0430\u0431\u0435\u0433\u0438)', source: 'runs', unit: 'pts' },
+  best_time_run: { key: 'best_time_run', title: '\u0412\u0440\u0435\u043c\u044f \u0437\u0430\u0431\u0435\u0433\u0430 (\u043b\u0443\u0447\u0448\u0435\u0435)', source: 'runs', unit: 'sec' },
+  profile_level: { key: 'profile_level', title: '\u0423\u0440\u043e\u0432\u0435\u043d\u044c \u043f\u0440\u043e\u0444\u0438\u043b\u044f', source: 'account', unit: 'level' },
+  total_kills: { key: 'total_kills', title: '\u0412\u0441\u0435\u0433\u043e \u0443\u0431\u0438\u0439\u0441\u0442\u0432', source: 'runs', unit: 'kills' },
+  shards_balance: { key: 'shards_balance', title: '\u0428\u0430\u0440\u0434\u044b \u043d\u0430 \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0435', source: 'account', unit: 'shards' },
+  heroes_unlocked: { key: 'heroes_unlocked', title: '\u041e\u0442\u043a\u0440\u044b\u0442\u043e \u0433\u0435\u0440\u043e\u0435\u0432', source: 'account', unit: 'heroes' },
+};
+
+let leaderboardAuthDb = null;
+let leaderboardRecordsDb = null;
+
+function getLeaderboardAuthDb() {
+  if (leaderboardAuthDb) return leaderboardAuthDb;
+  try { leaderboardAuthDb = new Database(PLAYER_AUTH_DB_PATH, { readonly: true }); } catch { leaderboardAuthDb = null; }
+  return leaderboardAuthDb;
+}
+
+function getLeaderboardRecordsDb() {
+  if (leaderboardRecordsDb) return leaderboardRecordsDb;
+  try { leaderboardRecordsDb = new Database(RECORDS_DB_PATH, { readonly: true }); } catch { leaderboardRecordsDb = null; }
+  return leaderboardRecordsDb;
+}
+
+function listRunLeaderboardRows(categoryKey, page, pageSize) {
+  const db = getLeaderboardRecordsDb();
+  if (!db) return { page: 1, pageSize, total: 0, totalPages: 1, items: [] };
+  const metricSqlMap = {
+    best_kills_run: { metric: 'MAX(kills)', order: 'metric DESC, tieAt DESC' },
+    best_score_run: { metric: 'MAX(score)', order: 'metric DESC, tieAt DESC' },
+    best_dps_run: { metric: 'MAX(CASE WHEN duration_sec > 0 THEN (score * 1.0 / duration_sec) ELSE 0 END)', order: 'metric DESC, tieAt DESC' },
+    best_time_run: { metric: 'MAX(duration_sec)', order: 'metric DESC, tieAt DESC' },
+    total_pts: { metric: 'SUM(score)', order: 'metric DESC, tieAt DESC' },
+    total_kills: { metric: 'SUM(kills)', order: 'metric DESC, tieAt DESC' },
+    runs_count: { metric: 'COUNT(1)', order: 'metric DESC, tieAt DESC' },
+  };
+  const metric = metricSqlMap[categoryKey];
+  if (!metric) return { page: 1, pageSize, total: 0, totalPages: 1, items: [] };
+  const total = Math.max(0, Number(db.prepare('SELECT COUNT(1) AS total FROM (SELECT name_key FROM player_runs GROUP BY name_key) t').get()?.total) || 0);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.max(1, Math.min(totalPages, Math.floor(page) || 1));
+  const offset = (currentPage - 1) * pageSize;
+  const rows = db.prepare([
+    'SELECT name_key AS nameKey, MAX(name) AS nickname, ' + metric.metric + ' AS metric, COUNT(1) AS runs, MAX(kills) AS bestKills, MAX(score) AS bestScore, MAX(duration_sec) AS bestDurationSec, MAX(at) AS tieAt',
+    'FROM player_runs GROUP BY name_key ORDER BY ' + metric.order + ' LIMIT ? OFFSET ?'
+  ].join('\n')).all(pageSize, offset);
+  const authDb = getLeaderboardAuthDb();
+  const authStmt = authDb ? authDb.prepare('SELECT id, nickname FROM player_accounts WHERE nickname_key = ? LIMIT 1') : null;
+  const items = rows.map((r) => {
+    const a = authStmt ? authStmt.get(String(r?.nameKey || '')) : null;
+    return {
+      playerId: Math.max(0, Number(a?.id) || 0),
+      nickname: String(a?.nickname || r?.nickname || 'Unknown').slice(0, 18),
+      value: Math.max(0, Number(r?.metric) || 0),
+      runs: Math.max(0, Number(r?.runs) || 0),
+      bestKills: Math.max(0, Number(r?.bestKills) || 0),
+      bestScore: Math.max(0, Number(r?.bestScore) || 0),
+      bestDurationSec: Math.max(0, Number(r?.bestDurationSec) || 0),
+      at: Math.max(0, Number(r?.tieAt) || 0),
+    };
+  });
+  return { page: currentPage, pageSize, total, totalPages, items };
+}
+
+function listAccountLeaderboardRows(categoryKey, page, pageSize) {
+  const db = getLeaderboardAuthDb();
+  if (!db) return { page: 1, pageSize, total: 0, totalPages: 1, items: [] };
+  const rows = db.prepare([
+    'SELECT pa.id AS playerId, pa.nickname AS nickname, ap.account_level AS accountLevel, ap.account_xp AS accountXp, ap.total_runs AS totalRuns, ap.shards AS shards, ap.unlocked_heroes_json AS unlockedHeroesJson, ap.updated_at AS updatedAt',
+    'FROM account_progression ap JOIN player_accounts pa ON pa.id = ap.player_id WHERE pa.is_active = 1'
+  ].join('\n')).all().map((r) => {
+    let heroesUnlocked = 0;
+    try { const p = JSON.parse(String(r?.unlockedHeroesJson || '[]')); if (Array.isArray(p)) heroesUnlocked = p.length; } catch {}
+    return {
+      playerId: Math.max(0, Number(r?.playerId) || 0),
+      nickname: String(r?.nickname || 'Unknown').slice(0, 18),
+      accountLevel: Math.max(1, Number(r?.accountLevel) || 1),
+      accountXp: Math.max(0, Number(r?.accountXp) || 0),
+      totalRuns: Math.max(0, Number(r?.totalRuns) || 0),
+      shards: Math.max(0, Number(r?.shards) || 0),
+      heroesUnlocked: Math.max(0, Number(heroesUnlocked) || 0),
+      updatedAt: Math.max(0, Number(r?.updatedAt) || 0),
+    };
+  });
+  rows.sort((a, b) => {
+    if (categoryKey === 'profile_level') return (b.accountLevel - a.accountLevel) || (b.accountXp - a.accountXp) || (b.updatedAt - a.updatedAt);
+    if (categoryKey === 'runs_count') return (b.totalRuns - a.totalRuns) || (b.accountLevel - a.accountLevel) || (b.updatedAt - a.updatedAt);
+    if (categoryKey === 'shards_balance') return (b.shards - a.shards) || (b.accountLevel - a.accountLevel) || (b.updatedAt - a.updatedAt);
+    if (categoryKey === 'heroes_unlocked') return (b.heroesUnlocked - a.heroesUnlocked) || (b.accountLevel - a.accountLevel) || (b.updatedAt - a.updatedAt);
+    return b.updatedAt - a.updatedAt;
+  });
+  const total = rows.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.max(1, Math.min(totalPages, Math.floor(page) || 1));
+  const offset = (currentPage - 1) * pageSize;
+  const items = rows.slice(offset, offset + pageSize).map((r) => ({
+    playerId: r.playerId,
+    nickname: r.nickname,
+    value: categoryKey === 'profile_level' ? r.accountLevel : categoryKey === 'runs_count' ? r.totalRuns : categoryKey === 'shards_balance' ? r.shards : r.heroesUnlocked,
+    accountLevel: r.accountLevel,
+    accountXp: r.accountXp,
+    totalRuns: r.totalRuns,
+    shards: r.shards,
+    heroesUnlocked: r.heroesUnlocked,
+    at: r.updatedAt,
+  }));
+  return { page: currentPage, pageSize, total, totalPages, items };
+}
+
 
 function sanitizeHeroId(rawHeroId) {
   const id = (rawHeroId || '').toString().trim();
@@ -596,6 +711,133 @@ app.get('/api/player/me', (req, res) => {
   });
 });
 
+app.get('/api/player/public-profile/:id', (req, res) => {
+  const playerId = Math.max(0, Number(req.params.id) || 0);
+  if (!playerId) {
+    res.status(400).json({ ok: false, message: 'Invalid player id' });
+    return;
+  }
+
+  const player = playerAuthStore.getAccountById(playerId);
+  if (!player) {
+    res.status(404).json({ ok: false, message: 'Player not found' });
+    return;
+  }
+
+  const progression = accountProgressionStore.getOrCreateProgression(player.id);
+  const publicProgression = accountProgressionStore.toPublicProgression(progression);
+  const catalog = accountProgressionStore.getCatalogPayload();
+  const heroDefs = Array.isArray(catalog?.heroes) ? catalog.heroes : [];
+  const heroLevels = publicProgression?.heroLevels && typeof publicProgression.heroLevels === 'object'
+    ? publicProgression.heroLevels
+    : {};
+  const heroRuns = publicProgression?.heroRuns && typeof publicProgression.heroRuns === 'object'
+    ? publicProgression.heroRuns
+    : {};
+  const unlocked = new Set(Array.isArray(publicProgression?.unlockedHeroes) ? publicProgression.unlockedHeroes : []);
+
+  const heroStats = heroDefs.map((hero) => ({
+    id: hero.id,
+    name: hero.name || hero.id,
+    level: Math.max(1, Number(heroLevels[hero.id]) || 1),
+    runs: Math.max(0, Number(heroRuns[hero.id]) || 0),
+    unlocked: unlocked.has(hero.id),
+  }));
+
+  res.json({
+    ok: true,
+    profile: {
+      id: player.id,
+      nickname: player.nickname,
+      createdAt: Math.max(0, Number(player.createdAt) || 0),
+      lastLoginAt: Math.max(0, Number(player.lastLoginAt) || 0),
+      accountLevel: Math.max(1, Number(publicProgression?.accountLevel) || 1),
+      accountXp: Math.max(0, Number(publicProgression?.accountXp) || 0),
+      accountXpToNext: Math.max(1, Number(publicProgression?.accountXpToNext) || 1),
+      accountSkillPoints: Math.max(0, Number(publicProgression?.accountSkillPoints) || 0),
+      shards: Math.max(0, Number(publicProgression?.shards) || 0),
+      totalRuns: Math.max(0, Number(publicProgression?.totalRuns) || 0),
+      heroesUnlocked: unlocked.size,
+      heroesTotal: heroDefs.length,
+      heroStats,
+    },
+    now: Date.now(),
+  });
+});
+
+app.get('/api/player/public-profile/:id/run-history', (req, res) => {
+  const playerId = Math.max(0, Number(req.params.id) || 0);
+  if (!playerId) {
+    res.status(400).json({ ok: false, message: 'Invalid player id' });
+    return;
+  }
+
+  const player = playerAuthStore.getAccountById(playerId);
+  if (!player) {
+    res.status(404).json({ ok: false, message: 'Player not found' });
+    return;
+  }
+
+  const page = Number(req.query.page) || 1;
+  const pageSize = Number(req.query.page_size) || 8;
+  const payload = recordsStore.listPlayerRunsByName(player.nickname, page, pageSize);
+  const runs = payload.items.map((run) => ({
+    ...run,
+    replayApiPath: '/api/player/public-profile/' + playerId + '/run-history/' + Math.max(0, Number(run?.id) || 0) + '/replay',
+  }));
+
+  res.json({
+    ok: true,
+    runs,
+    page: payload.page,
+    pageSize: payload.pageSize,
+    total: payload.total,
+    totalPages: payload.totalPages,
+    now: Date.now(),
+  });
+});
+
+app.get('/api/player/public-profile/:id/run-history/:runId/replay', (req, res) => {
+  const playerId = Math.max(0, Number(req.params.id) || 0);
+  if (!playerId) {
+    res.status(400).json({ ok: false, message: 'Invalid player id' });
+    return;
+  }
+
+  const player = playerAuthStore.getAccountById(playerId);
+  if (!player) {
+    res.status(404).json({ ok: false, message: 'Player not found' });
+    return;
+  }
+
+  const payload = recordsStore.getPlayerRunReplayByNameAndId(player.nickname, req.params.runId);
+  if (!payload?.replay) {
+    res.status(404).json({
+      ok: false,
+      error: 'Replay not found.',
+      recordId: Math.max(0, Number(req.params.runId) || 0),
+      now: Date.now(),
+    });
+    return;
+  }
+
+  res.json({
+    ok: true,
+    record: {
+      id: payload.id,
+      name: payload.name,
+      kills: payload.kills,
+      score: payload.score,
+      roomCode: payload.roomCode,
+      durationSec: payload.durationSec,
+      at: payload.at,
+      replayApiPath: '/api/player/public-profile/' + playerId + '/run-history/' + Math.max(0, Number(payload.id) || 0) + '/replay',
+    },
+    replay: payload.replay,
+    now: Date.now(),
+  });
+});
+
 app.post('/api/player/progression/select-hero', (req, res) => {
   if (!req.playerUser) {
     res.status(401).json({ ok: false, message: 'Authentication required' });
@@ -814,6 +1056,25 @@ app.post('/api/news/:id/comments', (req, res) => {
   res.json({ ok: true, item: result.item, now: Date.now() });
 });
 
+
+app.delete('/api/news/:id/comments/:commentId', (req, res) => {
+  if (!req.playerUser) {
+    res.status(401).json({ ok: false, message: 'Authentication required' });
+    return;
+  }
+  const parentId = (req.query?.parentId || '').toString();
+  const result = newsStore.deleteComment(req.params.id, {
+    commentId: req.params.commentId,
+    parentId,
+    authorAccountId: req.playerUser.id,
+  });
+  if (!result.ok) {
+    res.status(result.code || 400).json({ ok: false, message: result.message || 'Failed to delete comment' });
+    return;
+  }
+  res.json({ ok: true, item: result.item, now: Date.now() });
+});
+
 app.get('/api/admin/news', requireAdmin, (_req, res) => {
   res.json({ ok: true, items: newsStore.listAdmin(), now: Date.now() });
 });
@@ -860,6 +1121,32 @@ app.get('/api/rooms', (_req, res) => {
     isShuttingDown,
     now: Date.now(),
   });
+});
+
+app.get('/api/leaderboard', (req, res) => {
+  const categoryKey = String(req.query.category || 'best_kills_run').trim();
+  const category = LEADERBOARD_CATEGORIES[categoryKey] || LEADERBOARD_CATEGORIES.best_kills_run;
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const pageSize = Math.max(1, Math.min(30, Number(req.query.page_size) || 10));
+  try {
+    const payload = category.source === 'account'
+      ? listAccountLeaderboardRows(category.key, page, pageSize)
+      : listRunLeaderboardRows(category.key, page, pageSize);
+    res.json({
+      ok: true,
+      category: { key: category.key, title: category.title, source: category.source, unit: category.unit },
+      categories: Object.values(LEADERBOARD_CATEGORIES).map((x) => ({ key: x.key, title: x.title, source: x.source, unit: x.unit })),
+      items: Array.isArray(payload.items) ? payload.items : [],
+      page: payload.page,
+      pageSize: payload.pageSize,
+      total: payload.total,
+      totalPages: payload.totalPages,
+      now: Date.now(),
+    });
+  } catch (err) {
+    console.error('Leaderboard API failed:', err?.message || err);
+    res.status(500).json({ ok: false, message: 'Failed to load leaderboard' });
+  }
 });
 
 app.get('/api/records', (req, res) => {
@@ -3781,5 +4068,6 @@ server.listen(PORT, () => {
     console.log(`Bootstrap admin password: ${ADMIN_BOOTSTRAP_PASSWORD}`);
   }
 });
+
 
 

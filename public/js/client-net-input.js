@@ -1,4 +1,4 @@
-﻿function resetMobileStick(kind) {
+function resetMobileStick(kind) {
   if (kind === 'move') {
     mobile.moveId = null;
     mobile.moveX = 0;
@@ -252,6 +252,7 @@ const profileAchievementsEl = document.getElementById('profile-achievements');
 const profileCharacterStatsEl = document.getElementById('profile-character-stats');
 const profileRunHistoryEl = document.getElementById('profile-run-history');
 const newsFeedEl = document.getElementById('news-feed');
+const ratingBoardEl = document.getElementById('rating-board');
 const deathScreenBloodOverlayEl = document.getElementById('death-screen-blood');
 const mainMenuTabButtons = Array.from(document.querySelectorAll('#main-menu-tabs .main-menu-tab'));
 const mainMenuPanels = Array.from(document.querySelectorAll('#join-form [data-menu-panel]'));
@@ -291,7 +292,19 @@ const newsUi = {
   shareCopied: false,
 };
 let newsShareToastTimer = null;
-const MENU_TAB_IDS = new Set(['play', 'characters', 'skills', 'profile', 'news']);
+const ratingUi = {
+  categories: [],
+  currentCategory: 'best_kills_run',
+  items: [],
+  page: 1,
+  totalPages: 1,
+  total: 0,
+  pageSize: 10,
+  loading: false,
+  error: '',
+  fetchToken: 0,
+};
+const MENU_TAB_IDS = new Set(['play', 'characters', 'skills', 'profile', 'rating', 'news']);
 const initialUrlParams = new URLSearchParams(window.location.search);
 const initialMenuTabParam = String(initialUrlParams.get('tab') || '').trim().toLowerCase();
 const initialNewsIdParam = String(initialUrlParams.get('news') || '').trim();
@@ -323,6 +336,209 @@ function formatNewsDate(ts) {
     return new Date(ms).toLocaleString();
   }
 }
+
+let authorProfileModalEl = null;
+let authorProfileTitleEl = null;
+let authorProfileBodyEl = null;
+let authorProfileRuns = [];
+
+function ensureAuthorProfileModal() {
+  if (authorProfileModalEl) return;
+  const modal = document.createElement('div');
+  modal.id = 'author-profile-modal';
+  modal.className = 'record-details-modal hidden';
+  modal.setAttribute('aria-live', 'polite');
+
+  const card = document.createElement('div');
+  card.className = 'record-details-card';
+
+  const head = document.createElement('div');
+  head.className = 'record-details-head';
+
+  const title = document.createElement('b');
+  title.id = 'author-profile-title';
+  title.textContent = '\u041f\u0440\u043e\u0444\u0438\u043b\u044c \u0438\u0433\u0440\u043e\u043a\u0430';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'mini';
+  closeBtn.textContent = '\u0417\u0430\u043a\u0440\u044b\u0442\u044c';
+  closeBtn.addEventListener('click', () => {
+    modal.classList.add('hidden');
+  });
+
+  head.appendChild(title);
+  head.appendChild(closeBtn);
+
+  const body = document.createElement('div');
+  body.id = 'author-profile-body';
+  body.className = 'record-details-body';
+  body.textContent = '\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430...';
+
+  card.appendChild(head);
+  card.appendChild(body);
+  modal.appendChild(card);
+
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.classList.add('hidden');
+  });
+
+  const modalHost = document.getElementById('join-overlay') || document.body;
+  modalHost.appendChild(modal);
+  authorProfileModalEl = modal;
+  authorProfileTitleEl = title;
+  authorProfileBodyEl = body;
+}
+
+function formatPublicProfileDate(ts) {
+  const ms = Math.max(0, Number(ts) || 0);
+  if (!ms) return '--';
+  try {
+    return new Date(ms).toLocaleString('ru-RU', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return new Date(ms).toLocaleString();
+  }
+}
+
+function renderAuthorProfileRunHistory(runPayload) {
+  const runs = Array.isArray(runPayload?.runs) ? runPayload.runs : [];
+  const total = Math.max(0, Number(runPayload?.total) || 0);
+  if (!runs.length) {
+    return '<div class="profile-card"><b>\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u0437\u0430\u0431\u0435\u0433\u043e\u0432 (0)</b><div class="record-details-empty">\u0417\u0430\u0431\u0435\u0433\u0438 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u044b.</div></div>';
+  }
+
+  const rows = runs.map((run, i) => {
+    const kills = Math.max(0, Number(run?.kills) || 0);
+    const score = Math.max(0, Number(run?.score) || 0);
+    const durationSec = Math.max(1, Number(run?.durationSec) || 1);
+    const heroXp = Math.max(0, Number(run?.runDetails?.xp) || 0);
+    const roomCode = escapeNewsHtml(String(run?.roomCode || '-'));
+    return ''
+      + '<button type="button" class="profile-run-row" data-author-run-idx="' + i + '">'
+      +   '<div class="profile-run-head"><span>' + formatRecordDateTime(run?.at) + '</span><span>Room ' + roomCode + '</span></div>'
+      +   '<div class="profile-run-main"><span>' + kills + ' kills</span><span>' + score + ' pts</span><span>' + durationSec + 's</span><span class="profile-run-meta">XP ' + heroXp + '</span></div>'
+      + '</button>';
+  }).join('');
+
+  return '<div class="profile-card"><b>\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u0437\u0430\u0431\u0435\u0433\u043e\u0432 (' + total + ')</b><div class="profile-run-list author-run-list">' + rows + '</div></div>';
+}
+
+function bindAuthorProfileRunHistoryRows() {
+  if (!authorProfileBodyEl) return;
+  const buttons = Array.from(authorProfileBodyEl.querySelectorAll('[data-author-run-idx]'));
+  for (const btn of buttons) {
+    btn.addEventListener('click', () => {
+      const idx = Math.max(0, Number(btn.getAttribute('data-author-run-idx')) || 0);
+      const run = authorProfileRuns[idx];
+      if (!run) return;
+      const label = 'Run #' + (idx + 1);
+      openRecordDetailsModal(run, label);
+    });
+  }
+}
+
+function renderAuthorProfileBody(profile, runPayload) {
+  const heroRows = (Array.isArray(profile?.heroStats) ? profile.heroStats : []).map((hero) => {
+    const heroName = escapeNewsHtml(hero?.name || hero?.id || '-');
+    const heroLevel = Math.max(1, Number(hero?.level) || 1);
+    const heroRuns = Math.max(0, Number(hero?.runs) || 0);
+    const heroState = hero?.unlocked ? '\u041e\u0442\u043a\u0440\u044b\u0442' : '\u0417\u0430\u043a\u0440\u044b\u0442';
+    return '<div class="profile-hero-row"><span>' + heroName + '</span><span>Lv' + heroLevel + ' | Runs: ' + heroRuns + '</span><span>' + heroState + '</span></div>';
+  }).join('');
+
+  return ''
+    + '<div class="profile-card"><b>\u041f\u0440\u043e\u0444\u0438\u043b\u044c Lv' + Math.max(1, Number(profile?.accountLevel) || 1) + '</b><div>'
+    + 'XP ' + Math.max(0, Number(profile?.accountXp) || 0) + '/' + Math.max(1, Number(profile?.accountXpToNext) || 1)
+    + ' | Skill points: ' + Math.max(0, Number(profile?.accountSkillPoints) || 0)
+    + ' | Shards: ' + Math.max(0, Number(profile?.shards) || 0)
+    + ' | Heroes: ' + Math.max(0, Number(profile?.heroesUnlocked) || 0) + '/' + Math.max(0, Number(profile?.heroesTotal) || 0)
+    + ' | Runs: ' + Math.max(0, Number(profile?.totalRuns) || 0)
+    + '</div></div>'
+    + '<div class="profile-card"><b>\u0418\u043d\u0444\u043e \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0430</b><div>\u0421\u043e\u0437\u0434\u0430\u043d: ' + formatPublicProfileDate(profile?.createdAt) + ' | \u041f\u043e\u0441\u043b\u0435\u0434\u043d\u0438\u0439 \u0432\u0445\u043e\u0434: ' + formatPublicProfileDate(profile?.lastLoginAt) + '</div></div>'
+    + '<div class="profile-card"><b>\u0413\u0435\u0440\u043e\u0438</b><div class="profile-hero-list">' + (heroRows || '<div class="record-details-empty">\u041d\u0435\u0442 \u0434\u0430\u043d\u043d\u044b\u0445 \u043f\u043e \u0433\u0435\u0440\u043e\u044f\u043c.</div>') + '</div></div>'
+    + renderAuthorProfileRunHistory(runPayload);
+}
+
+async function openAuthorProfileModal(accountId, fallbackName = '') {
+  const id = Math.max(0, Number(accountId) || 0);
+  if (!id) return;
+  ensureAuthorProfileModal();
+  if (!authorProfileModalEl || !authorProfileBodyEl || !authorProfileTitleEl) return;
+
+  authorProfileTitleEl.textContent = '\u041f\u0440\u043e\u0444\u0438\u043b\u044c \u0438\u0433\u0440\u043e\u043a\u0430';
+  authorProfileBodyEl.innerHTML = '<div class="record-details-empty">\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u043f\u0440\u043e\u0444\u0438\u043b\u044f...</div>';
+  authorProfileModalEl.classList.remove('hidden');
+
+  try {
+    const [profileRes, runsRes] = await Promise.all([
+      fetch('/api/player/public-profile/' + id, { cache: 'no-store' }),
+      fetch('/api/player/public-profile/' + id + '/run-history?page=1&page_size=8', { cache: 'no-store' }),
+    ]);
+
+    const profilePayload = await profileRes.json().catch(() => ({}));
+    if (!profileRes.ok || !profilePayload?.ok || !profilePayload?.profile) {
+      throw new Error(profilePayload?.message || ('HTTP ' + profileRes.status));
+    }
+
+    const runsPayload = await runsRes.json().catch(() => ({}));
+    const runData = runsRes.ok && runsPayload?.ok
+      ? {
+          runs: Array.isArray(runsPayload.runs) ? runsPayload.runs : [],
+          total: Math.max(0, Number(runsPayload.total) || 0),
+        }
+      : { runs: [], total: 0 };
+
+    authorProfileRuns = runData.runs;
+
+    const profile = profilePayload.profile;
+    authorProfileTitleEl.textContent = '\u041f\u0440\u043e\u0444\u0438\u043b\u044c: ' + String(profile?.nickname || fallbackName || ('ID ' + id));
+    authorProfileBodyEl.innerHTML = renderAuthorProfileBody(profile, runData);
+    bindAuthorProfileRunHistoryRows();
+  } catch (err) {
+    authorProfileRuns = [];
+    authorProfileBodyEl.innerHTML = '<div class="record-details-empty">' + escapeNewsHtml(err?.message || '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u043f\u0440\u043e\u0444\u0438\u043b\u044c.') + '</div>';
+  }
+}
+
+
+async function openAuthorProfileFromComment(authorAccountId, authorNameText) {
+  const accountId = Math.max(0, Number(authorAccountId) || 0);
+  const nickname = String(authorNameText || '').trim();
+  if (accountId > 0) {
+    await openAuthorProfileModal(accountId, nickname);
+    return;
+  }
+
+  if (!nickname) return;
+
+  ensureAuthorProfileModal();
+  if (authorProfileModalEl && authorProfileBodyEl && authorProfileTitleEl) {
+    authorProfileTitleEl.textContent = '\u041f\u0440\u043e\u0444\u0438\u043b\u044c \u0438\u0433\u0440\u043e\u043a\u0430';
+    authorProfileBodyEl.innerHTML = '<div class="record-details-empty">\u041f\u043e\u0438\u0441\u043a \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0430 \u043f\u043e \u043d\u0438\u043a\u0443...</div>';
+    authorProfileModalEl.classList.remove('hidden');
+  }
+
+  try {
+    const res = await fetch('/api/player/nickname-status?nickname=' + encodeURIComponent(nickname), { cache: 'no-store' });
+    const payload = await res.json().catch(() => ({}));
+    const foundId = Math.max(0, Number(payload?.player?.id) || 0);
+    if (!res.ok || !payload?.ok || !payload?.isRegistered || !foundId) {
+      throw new Error('\u041f\u0440\u043e\u0444\u0438\u043b\u044c \u0434\u043b\u044f \u044d\u0442\u043e\u0433\u043e \u043d\u0438\u043a\u0430 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d.');
+    }
+    await openAuthorProfileModal(foundId, nickname);
+  } catch (err) {
+    if (authorProfileBodyEl) {
+      authorProfileBodyEl.innerHTML = '<div class="record-details-empty">' + escapeNewsHtml(err?.message || '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043e\u0442\u043a\u0440\u044b\u0442\u044c \u043f\u0440\u043e\u0444\u0438\u043b\u044c.') + '</div>';
+    }
+  }
+}
+
 
 function upsertNewsListCounters(item) {
   if (!item || !item.id) return;
@@ -402,6 +618,33 @@ async function shareNewsLink(newsId) {
   if (ok) showNewsShareToast();
 }
 
+async function deleteNewsComment(newsId, { commentId, parentId = '' } = {}) {
+  const newsKey = String(newsId || '').trim();
+  const commentKey = String(commentId || '').trim();
+  if (!newsKey || !commentKey || newsUi.postingComment) return;
+  newsUi.postingComment = true;
+  newsUi.commentError = '';
+  renderNewsFeed();
+  try {
+    const query = parentId ? ('?parentId=' + encodeURIComponent(String(parentId || '').trim())) : '';
+    const res = await fetch('/api/news/' + encodeURIComponent(newsKey) + '/comments/' + encodeURIComponent(commentKey) + query, {
+      method: 'DELETE',
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok || !payload?.ok || !payload?.item) {
+      throw new Error(payload?.message || ('HTTP ' + res.status));
+    }
+    setNewsDetailItem(payload.item);
+    updateMenuUrlState('news', newsKey);
+    newsUi.replyTargetId = '';
+  } catch (err) {
+    newsUi.commentError = err?.message || 'Failed to delete comment.';
+  } finally {
+    newsUi.postingComment = false;
+    renderNewsFeed();
+  }
+}
+
 async function submitNewsComment(newsId, { text, parentId = '' } = {}) {
   const bodyText = String(text || '').trim();
   if (!bodyText || newsUi.postingComment) return;
@@ -442,7 +685,7 @@ function renderNewsReplyComposer(container, parentId) {
   input.className = 'news-comment-input';
   input.rows = 2;
   input.maxLength = 1500;
-  input.placeholder = 'Reply text...';
+  input.placeholder = '\u0422\u0435\u043a\u0441\u0442 \u043e\u0442\u0432\u0435\u0442\u0430...';
   input.value = String(newsUi.replyDraftByParent[parentId] || '');
   input.addEventListener('input', () => {
     newsUi.replyDraftByParent[parentId] = input.value;
@@ -454,7 +697,7 @@ function renderNewsReplyComposer(container, parentId) {
   const sendBtn = document.createElement('button');
   sendBtn.type = 'button';
   sendBtn.className = 'mini';
-  sendBtn.textContent = newsUi.postingComment ? 'Sending...' : 'Reply';
+  sendBtn.textContent = newsUi.postingComment ? '\u041e\u0442\u043f\u0440\u0430\u0432\u043a\u0430...' : '\u041e\u0442\u0432\u0435\u0442\u0438\u0442\u044c';
   sendBtn.disabled = newsUi.postingComment || !input.value.trim();
   sendBtn.addEventListener('click', () => {
     void submitNewsComment(newsUi.activeId, { text: input.value, parentId });
@@ -473,7 +716,7 @@ function renderNewsReplyComposer(container, parentId) {
   const cancelBtn = document.createElement('button');
   cancelBtn.type = 'button';
   cancelBtn.className = 'mini';
-  cancelBtn.textContent = 'Cancel';
+  cancelBtn.textContent = '\u041e\u0442\u043c\u0435\u043d\u0430';
   cancelBtn.disabled = newsUi.postingComment;
   cancelBtn.addEventListener('click', () => {
     newsUi.replyTargetId = '';
@@ -487,20 +730,38 @@ function renderNewsReplyComposer(container, parentId) {
   container.appendChild(wrap);
 }
 
-function renderNewsCommentNode(comment, isReply = false) {
+function renderNewsCommentNode(comment, isReply = false, parentCommentId = '') {
   const item = document.createElement('div');
   item.className = isReply ? 'news-comment news-comment-reply' : 'news-comment';
 
+  const isLoggedIn = Boolean(game.playerAuth?.player);
+  const parentId = String(comment?.id || '').trim();
+  const myAccountId = Math.max(0, Number(game.playerAuth?.player?.id) || 0);
+  const commentOwnerId = Math.max(0, Number(comment?.authorAccountId) || 0);
+  const canDelete = Boolean(isLoggedIn && myAccountId > 0 && commentOwnerId === myAccountId && parentId);
+
   const head = document.createElement('div');
   head.className = 'news-comment-head';
-  const author = document.createElement('span');
-  author.className = 'news-comment-author';
-  author.textContent = String(comment?.authorName || 'Player');
+
+  const authorAccountId = Math.max(0, Number(comment?.authorAccountId) || 0);
+  const authorNameText = String(comment?.authorName || 'Player');
+  const author = document.createElement('button');
+  author.type = 'button';
+  author.className = 'news-comment-author news-comment-author-btn';
+  author.textContent = authorNameText;
+  author.addEventListener('click', () => {
+    void openAuthorProfileFromComment(authorAccountId, authorNameText);
+  });
+
+  const meta = document.createElement('div');
+  meta.className = 'news-comment-meta';
   const date = document.createElement('span');
   date.className = 'news-comment-date';
   date.textContent = formatNewsDate(comment?.createdAt || 0);
+  meta.appendChild(date);
+
   head.appendChild(author);
-  head.appendChild(date);
+  head.appendChild(meta);
 
   const text = document.createElement('div');
   text.className = 'news-comment-text';
@@ -509,21 +770,45 @@ function renderNewsCommentNode(comment, isReply = false) {
   item.appendChild(head);
   item.appendChild(text);
 
-  const isLoggedIn = Boolean(game.playerAuth?.player);
-  const parentId = String(comment?.id || '').trim();
+  const actionsRow = document.createElement('div');
+  actionsRow.className = 'news-comment-actions-row';
+  let hasActions = false;
+
   if (!isReply && isLoggedIn && parentId) {
     const replyBtn = document.createElement('button');
     replyBtn.type = 'button';
     replyBtn.className = 'mini news-comment-reply-btn';
-    replyBtn.textContent = newsUi.replyTargetId === parentId ? 'Close reply' : 'Reply';
+    replyBtn.textContent = newsUi.replyTargetId === parentId ? '\u0417\u0430\u043a\u0440\u044b\u0442\u044c \u043e\u0442\u0432\u0435\u0442' : '\u041e\u0442\u0432\u0435\u0442\u0438\u0442\u044c';
     replyBtn.addEventListener('click', () => {
       newsUi.replyTargetId = newsUi.replyTargetId === parentId ? '' : parentId;
       renderNewsFeed();
     });
-    item.appendChild(replyBtn);
-    if (newsUi.replyTargetId === parentId) {
-      renderNewsReplyComposer(item, parentId);
-    }
+    actionsRow.appendChild(replyBtn);
+    hasActions = true;
+  }
+
+  if (canDelete) {
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'mini news-comment-delete-btn';
+    deleteBtn.textContent = '\u0423\u0434\u0430\u043b\u0438\u0442\u044c';
+    deleteBtn.disabled = newsUi.postingComment;
+    deleteBtn.addEventListener('click', () => {
+      void deleteNewsComment(newsUi.activeId, {
+        commentId: parentId,
+        parentId: isReply ? parentCommentId : '',
+      });
+    });
+    actionsRow.appendChild(deleteBtn);
+    hasActions = true;
+  }
+
+  if (hasActions) {
+    item.appendChild(actionsRow);
+  }
+
+  if (!isReply && isLoggedIn && parentId && newsUi.replyTargetId === parentId) {
+    renderNewsReplyComposer(item, parentId);
   }
 
   const replies = Array.isArray(comment?.replies) ? comment.replies : [];
@@ -531,7 +816,7 @@ function renderNewsCommentNode(comment, isReply = false) {
     const repliesWrap = document.createElement('div');
     repliesWrap.className = 'news-comment-replies';
     for (const reply of replies) {
-      repliesWrap.appendChild(renderNewsCommentNode(reply, true));
+      repliesWrap.appendChild(renderNewsCommentNode(reply, true, parentId));
     }
     item.appendChild(repliesWrap);
   }
@@ -839,6 +1124,102 @@ async function openNewsItem(newsId, { force = false } = {}) {
   }
 }
 
+
+function formatRatingValue(item, categoryKey) {
+  const value = Math.max(0, Number(item?.value) || 0);
+  if (categoryKey === 'best_time_run') return value + 's';
+  if (categoryKey === 'best_dps_run') return value.toFixed(2) + ' DPS';
+  if (categoryKey === 'profile_level') return 'Lv' + value + ' (XP ' + Math.max(0, Number(item?.accountXp) || 0) + ')';
+  if (categoryKey === 'heroes_unlocked') return value + ' \u0433\u0435\u0440.';
+  if (categoryKey === 'runs_count') return value + ' \u0437\u0430\u0431.';
+  return String(value);
+}
+
+function renderRatingBoard() {
+  if (!ratingBoardEl) return;
+  const title = '<b>\u0420\u0435\u0439\u0442\u0438\u043d\u0433 \u0438\u0433\u0440\u043e\u043a\u043e\u0432</b>';;
+  if (ratingUi.loading && ratingUi.items.length === 0) {
+    ratingBoardEl.innerHTML = title + '<div class="profile-run-empty">\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u0440\u0435\u0439\u0442\u0438\u043d\u0433\u0430...</div>';;
+    return;
+  }
+  if (ratingUi.error && ratingUi.items.length === 0) {
+    ratingBoardEl.innerHTML = title + '<div class="profile-run-empty">' + escapeNewsHtml(ratingUi.error) + '</div>';;
+    return;
+  }
+  const categories = (ratingUi.categories || []).map((cat) => {
+    const active = cat.key === ratingUi.currentCategory ? ' active' : '';;
+    return '<button type="button" class="mini rating-category-btn' + active + '" data-rating-cat="' + escapeNewsHtml(String(cat.key || '')) + '">' + escapeNewsHtml(String(cat.title || cat.key || 'Category')) + '</button>';;
+  }).join('');
+  const rows = (ratingUi.items || []).map((item, i) => {
+    const rank = ((ratingUi.page - 1) * ratingUi.pageSize) + i + 1;
+    const pid = Math.max(0, Number(item?.playerId) || 0);
+    const nick = escapeNewsHtml(String(item?.nickname || 'Unknown'));
+    const nickHtml = pid > 0 ? ('<button type="button" class="news-comment-author news-comment-author-btn" data-rating-player="' + pid + '">' + nick + '</button>') : nick;
+    return '<div class="record-row rating-row"><div class="record-rank">#' + rank + '</div><div class="record-name">' + nickHtml + '</div><div class="record-meta">' + escapeNewsHtml(formatRatingValue(item, ratingUi.currentCategory)) + '</div></div>';;
+  }).join('');
+  const pager = '<div class="profile-run-history-pager"><button type="button" class="mini" data-rating-prev ' + (ratingUi.page <= 1 ? 'disabled' : '') + '>Prev</button><span class="profile-run-history-page">Page ' + ratingUi.page + '/' + ratingUi.totalPages + ' | Total: ' + ratingUi.total + '</span><button type="button" class="mini" data-rating-next ' + (ratingUi.page >= ratingUi.totalPages ? 'disabled' : '') + '>Next</button></div>';;
+  ratingBoardEl.innerHTML = title + '<div class="rating-categories">' + categories + '</div>' + (rows || '<div class=\"profile-run-empty\">\u041f\u043e\u043a\u0430 \u043d\u0435\u0442 \u0434\u0430\u043d\u043d\u044b\u0445.</div>') + pager;
+  for (const b of Array.from(ratingBoardEl.querySelectorAll('[data-rating-cat]'))) {
+    b.addEventListener('click', () => {
+      const cat = String(b.getAttribute('data-rating-cat') || '').trim();
+      if (!cat) return;
+      ratingUi.currentCategory = cat;
+      ratingUi.page = 1;
+      void requestLeaderboard({ force: true, page: 1, category: cat });
+    });
+  }
+  ratingBoardEl.querySelector('[data-rating-prev]')?.addEventListener('click', () => {
+    if (ratingUi.page > 1) void requestLeaderboard({ force: true, page: ratingUi.page - 1, category: ratingUi.currentCategory });
+  });
+  ratingBoardEl.querySelector('[data-rating-next]')?.addEventListener('click', () => {
+    if (ratingUi.page < ratingUi.totalPages) void requestLeaderboard({ force: true, page: ratingUi.page + 1, category: ratingUi.currentCategory });
+  });
+  for (const b of Array.from(ratingBoardEl.querySelectorAll('[data-rating-player]'))) {
+    b.addEventListener('click', () => {
+      const pid = Math.max(0, Number(b.getAttribute('data-rating-player')) || 0);
+      if (pid > 0) void openAuthorProfileModal(pid, b.textContent || '');
+    });
+  }
+}
+
+async function requestLeaderboard({ force = false, page = ratingUi.page, category = ratingUi.currentCategory } = {}) {
+  if (!ratingBoardEl) return;
+  if (!force && ratingUi.loading) return;
+  const token = ratingUi.fetchToken + 1;
+  ratingUi.fetchToken = token;
+  ratingUi.loading = true;
+  ratingUi.error = '';
+  ratingUi.page = Math.max(1, Number(page) || 1);
+  ratingUi.currentCategory = String(category || ratingUi.currentCategory || 'best_kills_run');
+  renderRatingBoard();
+  try {
+    const params = new URLSearchParams({
+      category: ratingUi.currentCategory,
+      page: String(ratingUi.page),
+      page_size: String(ratingUi.pageSize),
+    });
+    const res = await fetch('/api/leaderboard?' + params.toString(), { cache: 'no-store' });
+    const payload = await res.json().catch(() => ({}));
+    if (ratingUi.fetchToken !== token) return;
+    if (!res.ok || !payload?.ok) throw new Error(payload?.message || ('HTTP ' + res.status));
+    ratingUi.categories = Array.isArray(payload.categories) ? payload.categories : [];
+    ratingUi.items = Array.isArray(payload.items) ? payload.items : [];
+    ratingUi.page = Math.max(1, Number(payload.page) || ratingUi.page);
+    ratingUi.totalPages = Math.max(1, Number(payload.totalPages) || 1);
+    ratingUi.total = Math.max(0, Number(payload.total) || 0);
+    ratingUi.currentCategory = String(payload?.category?.key || ratingUi.currentCategory || 'best_kills_run');
+    ratingUi.error = '';
+  } catch (err) {
+    if (ratingUi.fetchToken !== token) return;
+    ratingUi.error = err?.message || 'Failed to load leaderboard.';
+  } finally {
+    if (ratingUi.fetchToken === token) {
+      ratingUi.loading = false;
+      renderRatingBoard();
+    }
+  }
+}
+
 globalThis.renderNewsFeed = renderNewsFeed;
 
 function setMainMenuTab(tabId) {
@@ -856,6 +1237,9 @@ function setMainMenuTab(tabId) {
   }
   if (nextTab === 'profile') {
     void requestProfileRunHistory({ force: false, page: profileRunHistoryUi.page });
+  }
+  if (nextTab === 'rating') {
+    void requestLeaderboard({ force: false, page: ratingUi.page, category: ratingUi.currentCategory });
   }
   if (nextTab === 'news') {
     if (prevTab === 'news' && newsUi.activeItem) {
@@ -4415,6 +4799,9 @@ function sendInput() {
 }
 
 void maybeStartReplayFromUrl();
+
+
+
 
 
 

@@ -1,4 +1,4 @@
-﻿const MENU_IDLE_FRAME_MS = 180;
+const MENU_IDLE_FRAME_MS = 180;
 const FPS_UI_UPDATE_SEC = 0.75;
 const minimapCtx = minimapCanvasEl?.getContext('2d');
 if (minimapCtx) minimapCtx.imageSmoothingEnabled = false;
@@ -991,7 +991,9 @@ function render(ts) {
   if (fpsAccumSec >= FPS_UI_UPDATE_SEC) {
     if (fpsCornerEl && game.showFpsEnabled) {
       const fpsText = `FPS: ${Math.round(fpsFrameCount / fpsAccumSec)}`;
-      fpsCornerEl.textContent = fpsText + renderDiagBuildText();
+      const pingMs = Math.max(0, Math.round(Number(netStats?.rttMs) || 0));
+      const pingText = ` | Ping: ${pingMs}ms`;
+      fpsCornerEl.textContent = fpsText + pingText + renderDiagBuildText();
     }
     updateNetMetaUi();
     fpsFrameCount = 0;
@@ -1192,6 +1194,7 @@ startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 setInterval(sendNetStatsReport, 1500);
 scheduleNextFrame();
+
 
 
 
