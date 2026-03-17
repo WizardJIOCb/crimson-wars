@@ -43,6 +43,10 @@ const {
   PLAYER_DODGE_COOLDOWN_MS,
   PLAYER_DODGE_MAX_CHARGES,
   PLAYER_DODGE_INVULN_MS,
+  PLAYER_RESPAWN_MODE,
+  PLAYER_RESPAWN_DELAY_MS,
+  PLAYER_RESPAWN_EXTRA_LIVES,
+  PLAYER_RESPAWN_START_TOKENS,
   ENEMY_SPEED_MIN,
   ENEMY_SPEED_MAX,
   ENEMY_HP_BASE,
@@ -138,6 +142,17 @@ const REPLAY_FRAME_LIMIT = 7200;
 const XP_SURGE_DURATION_MS = 3200;
 const XP_SURGE_PULL_MIN_MUL = 0.22;
 const XP_SURGE_PULL_MAX_MUL = 3.9;
+
+function normalizeRespawnMode(rawMode) {
+  const mode = String(rawMode || '').trim().toLowerCase();
+  if (mode === 'lives' || mode === 'token' || mode === 'none') return mode;
+  return 'none';
+}
+
+const RESPAWN_MODE = normalizeRespawnMode(process.env.PLAYER_RESPAWN_MODE || PLAYER_RESPAWN_MODE);
+const RESPAWN_DELAY_MS = Math.max(0, Number(process.env.PLAYER_RESPAWN_DELAY_MS) || PLAYER_RESPAWN_DELAY_MS || 3000);
+const RESPAWN_EXTRA_LIVES = Math.max(0, Math.floor(Number(process.env.PLAYER_RESPAWN_EXTRA_LIVES) || PLAYER_RESPAWN_EXTRA_LIVES || 0));
+const RESPAWN_START_TOKENS = Math.max(0, Math.floor(Number(process.env.PLAYER_RESPAWN_START_TOKENS) || PLAYER_RESPAWN_START_TOKENS || 0));
 const adminAuthStore = createAdminAuthStore({
   dataDir: DATA_DIR,
   dbPath: ADMIN_AUTH_DB_PATH,
@@ -1518,6 +1533,12 @@ function serializeRoom(room) {
     hp: p.hp,
     maxHp: Math.max(1, Math.round(Number(p.maxHp) || PLAYER_HP_MAX)),
     alive: p.alive,
+    isOut: Boolean(p.isOut),
+    canRespawn: Boolean(p.canRespawn),
+    respawnAt: Math.max(0, Math.floor(Number(p.respawnAt) || 0)),
+    livesTotal: Math.max(1, Math.floor(Number(p.livesTotal) || 1)),
+    livesLeft: Math.max(0, Math.floor(Number(p.livesLeft) || 0)),
+    reviveTokens: Math.max(0, Math.floor(Number(p.reviveTokens) || 0)),
     score: room.scores.get(p.id) || 0,
     kills: room.kills.get(p.id) || 0,
     weaponKey: p.weaponKey,
@@ -2462,10 +2483,11 @@ function buildRunDetails(room, target, now) {
 }
 
 function downPlayer(room, target, now) {
+  if (!target || target.isOut) return;
+
   const weaponKeyBeforeDown = target.weaponKey;
   target.hp = 0;
   target.alive = false;
-  target.respawnAt = now + 3000;
   target.shooting = false;
   target.slowUntil = 0;
   target.dodgeCooldownMs = 0;
@@ -2473,6 +2495,35 @@ function downPlayer(room, target, now) {
   target.dodgeRechargeMs = 0;
   target.dodgeInvulnUntil = 0;
   target.jumpQueued = false;
+
+  let willRespawn = false;
+  if (RESPAWN_MODE === 'lives') {
+    const left = Math.max(0, Math.floor(Number(target.livesLeft) || 0));
+    if (left > 0) {
+      target.livesLeft = left - 1;
+      willRespawn = true;
+    }
+  } else if (RESPAWN_MODE === 'token') {
+    const tokens = Math.max(0, Math.floor(Number(target.reviveTokens) || 0));
+    if (tokens > 0) {
+      target.reviveTokens = tokens - 1;
+      willRespawn = true;
+    }
+  }
+
+  target.canRespawn = willRespawn;
+  target.isOut = !willRespawn;
+  target.respawnAt = willRespawn ? (now + RESPAWN_DELAY_MS) : 0;
+
+  if (willRespawn) {
+    setPlayerWeapon(target, 'pistol');
+    const suffix = RESPAWN_MODE === 'lives'
+      ? ` (${Math.max(0, Number(target.livesLeft) || 0)} lives left)`
+      : ` (${Math.max(0, Number(target.reviveTokens) || 0)} revive tokens left)`;
+    broadcastRoom(room, { type: 'system', message: `${target.name} was downed and will respawn in ${Math.max(0, Math.ceil(RESPAWN_DELAY_MS / 1000))}s${suffix}.` });
+    return;
+  }
+
   const runReplay = finalizeRunReplay(room, target.runReplay, now);
   const runDetails = buildRunDetails(room, { ...target, weaponKey: weaponKeyBeforeDown }, now);
   setPlayerWeapon(target, 'pistol');
@@ -2935,6 +2986,8 @@ function joinRoom(ws, join) {
     alive: true,
     fireCooldownLeft: 0,
     respawnAt: 0,
+    isOut: false,
+    canRespawn: false,
     slowUntil: 0,
     dodgeCooldownMs: 0,
     dodgeChargesMax: PLAYER_DODGE_MAX_CHARGES,
@@ -2966,6 +3019,9 @@ function joinRoom(ws, join) {
     extraDodgeCharges: 0,
     joinedAt: Date.now(),
     devUnlocked: false,
+    livesTotal: RESPAWN_MODE === 'lives' ? (1 + RESPAWN_EXTRA_LIVES) : 1,
+    livesLeft: RESPAWN_MODE === 'lives' ? RESPAWN_EXTRA_LIVES : 0,
+    reviveTokens: RESPAWN_MODE === 'token' ? RESPAWN_START_TOKENS : 0,
     godMode: false,
     playerAccountId: identity.playerAccountId || null,
     isRegisteredNickname: !!identity.isRegistered,
@@ -3221,12 +3277,14 @@ function tickRoom(room, dtSec, now) {
       Math.max(0, Number(p.lastReceivedInputSeq) || 0),
     );
     if (!p.alive) {
-      if (now >= p.respawnAt) {
+      if (!p.isOut && p.canRespawn && now >= p.respawnAt) {
         const spawn = randomPlayerSpawn();
         p.x = spawn.x;
         p.y = spawn.y;
         p.hp = p.maxHp || PLAYER_HP_MAX;
         p.alive = true;
+        p.canRespawn = false;
+        p.respawnAt = 0;
         p.slowUntil = 0;
         p.dodgeCooldownMs = 0;
         p.dodgeCharges = p.dodgeChargesMax || PLAYER_DODGE_MAX_CHARGES;
@@ -3638,18 +3696,3 @@ server.listen(PORT, () => {
     console.log(`Bootstrap admin password: ${ADMIN_BOOTSTRAP_PASSWORD}`);
   }
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -3115,6 +3115,7 @@ let pendingDeathResult = null;
 let pendingDeathRewardsTimer = null;
 let latestRunRewards = null;
 let latestDeathSnapshot = null;
+let localDeathStateLocked = false;
 
 function clearDeathRewardsUi() {
   joinOverlay.classList.remove('death-rewards-visible');
@@ -3276,6 +3277,7 @@ function clearDeathCameraLock() {
 }
 
 function scheduleDeathOverlay(result) {
+  localDeathStateLocked = true;
   if (pendingDeathOverlayTimer) return;
   pendingDeathResult = result || null;
   statusEl.textContent = 'Critical damage...';
@@ -3289,6 +3291,7 @@ function scheduleDeathOverlay(result) {
 function clearLocalSessionState() {
   cancelPendingDeathOverlay();
   clearDeathCameraLock();
+  localDeathStateLocked = false;
   game.myId = null;
   game.roomCode = null;
   game.state = null;
@@ -3515,6 +3518,7 @@ message: (ev) => {
     renderInstanceMeta();
     resetNetStats();
     prevMyAlive = true;
+    localDeathStateLocked = false;
     clearDeathCameraLock();
     latestRunRewards = null;
     latestDeathSnapshot = null;
@@ -3672,6 +3676,11 @@ message: (ev) => {
 
     const me = s.players.find((p) => p.id === game.myId);
     if (me) {
+      if (localDeathStateLocked && me.alive) {
+        // Keep local player down during death sequence to avoid visible auto-respawn before overlay/menu handoff.
+        me.alive = false;
+        me.hp = 0;
+      }
       updateStatsPanel(me);
       updateJumpButtonUi(me);
       const dodgeCdMeta = Math.max(0, Number(me.dodgeCooldownMs) || 0);
@@ -3699,9 +3708,20 @@ message: (ev) => {
           roomCode: game.roomCode || s.roomCode || '-',
           survivalSec: Math.max(1, Math.floor((Date.now() - (sessionStartedAt || Date.now())) / 1000)),
         };
-        lockCameraForDeathSequence();
-        spawnPlayerDeathBloodFx(deathResult);
-        scheduleDeathOverlay(deathResult);
+        const finalDeath = Boolean(me.isOut) || !Boolean(me.canRespawn);
+        if (finalDeath) {
+          lockCameraForDeathSequence();
+          spawnPlayerDeathBloodFx(deathResult);
+          scheduleDeathOverlay(deathResult);
+        }
+      }
+      if (!me.alive && Boolean(me.canRespawn) && !Boolean(me.isOut)) {
+        const leftMs = Math.max(0, Number(me.respawnAt) - Date.now());
+        const leftSec = Math.max(0, Math.ceil(leftMs / 1000));
+        const livesLeft = Math.max(0, Number(me.livesLeft) || 0);
+        const tokensLeft = Math.max(0, Number(me.reviveTokens) || 0);
+        const extra = livesLeft > 0 ? (` | Lives left: ${livesLeft}`) : (tokensLeft > 0 ? (` | Tokens left: ${tokensLeft}`) : '');
+        statusEl.textContent = `Downed. Respawn in ${leftSec}s${extra}`;
       }
       prevMyAlive = Boolean(me.alive);
     } else {
@@ -3796,58 +3816,3 @@ function sendInput() {
 }
 
 void maybeStartReplayFromUrl();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
