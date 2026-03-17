@@ -3141,6 +3141,13 @@ function renderDeathRewardsPanel() {
   if (!deathRewardsBodyEl) return;
   const run = latestDeathSnapshot || {};
   const rewards = latestRunRewards;
+  const isLoggedIn = Boolean(game.playerAuth?.player);
+  const accountXpLabel = rewards
+    ? ('+' + rewards.gainedXp)
+    : (isLoggedIn ? 'Pending...' : 'Login required');
+  const shardsLabel = rewards
+    ? ('+' + rewards.gainedShards)
+    : (isLoggedIn ? 'Pending...' : 'Login required');
   const baseRows = [
     ['Score', Math.max(0, Number(run.score) || 0)],
     ['Kills', Math.max(0, Number(run.kills) || 0)],
@@ -3148,8 +3155,8 @@ function renderDeathRewardsPanel() {
     ['Boss kills', Math.max(0, Number(run.bossKills) || 0)],
     ['Survival', `${Math.max(1, Number(run.survivalSec) || 1)}s`],
     ['Hero XP', `Lv${Math.max(1, Number(run.heroLevel) || 1)} | ${Math.max(0, Number(run.heroXp) || 0)}/${Math.max(1, Number(run.heroXpToNext) || 1)}`],
-    ['Account XP', rewards ? ('+' + rewards.gainedXp) : 'Calculating...'],
-    ['Shards', rewards ? ('+' + rewards.gainedShards) : 'Calculating...'],
+    ['Account XP', accountXpLabel],
+    ['Shards', shardsLabel],
   ];
   if (rewards && rewards.levelsGained > 0) baseRows.push(['Account level up', '+' + rewards.levelsGained]);
   const rowsHtml = baseRows.map(([k, v]) => `<div class="death-reward-row"><span>${escapeHtml(String(k))}</span><b>${escapeHtml(String(v))}</b></div>`).join('');

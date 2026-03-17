@@ -2522,8 +2522,15 @@ function sendDevConsoleWs(ws, text, ok = true) {
   sendTo(ws, { type: 'devConsole', ok: Boolean(ok), text: String(text || '') });
 }
 
+function normalizeDevConsoleCommand(rawCommand) {
+  return String(rawCommand || '')
+    .trim()
+    .replace(/^>+\s*/, '')
+    .trim();
+}
+
 function applyGlobalDevCommand(ws, rawCommand) {
-  const command = String(rawCommand || '').trim();
+  const command = normalizeDevConsoleCommand(rawCommand);
   if (!command) {
     sendDevConsoleWs(ws, 'Empty command.', false);
     return true;
@@ -2604,7 +2611,7 @@ function clearPlayerBuddySkills(player) {
 }
 
 function applyDevCheatCommand(room, player, rawCommand, now = Date.now()) {
-  const command = String(rawCommand || '').trim();
+  const command = normalizeDevConsoleCommand(rawCommand);
   if (!command) {
     sendDevConsole(player, 'Empty command.', false);
     return;
