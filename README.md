@@ -116,6 +116,29 @@ sudo systemctl daemon-reload
 sudo systemctl restart crimson-wars
 ```
 
+### Настройки респауна (production)
+По умолчанию используется `PLAYER_RESPAWN_MODE=none` (без респауна, финальная смерть).
+
+Добавьте в `override.conf` нужные переменные:
+```ini
+[Service]
+Environment=PLAYER_RESPAWN_MODE=none
+Environment=PLAYER_RESPAWN_DELAY_MS=3000
+Environment=PLAYER_RESPAWN_EXTRA_LIVES=2
+Environment=PLAYER_RESPAWN_START_TOKENS=1
+```
+
+Режимы:
+- `none` - без респауна (run сразу заканчивается).
+- `lives` - ограниченные жизни, используется `PLAYER_RESPAWN_EXTRA_LIVES`.
+- `token` - респаун за токены, используется `PLAYER_RESPAWN_START_TOKENS`.
+
+Применение:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart crimson-wars crimson-wars-2 crimson-wars-3 crimson-wars-4
+```
+
 ### 5) nginx
 ```bash
 sudo cp /var/www/crimson-wars/deploy/nginx.crimson.rodion.pro.conf /etc/nginx/sites-available/crimson.rodion.pro
