@@ -3308,8 +3308,8 @@ function tickRoom(room, dtSec, now) {
       }
       continue;
     }
-
-    if (e.attackCooldownMs <= 0 && (e.x - target.x) ** 2 + (e.y - target.y) ** 2 <= rr * rr && target.alive) {
+    const attackTriggerRange = e.type === 'boss' ? (rr * 3) : rr;
+    if (e.attackCooldownMs <= 0 && (e.x - target.x) ** 2 + (e.y - target.y) ** 2 <= attackTriggerRange * attackTriggerRange && target.alive) {
       e.vx = 0;
       e.vy = 0;
       e.attackWindupMs = e.type === 'boss' ? BOSS_ATTACK_WINDUP_MS : ENEMY_ATTACK_WINDUP_MS;
@@ -3540,6 +3540,7 @@ server.listen(PORT, () => {
     console.log(`Bootstrap admin password: ${ADMIN_BOOTSTRAP_PASSWORD}`);
   }
 });
+
 
 
 

@@ -2853,7 +2853,31 @@ levelupOptionsEl?.addEventListener('click', handleSkillOptionInteract);
 
 
 
+const DEATH_OVERLAY_DELAY_MS = 3000;
+let pendingDeathOverlayTimer = null;
+let pendingDeathResult = null;
+
+function cancelPendingDeathOverlay() {
+  if (pendingDeathOverlayTimer) {
+    clearTimeout(pendingDeathOverlayTimer);
+    pendingDeathOverlayTimer = null;
+  }
+  pendingDeathResult = null;
+}
+
+function scheduleDeathOverlay(result) {
+  if (pendingDeathOverlayTimer) return;
+  pendingDeathResult = result || null;
+  statusEl.textContent = 'Critical damage...';
+  pendingDeathOverlayTimer = setTimeout(() => {
+    const snapshot = pendingDeathResult;
+    pendingDeathOverlayTimer = null;
+    pendingDeathResult = null;
+    openDeathOverlay(snapshot);
+  }, DEATH_OVERLAY_DELAY_MS);
+}
 function clearLocalSessionState() {
+  cancelPendingDeathOverlay();
   game.myId = null;
   game.roomCode = null;
   game.state = null;
@@ -2948,6 +2972,7 @@ function openDeathMenuAfterCinematic() {
 }
 
 function openDeathOverlay(result) {
+  cancelPendingDeathOverlay();
   if (typeof window.cwTrackMetrikaGoal === 'function') {
     window.cwTrackMetrikaGoal('player_death', {
       room_code: result?.roomCode || '-',
@@ -3250,8 +3275,7 @@ message: (ev) => {
           roomCode: game.roomCode || s.roomCode || '-',
           survivalSec: Math.max(1, Math.floor((Date.now() - (sessionStartedAt || Date.now())) / 1000)),
         };
-        openDeathOverlay(deathResult);
-        return;
+        scheduleDeathOverlay(deathResult);
       }
       prevMyAlive = Boolean(me.alive);
     } else {
@@ -3346,6 +3370,15 @@ function sendInput() {
 }
 
 void maybeStartReplayFromUrl();
+
+
+
+
+
+
+
+
+
 
 
 
