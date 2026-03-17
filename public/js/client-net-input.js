@@ -2865,6 +2865,25 @@ function cancelPendingDeathOverlay() {
   pendingDeathResult = null;
 }
 
+function spawnPlayerDeathBloodFx(result) {
+  const me = game.state?.players?.find((p) => p.id === game.myId);
+  if (!me) return;
+  const x = Number(me.x) || 0;
+  const y = Number(me.y) || 0;
+
+  if (typeof spawnBlood === 'function') spawnBlood(x, y, 140);
+  if (typeof spawnGoreBurst === 'function') spawnGoreBurst(x, y, 88);
+  if (typeof spawnHitFx === 'function') spawnHitFx(x, y, 28, true);
+
+  if (typeof spawnBloodPuddle === 'function') {
+    for (let i = 0; i < 9; i += 1) {
+      const ox = (Math.random() * 64) - 32;
+      const oy = (Math.random() * 44) - 22;
+      const intensity = 1.35 + Math.random() * 0.9;
+      spawnBloodPuddle(x + ox, y + oy, intensity);
+    }
+  }
+}
 function scheduleDeathOverlay(result) {
   if (pendingDeathOverlayTimer) return;
   pendingDeathResult = result || null;
@@ -3275,6 +3294,7 @@ message: (ev) => {
           roomCode: game.roomCode || s.roomCode || '-',
           survivalSec: Math.max(1, Math.floor((Date.now() - (sessionStartedAt || Date.now())) / 1000)),
         };
+        spawnPlayerDeathBloodFx(deathResult);
         scheduleDeathOverlay(deathResult);
       }
       prevMyAlive = Boolean(me.alive);
@@ -3370,6 +3390,9 @@ function sendInput() {
 }
 
 void maybeStartReplayFromUrl();
+
+
+
 
 
 

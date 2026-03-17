@@ -2477,7 +2477,11 @@ function applyGlobalDevCommand(ws, rawCommand) {
   const args = parts;
 
   if (cmd === 'help') {
-    sendDevConsoleWs(ws, 'Menu commands: help, playerpass <nickname> <newpassword>. Join a room for gameplay cheats.');
+    sendDevConsoleWs(ws, 'Console help:');
+    sendDevConsoleWs(ws, 'help - show this help. Example: help');
+    sendDevConsoleWs(ws, 'playerpass <nickname> <newpassword> - change player password (admin only).');
+    sendDevConsoleWs(ws, 'Example: playerpass Fighter123 NewStrongPass');
+    sendDevConsoleWs(ws, 'Join a room for gameplay commands.');
     return true;
   }
 
@@ -2554,7 +2558,28 @@ function applyDevCheatCommand(room, player, rawCommand, now = Date.now()) {
   const args = parts;
 
   if (cmd === 'help') {
-    sendDevConsole(player, 'Commands: room|roomcode, unlock <room-secret>, lock, god [on|off], weapon <pistol|smg|shotgun|sniper> [ammo], ammo <n>, heal [n], hp <n>, xp <n>, levelup [n], skills, skill <id> [levels], bots|buddies [levels], nobots|clearbots, spawn <normal|charger|ranged|boss> [count], killall, playerpass <nickname> <newpassword>, status');
+    sendDevConsole(player, 'Gameplay commands (unlock hidden in help):');
+    sendDevConsole(player, 'help - show this list. Example: help');
+    sendDevConsole(player, 'room | roomcode - show room code. Example: roomcode');
+    sendDevConsole(player, 'killme | suicide - kill your character. Example: killme');
+    sendDevConsole(player, 'status - show stats and weapon. Example: status');
+    sendDevConsole(player, '');
+    sendDevConsole(player, 'Commands below require cheats unlocked for your player:');
+    sendDevConsole(player, 'lock - lock cheats. Example: lock');
+    sendDevConsole(player, 'god [on|off] - invulnerability. Example: god on');
+    sendDevConsole(player, 'weapon <pistol|smg|shotgun|sniper> [ammo]. Example: weapon shotgun 40');
+    sendDevConsole(player, 'ammo <n> - set ammo. Example: ammo 120');
+    sendDevConsole(player, 'heal [n] - heal hp. Example: heal 50');
+    sendDevConsole(player, 'hp <n> - set hp. Example: hp 200');
+    sendDevConsole(player, 'xp <n> - add xp. Example: xp 500');
+    sendDevConsole(player, 'levelup [n] - force levelups. Example: levelup 3');
+    sendDevConsole(player, 'skills - list skills. Example: skills');
+    sendDevConsole(player, 'skill <id> [levels]. Example: skill weapon_mastery 2');
+    sendDevConsole(player, 'bots | buddies [levels]. Example: bots 2');
+    sendDevConsole(player, 'nobots | clearbots. Example: clearbots');
+    sendDevConsole(player, 'spawn <normal|charger|ranged|boss> [count]. Example: spawn ranged 6');
+    sendDevConsole(player, 'killall - kill all enemies. Example: killall');
+    sendDevConsole(player, 'playerpass <nickname> <newpassword> (admin only). Example: playerpass Fighter123 NewPass');
     return;
   }
 
@@ -2583,6 +2608,15 @@ function applyDevCheatCommand(room, player, rawCommand, now = Date.now()) {
     return;
   }
 
+  if (cmd === 'killme' || cmd === 'suicide') {
+    if (!player.alive) {
+      sendDevConsole(player, 'You are already down.', false);
+      return;
+    }
+    downPlayer(room, player, now);
+    sendDevConsole(player, 'Self-destruct executed.');
+    return;
+  }
   if (cmd === 'lock') {
     player.devUnlocked = false;
     player.godMode = false;
@@ -3540,6 +3574,13 @@ server.listen(PORT, () => {
     console.log(`Bootstrap admin password: ${ADMIN_BOOTSTRAP_PASSWORD}`);
   }
 });
+
+
+
+
+
+
+
 
 
 

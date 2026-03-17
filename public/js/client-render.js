@@ -219,7 +219,6 @@ function drawPlayer(p, t, isMe, rx, ry) {
   const displayPlayer = p;
 
   if (!p.alive) {
-    drawCircle(rx, ry, 18, '#6b7280');
     return;
   }
 
@@ -1186,5 +1185,7 @@ startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 setInterval(sendNetStatsReport, 1500);
 scheduleNextFrame();
+
+
 
 
