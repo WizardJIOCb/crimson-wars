@@ -3630,6 +3630,16 @@ body.levelup-open #dev-console-toggle {
 
 
 
+.rating-value-text {
+  display: inline-block;
+  margin-right: 8px;
+}
+
+.rating-play-btn {
+  padding: 2px 9px !important;
+  line-height: 1.2;
+}
+
 /* Play panel mode selector replaces Top records in Play tab */
 #menu-panel-play {
   grid-template-areas:

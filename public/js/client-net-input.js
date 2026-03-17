@@ -1180,7 +1180,10 @@ function renderRatingBoard() {
     const nickHtml = pid > 0
       ? ('<button type="button" class="news-comment-author news-comment-author-btn" data-rating-player="' + pid + '">' + nick + '</button>')
       : nick;
-    return '<div class="record-row rating-row"><div class="record-rank">#' + rank + '</div><div class="record-name">' + nickHtml + '</div><div class="record-meta">' + escapeNewsHtml(formatRatingValue(item, ratingUi.currentCategory)) + '</div></div>';
+    const replayRunId = Math.max(0, Number(item?.replayRunId) || 0);
+    const valueText = escapeNewsHtml(formatRatingValue(item, ratingUi.currentCategory));
+    const playBtn = replayRunId > 0 ? ('<button type="button" class="mini rating-play-btn" data-rating-replay="' + replayRunId + '" data-rating-rank="' + rank + '">Play</button>') : '';
+    return '<div class="record-row rating-row"><div class="record-rank">#' + rank + '</div><div class="record-name">' + nickHtml + '</div><div class="record-meta"><span class="rating-value-text">' + valueText + '</span>' + playBtn + '</div></div>';
   }).join('');
 
   const pager = '<div class="profile-run-history-pager"><button type="button" class="mini" data-rating-prev ' + (ratingUi.page <= 1 ? 'disabled' : '') + '>Prev</button><span class="profile-run-history-page">Page ' + ratingUi.page + '/' + ratingUi.totalPages + ' | Total: ' + ratingUi.total + '</span><button type="button" class="mini" data-rating-next ' + (ratingUi.page >= ratingUi.totalPages ? 'disabled' : '') + '>Next</button></div>';
@@ -1216,6 +1219,29 @@ function renderRatingBoard() {
     });
   }
 
+  for (const b of Array.from(ratingBoardEl.querySelectorAll('[data-rating-replay]'))) {
+    b.addEventListener('click', () => {
+      const replayRunId = Math.max(0, Number(b.getAttribute('data-rating-replay')) || 0);
+      if (!replayRunId) return;
+      const rank = Math.max(1, Number(b.getAttribute('data-rating-rank')) || 1);
+      const rowIndex = rank - 1 - ((ratingUi.page - 1) * ratingUi.pageSize);
+      const item = ratingUi.items[rowIndex] || null;
+      const replayRun = item?.replayRun || null;
+      const row = b.closest('.rating-row');
+      const nickname = String(row?.querySelector('.record-name')?.textContent || '').trim() || 'Unknown';
+      openRecordDetailsModal({
+        id: replayRunId,
+        name: replayRun?.name || nickname,
+        kills: Math.max(0, Number(replayRun?.kills) || 0),
+        score: Math.max(0, Number(replayRun?.score) || 0),
+        roomCode: String(replayRun?.roomCode || '-'),
+        durationSec: Math.max(1, Number(replayRun?.durationSec) || 1),
+        at: Math.max(0, Number(replayRun?.at) || 0),
+        runDetails: replayRun?.runDetails || null,
+        replayApiPath: '/api/leaderboard/runs/' + replayRunId + '/replay',
+      }, '#' + rank);
+    });
+  }
   const modeSelect = ratingBoardEl.querySelector('#rating-mode-select');
   modeSelect?.addEventListener('change', () => {
     const nextMode = String(modeSelect.value || 'all').trim().toLowerCase();
@@ -1715,9 +1741,9 @@ function buildHeroUnlockHint(hero, progression) {
 
 function getHeroCardImagePath(heroId) {
   const id = String(heroId || '').trim().toLowerCase();
-  if (!id) return '/assets/characters/cyber.png';
-  if (id === 'medic') return '/assets/characters/medis.png';
-  return `/assets/characters/${id}.png`;
+  if (!id) return '/assets/characters/cyber.jpg';
+  if (id === 'medic') return '/assets/characters/medis.jpg';
+  return `/assets/characters/${id}.jpg`;
 }
 
 function renderHeroGalleryV2(heroes, progression, unlockedHeroes) {

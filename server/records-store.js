@@ -1,4 +1,4 @@
-﻿const fs = require('fs');
+const fs = require('fs');
 const Database = require('better-sqlite3');
 
 function parseRecordRunDetails(raw) {
@@ -86,6 +86,7 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
   let stmtCountPlayerRuns = null;
   let stmtPrunePlayerRuns = null;
   let stmtPlayerRunReplayById = null;
+  let stmtPlayerRunReplayPublicById = null;
 
   const PLAYER_RUN_HISTORY_LIMIT = 50000;
   const PLAYER_RUN_HISTORY_PAGE_SIZE = 20;
@@ -264,6 +265,20 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
         'WHERE id = ? AND name_key = ?',
         'LIMIT 1',
       ].join('\n'));
+      stmtPlayerRunReplayPublicById = recordsDb.prepare([
+        'SELECT',
+        '  id,',
+        '  name,',
+        '  kills,',
+        '  score,',
+        '  room_code AS roomCode,',
+        '  duration_sec AS durationSec,',
+        '  at,',
+        '  run_replay AS runReplay',
+        'FROM player_runs',
+        'WHERE id = ?',
+        'LIMIT 1',
+      ].join('\n'));
 
       loadRecordsFromDb();
       console.log(`Records DB ready: ${dbPath} (loaded ${records.length})`);
@@ -279,6 +294,7 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
       stmtCountPlayerRuns = null;
       stmtPrunePlayerRuns = null;
       stmtPlayerRunReplayById = null;
+      stmtPlayerRunReplayPublicById = null;
       console.error('Records DB init failed, using in-memory records only:', err.message);
     }
   }
@@ -440,6 +456,44 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
     };
   }
 
+
+  function getPlayerRunReplayById(runId) {
+    const id = Math.max(0, Number(runId) || 0);
+    if (!id) return null;
+
+    if (recordsDb && stmtPlayerRunReplayPublicById) {
+      try {
+        const row = stmtPlayerRunReplayPublicById.get(id);
+        if (!row) return null;
+        return {
+          id: row.id,
+          name: row.name,
+          kills: row.kills,
+          score: row.score,
+          roomCode: row.roomCode,
+          durationSec: row.durationSec,
+          at: row.at,
+          replay: parseRecordReplay(row.runReplay),
+        };
+      } catch (err) {
+        console.error('Records DB public player run replay read failed:', err.message);
+        return null;
+      }
+    }
+
+    const local = runHistory.find((entry) => entry.id === id);
+    if (!local) return null;
+    return {
+      id: local.id,
+      name: local.name,
+      kills: local.kills,
+      score: local.score,
+      roomCode: local.roomCode,
+      durationSec: local.durationSec,
+      at: local.at,
+      replay: parseRecordReplay(local.runReplay),
+    };
+  }
   function getRecordReplay(recordId) {
     const id = Math.max(0, Number(recordId) || 0);
     if (id <= 0 || !recordsDb || !stmtReplayById) return null;
@@ -469,6 +523,7 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
     listPlayerRunsByName,
     pushRecord,
     getRecordReplay,
+    getPlayerRunReplayById,
     getPlayerRunReplayByNameAndId,
   };
 }

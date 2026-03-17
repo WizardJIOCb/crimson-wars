@@ -261,6 +261,59 @@ function buildLeaderboardModeWhere(modeKey) {
   return '';
 }
 
+
+function parseLeaderboardRunDetails(raw) {
+  if (!raw) return null;
+  if (typeof raw === 'object') return raw;
+  if (typeof raw !== 'string') return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function buildLeaderboardReplayOrderSql(categoryKey) {
+  if (categoryKey === 'best_kills_run') return 'kills DESC, score DESC, duration_sec DESC, at DESC, id DESC';
+  if (categoryKey === 'best_score_run') return 'score DESC, kills DESC, duration_sec DESC, at DESC, id DESC';
+  if (categoryKey === 'best_dps_run') return '(CASE WHEN duration_sec > 0 THEN (score * 1.0 / duration_sec) ELSE 0 END) DESC, score DESC, kills DESC, at DESC, id DESC';
+  if (categoryKey === 'best_time_run') return 'duration_sec DESC, score DESC, kills DESC, at DESC, id DESC';
+  return 'at DESC, score DESC, kills DESC, id DESC';
+}
+
+function getLeaderboardReplayRun(db, nameKey, categoryKey, modeKey) {
+  if (!db) return null;
+  const normalizedNameKey = String(nameKey || '').trim().toLowerCase();
+  if (!normalizedNameKey) return null;
+  const whereParts = ['name_key = ?'];
+  if (modeKey === 'normal') whereParts.push("run_details LIKE '%\"gameMode\":\"normal\"%'");
+  if (modeKey === 'hardcore') whereParts.push("run_details LIKE '%\"gameMode\":\"hardcore\"%'");
+  const sql = [
+    'SELECT id, name, kills, score, room_code AS roomCode, duration_sec AS durationSec, at, run_details AS runDetails',
+    'FROM player_runs',
+    'WHERE ' + whereParts.join(' AND '),
+    'ORDER BY ' + buildLeaderboardReplayOrderSql(categoryKey),
+    'LIMIT 1',
+  ].join('\n');
+  try {
+    const row = db.prepare(sql).get(normalizedNameKey);
+    if (!row) return null;
+    return {
+      id: Math.max(0, Number(row.id) || 0),
+      name: String(row.name || 'Unknown').slice(0, 18),
+      kills: Math.max(0, Number(row.kills) || 0),
+      score: Math.max(0, Number(row.score) || 0),
+      roomCode: String(row.roomCode || '-').slice(0, 12),
+      durationSec: Math.max(1, Number(row.durationSec) || 1),
+      at: Math.max(0, Number(row.at) || 0),
+      runDetails: parseLeaderboardRunDetails(row.runDetails),
+    };
+  } catch {
+    return null;
+  }
+}
+
 function listRunLeaderboardRows(categoryKey, page, pageSize, modeKey = 'all') {
   const db = getLeaderboardRecordsDb();
   if (!db) return { page: 1, pageSize, total: 0, totalPages: 1, items: [] };
@@ -295,7 +348,9 @@ function listRunLeaderboardRows(categoryKey, page, pageSize, modeKey = 'all') {
   const authDb = getLeaderboardAuthDb();
   const authStmt = authDb ? authDb.prepare('SELECT id, nickname FROM player_accounts WHERE nickname_key = ? LIMIT 1') : null;
   const items = rows.map((r) => {
-    const a = authStmt ? authStmt.get(String(r?.nameKey || '')) : null;
+    const nameKey = String(r?.nameKey || '');
+    const a = authStmt ? authStmt.get(nameKey) : null;
+    const replayRun = getLeaderboardReplayRun(db, nameKey, categoryKey, modeKey);
     return {
       playerId: Math.max(0, Number(a?.id) || 0),
       nickname: String(a?.nickname || r?.nickname || 'Unknown').slice(0, 18),
@@ -305,6 +360,17 @@ function listRunLeaderboardRows(categoryKey, page, pageSize, modeKey = 'all') {
       bestScore: Math.max(0, Number(r?.bestScore) || 0),
       bestDurationSec: Math.max(0, Number(r?.bestDurationSec) || 0),
       at: Math.max(0, Number(r?.tieAt) || 0),
+      replayRunId: Math.max(0, Number(replayRun?.id) || 0),
+      replayRun: replayRun ? {
+        id: replayRun.id,
+        name: replayRun.name,
+        kills: replayRun.kills,
+        score: replayRun.score,
+        roomCode: replayRun.roomCode,
+        durationSec: replayRun.durationSec,
+        at: replayRun.at,
+        runDetails: replayRun.runDetails,
+      } : null,
     };
   });
   return { page: currentPage, pageSize, total, totalPages, items };
@@ -1253,6 +1319,32 @@ app.get('/api/player/run-history/:id/replay', (req, res) => {
   }
 
   const payload = recordsStore.getPlayerRunReplayByNameAndId(req.playerUser.nickname, req.params.id);
+  if (!payload?.replay) {
+    res.status(404).json({
+      error: 'Replay not found.',
+      recordId: Math.max(0, Number(req.params.id) || 0),
+      now: Date.now(),
+    });
+    return;
+  }
+
+  res.json({
+    record: {
+      id: payload.id,
+      name: payload.name,
+      kills: payload.kills,
+      score: payload.score,
+      roomCode: payload.roomCode,
+      durationSec: payload.durationSec,
+      at: payload.at,
+    },
+    replay: payload.replay,
+    now: Date.now(),
+  });
+});
+
+app.get('/api/leaderboard/runs/:id/replay', (req, res) => {
+  const payload = recordsStore.getPlayerRunReplayById(req.params.id);
   if (!payload?.replay) {
     res.status(404).json({
       error: 'Replay not found.',
