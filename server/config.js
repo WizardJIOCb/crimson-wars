@@ -1,4 +1,4 @@
-const path = require('path');
+﻿const path = require('path');
 
 const MAIN_LOOP_RATE = 120;
 const MAIN_LOOP_MS = 1000 / MAIN_LOOP_RATE;
@@ -120,7 +120,7 @@ const WEAPONS = {
     cooldownMs: 700,
     pellets: 1,
     spreadDeg: 0.2,
-    bulletSpeed: 1220,
+    bulletSpeed: 3050,
     bulletLifeMs: 1700,
     bulletDamage: 44,
     ammo: 40,
@@ -148,6 +148,144 @@ const DEFAULT_SKILL_DEFS = {
   chain_lightning: { id: 'chain_lightning', name: 'Chain Lightning', kind: 'active', rarity: 'epic', maxLevel: 7, weight: 0.52, cooldownMs: 6200, cooldownMulPerLevel: 0.08, radius: 330, radiusPerLevel: 18, damage: 52, damagePerLevel: 19, targets: 3, targetsPerLevel: 1, desc: 'Chains to nearest enemies' },
   laser_strike: { id: 'laser_strike', name: 'Laser Strike', kind: 'active', rarity: 'rare', maxLevel: 8, weight: 0.72, cooldownMs: 2600, cooldownMulPerLevel: 0.06, radius: 320, radiusPerLevel: 34, damage: 40, damagePerLevel: 15, targets: 1, targetsPerLevel: 1, desc: 'Instantly zaps nearest enemies' },
   homing_missiles: { id: 'homing_missiles', name: 'Homing Missiles', kind: 'active', rarity: 'epic', maxLevel: 8, weight: 0.46, cooldownMs: 7600, cooldownMulPerLevel: 0.07, radius: 1560, radiusPerLevel: 78, damage: 34, damagePerLevel: 12, targets: 5, targetsPerLevel: 1, missileSpeed: 640, missileSpeedPerLevel: 48, turnRate: 5.8, turnRatePerLevel: 0.24, explosionRadius: 58, explosionRadiusPerLevel: 5, lifeMs: 2600, desc: 'Launches seeking rockets at nearby enemies' },
+};
+const ACCOUNT_BASE_HERO_ID = 'cyber';
+const ACCOUNT_XP_BASE = 120;
+const ACCOUNT_XP_PER_LEVEL = 80;
+const ACCOUNT_XP_QUAD = 14;
+const ACCOUNT_XP_FROM_SCORE_MUL = 0.22;
+const ACCOUNT_XP_FROM_KILLS_MUL = 3.4;
+const ACCOUNT_XP_FROM_BOSS_KILLS_MUL = 42;
+const ACCOUNT_XP_FROM_SURVIVAL_SEC_MUL = 0.35;
+const ACCOUNT_SHARDS_FROM_SCORE_MUL = 0.05;
+const ACCOUNT_SHARDS_FROM_KILLS_MUL = 1.1;
+const ACCOUNT_SHARDS_FROM_BOSS_KILLS_MUL = 12;
+const ACCOUNT_SHARDS_FROM_SURVIVAL_SEC_MUL = 0.08;
+
+const HERO_DEFS = [
+  {
+    id: 'cyber',
+    name: 'Cyber',
+    accent: '#8ec5ff',
+    sprite: '/assets/sprites/player_cyber.png',
+    frameW: 64,
+    frameH: 64,
+    rows: { down: 2, left: 1, right: 3, up: 0 },
+    scale: 0.88,
+    fps: 10,
+    idleFrame: 1,
+    unlockLevel: 1,
+    unlockShardCost: 0,
+    unlockCardId: '',
+    unlockCardName: '',
+    unlockCardNeed: 0,
+    tagline: 'Universal adaptive operator',
+  },
+  {
+    id: 'scout',
+    name: 'Scout',
+    accent: '#a7e7c5',
+    sprite: '/assets/sprites/player_cyber.png',
+    frameW: 64,
+    frameH: 64,
+    rows: { down: 2, left: 1, right: 3, up: 0 },
+    scale: 0.9,
+    fps: 11,
+    idleFrame: 1,
+    unlockLevel: 3,
+    unlockShardCost: 90,
+    unlockCardId: 'scout_core_card',
+    unlockCardName: 'Scout Core Card',
+    unlockCardNeed: 12,
+    tagline: 'Fast recon and chase specialist',
+  },
+  {
+    id: 'shadow',
+    name: 'Shadow',
+    accent: '#d4c1ff',
+    sprite: '/assets/sprites/player_cyber.png',
+    frameW: 64,
+    frameH: 64,
+    rows: { down: 2, left: 1, right: 3, up: 0 },
+    scale: 0.88,
+    fps: 11,
+    idleFrame: 1,
+    unlockLevel: 5,
+    unlockShardCost: 140,
+    unlockCardId: 'shadow_core_card',
+    unlockCardName: 'Shadow Core Card',
+    unlockCardNeed: 18,
+    tagline: 'Ambush and burst assassin',
+  },
+  {
+    id: 'medic',
+    name: 'Medic',
+    accent: '#ffd1dc',
+    sprite: '/assets/sprites/player_cyber.png',
+    frameW: 64,
+    frameH: 64,
+    rows: { down: 2, left: 1, right: 3, up: 0 },
+    scale: 0.88,
+    fps: 9,
+    idleFrame: 1,
+    unlockLevel: 7,
+    unlockShardCost: 190,
+    unlockCardId: 'medic_core_card',
+    unlockCardName: 'Medic Core Card',
+    unlockCardNeed: 24,
+    tagline: 'Sustain and recovery master',
+  },
+  {
+    id: 'raider',
+    name: 'Raider',
+    accent: '#ffe4b5',
+    sprite: '/assets/sprites/player_cyber.png',
+    frameW: 64,
+    frameH: 64,
+    rows: { down: 2, left: 1, right: 3, up: 0 },
+    scale: 0.9,
+    fps: 10,
+    idleFrame: 1,
+    unlockLevel: 9,
+    unlockShardCost: 260,
+    unlockCardId: 'raider_core_card',
+    unlockCardName: 'Raider Core Card',
+    unlockCardNeed: 30,
+    tagline: 'Frontline brawler and bruiser',
+  },
+];
+
+const HERO_SKILL_TREE_DEFS = {
+  cyber: [
+    { id: 'cyber_overclock', name: 'Overclock', desc: '+fire rate', maxLevel: 5, cost: 1, fireRateMulPerLevel: 0.03 },
+    { id: 'cyber_nano_core', name: 'Nano Core', desc: '+damage', maxLevel: 5, cost: 1, damageMulPerLevel: 0.03 },
+    { id: 'cyber_barrier', name: 'Barrier Matrix', desc: '+max HP', maxLevel: 5, cost: 1, maxHpFlatPerLevel: 8 },
+    { id: 'cyber_magnet', name: 'Mag Sweep', desc: '+pickup radius', maxLevel: 5, cost: 1, pickupRadiusPerLevel: 6 },
+  ],
+  scout: [
+    { id: 'scout_stride', name: 'Long Stride', desc: '+move speed', maxLevel: 5, cost: 1, moveSpeedMulPerLevel: 0.04 },
+    { id: 'scout_reload', name: 'Quick Hands', desc: '+fire rate', maxLevel: 5, cost: 1, fireRateMulPerLevel: 0.025 },
+    { id: 'scout_dodge', name: 'Evasive Roll', desc: '+dodge charge', maxLevel: 2, cost: 1, extraDodgeChargesPerLevel: 1 },
+    { id: 'scout_shots', name: 'Steady Burst', desc: '+damage', maxLevel: 4, cost: 1, damageMulPerLevel: 0.025 },
+  ],
+  shadow: [
+    { id: 'shadow_killer', name: 'Killer Instinct', desc: '+damage', maxLevel: 6, cost: 1, damageMulPerLevel: 0.035 },
+    { id: 'shadow_haste', name: 'Dark Tempo', desc: '+fire rate', maxLevel: 4, cost: 1, fireRateMulPerLevel: 0.03 },
+    { id: 'shadow_blink', name: 'Blink Step', desc: '+move speed', maxLevel: 4, cost: 1, moveSpeedMulPerLevel: 0.03 },
+    { id: 'shadow_sting', name: 'Venom Edge', desc: '+damage +speed', maxLevel: 3, cost: 1, damageMulPerLevel: 0.02, moveSpeedMulPerLevel: 0.02 },
+  ],
+  medic: [
+    { id: 'medic_aid', name: 'Field Aid', desc: '+regen', maxLevel: 5, cost: 1, hpRegenPerSecPerLevel: 0.42 },
+    { id: 'medic_plating', name: 'Vital Plating', desc: '+max HP', maxLevel: 6, cost: 1, maxHpFlatPerLevel: 10 },
+    { id: 'medic_focus', name: 'Combat Focus', desc: '+damage', maxLevel: 4, cost: 1, damageMulPerLevel: 0.025 },
+    { id: 'medic_aura', name: 'Recovery Aura', desc: '+pickup radius', maxLevel: 4, cost: 1, pickupRadiusPerLevel: 7 },
+  ],
+  raider: [
+    { id: 'raider_rage', name: 'Battle Rage', desc: '+damage', maxLevel: 6, cost: 1, damageMulPerLevel: 0.035 },
+    { id: 'raider_armor', name: 'Iron Skin', desc: '+max HP', maxLevel: 6, cost: 1, maxHpFlatPerLevel: 11 },
+    { id: 'raider_push', name: 'Relentless Push', desc: '+move speed', maxLevel: 4, cost: 1, moveSpeedMulPerLevel: 0.025 },
+    { id: 'raider_charge', name: 'War Charge', desc: '+dodge charge', maxLevel: 2, cost: 1, extraDodgeChargesPerLevel: 1 },
+  ],
 };
 
 module.exports = {
@@ -223,5 +361,23 @@ module.exports = {
   WEAPONS,
   DROP_WEAPON_KEYS,
   DEFAULT_SKILL_DEFS,
+  ACCOUNT_BASE_HERO_ID,
+  ACCOUNT_XP_BASE,
+  ACCOUNT_XP_PER_LEVEL,
+  ACCOUNT_XP_QUAD,
+  ACCOUNT_XP_FROM_SCORE_MUL,
+  ACCOUNT_XP_FROM_KILLS_MUL,
+  ACCOUNT_XP_FROM_BOSS_KILLS_MUL,
+  ACCOUNT_XP_FROM_SURVIVAL_SEC_MUL,
+  ACCOUNT_SHARDS_FROM_SCORE_MUL,
+  ACCOUNT_SHARDS_FROM_KILLS_MUL,
+  ACCOUNT_SHARDS_FROM_BOSS_KILLS_MUL,
+  ACCOUNT_SHARDS_FROM_SURVIVAL_SEC_MUL,
+  HERO_DEFS,
+  HERO_SKILL_TREE_DEFS,
 };
+
+
+
+
 

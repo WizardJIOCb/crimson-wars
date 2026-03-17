@@ -1,4 +1,4 @@
-const MENU_IDLE_FRAME_MS = 180;
+﻿const MENU_IDLE_FRAME_MS = 180;
 const FPS_UI_UPDATE_SEC = 0.75;
 const minimapCtx = minimapCanvasEl?.getContext('2d');
 if (minimapCtx) minimapCtx.imageSmoothingEnabled = false;
@@ -263,6 +263,15 @@ function drawPlayer(p, t, isMe, rx, ry) {
     ctx.save();
     ctx.translate(x, y + 2);
     ctx.drawImage(playerSprite, frame * fw, row * fh, fw, fh, -dw / 2, -dh * 0.6, dw, dh);
+    const tint = String(variant.tint || variant.accent || '').trim();
+    if (tint) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-atop';
+      ctx.globalAlpha = isCompanion ? 0.24 : 0.3;
+      ctx.fillStyle = tint;
+      ctx.fillRect(-dw / 2, -dh * 0.6, dw, dh);
+      ctx.restore();
+    }
     drawVariantAccents(0, 0, variant);
     ctx.restore();
   } else {
@@ -1186,3 +1195,4 @@ startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 setInterval(sendNetStatsReport, 1500);
 scheduleNextFrame();
+

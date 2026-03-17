@@ -1,4 +1,4 @@
-
+﻿
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
@@ -171,7 +171,11 @@ const mobile = {
 };
 
 const PLAYER_VARIANTS = [
-  { id: 'cyber', name: 'Cyber', accent: '#22d3ee', sprite: '/assets/sprites/player_cyber.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.88, fps: 10, idleFrame: 1 },
+  { id: 'cyber', name: 'Cyber', accent: '#8ec5ff', tint: '#9ec5ff', sprite: '/assets/sprites/player_cyber.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.88, fps: 10, idleFrame: 1 },
+  { id: 'scout', name: 'Scout', accent: '#a7e7c5', tint: '#bdf0d4', sprite: '/assets/sprites/player_cyber.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.88, fps: 10, idleFrame: 1 },
+  { id: 'shadow', name: 'Shadow', accent: '#d4c1ff', tint: '#dccbff', sprite: '/assets/sprites/player_cyber.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.88, fps: 10, idleFrame: 1 },
+  { id: 'medic', name: 'Medic', accent: '#ffd1dc', tint: '#ffdbe4', sprite: '/assets/sprites/player_cyber.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.88, fps: 10, idleFrame: 1 },
+  { id: 'raider', name: 'Raider', accent: '#ffe4b5', tint: '#ffe9c9', sprite: '/assets/sprites/player_cyber.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.88, fps: 10, idleFrame: 1 },
 ];
 
 
@@ -236,6 +240,8 @@ const game = {
     player: null,
     identities: [],
     nicknameStatus: null,
+    progression: null,
+    progressionCatalog: null,
     busy: false,
     checkingNickname: false,
   },
@@ -923,6 +929,8 @@ async function refreshPlayerAuthSession({ silent = false } = {}) {
     const data = await apiJson('/api/player/me', { method: 'GET' });
     game.playerAuth.player = data.player || null;
     game.playerAuth.identities = Array.isArray(data.identities) ? data.identities : [];
+    game.playerAuth.progressionCatalog = data?.progressionCatalog || null;
+    game.playerAuth.progression = data?.progression || null;
     if (game.playerAuth.player?.nickname) {
       localStorage.setItem(NICKNAME_STORAGE_KEY, game.playerAuth.player.nickname);
       game.playerAuth.nicknameStatus = {
@@ -934,8 +942,13 @@ async function refreshPlayerAuthSession({ silent = false } = {}) {
   } catch {
     game.playerAuth.player = null;
     game.playerAuth.identities = [];
+    game.playerAuth.progressionCatalog = null;
+    game.playerAuth.progression = null;
   }
   renderPlayerAuthUi();
+  if (typeof globalThis.renderCharacterPicker === 'function') {
+    globalThis.renderCharacterPicker();
+  }
   if (!game.playerAuth.player && !silent) {
     void updateNicknameStatus(nameInput?.value || '');
   }
@@ -1060,6 +1073,8 @@ async function logoutPlayerAccount() {
     game.playerAuth.player = null;
     game.playerAuth.identities = [];
     game.playerAuth.nicknameStatus = null;
+    game.playerAuth.progression = null;
+    game.playerAuth.progressionCatalog = null;
     statusEl.textContent = 'Logged out. Guest mode active.';
     renderPlayerAuthUi();
     setPlayerAccessCollapsed(false);
@@ -2183,6 +2198,11 @@ function updateMobileControlsVisibility() {
   }
   setMobileControlsVisible(!overlayOpen);
 }
+
+
+
+
+
 
 
 

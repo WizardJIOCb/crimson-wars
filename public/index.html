@@ -1,11 +1,11 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Crimson Wars</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <link rel="stylesheet" href="/style.css?v=20260316a" />
+  <link rel="stylesheet" href="/style.css?v=20260317d" />
   <!-- Yandex.Metrika counter -->
   <script type="text/javascript">
     (function(m,e,t,r,i,k,a){
@@ -243,71 +243,97 @@
       <input id="name" maxlength="18" value="Fighter" />
       <div id="nickname-hint" class="field-hint">Guest mode: choose any free nickname.</div>
 
-      <label>Character</label>
-      <div id="character-select" class="character-select"></div>
-
-      <label for="room-code">Room code (optional)</label>
-      <input id="room-code" maxlength="10" placeholder="AUTO or e.g. ABC123" />
-
-      <details id="sync-settings" class="sync-settings">
-        <summary>Sync settings (Create room)</summary>
-        <label for="sync-preset">Preset</label>
-        <select id="sync-preset">
-          <option value="normal" selected>Normal (default)</option>
-          <option value="better">Better</option>
-          <option value="best">Best</option>
-          <option value="custom">Custom</option>
-        </select>
-        <div class="sync-grid">
-          <label for="sync-tickrate">Tickrate</label>
-          <input id="sync-tickrate" type="number" min="20" max="120" step="1" />
-
-          <label for="sync-state-rate">State send rate (Hz)</label>
-          <input id="sync-state-rate" type="number" min="10" max="120" step="1" />
-
-          <label for="sync-render-delay">Interp delay (ms)</label>
-          <input id="sync-render-delay" type="number" min="20" max="250" step="1" />
-
-          <label for="sync-max-extrapolation">Max extrapolation (ms)</label>
-          <input id="sync-max-extrapolation" type="number" min="20" max="250" step="1" />
-
-          <label for="sync-entity-interp">Entity interp rate</label>
-          <input id="sync-entity-interp" type="number" min="4" max="50" step="1" />
-
-          <label for="sync-bullet-correction">Bullet correction rate</label>
-          <input id="sync-bullet-correction" type="number" min="4" max="60" step="1" />
-
-          <label for="sync-input-rate">Input send rate (Hz)</label>
-          <input id="sync-input-rate" type="number" min="10" max="120" step="1" />
-        </div>
-      </details>
-
-      <div class="actions">
-        <button type="submit" data-mode="create">Create room</button>
-        <button type="submit" data-mode="join" class="secondary">Join code</button>
+      <div id="main-menu-tabs" class="main-menu-tabs" role="tablist" aria-label="Main menu">
+        <button type="button" class="main-menu-tab active" data-menu-tab="play">Играть</button>
+        <button type="button" class="main-menu-tab" data-menu-tab="characters">Персонажи</button>
+        <button type="button" class="main-menu-tab" data-menu-tab="skills">Навыки</button>
+        <button type="button" class="main-menu-tab" data-menu-tab="profile">Профиль</button>
       </div>
-      <div id="join-feedback" class="join-feedback hidden" aria-live="polite"></div>
-      <div id="death-result" class="death-result">Last result: --</div>
-      <div id="rooms-browser" class="rooms-browser">
-        <div class="rooms-head">
-          <span>Active rooms</span>
-          <button type="button" id="refresh-rooms" class="mini">Refresh</button>
+
+      <section id="menu-panel-play" class="menu-panel active" data-menu-panel="play">
+        <label id="room-code-label" for="room-code">Room code (optional)</label>
+        <input id="room-code" maxlength="10" placeholder="AUTO or e.g. ABC123" />
+
+        <details id="sync-settings" class="sync-settings">
+          <summary>Sync settings (Create room)</summary>
+          <label for="sync-preset">Preset</label>
+          <select id="sync-preset">
+            <option value="normal" selected>Normal (default)</option>
+            <option value="better">Better</option>
+            <option value="best">Best</option>
+            <option value="custom">Custom</option>
+          </select>
+          <div class="sync-grid">
+            <label for="sync-tickrate">Tickrate</label>
+            <input id="sync-tickrate" type="number" min="20" max="120" step="1" />
+
+            <label for="sync-state-rate">State send rate (Hz)</label>
+            <input id="sync-state-rate" type="number" min="10" max="120" step="1" />
+
+            <label for="sync-render-delay">Interp delay (ms)</label>
+            <input id="sync-render-delay" type="number" min="20" max="250" step="1" />
+
+            <label for="sync-max-extrapolation">Max extrapolation (ms)</label>
+            <input id="sync-max-extrapolation" type="number" min="20" max="250" step="1" />
+
+            <label for="sync-entity-interp">Entity interp rate</label>
+            <input id="sync-entity-interp" type="number" min="4" max="50" step="1" />
+
+            <label for="sync-bullet-correction">Bullet correction rate</label>
+            <input id="sync-bullet-correction" type="number" min="4" max="60" step="1" />
+
+            <label for="sync-input-rate">Input send rate (Hz)</label>
+            <input id="sync-input-rate" type="number" min="10" max="120" step="1" />
+          </div>
+        </details>
+
+        <div class="actions">
+          <button type="submit" data-mode="create">Create room</button>
+          <button type="submit" data-mode="join" class="secondary">Join code</button>
         </div>
-        <div id="presence-meta" class="presence-meta">Online: -- | In game: -- | In menu: -- | Registered: --</div>
-        <div id="rooms-list" class="rooms-list">Loading...</div>
-      </div>
-      <div id="records-browser" class="rooms-browser records-browser">
-        <div class="rooms-head">
-          <span>Top records <span id="records-total">(Total: 0)</span></span>
-          <button type="button" id="refresh-records" class="mini">Refresh</button>
+        <div id="join-feedback" class="join-feedback hidden" aria-live="polite"></div>
+        <div id="death-result" class="death-result">Last result: --</div>
+        <div id="rooms-browser" class="rooms-browser">
+          <div class="rooms-head">
+            <span>Active rooms</span>
+            <button type="button" id="refresh-rooms" class="mini">Refresh</button>
+          </div>
+          <div id="presence-meta" class="presence-meta">Online: -- | In game: -- | In menu: -- | Registered: --</div>
+          <div id="rooms-list" class="rooms-list">Loading...</div>
         </div>
-        <div id="records-list" class="rooms-list">Loading...</div>
-        <div class="records-pager">
-          <button type="button" id="records-prev" class="mini">Prev</button>
-          <span id="records-page">Page 1/1</span>
-          <button type="button" id="records-next" class="mini">Next</button>
+        <div id="records-browser" class="rooms-browser records-browser">
+          <div class="rooms-head">
+            <span>Top records <span id="records-total">(Total: 0)</span></span>
+            <button type="button" id="refresh-records" class="mini">Refresh</button>
+          </div>
+          <div id="records-list" class="rooms-list">Loading...</div>
+          <div class="records-pager">
+            <button type="button" id="records-prev" class="mini">Prev</button>
+            <span id="records-page">Page 1/1</span>
+            <button type="button" id="records-next" class="mini">Next</button>
+          </div>
         </div>
-      </div>
+      </section>
+
+      <section id="menu-panel-characters" class="menu-panel" data-menu-panel="characters">
+        <div class="panel-variant-title">Вариант 2: карточная лента</div>
+        <div id="hero-gallery-v2" class="hero-gallery-v2" aria-live="polite"></div>
+      </section>
+
+      <section id="menu-panel-skills" class="menu-panel" data-menu-panel="skills">
+        <label id="character-label">Character</label>
+        <div class="panel-variant-title">Вариант 1: колесо героев</div>
+        <div id="account-progress-summary" class="account-progress-summary"></div>
+        <div id="character-select" class="character-select"></div>
+        <div id="hero-tree-panel" class="hero-tree-panel"></div>
+        <div id="hero-action-feedback" class="hero-action-feedback hidden" aria-live="polite"></div>
+      </section>
+
+      <section id="menu-panel-profile" class="menu-panel" data-menu-panel="profile">
+        <div id="profile-summary" class="profile-card">Profile loading...</div>
+        <div id="profile-achievements" class="profile-card">Achievements: soon</div>
+        <div id="profile-character-stats" class="profile-card">Character stats: soon</div>
+      </section>
     </form>
     <div id="record-details-modal" class="record-details-modal hidden" aria-live="polite">
       <div class="record-details-card">
@@ -382,9 +408,14 @@
       <input id="dev-console-input" maxlength="180" placeholder="type command..." />
     </form>
   </div>
-  <script src="/js/client-core.js?v=20260316a"></script>
-  <script src="/js/client-net-input.js?v=20260316a"></script>
-  <script src="/js/client-fx.js?v=20260316a"></script>
-  <script src="/js/client-render.js?v=20260316a"></script>
+  <script src="/js/client-core.js?v=20260317d"></script>
+  <script src="/js/client-net-input.js?v=20260317d"></script>
+  <script src="/js/client-fx.js?v=20260317d"></script>
+  <script src="/js/client-render.js?v=20260317d"></script>
 </body>
 </html>
+
+
+
+
+

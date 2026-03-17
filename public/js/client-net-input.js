@@ -1,4 +1,4 @@
-function resetMobileStick(kind) {
+﻿function resetMobileStick(kind) {
   if (kind === 'move') {
     mobile.moveId = null;
     mobile.moveX = 0;
@@ -243,6 +243,39 @@ if (infoPanelCloseBtn) {
 
 setInfoPanelHidden(infoPanelHidden);
 
+const accountProgressSummaryEl = document.getElementById('account-progress-summary');
+const heroTreePanelEl = document.getElementById('hero-tree-panel');
+const heroActionFeedbackEl = document.getElementById('hero-action-feedback');
+const heroGalleryV2El = document.getElementById('hero-gallery-v2');
+const profileSummaryEl = document.getElementById('profile-summary');
+const profileAchievementsEl = document.getElementById('profile-achievements');
+const profileCharacterStatsEl = document.getElementById('profile-character-stats');
+const mainMenuTabButtons = Array.from(document.querySelectorAll('#main-menu-tabs .main-menu-tab'));
+const mainMenuPanels = Array.from(document.querySelectorAll('#join-form [data-menu-panel]'));
+let heroFocusId = selectedPlayerClass;
+let currentMainMenuTab = 'play';
+
+function setMainMenuTab(tabId) {
+  const nextTab = String(tabId || '').trim() || 'play';
+  currentMainMenuTab = nextTab;
+  for (const btn of mainMenuTabButtons) {
+    const active = btn.getAttribute('data-menu-tab') === nextTab;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  }
+  for (const panel of mainMenuPanels) {
+    const active = panel.getAttribute('data-menu-panel') === nextTab;
+    panel.classList.toggle('active', active);
+  }
+}
+
+for (const btn of mainMenuTabButtons) {
+  btn.addEventListener('click', () => {
+    setMainMenuTab(btn.getAttribute('data-menu-tab'));
+  });
+}
+setMainMenuTab(currentMainMenuTab);
+
 function getPlayerVariant(id) {
   return PLAYER_VARIANTS.find((x) => x.id === id) || PLAYER_VARIANTS[0];
 }
@@ -250,6 +283,82 @@ function getPlayerVariant(id) {
 function sanitizePlayerClass(id) {
   const key = (id || '').toString().trim();
   return getPlayerVariant(key).id;
+}
+
+function getProgressionCatalog() {
+  const fallbackHeroes = PLAYER_VARIANTS.map((variant) => ({
+    ...variant,
+    unlockLevel: variant.id === 'cyber' ? 1 : 999,
+    unlockShardCost: variant.id === 'cyber' ? 0 : 9999,
+    unlockCardId: variant.id === 'cyber' ? '' : (variant.id + '_core_card'),
+    unlockCardName: variant.name + ' Core Card',
+    unlockCardNeed: variant.id === 'cyber' ? 0 : 99,
+    tagline: '',
+  }));
+  const catalog = game.playerAuth?.progressionCatalog || null;
+  return {
+    baseHeroId: catalog?.baseHeroId || 'cyber',
+    heroes: Array.isArray(catalog?.heroes) && catalog.heroes.length > 0 ? catalog.heroes : fallbackHeroes,
+    trees: catalog?.trees && typeof catalog.trees === 'object' ? catalog.trees : {},
+  };
+}
+
+function getProgressionState() {
+  return game.playerAuth?.progression || null;
+}
+
+function getUnlockedHeroSet(catalog, progression) {
+  if (progression?.unlockedHeroes && Array.isArray(progression.unlockedHeroes)) {
+    return new Set(progression.unlockedHeroes.map((id) => String(id || '').trim()).filter(Boolean));
+  }
+  return new Set([catalog.baseHeroId || 'cyber']);
+}
+
+function setHeroActionFeedback(message, kind = '') {
+  if (!heroActionFeedbackEl) return;
+  const text = String(message || '').trim();
+  if (!text) {
+    heroActionFeedbackEl.textContent = '';
+    heroActionFeedbackEl.className = 'hero-action-feedback hidden';
+    return;
+  }
+  heroActionFeedbackEl.textContent = text;
+  heroActionFeedbackEl.className = `hero-action-feedback ${kind}`.trim();
+  heroActionFeedbackEl.classList.remove('hidden');
+}
+
+function humanizeHeroApiError(err, fallback) {
+  const msg = String(err?.message || '').trim();
+  if (msg.includes('404')) {
+    return 'Progression API not found on server. Restart server to apply updates.';
+  }
+  return msg || fallback;
+}
+async function selectHeroForAccount(heroId) {
+  if (!game.playerAuth?.player) return;
+  const data = await apiJson('/api/player/progression/select-hero', {
+    method: 'POST',
+    body: JSON.stringify({ heroId }),
+  });
+  if (data?.progression) game.playerAuth.progression = data.progression;
+}
+
+async function unlockHeroForAccount(heroId) {
+  if (!game.playerAuth?.player) return;
+  const data = await apiJson('/api/player/progression/unlock-hero', {
+    method: 'POST',
+    body: JSON.stringify({ heroId }),
+  });
+  if (data?.progression) game.playerAuth.progression = data.progression;
+}
+
+async function upgradeHeroNodeForAccount(heroId, nodeId) {
+  if (!game.playerAuth?.player) return;
+  const data = await apiJson('/api/player/progression/upgrade-node', {
+    method: 'POST',
+    body: JSON.stringify({ heroId, nodeId }),
+  });
+  if (data?.progression) game.playerAuth.progression = data.progression;
 }
 
 function drawCharacterPreview(previewCanvas, variant) {
@@ -261,7 +370,7 @@ function drawCharacterPreview(previewCanvas, variant) {
   const sprite = sprites.players[variant.id];
   const fw = Math.max(8, Number(variant.frameW) || 32);
   const fh = Math.max(8, Number(variant.frameH) || 48);
-  const scale = Math.max(0.5, Number(variant.scale) || 1);
+  const baseScale = Math.max(0.5, Number(variant.scale) || 1);
   const frameCount = sprite?.naturalWidth ? Math.max(1, Math.floor(sprite.naturalWidth / fw)) : 1;
   const idleFrame = Math.max(0, Math.min(frameCount - 1, Number(variant.idleFrame) || 1));
 
@@ -273,47 +382,370 @@ function drawCharacterPreview(previewCanvas, variant) {
     return;
   }
 
-  const dw = fw * scale;
-  const dh = fh * scale;
+  const fitScale = Math.min(
+    baseScale,
+    Math.max(0.2, (c.width - 8) / fw),
+    Math.max(0.2, (c.height - 8) / fh),
+  );
+
+  const dw = fw * fitScale;
+  const dh = fh * fitScale;
   const dx = Math.round((c.width - dw) / 2);
-  const dy = Math.round(c.height - dh - 1);
+  const dy = Math.round((c.height - dh) / 2) + 1;
   g.drawImage(sprite, idleFrame * fw, (variant.rows?.down || 0) * fh, fw, fh, dx, dy, dw, dh);
+
+  const tint = String(variant.tint || variant.accent || '').trim();
+  if (tint) {
+    g.save();
+    g.globalCompositeOperation = 'source-atop';
+    g.globalAlpha = 0.34;
+    g.fillStyle = tint;
+    g.fillRect(dx, dy, dw, dh);
+    g.restore();
+  }
 
   g.fillStyle = variant.accent;
   g.fillRect(c.width - 14, 4, 10, 3);
 }
-function renderCharacterPicker() {
-  if (!characterSelectEl) return;
-  characterSelectEl.innerHTML = '';
-  selectedPlayerClass = sanitizePlayerClass(localStorage.getItem(PLAYER_CLASS_STORAGE_KEY) || selectedPlayerClass);
 
-  for (const variant of PLAYER_VARIANTS) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'char-option' + (variant.id === selectedPlayerClass ? ' active' : '');
-    btn.dataset.classId = variant.id;
+function renderAccountSummary(catalog, progression) {
+  if (!accountProgressSummaryEl) return;
+  if (!game.playerAuth?.player || !progression) {
+    accountProgressSummaryEl.innerHTML = '<b>Guest mode:</b> account progression, heroes and talents are saved only for logged in players.';
+    return;
+  }
+  const level = Math.max(1, Number(progression.accountLevel) || 1);
+  const xp = Math.max(0, Number(progression.accountXp) || 0);
+  const xpToNext = Math.max(1, Number(progression.accountXpToNext) || 1);
+  const points = Math.max(0, Number(progression.accountSkillPoints) || 0);
+  const shards = Math.max(0, Number(progression.shards) || 0);
+  accountProgressSummaryEl.innerHTML = `Account Lv${level} | XP ${xp}/${xpToNext} | Skill points: <b>${points}</b> | Shards: <b>${shards}</b>`;
+}
 
-    const preview = document.createElement('canvas');
-    preview.width = 48;
-    preview.height = 52;
-    preview.className = 'char-preview';
-    drawCharacterPreview(preview, variant);
+function getNodeLevel(progression, heroId, nodeId) {
+  return Math.max(0, Number(progression?.heroNodes?.[heroId]?.[nodeId]) || 0);
+}
 
-    const label = document.createElement('span');
-    label.className = 'char-label';
-    label.textContent = variant.name;
+function renderHeroTreePanel(catalog, progression, hero, unlocked) {
+  if (!heroTreePanelEl) return;
+  if (!hero) {
+    heroTreePanelEl.innerHTML = '';
+    return;
+  }
 
-    btn.appendChild(preview);
-    btn.appendChild(label);
-    btn.addEventListener('click', () => {
-      selectedPlayerClass = variant.id;
+  const points = Math.max(0, Number(progression?.accountSkillPoints) || 0);
+  const shards = Math.max(0, Number(progression?.shards) || 0);
+  const accountLevel = Math.max(1, Number(progression?.accountLevel) || 1);
+  const needLevel = Math.max(1, Number(hero.unlockLevel) || 1);
+  const needShardCost = Math.max(0, Number(hero.unlockShardCost ?? hero.unlockCost) || 0);
+  const needCardId = String(hero.unlockCardId || '').trim();
+  const needCards = Math.max(0, Number(hero.unlockCardNeed) || 0);
+  const cardName = String(hero.unlockCardName || hero.name || 'Hero Card');
+  const haveCards = needCardId ? Math.max(0, Number(progression?.heroCards?.[needCardId]) || 0) : needCards;
+  const canUnlock = game.playerAuth?.player
+    && !unlocked
+    && accountLevel >= needLevel
+    && shards >= needShardCost
+    && haveCards >= needCards;
+
+  const tree = Array.isArray(catalog.trees?.[hero.id]) ? catalog.trees[hero.id] : [];
+  const rows = [];
+  for (const node of tree) {
+    const lvl = getNodeLevel(progression, hero.id, node.id);
+    const maxLevel = Math.max(1, Number(node.maxLevel) || 1);
+    const cost = Math.max(1, Number(node.cost) || 1);
+    const canUpgrade = Boolean(game.playerAuth?.player && unlocked && lvl < maxLevel && points >= cost);
+    rows.push(`<div class="hero-node"><div><div class="hero-node-name">${escapeHtml(node.name || node.id)}</div><div class="hero-node-desc">${escapeHtml(node.desc || '')}</div></div><button type="button" class="hero-node-up" data-node-id="${escapeHtml(node.id)}" ${canUpgrade ? '' : 'disabled'}>Lv ${lvl}/${maxLevel} (+${cost})</button></div>`);
+  }
+
+  const unlockMeta = !unlocked
+    ? `<div class="hero-lock-meta">Unlock: Lv${needLevel} | ${haveCards}/${needCards} ${escapeHtml(cardName)} | ${needShardCost} shards</div>`
+    : '<div class="hero-lock-meta unlocked">Unlocked</div>';
+
+  const actionBtn = !game.playerAuth?.player
+    ? '<button type="button" class="hero-main-action" disabled>Login to unlock/progress</button>'
+    : (!unlocked
+      ? `<button type="button" class="hero-main-action" data-hero-unlock="1" ${canUnlock ? '' : 'disabled'}>Unlock hero</button>`
+      : `<button type="button" class="hero-main-action" data-hero-select="1" ${(selectedPlayerClass === hero.id) ? 'disabled' : ''}>Select hero</button>`);
+
+  heroTreePanelEl.innerHTML = `<div class="hero-tree-head"><div><b>${escapeHtml(hero.name)}</b><div class="hero-tagline">${escapeHtml(hero.tagline || '')}</div></div>${unlockMeta}</div>${actionBtn}<div class="hero-tree-list">${rows.join('')}</div>`;
+
+  const unlockBtn = heroTreePanelEl.querySelector('[data-hero-unlock="1"]');
+  unlockBtn?.addEventListener('click', async () => {
+    try {
+      await unlockHeroForAccount(hero.id);
+      setHeroActionFeedback(`${hero.name} unlocked.`, 'ok');
+      selectedPlayerClass = hero.id;
       localStorage.setItem(PLAYER_CLASS_STORAGE_KEY, selectedPlayerClass);
+      await selectHeroForAccount(hero.id);
       renderCharacterPicker();
+    } catch (err) {
+      setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to unlock hero.'), 'err');
+    }
+  });
+
+  const selectBtn = heroTreePanelEl.querySelector('[data-hero-select="1"]');
+  selectBtn?.addEventListener('click', async () => {
+    selectedPlayerClass = hero.id;
+    localStorage.setItem(PLAYER_CLASS_STORAGE_KEY, selectedPlayerClass);
+    try {
+      await selectHeroForAccount(hero.id);
+      setHeroActionFeedback(`${hero.name} selected.`, 'ok');
+    } catch (err) {
+      setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to select hero.'), 'err');
+    }
+    renderCharacterPicker();
+  });
+
+  for (const btn of heroTreePanelEl.querySelectorAll('.hero-node-up')) {
+    btn.addEventListener('click', async () => {
+      const nodeId = btn.getAttribute('data-node-id') || '';
+      if (!nodeId) return;
+      try {
+        await upgradeHeroNodeForAccount(hero.id, nodeId);
+        setHeroActionFeedback(`Upgraded ${hero.name}: ${nodeId}`, 'ok');
+        renderCharacterPicker();
+      } catch (err) {
+        setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to upgrade node.'), 'err');
+      }
     });
-    characterSelectEl.appendChild(btn);
   }
 }
 
+function renderCharacterPicker() {
+  if (!characterSelectEl) return;
+  const catalog = getProgressionCatalog();
+  const progression = getProgressionState();
+  const unlockedHeroes = getUnlockedHeroSet(catalog, progression);
+  const heroes = catalog.heroes.map((hero) => ({ ...getPlayerVariant(hero.id), ...hero }));
+
+  selectedPlayerClass = sanitizePlayerClass(localStorage.getItem(PLAYER_CLASS_STORAGE_KEY) || selectedPlayerClass);
+  if (!unlockedHeroes.has(selectedPlayerClass)) {
+    selectedPlayerClass = progression?.activeHero && unlockedHeroes.has(progression.activeHero)
+      ? progression.activeHero
+      : (catalog.baseHeroId || 'cyber');
+    localStorage.setItem(PLAYER_CLASS_STORAGE_KEY, selectedPlayerClass);
+  }
+
+  if (!heroFocusId || !heroes.some((hero) => hero.id === heroFocusId)) {
+    heroFocusId = selectedPlayerClass;
+  }
+
+  characterSelectEl.innerHTML = '';
+  if (heroGalleryV2El) heroGalleryV2El.innerHTML = '';
+
+  const wheel = document.createElement('div');
+  wheel.className = 'hero-wheel';
+  const wheelSize = Math.max(260, Math.min(420, window.innerWidth - 90));
+  const wheelRadius = Math.max(98, Math.round(wheelSize * 0.39));
+  wheel.style.setProperty('--radius', wheelRadius + 'px');
+
+  const center = document.createElement('div');
+  center.className = 'hero-wheel-center';
+  center.innerHTML = `<div class="hero-center-label">Selected hero</div><div class="hero-center-name">${escapeHtml(getPlayerVariant(selectedPlayerClass).name || selectedPlayerClass)}</div>`;
+  wheel.appendChild(center);
+
+  const count = Math.max(1, heroes.length);
+  const step = 360 / count;
+  const anchorIndex = Math.max(0, heroes.findIndex((hero) => hero.id === heroFocusId));
+  for (let i = 0; i < heroes.length; i += 1) {
+    const hero = heroes[i];
+    const unlocked = unlockedHeroes.has(hero.id);
+    const active = selectedPlayerClass === hero.id;
+    const focused = heroFocusId === hero.id;
+    const angle = -90 + step * (i - anchorIndex);
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `char-option wheel-option${active ? ' active' : ''}${focused ? ' focused' : ''}${unlocked ? '' : ' locked'}`;
+    btn.dataset.classId = hero.id;
+    const rad = (Math.PI / 180) * angle;
+    const offsetX = Math.round(Math.cos(rad) * wheelRadius);
+    const offsetY = Math.round(Math.sin(rad) * wheelRadius);
+    btn.style.setProperty('--x', offsetX + 'px');
+    btn.style.setProperty('--y', offsetY + 'px');
+    btn.style.setProperty('--accent', hero.accent || '#22d3ee');
+
+    const preview = document.createElement('canvas');
+    preview.width = 56;
+    preview.height = 62;
+    preview.className = 'char-preview';
+    drawCharacterPreview(preview, hero);
+
+    const label = document.createElement('span');
+    label.className = 'char-label';
+    label.textContent = hero.name;
+
+    btn.appendChild(preview);
+    btn.appendChild(label);
+    if (!unlocked) {
+      const lock = document.createElement('span');
+      lock.className = 'char-lock';
+      const cardId = String(hero.unlockCardId || '').trim();
+      const needCards = Math.max(0, Number(hero.unlockCardNeed) || 0);
+      const haveCards = cardId ? Math.max(0, Number(progression?.heroCards?.[cardId]) || 0) : needCards;
+      lock.textContent = needCards > 0
+        ? (`C${haveCards}/${needCards}`)
+        : (`Lv${Math.max(1, Number(hero.unlockLevel) || 1)}`);
+      btn.appendChild(lock);
+    }
+
+    btn.addEventListener('click', async () => {
+      heroFocusId = hero.id;
+      if (!unlocked) {
+        renderCharacterPicker();
+        return;
+      }
+      selectedPlayerClass = hero.id;
+      localStorage.setItem(PLAYER_CLASS_STORAGE_KEY, selectedPlayerClass);
+      if (game.playerAuth?.player) {
+        try {
+          await selectHeroForAccount(hero.id);
+          setHeroActionFeedback(`${hero.name} selected.`, 'ok');
+        } catch (err) {
+          setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to select hero.'), 'err');
+        }
+      }
+      renderCharacterPicker();
+    });
+
+    wheel.appendChild(btn);
+  }
+
+  characterSelectEl.appendChild(wheel);
+  const focusedHero = heroes.find((hero) => hero.id === heroFocusId) || heroes[0] || null;
+  renderHeroGalleryV2(heroes, progression, unlockedHeroes);
+  renderProfilePanel(heroes, progression, unlockedHeroes);
+  renderAccountSummary(catalog, progression);
+  renderHeroTreePanel(catalog, progression, focusedHero, focusedHero ? unlockedHeroes.has(focusedHero.id) : false);
+}
+
+function buildHeroUnlockHint(hero, progression) {
+  const needLevel = Math.max(1, Number(hero.unlockLevel) || 1);
+  const needShardCost = Math.max(0, Number(hero.unlockShardCost ?? hero.unlockCost) || 0);
+  const cardId = String(hero.unlockCardId || '').trim();
+  const cardNeed = Math.max(0, Number(hero.unlockCardNeed) || 0);
+  const haveCards = cardId ? Math.max(0, Number(progression?.heroCards?.[cardId]) || 0) : cardNeed;
+  if (cardNeed > 0) return `Lv${needLevel} | Cores ${haveCards}/${cardNeed} | ${needShardCost} shards`;
+  return `Lv${needLevel} | ${needShardCost} shards`;
+}
+
+function getHeroCardImagePath(heroId) {
+  const id = String(heroId || '').trim().toLowerCase();
+  if (!id) return '/assets/characters/cyber.png';
+  if (id === 'medic') return '/assets/characters/medis.png';
+  return `/assets/characters/${id}.png`;
+}
+
+function renderHeroGalleryV2(heroes, progression, unlockedHeroes) {
+  if (!heroGalleryV2El) return;
+  heroGalleryV2El.innerHTML = '';
+  for (const hero of heroes) {
+    const unlocked = unlockedHeroes.has(hero.id);
+    const focused = hero.id === heroFocusId;
+    const active = hero.id === selectedPlayerClass;
+
+    const cardBtn = document.createElement('button');
+    cardBtn.type = 'button';
+    cardBtn.className = `hero-v2-card${active ? ' active' : ''}${focused ? ' focused' : ''}${unlocked ? '' : ' locked'}`;
+    cardBtn.style.setProperty('--accent', hero.accent || '#38bdf8');
+    cardBtn.setAttribute('aria-label', `Hero ${hero.name}`);
+
+    const inner = document.createElement('div');
+    inner.className = 'hero-v2-inner';
+
+    const portrait = document.createElement('img');
+    portrait.className = 'hero-v2-portrait';
+    portrait.src = getHeroCardImagePath(hero.id);
+    portrait.alt = hero.name;
+
+    const preview = document.createElement('canvas');
+    preview.width = 100;
+    preview.height = 108;
+    preview.className = 'hero-v2-preview hidden';
+    drawCharacterPreview(preview, hero);
+
+    portrait.addEventListener('error', () => {
+      portrait.classList.add('hidden');
+      preview.classList.remove('hidden');
+    }, { once: true });
+
+    inner.appendChild(portrait);
+    inner.appendChild(preview);
+    if (!unlocked) {
+      const lockBadge = document.createElement('img');
+      lockBadge.className = 'hero-v2-lock';
+      lockBadge.src = '/assets/ui/lock-overlay.svg';
+      lockBadge.alt = 'Locked';
+      inner.appendChild(lockBadge);
+    }
+    cardBtn.appendChild(inner);
+
+    const name = document.createElement('div');
+    name.className = 'hero-v2-name';
+    name.textContent = hero.name;
+
+    const status = document.createElement('div');
+    status.className = `hero-v2-status${unlocked ? '' : ' locked'}`;
+    status.textContent = unlocked ? (active ? 'Selected' : 'Unlocked') : buildHeroUnlockHint(hero, progression);
+
+    cardBtn.addEventListener('click', async () => {
+      heroFocusId = hero.id;
+      if (!unlocked) {
+        renderCharacterPicker();
+        return;
+      }
+      selectedPlayerClass = hero.id;
+      localStorage.setItem(PLAYER_CLASS_STORAGE_KEY, selectedPlayerClass);
+      if (game.playerAuth?.player) {
+        try {
+          await selectHeroForAccount(hero.id);
+          setHeroActionFeedback(`${hero.name} selected.`, 'ok');
+        } catch (err) {
+          setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to select hero.'), 'err');
+        }
+      }
+      renderCharacterPicker();
+    });
+
+    const wrap = document.createElement('div');
+    wrap.className = 'hero-v2-item';
+    wrap.appendChild(cardBtn);
+    wrap.appendChild(name);
+    wrap.appendChild(status);
+    heroGalleryV2El.appendChild(wrap);
+  }
+}
+
+function renderProfilePanel(heroes, progression, unlockedHeroes) {
+  if (!profileSummaryEl || !profileAchievementsEl || !profileCharacterStatsEl) return;
+  if (!game.playerAuth?.player || !progression) {
+    profileSummaryEl.innerHTML = '<b>Guest profile</b><div>Login to save profile progression, achievements and hero stats.</div>';
+    profileAchievementsEl.innerHTML = '<b>Achievements</b><div>Login required.</div>';
+    profileCharacterStatsEl.innerHTML = '<b>Hero stats</b><div>Login required.</div>';
+    return;
+  }
+
+  const level = Math.max(1, Number(progression.accountLevel) || 1);
+  const xp = Math.max(0, Number(progression.accountXp) || 0);
+  const xpToNext = Math.max(1, Number(progression.accountXpToNext) || 1);
+  const shards = Math.max(0, Number(progression.shards) || 0);
+  const points = Math.max(0, Number(progression.accountSkillPoints) || 0);
+  const unlockedCount = unlockedHeroes.size;
+  const heroLevels = progression.heroLevels && typeof progression.heroLevels === 'object' ? progression.heroLevels : {};
+
+  profileSummaryEl.innerHTML = `<b>Profile Lv${level}</b><div>XP ${xp}/${xpToNext} | Skill points: ${points} | Shards: ${shards} | Heroes: ${unlockedCount}/${heroes.length}</div>`;
+  profileAchievementsEl.innerHTML = '<b>Achievements</b><div>First Blood, Survivor, Boss Hunter and account milestones can be shown here.</div>';
+
+  const rows = heroes.map((hero) => {
+    const heroLvl = Math.max(1, Number(heroLevels[hero.id]) || 1);
+    const unlocked = unlockedHeroes.has(hero.id) ? 'Unlocked' : 'Locked';
+    return `<div class="profile-hero-row"><span>${escapeHtml(hero.name)}</span><span>Lv${heroLvl}</span><span>${unlocked}</span></div>`;
+  }).join('');
+  profileCharacterStatsEl.innerHTML = `<b>Hero stats</b><div class="profile-hero-list">${rows}</div>`;
+}
+
+globalThis.renderCharacterPicker = renderCharacterPicker;
 
 const storedNickname = localStorage.getItem(NICKNAME_STORAGE_KEY);
 if (nameInput && storedNickname && storedNickname.trim() && !game.playerAuth?.player) {
@@ -2579,6 +3011,30 @@ message: (ev) => {
     return;
   }
 
+  if (msg.type === 'accountProgression') {
+    if (msg.progression) game.playerAuth.progression = msg.progression;
+    if (msg.rewards) {
+      const gainedXp = Math.max(0, Number(msg.rewards.gainedXp) || 0);
+      const gainedShards = Math.max(0, Number(msg.rewards.gainedShards) || 0);
+      const levelsGained = Math.max(0, Number(msg.rewards.levelsGained) || 0);
+      const gainedCards = msg.rewards.gainedCards && typeof msg.rewards.gainedCards === 'object' ? msg.rewards.gainedCards : {};
+      const cardPieces = [];
+      const catalogCards = Array.isArray(game.playerAuth?.progressionCatalog?.cards) ? game.playerAuth.progressionCatalog.cards : [];
+      const cardNameById = Object.fromEntries(catalogCards.map((card) => [String(card.id || ''), String(card.name || card.id || '')]));
+      for (const cardId of Object.keys(gainedCards)) {
+        const cnt = Math.max(0, Number(gainedCards[cardId]) || 0);
+        if (cnt <= 0) continue;
+        const cardName = cardNameById[cardId] || cardId;
+        cardPieces.push('+' + cnt + ' ' + cardName);
+      }
+      statusEl.textContent = 'Run rewards: +' + gainedXp + ' XP, +' + gainedShards + ' shards'
+        + (levelsGained > 0 ? (', +' + levelsGained + ' account level') : '')
+        + (cardPieces.length > 0 ? (', ' + cardPieces.join(', ')) : '');
+    }
+    renderCharacterPicker();
+    return;
+  }
+
   if (msg.type === 'welcome') {
     clearJoinFeedback();
     game.myId = msg.id;
@@ -2651,6 +3107,13 @@ message: (ev) => {
     if (typeof window.cwClearPendingJoinAnalytics === 'function') {
       window.cwClearPendingJoinAnalytics();
     }
+    if (msg.progressionCatalog) game.playerAuth.progressionCatalog = msg.progressionCatalog;
+    if (msg.progression) game.playerAuth.progression = msg.progression;
+    if (msg.me?.activeHero) {
+      selectedPlayerClass = sanitizePlayerClass(msg.me.activeHero);
+      localStorage.setItem(PLAYER_CLASS_STORAGE_KEY, selectedPlayerClass);
+    }
+    renderCharacterPicker();
     if (msg.me?.name && !game.playerAuth?.player) {
       game.playerAuth.nicknameStatus = {
         nickname: msg.me.name,
@@ -2852,6 +3315,29 @@ function sendInput() {
 }
 
 void maybeStartReplayFromUrl();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
