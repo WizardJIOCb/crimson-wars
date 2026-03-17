@@ -139,6 +139,15 @@ function createNewsStore({ dataDir, filePath }) {
     fs.writeFileSync(fullPath, JSON.stringify(items, null, 2), 'utf8');
   }
 
+  function tryWriteAll(items) {
+    try {
+      writeAll(items);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   function sortItems(items) {
     return items.slice().sort((a, b) => {
       const ap = clampInt(a.publishedAt, 0);
@@ -172,7 +181,8 @@ function createNewsStore({ dataDir, filePath }) {
     if (incrementView) {
       all[idx].views = clampInt(all[idx].views, 0) + 1;
       all[idx].updatedAt = nowMs();
-      writeAll(all);
+      // View counter must never break article opening even if file is read-only.
+      tryWriteAll(all);
     }
     const current = normalizeNewsItem(all[idx], all[idx]);
     return {
@@ -307,3 +317,4 @@ function createNewsStore({ dataDir, filePath }) {
 module.exports = {
   createNewsStore,
 };
+
