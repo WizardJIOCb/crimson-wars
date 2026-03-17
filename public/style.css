@@ -1676,7 +1676,7 @@ body.replay-game-active #scoreboard {
   }
 }
 .records-browser .rooms-list {
-  max-height: 170px;
+  max-height: 180px;
 }
 
 #join-form .record-row {
