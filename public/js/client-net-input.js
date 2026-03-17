@@ -1,4 +1,4 @@
-function resetMobileStick(kind) {
+﻿function resetMobileStick(kind) {
   if (kind === 'move') {
     mobile.moveId = null;
     mobile.moveX = 0;
@@ -295,6 +295,12 @@ let newsShareToastTimer = null;
 const ratingUi = {
   categories: [],
   currentCategory: 'best_kills_run',
+  modes: [
+    { key: 'all', title: 'Все режимы' },
+    { key: 'normal', title: 'Обычный' },
+    { key: 'hardcore', title: 'Хард-кор' },
+  ],
+  currentMode: 'all',
   items: [],
   page: 1,
   totalPages: 1,
@@ -406,6 +412,13 @@ function formatPublicProfileDate(ts) {
   }
 }
 
+function formatRunGameModeLabel(run) {
+  const raw = String(run?.runDetails?.gameMode || '').trim().toLowerCase();
+  if (raw === 'hardcore') return 'Хард-кор';
+  if (raw === 'normal') return 'Обычный';
+  return 'Неизвестно';
+}
+
 function renderAuthorProfileRunHistory(runPayload) {
   const runs = Array.isArray(runPayload?.runs) ? runPayload.runs : [];
   const total = Math.max(0, Number(runPayload?.total) || 0);
@@ -419,9 +432,10 @@ function renderAuthorProfileRunHistory(runPayload) {
     const durationSec = Math.max(1, Number(run?.durationSec) || 1);
     const heroXp = Math.max(0, Number(run?.runDetails?.xp) || 0);
     const roomCode = escapeNewsHtml(String(run?.roomCode || '-'));
+    const gameMode = escapeNewsHtml(formatRunGameModeLabel(run));
     return ''
       + '<button type="button" class="profile-run-row" data-author-run-idx="' + i + '">'
-      +   '<div class="profile-run-head"><span>' + formatRecordDateTime(run?.at) + '</span><span>Room ' + roomCode + '</span></div>'
+      +   '<div class="profile-run-head"><span>' + formatRecordDateTime(run?.at) + '</span><span>Room ' + roomCode + ' | ' + gameMode + '</span></div>'
       +   '<div class="profile-run-main"><span>' + kills + ' kills</span><span>' + score + ' pts</span><span>' + durationSec + 's</span><span class="profile-run-meta">XP ' + heroXp + '</span></div>'
       + '</button>';
   }).join('');
@@ -837,7 +851,7 @@ function renderNewsFeed() {
   if (newsUi.loading && newsUi.items.length === 0 && !newsUi.activeItem) {
     const loading = document.createElement('div');
     loading.className = 'news-sub';
-    loading.textContent = 'Загрузка новостей...';
+    loading.textContent = 'Нет новостей...';
     newsFeedEl.appendChild(loading);
     return;
   }
@@ -886,7 +900,7 @@ function renderNewsFeed() {
     if (newsUi.loadingItem) {
       const loadingItem = document.createElement('div');
       loadingItem.className = 'news-sub';
-      loadingItem.textContent = 'Открываем новость...';
+      loadingItem.textContent = 'РћС‚РєСЂС‹РІР°РµРј РЅРѕРІРѕСЃС‚СЊ...';
       newsFeedEl.appendChild(loadingItem);
       return;
     }
@@ -906,7 +920,7 @@ function renderNewsFeed() {
 
     const h = document.createElement('h3');
     h.className = 'news-item-title';
-    h.textContent = String(item?.title || 'Без названия');
+    h.textContent = String(item?.title || 'Р‘РµР· РЅР°Р·РІР°РЅРёСЏ');
 
     const meta = document.createElement('div');
     meta.className = 'news-item-meta';
@@ -936,7 +950,7 @@ function renderNewsFeed() {
 
     const commentsTitle = document.createElement('div');
     commentsTitle.className = 'news-comments-title';
-    commentsTitle.textContent = 'Комментарии';
+    commentsTitle.textContent = 'РљРѕРјРјРµРЅС‚Р°СЂРёРё';
 
     const isLoggedIn = Boolean(game.playerAuth?.player);
     if (isLoggedIn) {
@@ -947,7 +961,7 @@ function renderNewsFeed() {
       input.className = 'news-comment-input';
       input.rows = 3;
       input.maxLength = 1500;
-      input.placeholder = 'Напишите комментарий...';
+      input.placeholder = 'РќР°РїРёС€РёС‚Рµ РєРѕРјРјРµРЅС‚Р°СЂРёР№...';
       input.value = newsUi.commentDraft;
       input.addEventListener('input', () => {
         newsUi.commentDraft = input.value;
@@ -959,7 +973,7 @@ function renderNewsFeed() {
       const sendBtn = document.createElement('button');
       sendBtn.type = 'button';
       sendBtn.className = 'mini';
-      sendBtn.textContent = newsUi.postingComment ? 'Отправка...' : 'Отправить';
+      sendBtn.textContent = newsUi.postingComment ? 'РћС‚РїСЂР°РІРєР°...' : 'РћС‚РїСЂР°РІРёС‚СЊ';
       sendBtn.disabled = newsUi.postingComment || !input.value.trim();
       sendBtn.addEventListener('click', () => {
         void submitNewsComment(item.id, { text: input.value });
@@ -982,7 +996,7 @@ function renderNewsFeed() {
     } else {
       const authHint = document.createElement('div');
       authHint.className = 'news-sub';
-      authHint.textContent = 'Войдите в аккаунт, чтобы оставлять комментарии и ответы.';
+      authHint.textContent = 'Р’РѕР№РґРёС‚Рµ РІ Р°РєРєР°СѓРЅС‚, С‡С‚РѕР±С‹ РѕСЃС‚Р°РІР»СЏС‚СЊ РєРѕРјРјРµРЅС‚Р°СЂРёРё Рё РѕС‚РІРµС‚С‹.';
       newsFeedEl.appendChild(authHint);
     }
 
@@ -1001,7 +1015,7 @@ function renderNewsFeed() {
     if (comments.length <= 0) {
       const empty = document.createElement('div');
       empty.className = 'news-sub';
-      empty.textContent = 'Пока нет комментариев.';
+      empty.textContent = 'РџРѕРєР° РЅРµС‚ РєРѕРјРјРµРЅС‚Р°СЂРёРµРІ.';
       commentsWrap.appendChild(empty);
     } else {
       for (const comment of comments) {
@@ -1016,7 +1030,7 @@ function renderNewsFeed() {
   if (items.length <= 0) {
     const empty = document.createElement('div');
     empty.className = 'news-sub';
-    empty.textContent = 'Пока новостей нет.';
+    empty.textContent = 'РџРѕРєР° РЅРѕРІРѕСЃС‚РµР№ РЅРµС‚.';
     newsFeedEl.appendChild(empty);
     return;
   }
@@ -1030,7 +1044,7 @@ function renderNewsFeed() {
 
     const h = document.createElement('div');
     h.className = 'news-item-title';
-    h.textContent = String(item?.title || 'Без названия');
+    h.textContent = String(item?.title || 'Р‘РµР· РЅР°Р·РІР°РЅРёСЏ');
 
     const meta = document.createElement('div');
     meta.className = 'news-item-meta';
@@ -1137,52 +1151,81 @@ function formatRatingValue(item, categoryKey) {
 
 function renderRatingBoard() {
   if (!ratingBoardEl) return;
-  const title = '<b>\u0420\u0435\u0439\u0442\u0438\u043d\u0433 \u0438\u0433\u0440\u043e\u043a\u043e\u0432</b>';;
+  const title = '<b>Рейтинг игроков</b>';
   if (ratingUi.loading && ratingUi.items.length === 0) {
-    ratingBoardEl.innerHTML = title + '<div class="profile-run-empty">\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u0440\u0435\u0439\u0442\u0438\u043d\u0433\u0430...</div>';;
+    ratingBoardEl.innerHTML = title + '<div class="profile-run-empty">Загрузка рейтинга...</div>';
     return;
   }
   if (ratingUi.error && ratingUi.items.length === 0) {
-    ratingBoardEl.innerHTML = title + '<div class="profile-run-empty">' + escapeNewsHtml(ratingUi.error) + '</div>';;
+    ratingBoardEl.innerHTML = title + '<div class="profile-run-empty">' + escapeNewsHtml(ratingUi.error) + '</div>';
     return;
   }
+
   const categories = (ratingUi.categories || []).map((cat) => {
-    const active = cat.key === ratingUi.currentCategory ? ' active' : '';;
-    return '<button type="button" class="mini rating-category-btn' + active + '" data-rating-cat="' + escapeNewsHtml(String(cat.key || '')) + '">' + escapeNewsHtml(String(cat.title || cat.key || 'Category')) + '</button>';;
+    const active = cat.key === ratingUi.currentCategory ? ' active' : '';
+    return '<button type="button" class="mini rating-category-btn' + active + '" data-rating-cat="' + escapeNewsHtml(String(cat.key || '')) + '">' + escapeNewsHtml(String(cat.title || cat.key || 'Category')) + '</button>';
   }).join('');
+
+  const modeOptions = (ratingUi.modes || []).map((mode) => {
+    const key = String(mode?.key || 'all');
+    const modeTitle = String(mode?.title || key || 'Mode');
+    const selected = key === ratingUi.currentMode ? ' selected' : '';
+    return '<option value="' + escapeNewsHtml(key) + '"' + selected + '>' + escapeNewsHtml(modeTitle) + '</option>';
+  }).join('');
+
   const rows = (ratingUi.items || []).map((item, i) => {
     const rank = ((ratingUi.page - 1) * ratingUi.pageSize) + i + 1;
     const pid = Math.max(0, Number(item?.playerId) || 0);
     const nick = escapeNewsHtml(String(item?.nickname || 'Unknown'));
-    const nickHtml = pid > 0 ? ('<button type="button" class="news-comment-author news-comment-author-btn" data-rating-player="' + pid + '">' + nick + '</button>') : nick;
-    return '<div class="record-row rating-row"><div class="record-rank">#' + rank + '</div><div class="record-name">' + nickHtml + '</div><div class="record-meta">' + escapeNewsHtml(formatRatingValue(item, ratingUi.currentCategory)) + '</div></div>';;
+    const nickHtml = pid > 0
+      ? ('<button type="button" class="news-comment-author news-comment-author-btn" data-rating-player="' + pid + '">' + nick + '</button>')
+      : nick;
+    return '<div class="record-row rating-row"><div class="record-rank">#' + rank + '</div><div class="record-name">' + nickHtml + '</div><div class="record-meta">' + escapeNewsHtml(formatRatingValue(item, ratingUi.currentCategory)) + '</div></div>';
   }).join('');
-  const pager = '<div class="profile-run-history-pager"><button type="button" class="mini" data-rating-prev ' + (ratingUi.page <= 1 ? 'disabled' : '') + '>Prev</button><span class="profile-run-history-page">Page ' + ratingUi.page + '/' + ratingUi.totalPages + ' | Total: ' + ratingUi.total + '</span><button type="button" class="mini" data-rating-next ' + (ratingUi.page >= ratingUi.totalPages ? 'disabled' : '') + '>Next</button></div>';;
-  ratingBoardEl.innerHTML = title + '<div class="rating-categories">' + categories + '</div>' + (rows || '<div class=\"profile-run-empty\">\u041f\u043e\u043a\u0430 \u043d\u0435\u0442 \u0434\u0430\u043d\u043d\u044b\u0445.</div>') + pager;
+
+  const pager = '<div class="profile-run-history-pager"><button type="button" class="mini" data-rating-prev ' + (ratingUi.page <= 1 ? 'disabled' : '') + '>Prev</button><span class="profile-run-history-page">Page ' + ratingUi.page + '/' + ratingUi.totalPages + ' | Total: ' + ratingUi.total + '</span><button type="button" class="mini" data-rating-next ' + (ratingUi.page >= ratingUi.totalPages ? 'disabled' : '') + '>Next</button></div>';
+  const modeControl = '<div class="rating-mode-wrap"><label class="rating-mode-label" for="rating-mode-select">Режим:</label><select id="rating-mode-select" class="rating-mode-select">' + modeOptions + '</select></div>';
+
+  ratingBoardEl.innerHTML = title
+    + modeControl
+    + '<div class="rating-categories">' + categories + '</div>'
+    + (rows || '<div class="profile-run-empty">Пока нет данных.</div>')
+    + pager;
+
   for (const b of Array.from(ratingBoardEl.querySelectorAll('[data-rating-cat]'))) {
     b.addEventListener('click', () => {
       const cat = String(b.getAttribute('data-rating-cat') || '').trim();
       if (!cat) return;
       ratingUi.currentCategory = cat;
       ratingUi.page = 1;
-      void requestLeaderboard({ force: true, page: 1, category: cat });
+      void requestLeaderboard({ force: true, page: 1, category: cat, mode: ratingUi.currentMode });
     });
   }
+
   ratingBoardEl.querySelector('[data-rating-prev]')?.addEventListener('click', () => {
-    if (ratingUi.page > 1) void requestLeaderboard({ force: true, page: ratingUi.page - 1, category: ratingUi.currentCategory });
+    if (ratingUi.page > 1) void requestLeaderboard({ force: true, page: ratingUi.page - 1, category: ratingUi.currentCategory, mode: ratingUi.currentMode });
   });
   ratingBoardEl.querySelector('[data-rating-next]')?.addEventListener('click', () => {
-    if (ratingUi.page < ratingUi.totalPages) void requestLeaderboard({ force: true, page: ratingUi.page + 1, category: ratingUi.currentCategory });
+    if (ratingUi.page < ratingUi.totalPages) void requestLeaderboard({ force: true, page: ratingUi.page + 1, category: ratingUi.currentCategory, mode: ratingUi.currentMode });
   });
+
   for (const b of Array.from(ratingBoardEl.querySelectorAll('[data-rating-player]'))) {
     b.addEventListener('click', () => {
       const pid = Math.max(0, Number(b.getAttribute('data-rating-player')) || 0);
       if (pid > 0) void openAuthorProfileModal(pid, b.textContent || '');
     });
   }
+
+  const modeSelect = ratingBoardEl.querySelector('#rating-mode-select');
+  modeSelect?.addEventListener('change', () => {
+    const nextMode = String(modeSelect.value || 'all').trim().toLowerCase();
+    ratingUi.currentMode = (nextMode === 'normal' || nextMode === 'hardcore') ? nextMode : 'all';
+    ratingUi.page = 1;
+    void requestLeaderboard({ force: true, page: 1, category: ratingUi.currentCategory, mode: ratingUi.currentMode });
+  });
 }
 
-async function requestLeaderboard({ force = false, page = ratingUi.page, category = ratingUi.currentCategory } = {}) {
+async function requestLeaderboard({ force = false, page = ratingUi.page, category = ratingUi.currentCategory, mode = ratingUi.currentMode } = {}) {
   if (!ratingBoardEl) return;
   if (!force && ratingUi.loading) return;
   const token = ratingUi.fetchToken + 1;
@@ -1191,10 +1234,13 @@ async function requestLeaderboard({ force = false, page = ratingUi.page, categor
   ratingUi.error = '';
   ratingUi.page = Math.max(1, Number(page) || 1);
   ratingUi.currentCategory = String(category || ratingUi.currentCategory || 'best_kills_run');
+  ratingUi.currentMode = String(mode || ratingUi.currentMode || 'all').trim().toLowerCase();
+  if (ratingUi.currentMode !== 'normal' && ratingUi.currentMode !== 'hardcore') ratingUi.currentMode = 'all';
   renderRatingBoard();
   try {
     const params = new URLSearchParams({
       category: ratingUi.currentCategory,
+      mode: ratingUi.currentMode,
       page: String(ratingUi.page),
       page_size: String(ratingUi.pageSize),
     });
@@ -1203,11 +1249,14 @@ async function requestLeaderboard({ force = false, page = ratingUi.page, categor
     if (ratingUi.fetchToken !== token) return;
     if (!res.ok || !payload?.ok) throw new Error(payload?.message || ('HTTP ' + res.status));
     ratingUi.categories = Array.isArray(payload.categories) ? payload.categories : [];
+    ratingUi.modes = Array.isArray(payload.modes) ? payload.modes : ratingUi.modes;
     ratingUi.items = Array.isArray(payload.items) ? payload.items : [];
     ratingUi.page = Math.max(1, Number(payload.page) || ratingUi.page);
     ratingUi.totalPages = Math.max(1, Number(payload.totalPages) || 1);
     ratingUi.total = Math.max(0, Number(payload.total) || 0);
     ratingUi.currentCategory = String(payload?.category?.key || ratingUi.currentCategory || 'best_kills_run');
+    ratingUi.currentMode = String(payload?.mode?.key || ratingUi.currentMode || 'all').trim().toLowerCase();
+    if (ratingUi.currentMode !== 'normal' && ratingUi.currentMode !== 'hardcore') ratingUi.currentMode = 'all';
     ratingUi.error = '';
   } catch (err) {
     if (ratingUi.fetchToken !== token) return;
@@ -1219,7 +1268,6 @@ async function requestLeaderboard({ force = false, page = ratingUi.page, categor
     }
   }
 }
-
 globalThis.renderNewsFeed = renderNewsFeed;
 
 function setMainMenuTab(tabId) {
@@ -1239,7 +1287,7 @@ function setMainMenuTab(tabId) {
     void requestProfileRunHistory({ force: false, page: profileRunHistoryUi.page });
   }
   if (nextTab === 'rating') {
-    void requestLeaderboard({ force: false, page: ratingUi.page, category: ratingUi.currentCategory });
+    void requestLeaderboard({ force: false, page: ratingUi.page, category: ratingUi.currentCategory, mode: ratingUi.currentMode });
   }
   if (nextTab === 'news') {
     if (prevTab === 'news' && newsUi.activeItem) {
@@ -1826,6 +1874,7 @@ function renderProfileRunHistory() {
   for (let i = 0; i < profileRunHistoryUi.items.length; i += 1) {
     const run = profileRunHistoryUi.items[i];
     const heroXp = Math.max(0, Number(run?.runDetails?.xp) || 0);
+    const gameModeLabel = formatRunGameModeLabel(run);
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'profile-run-row';
@@ -1837,7 +1886,7 @@ function renderProfileRunHistory() {
     when.textContent = formatRecordDateTime(run?.at);
 
     const room = document.createElement('span');
-    room.textContent = 'Room ' + String(run?.roomCode || '-');
+    room.textContent = 'Room ' + String(run?.roomCode || '-') + ' | ' + gameModeLabel;
 
     headRow.appendChild(when);
     headRow.appendChild(room);
@@ -2053,7 +2102,7 @@ async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
   clearJoinFeedback();
   if (!skipRouting) {
     try {
-      const route = await resolveRoomRoute(mode, roomCode);
+      const route = await resolveRoomRoute(mode, roomCode, { gameMode: selectedGameMode });
       if (mode === 'join' && route?.found && route?.room?.isFull) {
         const message = `Room ${route.room.code} is full (${route.room.players}/${route.room.maxPlayers}).`;
         statusEl.textContent = message;
@@ -2094,6 +2143,7 @@ async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
     playerClass: selectedPlayerClass,
     roomCode,
     sync: joinSync || undefined,
+    gameMode: mode === 'create' ? selectedGameMode : undefined,
   });
   joinOverlay.style.display = 'none';
   joinOverlay.classList.remove('death-mode');
@@ -3933,6 +3983,15 @@ function updateSyncSettingsVisibility() {
   syncSettingsEl.style.display = joinMode === 'create' ? '' : 'none';
 }
 
+function renderGameModeSelection() {
+  if (!Array.isArray(gameModeOptionButtons) || !gameModeOptionButtons.length) return;
+  for (const btn of gameModeOptionButtons) {
+    if (!(btn instanceof HTMLElement)) continue;
+    const mode = normalizeGameMode(btn.dataset.gameMode || 'normal');
+    btn.classList.toggle('active', mode === selectedGameMode);
+  }
+}
+
 let immediateInputSendQueued = false;
 
 function requestImmediateInputSend() {
@@ -4055,14 +4114,25 @@ canvas.addEventListener('touchend', stopMobileTapShoot, { passive: false });
 canvas.addEventListener('touchcancel', stopMobileTapShoot, { passive: false });
 
 joinForm.addEventListener('click', (e) => {
-  const t = e.target;
+  const rawTarget = e.target;
+  if (!(rawTarget instanceof Element)) return;
+  const t = rawTarget.closest('button');
   if (!(t instanceof HTMLButtonElement)) return;
+
+  if (t.dataset.gameMode) {
+    selectedGameMode = normalizeGameMode(t.dataset.gameMode);
+    localStorage.setItem(GAME_MODE_STORAGE_KEY, selectedGameMode);
+    renderGameModeSelection();
+    return;
+  }
+
   if (!t.dataset.mode) return;
   joinMode = t.dataset.mode;
   updateSyncSettingsVisibility();
 });
 
 updateSyncSettingsVisibility();
+renderGameModeSelection();
 
 joinForm.addEventListener('submit', (e) => {
   e.preventDefault();
@@ -4799,6 +4869,26 @@ function sendInput() {
 }
 
 void maybeStartReplayFromUrl();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

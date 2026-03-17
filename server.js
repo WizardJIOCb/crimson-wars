@@ -1,4 +1,4 @@
-const path = require('path');
+﻿const path = require('path');
 const http = require('http');
 const crypto = require('crypto');
 const express = require('express');
@@ -145,6 +145,11 @@ const XP_SURGE_DURATION_MS = 3200;
 const XP_SURGE_PULL_MIN_MUL = 0.22;
 const XP_SURGE_PULL_MAX_MUL = 3.9;
 
+function normalizeGameMode(rawMode) {
+  const mode = String(rawMode || '').trim().toLowerCase();
+  return mode === 'hardcore' ? 'hardcore' : 'normal';
+}
+
 function normalizeRespawnMode(rawMode) {
   const mode = String(rawMode || '').trim().toLowerCase();
   if (mode === 'lives' || mode === 'token' || mode === 'none') return mode;
@@ -155,6 +160,8 @@ const RESPAWN_MODE = normalizeRespawnMode(process.env.PLAYER_RESPAWN_MODE || PLA
 const RESPAWN_DELAY_MS = Math.max(0, Number(process.env.PLAYER_RESPAWN_DELAY_MS) || PLAYER_RESPAWN_DELAY_MS || 3000);
 const RESPAWN_EXTRA_LIVES = Math.max(0, Math.floor(Number(process.env.PLAYER_RESPAWN_EXTRA_LIVES) || PLAYER_RESPAWN_EXTRA_LIVES || 0));
 const RESPAWN_START_TOKENS = Math.max(0, Math.floor(Number(process.env.PLAYER_RESPAWN_START_TOKENS) || PLAYER_RESPAWN_START_TOKENS || 0));
+const HARDCORE_ENEMY_SPAWN_MUL = 3;
+const HARDCORE_ENEMY_HP_MUL = 2;
 const adminAuthStore = createAdminAuthStore({
   dataDir: DATA_DIR,
   dbPath: ADMIN_AUTH_DB_PATH,
@@ -221,6 +228,11 @@ const LEADERBOARD_CATEGORIES = {
   shards_balance: { key: 'shards_balance', title: '\u0428\u0430\u0440\u0434\u044b \u043d\u0430 \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0435', source: 'account', unit: 'shards' },
   heroes_unlocked: { key: 'heroes_unlocked', title: '\u041e\u0442\u043a\u0440\u044b\u0442\u043e \u0433\u0435\u0440\u043e\u0435\u0432', source: 'account', unit: 'heroes' },
 };
+const LEADERBOARD_MODES = {
+  all: { key: 'all', title: 'Все режимы' },
+  normal: { key: 'normal', title: 'Обычный' },
+  hardcore: { key: 'hardcore', title: 'Хард-кор' },
+};
 
 let leaderboardAuthDb = null;
 let leaderboardRecordsDb = null;
@@ -237,7 +249,19 @@ function getLeaderboardRecordsDb() {
   return leaderboardRecordsDb;
 }
 
-function listRunLeaderboardRows(categoryKey, page, pageSize) {
+function normalizeLeaderboardMode(rawMode) {
+  const mode = String(rawMode || '').trim().toLowerCase();
+  if (mode === 'normal' || mode === 'hardcore') return mode;
+  return 'all';
+}
+
+function buildLeaderboardModeWhere(modeKey) {
+  if (modeKey === 'normal') return "WHERE run_details LIKE '%\"gameMode\":\"normal\"%'";
+  if (modeKey === 'hardcore') return "WHERE run_details LIKE '%\"gameMode\":\"hardcore\"%'";
+  return '';
+}
+
+function listRunLeaderboardRows(categoryKey, page, pageSize, modeKey = 'all') {
   const db = getLeaderboardRecordsDb();
   if (!db) return { page: 1, pageSize, total: 0, totalPages: 1, items: [] };
   const metricSqlMap = {
@@ -251,14 +275,23 @@ function listRunLeaderboardRows(categoryKey, page, pageSize) {
   };
   const metric = metricSqlMap[categoryKey];
   if (!metric) return { page: 1, pageSize, total: 0, totalPages: 1, items: [] };
-  const total = Math.max(0, Number(db.prepare('SELECT COUNT(1) AS total FROM (SELECT name_key FROM player_runs GROUP BY name_key) t').get()?.total) || 0);
+  const whereClause = buildLeaderboardModeWhere(modeKey);
+  const totalSql = [
+    'SELECT COUNT(1) AS total',
+    'FROM (SELECT name_key FROM player_runs',
+    whereClause,
+    'GROUP BY name_key) t',
+  ].filter(Boolean).join(' ');
+  const total = Math.max(0, Number(db.prepare(totalSql).get()?.total) || 0);
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const currentPage = Math.max(1, Math.min(totalPages, Math.floor(page) || 1));
   const offset = (currentPage - 1) * pageSize;
   const rows = db.prepare([
     'SELECT name_key AS nameKey, MAX(name) AS nickname, ' + metric.metric + ' AS metric, COUNT(1) AS runs, MAX(kills) AS bestKills, MAX(score) AS bestScore, MAX(duration_sec) AS bestDurationSec, MAX(at) AS tieAt',
-    'FROM player_runs GROUP BY name_key ORDER BY ' + metric.order + ' LIMIT ? OFFSET ?'
-  ].join('\n')).all(pageSize, offset);
+    'FROM player_runs',
+    whereClause,
+    'GROUP BY name_key ORDER BY ' + metric.order + ' LIMIT ? OFFSET ?',
+  ].filter(Boolean).join('\n')).all(pageSize, offset);
   const authDb = getLeaderboardAuthDb();
   const authStmt = authDb ? authDb.prepare('SELECT id, nickname FROM player_accounts WHERE nickname_key = ? LIMIT 1') : null;
   const items = rows.map((r) => {
@@ -446,12 +479,13 @@ function cleanRoomCodeForLookup(raw) {
   return (raw || '').toString().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
 }
 
-function buildRoomRedirectUrl(baseUrl, roomCode, mode = 'join') {
+function buildRoomRedirectUrl(baseUrl, roomCode, mode = 'join', gameMode = 'normal') {
   const base = (baseUrl || '').toString().trim().replace(/\/+$/, '');
   if (!base) return '';
   const url = new URL(base);
   if (roomCode) url.searchParams.set('room', cleanRoomCodeForLookup(roomCode));
   if (mode) url.searchParams.set('mode', mode);
+  if (mode === 'create' && normalizeGameMode(gameMode) === 'hardcore') url.searchParams.set('gameMode', 'hardcore');
   return url.toString();
 }
 
@@ -626,6 +660,7 @@ app.get('/api/runtime', (_req, res) => {
 app.get('/api/room-route', (req, res) => {
   const mode = (req.query.mode || 'join').toString().trim().toLowerCase() === 'create' ? 'create' : 'join';
   const roomCode = cleanRoomCodeForLookup(req.query.roomCode || req.query.room_code || '');
+  const gameMode = normalizeGameMode(req.query.gameMode || req.query.game_mode || 'normal');
 
   if (mode === 'join') {
     if (!roomCode) {
@@ -642,7 +677,7 @@ app.get('/api/room-route', (req, res) => {
         target: {
           instanceId: INSTANCE_ID,
           publicBaseUrl: PUBLIC_BASE_URL,
-          redirectUrl: buildRoomRedirectUrl(PUBLIC_BASE_URL, roomCode, mode),
+          redirectUrl: buildRoomRedirectUrl(PUBLIC_BASE_URL, roomCode, mode, gameMode),
           isCurrentInstance: true,
         },
       });
@@ -662,7 +697,7 @@ app.get('/api/room-route', (req, res) => {
       target: {
         instanceId: room.instanceId,
         publicBaseUrl: room.publicBaseUrl || PUBLIC_BASE_URL,
-        redirectUrl: buildRoomRedirectUrl(room.publicBaseUrl || PUBLIC_BASE_URL, room.code, mode),
+        redirectUrl: buildRoomRedirectUrl(room.publicBaseUrl || PUBLIC_BASE_URL, room.code, mode, gameMode),
         isCurrentInstance: room.instanceId === INSTANCE_ID,
       },
     });
@@ -679,7 +714,7 @@ app.get('/api/room-route', (req, res) => {
     target: {
       instanceId: target.instanceId,
       publicBaseUrl: target.publicBaseUrl || PUBLIC_BASE_URL,
-      redirectUrl: buildRoomRedirectUrl(target.publicBaseUrl || PUBLIC_BASE_URL, '', mode),
+      redirectUrl: buildRoomRedirectUrl(target.publicBaseUrl || PUBLIC_BASE_URL, '', mode, gameMode),
       isCurrentInstance: target.instanceId === INSTANCE_ID,
     },
   });
@@ -1139,18 +1174,24 @@ app.get('/api/rooms', (_req, res) => {
 });
 
 app.get('/api/leaderboard', (req, res) => {
-  const categoryKey = String(req.query.category || 'best_kills_run').trim();
-  const category = LEADERBOARD_CATEGORIES[categoryKey] || LEADERBOARD_CATEGORIES.best_kills_run;
+  const modeKey = normalizeLeaderboardMode(req.query.mode);
+  const availableCategories = Object.values(LEADERBOARD_CATEGORIES)
+    .filter((x) => modeKey === 'all' || x.source === 'runs');
+  const fallbackCategory = availableCategories.find((x) => x.key === 'best_kills_run') || availableCategories[0] || LEADERBOARD_CATEGORIES.best_kills_run;
+  const categoryKey = String(req.query.category || fallbackCategory?.key || 'best_kills_run').trim();
+  const category = availableCategories.find((x) => x.key === categoryKey) || fallbackCategory;
   const page = Math.max(1, Number(req.query.page) || 1);
   const pageSize = Math.max(1, Math.min(30, Number(req.query.page_size) || 10));
   try {
     const payload = category.source === 'account'
       ? listAccountLeaderboardRows(category.key, page, pageSize)
-      : listRunLeaderboardRows(category.key, page, pageSize);
+      : listRunLeaderboardRows(category.key, page, pageSize, modeKey);
     res.json({
       ok: true,
       category: { key: category.key, title: category.title, source: category.source, unit: category.unit },
-      categories: Object.values(LEADERBOARD_CATEGORIES).map((x) => ({ key: x.key, title: x.title, source: x.source, unit: x.unit })),
+      mode: LEADERBOARD_MODES[modeKey] || LEADERBOARD_MODES.all,
+      modes: Object.values(LEADERBOARD_MODES),
+      categories: availableCategories.map((x) => ({ key: x.key, title: x.title, source: x.source, unit: x.unit })),
       items: Array.isArray(payload.items) ? payload.items : [],
       page: payload.page,
       pageSize: payload.pageSize,
@@ -1475,7 +1516,7 @@ function resolveJoinIdentity(ws, rawName) {
   };
 }
 
-function getOrCreateRoom(requestedCode, requestedSync) {
+function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode) {
   const provided = cleanRoomCode(requestedCode);
   let code = provided;
 
@@ -1487,10 +1528,16 @@ function getOrCreateRoom(requestedCode, requestedSync) {
 
   if (!rooms.has(code)) {
     const sync = normalizeRoomSync(requestedSync || DEFAULT_ROOM_SYNC);
+    const gameMode = normalizeGameMode(requestedGameMode || 'normal');
+    const enemySpawnMul = gameMode === 'hardcore' ? HARDCORE_ENEMY_SPAWN_MUL : 1;
+    const enemyHpMul = gameMode === 'hardcore' ? HARDCORE_ENEMY_HP_MUL : 1;
     rooms.set(code, {
       code,
       instanceId: INSTANCE_ID,
       sync,
+      gameMode,
+      enemySpawnMul,
+      enemyHpMul,
       tickMs: 1000 / sync.tickRate,
       stateIntervalMs: 1000 / sync.stateSendHz,
       stateAccumulatorMs: 0,
@@ -2157,7 +2204,8 @@ function spawnEnemy(room, now, difficulty = null) {
   const pos = randomSpawnEdge();
   const diff = difficulty || getRoomDifficulty(room, now || Date.now());
   const hpBase = ENEMY_HP_BASE + Math.floor(((now || Date.now()) - room.startedAt) / 25000) * 2;
-  const hp = Math.max(10, Math.round(hpBase * diff.hpMul));
+  const hpMul = Math.max(1, Number(room.enemyHpMul) || 1);
+  const hp = Math.max(10, Math.round(hpBase * diff.hpMul * hpMul));
   const enemyType = chooseEnemyType();
   const speedMul = enemyType === 'charger' ? 1.22 : (enemyType === 'ranged' ? 0.9 : 1);
   room.enemies.push({
@@ -2182,7 +2230,8 @@ function spawnEnemy(room, now, difficulty = null) {
 function spawnBossEnemy(room, x, y, now, difficulty = null) {
   const diff = difficulty || getRoomDifficulty(room, now);
   const elapsedMul = 1 + Math.floor((now - room.startedAt) / 60000) * 0.18;
-  const hp = Math.round(BOSS_HP_BASE * elapsedMul * (0.95 + diff.hpMul * 0.7));
+  const hpMul = Math.max(1, Number(room.enemyHpMul) || 1);
+  const hp = Math.round(BOSS_HP_BASE * elapsedMul * (0.95 + diff.hpMul * 0.7) * hpMul);
   room.enemies.push({
     id: room.nextEnemyId++,
     type: 'boss',
@@ -2841,6 +2890,7 @@ function buildRunDetails(room, target, now) {
   }
 
   return {
+    gameMode: normalizeGameMode(room?.gameMode || 'normal'),
     playerClass: (target.playerClass || 'cyber').toString(),
     level: Math.max(1, Number(target.level) || 1),
     xp: Math.max(0, Number(target.xp) || 0),
@@ -3337,7 +3387,7 @@ function joinRoom(ws, join) {
       return null;
     }
   }
-  const room = getOrCreateRoom(join?.roomCode, join?.sync);
+  const room = getOrCreateRoom(join?.roomCode, join?.sync, join?.gameMode);
 
   if (room.players.size >= MAX_PLAYERS) {
     sendTo(ws, { type: 'joinError', message: `Room ${room.code} is full (8/8).` });
@@ -3643,7 +3693,10 @@ function tickRoom(room, dtSec, now) {
   const roomDifficulty = getRoomDifficulty(room, now);
   if (room.players.size > 0 && now - room.lastEnemySpawnAt >= roomDifficulty.spawnIntervalMs) {
     room.lastEnemySpawnAt = now;
-    spawnEnemy(room, now, roomDifficulty);
+    const spawnMul = Math.max(1, Number(room.enemySpawnMul) || 1);
+    for (let i = 0; i < spawnMul; i += 1) {
+      spawnEnemy(room, now, roomDifficulty);
+    }
   }
 
   if (room.players.size > 0) {
@@ -4083,6 +4136,13 @@ server.listen(PORT, () => {
     console.log(`Bootstrap admin password: ${ADMIN_BOOTSTRAP_PASSWORD}`);
   }
 });
+
+
+
+
+
+
+
 
 
 

@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   color-scheme: dark;
   --bg: #0b0c0f;
   --bg2: #11151c;
@@ -1112,7 +1112,7 @@ body.replay-game-active #scoreboard {
 
 #join-form button {
   cursor: pointer;
-  background: linear-gradient(135deg, #dc2626, #be123c);
+  background: linear-gradient(135deg, #3a1e1e, #be123c);
   color: #fff;
   border: none;
 }
@@ -2022,7 +2022,7 @@ body.replay-game-active #scoreboard {
 
 #join-form select {
   font: inherit;
-  padding: 8px 10px;
+  padding: 1px 3px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.24);
   background: #0b0f15;
@@ -3626,4 +3626,95 @@ body.levelup-open #dev-console-toggle {
 
 .rating-row {
   cursor: default;
+}
+
+
+
+/* Play panel mode selector replaces Top records in Play tab */
+#menu-panel-play {
+  grid-template-areas:
+    "roomLabel mode"
+    "roomInput mode"
+    "sync mode"
+    "actions mode"
+    "rooms mode"
+    "feedback mode"
+    "result mode";
+}
+
+#menu-panel-play > #game-mode-panel {
+  grid-area: mode;
+  align-self: start;
+}
+
+#menu-panel-play > #records-browser {
+  display: none !important;
+}
+
+.game-mode-options {
+  display: grid;
+  gap: 8px;
+}
+
+.game-mode-option {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.9), rgba(30, 41, 59, 0.75));
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: #dbeafe;
+  text-align: left;
+  cursor: pointer;
+}
+
+.game-mode-option b {
+  display: block;
+  font-size: 15px;
+  margin-bottom: 2px;
+}
+
+.game-mode-option span {
+  display: block;
+  font-size: 12px;
+  color: #93c5fd;
+}
+
+.game-mode-option.active {
+  border-color: rgba(34, 197, 94, 0.9);
+  box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.4), 0 0 18px rgba(34, 197, 94, 0.22);
+}
+
+@media (max-width: 980px) {
+  #menu-panel-play {
+    grid-template-areas:
+      "roomLabel"
+      "roomInput"
+      "sync"
+      "actions"
+      "mode"
+      "feedback"
+      "result"
+      "rooms";
+  }
+}
+
+.rating-mode-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 10px;
+}
+
+.rating-mode-label {
+  font-size: 12px;
+  color: #93c5fd;
+}
+
+.rating-mode-select {
+  min-width: 170px;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #e2e8f0;
+  padding: 6px 10px;
 }

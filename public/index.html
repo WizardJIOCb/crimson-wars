@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -299,6 +299,21 @@
           <button type="submit" data-mode="create">Create room</button>
           <button type="submit" data-mode="join" class="secondary">Join code</button>
         </div>
+        <div id="game-mode-panel" class="rooms-browser game-mode-browser">
+          <div class="rooms-head">
+            <span>Game mode</span>
+          </div>
+          <div class="game-mode-options">
+            <button type="button" class="game-mode-option active" data-game-mode="normal">
+              <b>Обычный</b>
+              <span>Текущий баланс игры</span>
+            </button>
+            <button type="button" class="game-mode-option" data-game-mode="hardcore">
+              <b>Хард-кор</b>
+              <span>x3 монстров, HP врагов x2</span>
+            </button>
+          </div>
+        </div>
         <div id="join-feedback" class="join-feedback hidden" aria-live="polite"></div>
         <div id="death-result" class="death-result">Last result: --</div>
         <div id="rooms-browser" class="rooms-browser">
@@ -308,18 +323,6 @@
           </div>
           <div id="presence-meta" class="presence-meta">Online: -- | In game: -- | In menu: -- | Registered: --</div>
           <div id="rooms-list" class="rooms-list">Loading...</div>
-        </div>
-        <div id="records-browser" class="rooms-browser records-browser">
-          <div class="rooms-head">
-            <span>Top records <span id="records-total">(Total: 0)</span></span>
-            <button type="button" id="refresh-records" class="mini">Refresh</button>
-          </div>
-          <div id="records-list" class="rooms-list">Loading...</div>
-          <div class="records-pager">
-            <button type="button" id="records-prev" class="mini">Prev</button>
-            <span id="records-page">Page 1/1</span>
-            <button type="button" id="records-next" class="mini">Next</button>
-          </div>
         </div>
       </section>
 
@@ -430,6 +433,10 @@
   <script src="/js/client-render.js?v=20260317t"></script>
 </body>
 </html>
+
+
+
+
 
 
 

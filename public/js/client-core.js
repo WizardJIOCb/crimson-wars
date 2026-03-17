@@ -97,6 +97,8 @@ const syncMaxExtrapolationEl = document.getElementById('sync-max-extrapolation')
 const syncEntityInterpEl = document.getElementById('sync-entity-interp');
 const syncBulletCorrectionEl = document.getElementById('sync-bullet-correction');
 const syncInputRateEl = document.getElementById('sync-input-rate');
+const gameModePanelEl = document.getElementById('game-mode-panel');
+const gameModeOptionButtons = Array.from(document.querySelectorAll('[data-game-mode]'));
 const infoPanelEl = document.getElementById('info-panel');
 const infoPanelCloseBtn = document.getElementById('info-panel-close');
 const toggleInfoBtn = document.getElementById('toggle-info');
@@ -283,7 +285,9 @@ const visuals = {
 let joinMode = 'create';
 const NICKNAME_STORAGE_KEY = 'cw:nickname';
 const PLAYER_CLASS_STORAGE_KEY = 'cw:playerClass';
+const GAME_MODE_STORAGE_KEY = 'cw:gameMode';
 let selectedPlayerClass = 'cyber';
+let selectedGameMode = normalizeGameMode(localStorage.getItem(GAME_MODE_STORAGE_KEY) || 'normal');
 const storedInfoPanelHidden = localStorage.getItem('cw:infoPanelHidden');
 let infoPanelHidden = storedInfoPanelHidden === null ? true : storedInfoPanelHidden === '1';
 const storedStatsPanelOpen = localStorage.getItem('cw:statsPanelOpen');
@@ -738,12 +742,18 @@ function renderInstanceMeta() {
   instanceMetaEl.textContent = `Instance: ${instanceId} | UI: ${uiHost} | Game: ${workerHost}`;
 }
 
+function normalizeGameMode(raw) {
+  const mode = String(raw || '').trim().toLowerCase();
+  return mode === 'hardcore' ? 'hardcore' : 'normal';
+}
+
 function applyInitialRoomIntent() {
   const params = new URLSearchParams(window.location.search);
   const replay = Math.max(0, Number(params.get('replay')) || 0);
   const replayAt = Math.max(0, Number(params.get('replayAt')) || Number(params.get('t')) || 0);
   const room = (params.get('room') || '').trim().toUpperCase();
   const mode = (params.get('mode') || '').trim().toLowerCase();
+  const gameMode = normalizeGameMode(params.get('gameMode') || params.get('game_mode') || selectedGameMode);
   const routed = params.get('routed') === '1';
   pendingReplayRecordId = replay;
   pendingReplayStartSec = replayAt;
@@ -755,6 +765,9 @@ function applyInitialRoomIntent() {
   }
   pendingAutoJoin = Boolean(room && joinMode === 'join');
   pendingAutoCreate = Boolean(!room && joinMode === 'create' && routed);
+  selectedGameMode = gameMode;
+  localStorage.setItem(GAME_MODE_STORAGE_KEY, selectedGameMode);
+
   if (pendingReplayRecordId > 0) {
     pendingAutoJoin = false;
     pendingAutoCreate = false;
@@ -762,12 +775,14 @@ function applyInitialRoomIntent() {
   routedIntent = routed ? { mode: joinMode, room } : null;
 }
 
-async function resolveRoomRoute(mode, roomCode = '') {
+async function resolveRoomRoute(mode, roomCode = '', options = {}) {
   const params = new URLSearchParams({
     mode: mode === 'create' ? 'create' : 'join',
   });
   const normalizedCode = String(roomCode || '').trim().toUpperCase();
+  const requestedGameMode = normalizeGameMode(options?.gameMode || selectedGameMode);
   if (normalizedCode) params.set('roomCode', normalizedCode);
+  if ((mode === 'create') && requestedGameMode === 'hardcore') params.set('gameMode', 'hardcore');
   return apiJson(`/api/room-route?${params.toString()}`, { method: 'GET' });
 }
 
@@ -2204,6 +2219,9 @@ function updateMobileControlsVisibility() {
   }
   setMobileControlsVisible(!overlayOpen);
 }
+
+
+
 
 
 
