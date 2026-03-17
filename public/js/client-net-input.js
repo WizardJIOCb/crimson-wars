@@ -361,11 +361,44 @@ async function upgradeHeroNodeForAccount(heroId, nodeId) {
   if (data?.progression) game.playerAuth.progression = data.progression;
 }
 
+const heroPreviewImageCache = new Map();
+
+function getHeroPreviewImage(heroId) {
+  const key = String(heroId || '').trim().toLowerCase() || 'cyber';
+  if (heroPreviewImageCache.has(key)) return heroPreviewImageCache.get(key);
+  const img = new Image();
+  img.src = getHeroCardImagePath(key);
+  heroPreviewImageCache.set(key, img);
+  return img;
+}
 function drawCharacterPreview(previewCanvas, variant) {
   const c = previewCanvas;
   const g = c.getContext('2d');
   g.clearRect(0, 0, c.width, c.height);
   g.imageSmoothingEnabled = false;
+
+  const portrait = getHeroPreviewImage(variant.id);
+  if (portrait?.complete && portrait.naturalWidth > 0 && portrait.naturalHeight > 0) {
+    g.imageSmoothingEnabled = true;
+    const srcRatio = portrait.naturalWidth / Math.max(1, portrait.naturalHeight);
+    const dstRatio = c.width / Math.max(1, c.height);
+    let sx = 0;
+    let sy = 0;
+    let sw = portrait.naturalWidth;
+    let sh = portrait.naturalHeight;
+    if (srcRatio > dstRatio) {
+      sw = Math.round(sh * dstRatio);
+      sx = Math.round((portrait.naturalWidth - sw) * 0.5);
+    } else {
+      sh = Math.round(sw / dstRatio);
+      sy = Math.round((portrait.naturalHeight - sh) * 0.18);
+      sy = Math.max(0, Math.min(sy, portrait.naturalHeight - sh));
+    }
+    g.drawImage(portrait, sx, sy, sw, sh, 0, 0, c.width, c.height);
+    g.fillStyle = variant.accent;
+    g.fillRect(c.width - 14, 4, 10, 3);
+    return;
+  }
 
   const sprite = sprites.players[variant.id];
   const fw = Math.max(8, Number(variant.frameW) || 32);
@@ -3315,6 +3348,8 @@ function sendInput() {
 }
 
 void maybeStartReplayFromUrl();
+
+
 
 
 
