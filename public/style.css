@@ -2948,9 +2948,9 @@ body.levelup-open #dev-console-toggle {
     "roomInput records"
     "sync records"
     "actions records"
+    "rooms records"
     "feedback records"
-    "result records"
-    "rooms .";
+    "result records";
   grid-auto-rows: min-content;
   column-gap: 12px;
   row-gap: 8px;
@@ -2998,3 +2998,4 @@ body.levelup-open #dev-console-toggle {
   pointer-events: none;
   filter: drop-shadow(0 0 8px rgba(248, 250, 252, 0.28));
 }
+
