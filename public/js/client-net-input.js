@@ -699,7 +699,7 @@ function renderNewsReplyComposer(container, parentId) {
   input.className = 'news-comment-input';
   input.rows = 2;
   input.maxLength = 1500;
-  input.placeholder = '\u0422\u0435\u043a\u0441\u0442 \u043e\u0442\u0432\u0435\u0442\u0430...';
+  input.placeholder = 'Напишите комментарий...';
   input.value = String(newsUi.replyDraftByParent[parentId] || '');
   input.addEventListener('input', () => {
     newsUi.replyDraftByParent[parentId] = input.value;
@@ -711,7 +711,7 @@ function renderNewsReplyComposer(container, parentId) {
   const sendBtn = document.createElement('button');
   sendBtn.type = 'button';
   sendBtn.className = 'mini';
-  sendBtn.textContent = newsUi.postingComment ? '\u041e\u0442\u043f\u0440\u0430\u0432\u043a\u0430...' : '\u041e\u0442\u0432\u0435\u0442\u0438\u0442\u044c';
+  sendBtn.textContent = newsUi.postingComment ? 'Отправка...' : 'Отправить';
   sendBtn.disabled = newsUi.postingComment || !input.value.trim();
   sendBtn.addEventListener('click', () => {
     void submitNewsComment(newsUi.activeId, { text: input.value, parentId });
@@ -851,7 +851,7 @@ function renderNewsFeed() {
   if (newsUi.loading && newsUi.items.length === 0 && !newsUi.activeItem) {
     const loading = document.createElement('div');
     loading.className = 'news-sub';
-    loading.textContent = 'Нет новостей...';
+    loading.textContent = 'Загрузка новостей...';
     newsFeedEl.appendChild(loading);
     return;
   }
@@ -900,7 +900,7 @@ function renderNewsFeed() {
     if (newsUi.loadingItem) {
       const loadingItem = document.createElement('div');
       loadingItem.className = 'news-sub';
-      loadingItem.textContent = 'РћС‚РєСЂС‹РІР°РµРј РЅРѕРІРѕСЃС‚СЊ...';
+      loadingItem.textContent = 'Открываем новость...';
       newsFeedEl.appendChild(loadingItem);
       return;
     }
@@ -920,7 +920,7 @@ function renderNewsFeed() {
 
     const h = document.createElement('h3');
     h.className = 'news-item-title';
-    h.textContent = String(item?.title || 'Р‘РµР· РЅР°Р·РІР°РЅРёСЏ');
+    h.textContent = String(item?.title || 'Без названия');
 
     const meta = document.createElement('div');
     meta.className = 'news-item-meta';
@@ -950,7 +950,7 @@ function renderNewsFeed() {
 
     const commentsTitle = document.createElement('div');
     commentsTitle.className = 'news-comments-title';
-    commentsTitle.textContent = 'РљРѕРјРјРµРЅС‚Р°СЂРёРё';
+    commentsTitle.textContent = 'Комментарии';
 
     const isLoggedIn = Boolean(game.playerAuth?.player);
     if (isLoggedIn) {
@@ -961,7 +961,7 @@ function renderNewsFeed() {
       input.className = 'news-comment-input';
       input.rows = 3;
       input.maxLength = 1500;
-      input.placeholder = 'РќР°РїРёС€РёС‚Рµ РєРѕРјРјРµРЅС‚Р°СЂРёР№...';
+      input.placeholder = 'Напишите комментарий...';
       input.value = newsUi.commentDraft;
       input.addEventListener('input', () => {
         newsUi.commentDraft = input.value;
@@ -973,7 +973,7 @@ function renderNewsFeed() {
       const sendBtn = document.createElement('button');
       sendBtn.type = 'button';
       sendBtn.className = 'mini';
-      sendBtn.textContent = newsUi.postingComment ? 'РћС‚РїСЂР°РІРєР°...' : 'РћС‚РїСЂР°РІРёС‚СЊ';
+      sendBtn.textContent = newsUi.postingComment ? 'Отправка...' : 'Отправить';
       sendBtn.disabled = newsUi.postingComment || !input.value.trim();
       sendBtn.addEventListener('click', () => {
         void submitNewsComment(item.id, { text: input.value });
@@ -996,7 +996,7 @@ function renderNewsFeed() {
     } else {
       const authHint = document.createElement('div');
       authHint.className = 'news-sub';
-      authHint.textContent = 'Р’РѕР№РґРёС‚Рµ РІ Р°РєРєР°СѓРЅС‚, С‡С‚РѕР±С‹ РѕСЃС‚Р°РІР»СЏС‚СЊ РєРѕРјРјРµРЅС‚Р°СЂРёРё Рё РѕС‚РІРµС‚С‹.';
+      authHint.textContent = 'Войдите в аккаунт, чтобы оставлять комментарии и ответы.';
       newsFeedEl.appendChild(authHint);
     }
 
@@ -1015,7 +1015,7 @@ function renderNewsFeed() {
     if (comments.length <= 0) {
       const empty = document.createElement('div');
       empty.className = 'news-sub';
-      empty.textContent = 'РџРѕРєР° РЅРµС‚ РєРѕРјРјРµРЅС‚Р°СЂРёРµРІ.';
+      empty.textContent = 'Пока нет комментариев.';
       commentsWrap.appendChild(empty);
     } else {
       for (const comment of comments) {
@@ -1030,7 +1030,7 @@ function renderNewsFeed() {
   if (items.length <= 0) {
     const empty = document.createElement('div');
     empty.className = 'news-sub';
-    empty.textContent = 'РџРѕРєР° РЅРѕРІРѕСЃС‚РµР№ РЅРµС‚.';
+    empty.textContent = 'Пока новостей нет.';
     newsFeedEl.appendChild(empty);
     return;
   }
@@ -1044,7 +1044,7 @@ function renderNewsFeed() {
 
     const h = document.createElement('div');
     h.className = 'news-item-title';
-    h.textContent = String(item?.title || 'Р‘РµР· РЅР°Р·РІР°РЅРёСЏ');
+    h.textContent = String(item?.title || 'Без названия');
 
     const meta = document.createElement('div');
     meta.className = 'news-item-meta';
@@ -1846,7 +1846,7 @@ function renderProfileRunHistory() {
   if (profileRunHistoryUi.loading && profileRunHistoryUi.items.length === 0) {
     const loading = document.createElement('div');
     loading.className = 'profile-run-empty';
-    loading.textContent = 'Loading run history...';
+    loading.textContent = 'Загрузка новостей...';
     profileRunHistoryEl.appendChild(loading);
     return;
   }
@@ -4869,6 +4869,7 @@ function sendInput() {
 }
 
 void maybeStartReplayFromUrl();
+
 
 
 
