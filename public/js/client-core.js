@@ -952,6 +952,9 @@ async function refreshPlayerAuthSession({ silent = false } = {}) {
   if (typeof globalThis.renderCharacterPicker === 'function') {
     globalThis.renderCharacterPicker();
   }
+  if (typeof globalThis.renderNewsFeed === 'function') {
+    globalThis.renderNewsFeed();
+  }
   if (!game.playerAuth.player && !silent) {
     void updateNicknameStatus(nameInput?.value || '');
   }
@@ -2201,6 +2204,7 @@ function updateMobileControlsVisibility() {
   }
   setMobileControlsVisible(!overlayOpen);
 }
+
 
 
 

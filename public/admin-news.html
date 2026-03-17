@@ -1,0 +1,287 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Crimson Wars - News Admin</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; font-family: Segoe UI, Arial, sans-serif; background: #0b1020; color: #e2e8f0; }
+    .app { max-width: 1080px; margin: 18px auto; padding: 0 12px; display: grid; gap: 12px; }
+    .card { background: #111827; border: 1px solid #334155; border-radius: 12px; padding: 12px; }
+    .hidden { display: none !important; }
+    h1, h2, h3 { margin: 0 0 8px 0; }
+    .grid { display: grid; gap: 10px; }
+    .grid2 { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; }
+    .field { display: grid; gap: 6px; }
+    input, textarea { width: 100%; box-sizing: border-box; background: #0b1220; color: #e2e8f0; border: 1px solid #334155; border-radius: 8px; padding: 8px; }
+    textarea { min-height: 120px; resize: vertical; }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    button { border: 1px solid #334155; background: #1f2937; color: #e2e8f0; border-radius: 8px; padding: 8px 10px; cursor: pointer; }
+    button.primary { background: #0b5fd4; border-color: #1d4ed8; }
+    button.danger { background: #7f1d1d; border-color: #991b1b; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid #334155; padding: 8px; text-align: left; vertical-align: top; }
+    tr.sel { background: rgba(14, 116, 144, 0.22); }
+    .status { min-height: 18px; color: #93c5fd; }
+    .meta { color: #94a3b8; font-size: 13px; }
+    @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div id="login-view" class="app">
+    <div class="card">
+      <h1>News Admin Login</h1>
+      <div class="grid">
+        <label class="field">Login<input id="login-name" /></label>
+        <label class="field">Password<input id="login-password" type="password" /></label>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="login-btn" class="primary">Log in</button>
+      </div>
+      <div id="login-status" class="status">Use admin account credentials.</div>
+    </div>
+  </div>
+
+  <div id="app-view" class="app hidden">
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <h2>News Admin</h2>
+        <div class="row">
+          <button id="reload-btn">Reload</button>
+          <button id="logout-btn" class="primary">Log out</button>
+        </div>
+      </div>
+      <div class="meta">Manage news visible in the in-game News tab.</div>
+      <div id="status" class="status">Ready.</div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="row" style="justify-content:space-between">
+          <h3>News List</h3>
+          <span id="news-meta" class="meta">0 item(s)</span>
+        </div>
+        <table>
+          <thead><tr><th>Title</th><th>Published</th><th>Updated</th></tr></thead>
+          <tbody id="news-body"><tr><td colspan="3">Loading...</td></tr></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h3 id="editor-title">Create News</h3>
+        <div class="grid">
+          <label class="field">Title<input id="news-title" maxlength="180" /></label>
+          <label class="field">Summary<textarea id="news-summary" maxlength="1000"></textarea></label>
+          <label class="field">Items (one per line)<textarea id="news-items"></textarea></label>
+          <label class="field"><span><input id="news-published" type="checkbox" checked /> Published</span></label>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button id="create-btn" class="primary">Create</button>
+          <button id="save-btn" class="primary hidden">Save</button>
+          <button id="delete-btn" class="danger hidden">Delete</button>
+          <button id="new-btn" class="hidden">New</button>
+        </div>
+        <div id="editor-status" class="status"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  const $ = (id) => document.getElementById(id);
+  const dom = {
+    loginView: $('login-view'),
+    appView: $('app-view'),
+    loginName: $('login-name'),
+    loginPassword: $('login-password'),
+    loginBtn: $('login-btn'),
+    loginStatus: $('login-status'),
+    reloadBtn: $('reload-btn'),
+    logoutBtn: $('logout-btn'),
+    status: $('status'),
+    newsMeta: $('news-meta'),
+    newsBody: $('news-body'),
+    editorTitle: $('editor-title'),
+    newsTitle: $('news-title'),
+    newsSummary: $('news-summary'),
+    newsItems: $('news-items'),
+    newsPublished: $('news-published'),
+    createBtn: $('create-btn'),
+    saveBtn: $('save-btn'),
+    deleteBtn: $('delete-btn'),
+    newBtn: $('new-btn'),
+    editorStatus: $('editor-status'),
+  };
+
+  const state = {
+    items: [],
+    selectedId: '',
+  };
+
+  function esc(s) {
+    return String(s || '').replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+  }
+
+  async function fetchJson(url, options) {
+    const res = await fetch(url, {
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json', ...(options?.headers || {}) },
+      ...options,
+    });
+    const text = await res.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch { data = null; }
+    if (!res.ok) {
+      const msg = data?.message || data?.error || ('HTTP ' + res.status);
+      throw new Error(msg);
+    }
+    return data || {};
+  }
+
+  function setStatus(el, text) {
+    el.textContent = String(text || '');
+  }
+
+  function toEditor(item) {
+    dom.newsTitle.value = item?.title || '';
+    dom.newsSummary.value = item?.summary || '';
+    dom.newsItems.value = Array.isArray(item?.items) ? item.items.join('\n') : '';
+    dom.newsPublished.checked = item?.isPublished !== false;
+    const edit = !!item;
+    dom.editorTitle.textContent = edit ? 'Edit News' : 'Create News';
+    dom.createBtn.classList.toggle('hidden', edit);
+    dom.saveBtn.classList.toggle('hidden', !edit);
+    dom.deleteBtn.classList.toggle('hidden', !edit);
+    dom.newBtn.classList.toggle('hidden', !edit);
+  }
+
+  function collectEditorPayload() {
+    return {
+      title: dom.newsTitle.value.trim(),
+      summary: dom.newsSummary.value.trim(),
+      items: dom.newsItems.value.split(/\r?\n/).map((x) => x.trim()).filter(Boolean),
+      isPublished: !!dom.newsPublished.checked,
+    };
+  }
+
+  function renderList() {
+    dom.newsMeta.textContent = `${state.items.length} item(s)`;
+    if (!state.items.length) {
+      dom.newsBody.innerHTML = '<tr><td colspan="3">No news yet.</td></tr>';
+      return;
+    }
+    dom.newsBody.innerHTML = state.items.map((item) => {
+      const sel = item.id === state.selectedId ? ' class="sel"' : '';
+      const published = item.isPublished ? 'yes' : 'no';
+      const updated = new Date(Number(item.updatedAt) || Date.now()).toLocaleString();
+      return `<tr data-id="${esc(item.id)}"${sel}><td>${esc(item.title || '-')}</td><td>${published}</td><td>${esc(updated)}</td></tr>`;
+    }).join('');
+  }
+
+  async function loadNews(selectId = '') {
+    const data = await fetchJson('/api/admin/news');
+    state.items = Array.isArray(data.items) ? data.items : [];
+    state.selectedId = selectId && state.items.some((x) => x.id === selectId)
+      ? selectId
+      : (state.selectedId && state.items.some((x) => x.id === state.selectedId) ? state.selectedId : '');
+    renderList();
+    const current = state.items.find((x) => x.id === state.selectedId) || null;
+    toEditor(current);
+  }
+
+  async function login() {
+    try {
+      await fetchJson('/api/admin/login', {
+        method: 'POST',
+        body: JSON.stringify({ login: dom.loginName.value.trim(), password: dom.loginPassword.value }),
+      });
+      dom.loginView.classList.add('hidden');
+      dom.appView.classList.remove('hidden');
+      await loadNews();
+      setStatus(dom.status, 'Loaded.');
+    } catch (err) {
+      setStatus(dom.loginStatus, err.message);
+    }
+  }
+
+  async function logout() {
+    await fetchJson('/api/admin/logout', { method: 'POST' }).catch(() => {});
+    location.reload();
+  }
+
+  async function createNews() {
+    try {
+      const payload = collectEditorPayload();
+      const data = await fetchJson('/api/admin/news', { method: 'POST', body: JSON.stringify(payload) });
+      state.items = Array.isArray(data.items) ? data.items : state.items;
+      const created = data.item?.id || '';
+      state.selectedId = created;
+      renderList();
+      toEditor(state.items.find((x) => x.id === created) || null);
+      setStatus(dom.editorStatus, 'News created.');
+    } catch (err) {
+      setStatus(dom.editorStatus, err.message);
+    }
+  }
+
+  async function saveNews() {
+    if (!state.selectedId) return;
+    try {
+      const payload = collectEditorPayload();
+      const data = await fetchJson('/api/admin/news/' + encodeURIComponent(state.selectedId), { method: 'PUT', body: JSON.stringify(payload) });
+      state.items = Array.isArray(data.items) ? data.items : state.items;
+      renderList();
+      toEditor(state.items.find((x) => x.id === state.selectedId) || null);
+      setStatus(dom.editorStatus, 'News updated.');
+    } catch (err) {
+      setStatus(dom.editorStatus, err.message);
+    }
+  }
+
+  async function deleteNews() {
+    if (!state.selectedId) return;
+    if (!confirm('Delete selected news item?')) return;
+    try {
+      const deletingId = state.selectedId;
+      const data = await fetchJson('/api/admin/news/' + encodeURIComponent(deletingId), { method: 'DELETE' });
+      state.items = Array.isArray(data.items) ? data.items : state.items;
+      state.selectedId = '';
+      renderList();
+      toEditor(null);
+      setStatus(dom.editorStatus, 'News deleted.');
+    } catch (err) {
+      setStatus(dom.editorStatus, err.message);
+    }
+  }
+
+  dom.loginBtn.onclick = login;
+  dom.loginPassword.onkeydown = (e) => { if (e.key === 'Enter') login(); };
+  dom.reloadBtn.onclick = () => loadNews(state.selectedId).catch((e) => setStatus(dom.status, e.message));
+  dom.logoutBtn.onclick = logout;
+  dom.createBtn.onclick = createNews;
+  dom.saveBtn.onclick = saveNews;
+  dom.deleteBtn.onclick = deleteNews;
+  dom.newBtn.onclick = () => { state.selectedId = ''; toEditor(null); renderList(); setStatus(dom.editorStatus, 'Create new news item.'); };
+
+  dom.newsBody.onclick = (e) => {
+    const tr = e.target.closest('tr[data-id]');
+    if (!tr) return;
+    state.selectedId = tr.dataset.id || '';
+    renderList();
+    toEditor(state.items.find((x) => x.id === state.selectedId) || null);
+    setStatus(dom.editorStatus, 'Editing selected item.');
+  };
+
+  (async () => {
+    try {
+      await fetchJson('/api/admin/me');
+      dom.loginView.classList.add('hidden');
+      dom.appView.classList.remove('hidden');
+      await loadNews();
+    } catch {
+      // Not logged in yet.
+    }
+  })();
+  </script>
+</body>
+</html>

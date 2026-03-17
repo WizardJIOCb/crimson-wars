@@ -2824,7 +2824,7 @@ body.levelup-open #dev-console-toggle {
 /* Main menu v2 layout + hero galleries */
 .main-menu-tabs {
   display: grid;
-  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
   gap: 10px;
   margin: 6px 0 8px;
 }
@@ -3104,6 +3104,11 @@ body.levelup-open #dev-console-toggle {
     grid-template-columns: repeat(2, 1fr);
   }
 
+  #main-menu-tabs .main-menu-tab[data-menu-tab='news'] {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
   .hero-gallery-v2 {
     grid-template-columns: repeat(2, minmax(120px, 1fr));
     gap: 10px;
@@ -3310,4 +3315,226 @@ body.levelup-open #dev-console-toggle {
 
 .death-drips {
   display: none !important;
+}
+
+
+.news-card {
+  gap: 10px;
+}
+
+.news-main-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #f1f5f9;
+}
+
+.news-sub {
+  color: #cbd5e1;
+  line-height: 1.45;
+}
+
+.news-items {
+  display: grid;
+  gap: 8px;
+}
+
+.news-item {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(71, 85, 105, 0.5);
+  border-radius: 10px;
+  background: rgba(10, 18, 32, 0.55);
+}
+
+.news-item-button {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+.news-item-button:hover {
+  border-color: rgba(56, 189, 248, 0.52);
+  background: rgba(12, 26, 45, 0.72);
+  transform: translateY(-1px);
+}
+
+.news-item-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.news-item-meta {
+  font-size: 12px;
+  color: #93c5fd;
+}
+
+.news-item-detail {
+  gap: 10px;
+  background: rgba(10, 18, 32, 0.68) !important;
+}
+
+.news-list {
+  display: grid;
+  gap: 6px;
+  color: #e2e8f0;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.news-back-btn {
+  width: fit-content;
+}
+
+.news-comments-title {
+  margin-top: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.news-comments-wrap {
+  display: grid;
+  gap: 8px;
+}
+
+.news-comment {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid rgba(71, 85, 105, 0.45);
+  border-radius: 9px;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.news-comment-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.news-comment-author {
+  color: #f1f5f9;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.news-comment-date {
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.news-comment-text {
+  color: #e2e8f0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.news-comment-reply-btn {
+  justify-self: start;
+}
+
+.news-comment-replies {
+  display: grid;
+  gap: 7px;
+  margin-left: 12px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(71, 85, 105, 0.45);
+}
+
+.news-comment-reply {
+  background: rgba(12, 18, 35, 0.52);
+}
+
+.news-comment-compose {
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgba(71, 85, 105, 0.42);
+  border-radius: 10px;
+  background: rgba(12, 20, 36, 0.55);
+  padding: 8px;
+}
+
+.news-comment-reply-compose {
+  margin-top: 2px;
+}
+
+.news-comment-input {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 8px;
+  background: rgba(2, 8, 24, 0.72);
+  color: #e2e8f0;
+  font-size: 13px;
+  line-height: 1.35;
+  padding: 7px 8px;
+  resize: vertical;
+}
+
+.news-comment-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+
+
+#join-form .news-item-button {
+  border: 1px solid rgba(71, 85, 105, 0.5) !important;
+  background: rgba(10, 18, 32, 0.55) !important;
+  color: #e2e8f0 !important;
+}
+
+#join-form .news-item-button:hover {
+  border-color: rgba(56, 189, 248, 0.52) !important;
+  background: rgba(12, 26, 45, 0.72) !important;
+}
+
+
+
+
+.news-detail-actions {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.news-share-btn {
+  min-width: 110px;
+}
+
+.news-share-toast {
+  position: absolute;
+  top: -30px;
+  left: 0;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(74, 222, 128, 0.45);
+  background: rgba(20, 83, 45, 0.88);
+  color: #dcfce7;
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+  transition: opacity 0.28s ease, transform 0.28s ease;
+}
+
+.news-share-toast.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (max-width: 720px) {
+  .news-share-toast {
+    top: -26px;
+    font-size: 11px;
+  }
 }

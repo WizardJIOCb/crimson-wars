@@ -249,11 +249,12 @@
       <input id="name" maxlength="18" value="Fighter" />
       <div id="nickname-hint" class="field-hint">Guest mode: choose any free nickname.</div>
 
-      <div id="main-menu-tabs" class="main-menu-tabs" role="tablist" aria-label="Main menu">
+      <div id="main-menu-tabs" class="main-menu-tabs" role="tablist" aria-label="Main menu">        
         <button type="button" class="main-menu-tab active" data-menu-tab="play">Играть</button>
         <button type="button" class="main-menu-tab" data-menu-tab="characters">Персонажи</button>
         <button type="button" class="main-menu-tab" data-menu-tab="skills">Навыки</button>
-        <button type="button" class="main-menu-tab" data-menu-tab="profile">Профиль</button>
+        <button type="button" class="main-menu-tab" data-menu-tab="profile">Профиль</button>        
+        <button type="button" class="main-menu-tab" data-menu-tab="news">Новости</button>
       </div>
 
       <section id="menu-panel-play" class="menu-panel active" data-menu-panel="play">
@@ -342,6 +343,10 @@
         <div id="profile-character-stats" class="profile-card">Character stats: soon</div>
         <div id="profile-run-history" class="profile-card">Run history: loading...</div>
       </section>
+
+      <section id="menu-panel-news" class="menu-panel" data-menu-panel="news">
+        <div id="news-feed" class="profile-card news-card">Loading news...</div>
+      </section>
     </form>
     <div id="record-details-modal" class="record-details-modal hidden" aria-live="polite">
       <div class="record-details-card">
@@ -422,6 +427,7 @@
   <script src="/js/client-render.js?v=20260317t"></script>
 </body>
 </html>
+
 
 
 

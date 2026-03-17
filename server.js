@@ -13,6 +13,7 @@ const { createRecordsStore } = require('./server/records-store');
 const { createRuntimeRegistryStore } = require('./server/runtime-registry-store');
 const { createSkillsStore } = require('./server/skills-store');
 const { createAccountProgressionStore } = require('./server/account-progression-store');
+const { createNewsStore } = require('./server/news-store');
 const PORT = process.env.PORT || 8080;
 const IS_PROD = process.env.NODE_ENV === 'production';
 const DEV_CHEATS_ENABLED = (process.env.DEV_CHEATS_ENABLED || '1') !== '0';
@@ -193,10 +194,16 @@ const recordsStore = createRecordsStore({
   leaderboardLimit: LEADERBOARD_LIMIT,
   leaderboardPageSize: LEADERBOARD_PAGE_SIZE,
 });
+
 const skillsStore = createSkillsStore({
   dataDir: DATA_DIR,
   skillsConfigPath: SKILLS_CONFIG_PATH,
   defaultSkillDefs: DEFAULT_SKILL_DEFS,
+});
+
+const newsStore = createNewsStore({
+  dataDir: DATA_DIR,
+  filePath: path.join(DATA_DIR, 'news.json'),
 });
 const progressionCatalog = accountProgressionStore.getCatalogPayload();
 const heroDefsById = Object.fromEntries((progressionCatalog.heroes || []).map((hero) => [hero.id, hero]));
@@ -705,6 +712,10 @@ app.get('/admin/skills', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin-skills.html'));
 });
 
+app.get('/admin/news', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin-news.html'));
+});
+
 app.get('/api/admin/me', (req, res) => {
   if (!req.adminUser) {
     res.status(401).json({ ok: false, message: 'Authentication required' });
@@ -769,6 +780,71 @@ app.delete('/api/admin/users/:id', requireAdminManager, (req, res) => {
     return;
   }
   res.json({ ok: true });
+});
+
+app.get('/api/news', (_req, res) => {
+  res.json({ ok: true, items: newsStore.listPublic(), now: Date.now() });
+});
+
+app.get('/api/news/:id', (req, res) => {
+  const result = newsStore.getPublicById(req.params.id, { incrementView: true });
+  if (!result.ok) {
+    res.status(result.code || 404).json({ ok: false, message: result.message || 'News not found' });
+    return;
+  }
+  res.json({ ok: true, item: result.item, now: Date.now() });
+});
+
+app.post('/api/news/:id/comments', (req, res) => {
+  if (!req.playerUser) {
+    res.status(401).json({ ok: false, message: 'Authentication required' });
+    return;
+  }
+  const payload = req.body && typeof req.body === 'object' ? req.body : {};
+  const result = newsStore.addComment(req.params.id, {
+    authorName: req.playerUser.nickname || 'Player',
+    authorAccountId: req.playerUser.id,
+    text: payload.text,
+    parentId: payload.parentId,
+  });
+  if (!result.ok) {
+    res.status(result.code || 400).json({ ok: false, message: result.message || 'Failed to add comment' });
+    return;
+  }
+  res.json({ ok: true, item: result.item, now: Date.now() });
+});
+
+app.get('/api/admin/news', requireAdmin, (_req, res) => {
+  res.json({ ok: true, items: newsStore.listAdmin(), now: Date.now() });
+});
+
+app.post('/api/admin/news', requireAdmin, (req, res) => {
+  const payload = req.body && typeof req.body === 'object' ? req.body : {};
+  const result = newsStore.create(payload);
+  if (!result.ok) {
+    res.status(result.code || 400).json({ ok: false, message: result.message || 'Failed to create news' });
+    return;
+  }
+  res.json({ ok: true, item: result.item, items: newsStore.listAdmin() });
+});
+
+app.put('/api/admin/news/:id', requireAdmin, (req, res) => {
+  const payload = req.body && typeof req.body === 'object' ? req.body : {};
+  const result = newsStore.update(req.params.id, payload);
+  if (!result.ok) {
+    res.status(result.code || 400).json({ ok: false, message: result.message || 'Failed to update news' });
+    return;
+  }
+  res.json({ ok: true, item: result.item, items: newsStore.listAdmin() });
+});
+
+app.delete('/api/admin/news/:id', requireAdmin, (req, res) => {
+  const result = newsStore.remove(req.params.id);
+  if (!result.ok) {
+    res.status(result.code || 400).json({ ok: false, message: result.message || 'Failed to delete news' });
+    return;
+  }
+  res.json({ ok: true, item: result.item, items: newsStore.listAdmin() });
 });
 
 app.get('/api/rooms', (_req, res) => {
@@ -3705,3 +3781,5 @@ server.listen(PORT, () => {
     console.log(`Bootstrap admin password: ${ADMIN_BOOTSTRAP_PASSWORD}`);
   }
 });
+
+

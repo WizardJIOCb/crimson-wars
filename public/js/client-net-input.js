@@ -251,6 +251,7 @@ const profileSummaryEl = document.getElementById('profile-summary');
 const profileAchievementsEl = document.getElementById('profile-achievements');
 const profileCharacterStatsEl = document.getElementById('profile-character-stats');
 const profileRunHistoryEl = document.getElementById('profile-run-history');
+const newsFeedEl = document.getElementById('news-feed');
 const deathScreenBloodOverlayEl = document.getElementById('death-screen-blood');
 const mainMenuTabButtons = Array.from(document.querySelectorAll('#main-menu-tabs .main-menu-tab'));
 const mainMenuPanels = Array.from(document.querySelectorAll('#join-form [data-menu-panel]'));
@@ -270,8 +271,579 @@ const profileRunHistoryUi = {
   fetchToken: 0,
 };
 
+const newsUi = {
+  items: [],
+  activeId: '',
+  activeItem: null,
+  loading: false,
+  loadingItem: false,
+  postingComment: false,
+  error: '',
+  itemError: '',
+  commentError: '',
+  lastLoadedAt: 0,
+  cacheMs: 15000,
+  fetchToken: 0,
+  itemFetchToken: 0,
+  commentDraft: '',
+  replyTargetId: '',
+  replyDraftByParent: {},
+  shareCopied: false,
+};
+let newsShareToastTimer = null;
+const MENU_TAB_IDS = new Set(['play', 'characters', 'skills', 'profile', 'news']);
+const initialUrlParams = new URLSearchParams(window.location.search);
+const initialMenuTabParam = String(initialUrlParams.get('tab') || '').trim().toLowerCase();
+const initialNewsIdParam = String(initialUrlParams.get('news') || '').trim();
+const initialMenuTab = MENU_TAB_IDS.has(initialMenuTabParam) ? initialMenuTabParam : 'play';
+
+
+function escapeNewsHtml(raw) {
+  const text = String(raw ?? '');
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatNewsDate(ts) {
+  const ms = Math.max(0, Number(ts) || 0);
+  if (!ms) return '--';
+  try {
+    return new Date(ms).toLocaleString('ru-RU', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return new Date(ms).toLocaleString();
+  }
+}
+
+function upsertNewsListCounters(item) {
+  if (!item || !item.id) return;
+  const idx = newsUi.items.findIndex((x) => x && x.id === item.id);
+  if (idx < 0) return;
+  newsUi.items[idx] = {
+    ...newsUi.items[idx],
+    title: item.title,
+    summary: item.summary,
+    publishedAt: item.publishedAt,
+    views: Math.max(0, Number(item.views) || 0),
+    commentsCount: Math.max(0, Number(item.commentsCount) || 0),
+  };
+}
+
+function setNewsDetailItem(item) {
+  if (!item || !item.id) return;
+  newsUi.activeId = String(item.id);
+  newsUi.activeItem = {
+    ...item,
+    views: Math.max(0, Number(item.views) || 0),
+    commentsCount: Math.max(0, Number(item.commentsCount) || 0),
+    comments: Array.isArray(item.comments) ? item.comments : [],
+  };
+  upsertNewsListCounters(newsUi.activeItem);
+}
+
+function updateMenuUrlState(tabId, newsId = '') {
+  const url = new URL(window.location.href);
+  const tab = String(tabId || '').trim().toLowerCase();
+  if (tab && tab !== 'play') url.searchParams.set('tab', tab);
+  else url.searchParams.delete('tab');
+  const id = String(newsId || '').trim();
+  if (tab === 'news' && id) url.searchParams.set('news', id);
+  else url.searchParams.delete('news');
+  window.history.replaceState({}, document.title, url.toString());
+}
+
+function buildNewsShareUrl(newsId) {
+  const url = new URL(window.location.href);
+  url.searchParams.set('tab', 'news');
+  url.searchParams.set('news', String(newsId || '').trim());
+  return url.toString();
+}
+
+function showNewsShareToast() {
+  newsUi.shareCopied = true;
+  if (newsShareToastTimer) {
+    clearTimeout(newsShareToastTimer);
+    newsShareToastTimer = null;
+  }
+  renderNewsFeed();
+  newsShareToastTimer = setTimeout(() => {
+    newsUi.shareCopied = false;
+    newsShareToastTimer = null;
+    renderNewsFeed();
+  }, 2000);
+}
+
+async function shareNewsLink(newsId) {
+  const id = String(newsId || '').trim();
+  if (!id) return;
+  const shareUrl = buildNewsShareUrl(id);
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    await navigator.clipboard.writeText(shareUrl);
+    showNewsShareToast();
+    return;
+  }
+  const ta = document.createElement('textarea');
+  ta.value = shareUrl;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  const ok = document.execCommand('copy');
+  ta.remove();
+  if (ok) showNewsShareToast();
+}
+
+async function submitNewsComment(newsId, { text, parentId = '' } = {}) {
+  const bodyText = String(text || '').trim();
+  if (!bodyText || newsUi.postingComment) return;
+  newsUi.postingComment = true;
+  newsUi.commentError = '';
+  renderNewsFeed();
+  try {
+    const res = await fetch('/api/news/' + encodeURIComponent(newsId) + '/comments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: bodyText, parentId: String(parentId || '').trim() }),
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok || !payload?.ok || !payload?.item) {
+      throw new Error(payload?.message || ('HTTP ' + res.status));
+    }
+    setNewsDetailItem(payload.item);
+    updateMenuUrlState('news', String(newsId || '').trim());
+    if (parentId) {
+      delete newsUi.replyDraftByParent[parentId];
+      newsUi.replyTargetId = '';
+    } else {
+      newsUi.commentDraft = '';
+    }
+  } catch (err) {
+    newsUi.commentError = err?.message || 'Failed to send comment.';
+  } finally {
+    newsUi.postingComment = false;
+    renderNewsFeed();
+  }
+}
+
+function renderNewsReplyComposer(container, parentId) {
+  const wrap = document.createElement('div');
+  wrap.className = 'news-comment-compose news-comment-reply-compose';
+
+  const input = document.createElement('textarea');
+  input.className = 'news-comment-input';
+  input.rows = 2;
+  input.maxLength = 1500;
+  input.placeholder = 'Reply text...';
+  input.value = String(newsUi.replyDraftByParent[parentId] || '');
+  input.addEventListener('input', () => {
+    newsUi.replyDraftByParent[parentId] = input.value;
+  });
+
+  const actions = document.createElement('div');
+  actions.className = 'news-comment-actions';
+
+  const sendBtn = document.createElement('button');
+  sendBtn.type = 'button';
+  sendBtn.className = 'mini';
+  sendBtn.textContent = newsUi.postingComment ? 'Sending...' : 'Reply';
+  sendBtn.disabled = newsUi.postingComment || !input.value.trim();
+  sendBtn.addEventListener('click', () => {
+    void submitNewsComment(newsUi.activeId, { text: input.value, parentId });
+  });
+  const refreshSendState = () => {
+    sendBtn.disabled = newsUi.postingComment || !input.value.trim();
+  };
+  input.addEventListener('input', refreshSendState);
+  input.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      if (!sendBtn.disabled) sendBtn.click();
+    }
+  });
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'mini';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.disabled = newsUi.postingComment;
+  cancelBtn.addEventListener('click', () => {
+    newsUi.replyTargetId = '';
+    renderNewsFeed();
+  });
+
+  actions.appendChild(sendBtn);
+  actions.appendChild(cancelBtn);
+  wrap.appendChild(input);
+  wrap.appendChild(actions);
+  container.appendChild(wrap);
+}
+
+function renderNewsCommentNode(comment, isReply = false) {
+  const item = document.createElement('div');
+  item.className = isReply ? 'news-comment news-comment-reply' : 'news-comment';
+
+  const head = document.createElement('div');
+  head.className = 'news-comment-head';
+  const author = document.createElement('span');
+  author.className = 'news-comment-author';
+  author.textContent = String(comment?.authorName || 'Player');
+  const date = document.createElement('span');
+  date.className = 'news-comment-date';
+  date.textContent = formatNewsDate(comment?.createdAt || 0);
+  head.appendChild(author);
+  head.appendChild(date);
+
+  const text = document.createElement('div');
+  text.className = 'news-comment-text';
+  text.textContent = String(comment?.text || '');
+
+  item.appendChild(head);
+  item.appendChild(text);
+
+  const isLoggedIn = Boolean(game.playerAuth?.player);
+  const parentId = String(comment?.id || '').trim();
+  if (!isReply && isLoggedIn && parentId) {
+    const replyBtn = document.createElement('button');
+    replyBtn.type = 'button';
+    replyBtn.className = 'mini news-comment-reply-btn';
+    replyBtn.textContent = newsUi.replyTargetId === parentId ? 'Close reply' : 'Reply';
+    replyBtn.addEventListener('click', () => {
+      newsUi.replyTargetId = newsUi.replyTargetId === parentId ? '' : parentId;
+      renderNewsFeed();
+    });
+    item.appendChild(replyBtn);
+    if (newsUi.replyTargetId === parentId) {
+      renderNewsReplyComposer(item, parentId);
+    }
+  }
+
+  const replies = Array.isArray(comment?.replies) ? comment.replies : [];
+  if (replies.length > 0) {
+    const repliesWrap = document.createElement('div');
+    repliesWrap.className = 'news-comment-replies';
+    for (const reply of replies) {
+      repliesWrap.appendChild(renderNewsCommentNode(reply, true));
+    }
+    item.appendChild(repliesWrap);
+  }
+
+  return item;
+}
+
+function renderNewsFeed() {
+  if (!newsFeedEl) return;
+
+  newsFeedEl.innerHTML = '';
+
+  const title = document.createElement('div');
+  title.className = 'news-main-title';
+  title.textContent = 'Новости';
+  newsFeedEl.appendChild(title);
+
+  if (newsUi.loading && newsUi.items.length === 0 && !newsUi.activeItem) {
+    const loading = document.createElement('div');
+    loading.className = 'news-sub';
+    loading.textContent = 'Загрузка новостей...';
+    newsFeedEl.appendChild(loading);
+    return;
+  }
+
+  if (newsUi.error && newsUi.items.length === 0 && !newsUi.activeItem) {
+    const error = document.createElement('div');
+    error.className = 'news-sub';
+    error.textContent = newsUi.error;
+    newsFeedEl.appendChild(error);
+    return;
+  }
+
+  if (newsUi.activeItem) {
+    const detailActions = document.createElement('div');
+    detailActions.className = 'news-detail-actions';
+    const backBtn = document.createElement('button');
+    backBtn.type = 'button';
+    backBtn.className = 'mini news-back-btn';
+    backBtn.textContent = '\u2190 \u041a \u0441\u043f\u0438\u0441\u043a\u0443 \u043d\u043e\u0432\u043e\u0441\u0442\u0435\u0439';
+    backBtn.addEventListener('click', () => {
+      newsUi.activeId = '';
+      newsUi.activeItem = null;
+      newsUi.itemError = '';
+      newsUi.commentError = '';
+      newsUi.replyTargetId = '';
+      newsUi.shareCopied = false;
+      updateMenuUrlState('news', '');
+      renderNewsFeed();
+    });
+    const shareBtn = document.createElement('button');
+    shareBtn.type = 'button';
+    shareBtn.className = 'mini news-share-btn';
+    shareBtn.textContent = newsUi.shareCopied ? '\u0421\u0441\u044b\u043b\u043a\u0430 \u0441\u043a\u043e\u043f\u0438\u0440\u043e\u0432\u0430\u043d\u0430' : '\u041f\u043e\u0434\u0435\u043b\u0438\u0442\u044c\u0441\u044f';
+    shareBtn.addEventListener('click', async () => {
+      try {
+        await shareNewsLink(newsUi.activeId);
+      } catch {
+        newsUi.commentError = '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u043a\u043e\u043f\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u0441\u0441\u044b\u043b\u043a\u0443.';
+        renderNewsFeed();
+      }
+    });
+    detailActions.appendChild(backBtn);
+    detailActions.appendChild(shareBtn);
+    newsFeedEl.appendChild(detailActions);
+
+    if (newsUi.loadingItem) {
+      const loadingItem = document.createElement('div');
+      loadingItem.className = 'news-sub';
+      loadingItem.textContent = 'Открываем новость...';
+      newsFeedEl.appendChild(loadingItem);
+      return;
+    }
+
+    if (newsUi.itemError) {
+      const itemError = document.createElement('div');
+      itemError.className = 'news-sub';
+      itemError.textContent = newsUi.itemError;
+      newsFeedEl.appendChild(itemError);
+      return;
+    }
+
+    const item = newsUi.activeItem;
+
+    const article = document.createElement('article');
+    article.className = 'news-item news-item-detail';
+
+    const h = document.createElement('h3');
+    h.className = 'news-item-title';
+    h.textContent = String(item?.title || 'Без названия');
+
+    const meta = document.createElement('div');
+    meta.className = 'news-item-meta';
+    meta.textContent = formatNewsDate(item?.publishedAt) + ' | Views: ' + (Math.max(0, Number(item?.views) || 0)) + ' | Comments: ' + (Math.max(0, Number(item?.commentsCount) || 0));
+
+    const summary = document.createElement('div');
+    summary.className = 'news-sub';
+    summary.textContent = String(item?.summary || '');
+
+    article.appendChild(h);
+    article.appendChild(meta);
+    if (summary.textContent) article.appendChild(summary);
+
+    const lines = Array.isArray(item?.items) ? item.items : [];
+    if (lines.length > 0) {
+      const list = document.createElement('div');
+      list.className = 'news-list';
+      for (const line of lines) {
+        const row = document.createElement('div');
+        row.textContent = '- ' + String(line || '').replace(/^[-\s]+/, '');
+        list.appendChild(row);
+      }
+      article.appendChild(list);
+    }
+
+    newsFeedEl.appendChild(article);
+
+    const commentsTitle = document.createElement('div');
+    commentsTitle.className = 'news-comments-title';
+    commentsTitle.textContent = 'Комментарии';
+
+    const isLoggedIn = Boolean(game.playerAuth?.player);
+    if (isLoggedIn) {
+      const compose = document.createElement('div');
+      compose.className = 'news-comment-compose';
+
+      const input = document.createElement('textarea');
+      input.className = 'news-comment-input';
+      input.rows = 3;
+      input.maxLength = 1500;
+      input.placeholder = 'Напишите комментарий...';
+      input.value = newsUi.commentDraft;
+      input.addEventListener('input', () => {
+        newsUi.commentDraft = input.value;
+      });
+
+      const actions = document.createElement('div');
+      actions.className = 'news-comment-actions';
+
+      const sendBtn = document.createElement('button');
+      sendBtn.type = 'button';
+      sendBtn.className = 'mini';
+      sendBtn.textContent = newsUi.postingComment ? 'Отправка...' : 'Отправить';
+      sendBtn.disabled = newsUi.postingComment || !input.value.trim();
+      sendBtn.addEventListener('click', () => {
+        void submitNewsComment(item.id, { text: input.value });
+      });
+      const refreshSendState = () => {
+        sendBtn.disabled = newsUi.postingComment || !input.value.trim();
+      };
+      input.addEventListener('input', refreshSendState);
+      input.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+          e.preventDefault();
+          if (!sendBtn.disabled) sendBtn.click();
+        }
+      });
+
+      actions.appendChild(sendBtn);
+      compose.appendChild(input);
+      compose.appendChild(actions);
+      newsFeedEl.appendChild(compose);
+    } else {
+      const authHint = document.createElement('div');
+      authHint.className = 'news-sub';
+      authHint.textContent = 'Войдите в аккаунт, чтобы оставлять комментарии и ответы.';
+      newsFeedEl.appendChild(authHint);
+    }
+
+    if (newsUi.commentError) {
+      const commentError = document.createElement('div');
+      commentError.className = 'news-sub';
+      commentError.textContent = newsUi.commentError;
+      newsFeedEl.appendChild(commentError);
+    }
+
+    newsFeedEl.appendChild(commentsTitle);
+
+    const commentsWrap = document.createElement('div');
+    commentsWrap.className = 'news-comments-wrap';
+    const comments = Array.isArray(item?.comments) ? item.comments : [];
+    if (comments.length <= 0) {
+      const empty = document.createElement('div');
+      empty.className = 'news-sub';
+      empty.textContent = 'Пока нет комментариев.';
+      commentsWrap.appendChild(empty);
+    } else {
+      for (const comment of comments) {
+        commentsWrap.appendChild(renderNewsCommentNode(comment, false));
+      }
+    }
+    newsFeedEl.appendChild(commentsWrap);
+    return;
+  }
+
+  const items = Array.isArray(newsUi.items) ? newsUi.items : [];
+  if (items.length <= 0) {
+    const empty = document.createElement('div');
+    empty.className = 'news-sub';
+    empty.textContent = 'Пока новостей нет.';
+    newsFeedEl.appendChild(empty);
+    return;
+  }
+
+  const list = document.createElement('div');
+  list.className = 'news-items';
+  for (const item of items) {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'news-item news-item-button';
+
+    const h = document.createElement('div');
+    h.className = 'news-item-title';
+    h.textContent = String(item?.title || 'Без названия');
+
+    const meta = document.createElement('div');
+    meta.className = 'news-item-meta';
+    meta.textContent = formatNewsDate(item?.publishedAt) + ' | Views: ' + (Math.max(0, Number(item?.views) || 0)) + ' | Comments: ' + (Math.max(0, Number(item?.commentsCount) || 0));
+
+    const summary = document.createElement('div');
+    summary.className = 'news-sub';
+    summary.textContent = String(item?.summary || '');
+
+    card.appendChild(h);
+    card.appendChild(meta);
+    if (summary.textContent) card.appendChild(summary);
+
+    card.addEventListener('click', () => {
+      void openNewsItem(item?.id || '');
+    });
+
+    list.appendChild(card);
+  }
+  newsFeedEl.appendChild(list);
+}
+
+async function requestNewsFeed(options = {}) {
+  const force = options?.force === true;
+  const now = Date.now();
+  if (!force && !newsUi.loading && newsUi.items.length > 0 && (now - newsUi.lastLoadedAt) < newsUi.cacheMs) {
+    renderNewsFeed();
+    return;
+  }
+  const token = newsUi.fetchToken + 1;
+  newsUi.fetchToken = token;
+  newsUi.loading = true;
+  newsUi.error = '';
+  renderNewsFeed();
+  try {
+    const res = await fetch('/api/news', { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const payload = await res.json();
+    if (newsUi.fetchToken !== token) return;
+    newsUi.items = Array.isArray(payload?.items) ? payload.items : [];
+    newsUi.lastLoadedAt = Date.now();
+    newsUi.error = '';
+    if (newsUi.activeItem) upsertNewsListCounters(newsUi.activeItem);
+  } catch (err) {
+    if (newsUi.fetchToken !== token) return;
+    newsUi.error = err?.message || 'Failed to load news.';
+  } finally {
+    if (newsUi.fetchToken === token) {
+      newsUi.loading = false;
+      renderNewsFeed();
+    }
+  }
+}
+
+async function openNewsItem(newsId, { force = false } = {}) {
+  const id = String(newsId || '').trim();
+  if (!id) return;
+  if (newsUi.loadingItem) return;
+  if (!force && newsUi.activeItem && newsUi.activeId === id) {
+    renderNewsFeed();
+    return;
+  }
+
+  const token = newsUi.itemFetchToken + 1;
+  newsUi.itemFetchToken = token;
+  newsUi.loadingItem = true;
+  newsUi.itemError = '';
+  newsUi.commentError = '';
+  newsUi.replyTargetId = '';
+  newsUi.activeId = id;
+  newsUi.activeItem = null;
+  renderNewsFeed();
+
+  try {
+    const res = await fetch('/api/news/' + encodeURIComponent(id), { cache: 'no-store' });
+    const payload = await res.json().catch(() => ({}));
+    if (newsUi.itemFetchToken !== token) return;
+    if (!res.ok || !payload?.ok || !payload?.item) {
+      throw new Error(payload?.message || ('HTTP ' + res.status));
+    }
+    setNewsDetailItem(payload.item);
+    updateMenuUrlState('news', id);
+  } catch (err) {
+    if (newsUi.itemFetchToken !== token) return;
+    newsUi.itemError = err?.message || 'Failed to open news.';
+  } finally {
+    if (newsUi.itemFetchToken === token) {
+      newsUi.loadingItem = false;
+      renderNewsFeed();
+    }
+  }
+}
+
+globalThis.renderNewsFeed = renderNewsFeed;
+
 function setMainMenuTab(tabId) {
   const nextTab = String(tabId || '').trim() || 'play';
+  const prevTab = currentMainMenuTab;
   currentMainMenuTab = nextTab;
   for (const btn of mainMenuTabButtons) {
     const active = btn.getAttribute('data-menu-tab') === nextTab;
@@ -285,6 +857,25 @@ function setMainMenuTab(tabId) {
   if (nextTab === 'profile') {
     void requestProfileRunHistory({ force: false, page: profileRunHistoryUi.page });
   }
+  if (nextTab === 'news') {
+    if (prevTab === 'news' && newsUi.activeItem) {
+      newsUi.activeId = '';
+      newsUi.activeItem = null;
+      newsUi.itemError = '';
+      newsUi.commentError = '';
+      newsUi.replyTargetId = '';
+      newsUi.shareCopied = false;
+      updateMenuUrlState('news', '');
+      renderNewsFeed();
+    }
+    void requestNewsFeed({ force: false });
+  }
+  if (nextTab !== 'news') {
+    newsUi.shareCopied = false;
+    updateMenuUrlState(nextTab, '');
+  } else if (!newsUi.activeItem) {
+    updateMenuUrlState('news', '');
+  }
 }
 
 for (const btn of mainMenuTabButtons) {
@@ -292,7 +883,12 @@ for (const btn of mainMenuTabButtons) {
     setMainMenuTab(btn.getAttribute('data-menu-tab'));
   });
 }
+currentMainMenuTab = initialMenuTab;
 setMainMenuTab(currentMainMenuTab);
+void requestNewsFeed({ force: false });
+if (currentMainMenuTab === 'news' && initialNewsIdParam) {
+  void openNewsItem(initialNewsIdParam, { force: true });
+}
 
 function getPlayerVariant(id) {
   return PLAYER_VARIANTS.find((x) => x.id === id) || PLAYER_VARIANTS[0];
@@ -3819,4 +4415,13 @@ function sendInput() {
 }
 
 void maybeStartReplayFromUrl();
+
+
+
+
+
+
+
+
+
 
