@@ -1080,32 +1080,47 @@ app.get('/api/admin/news', requireAdmin, (_req, res) => {
 });
 
 app.post('/api/admin/news', requireAdmin, (req, res) => {
-  const payload = req.body && typeof req.body === 'object' ? req.body : {};
-  const result = newsStore.create(payload);
-  if (!result.ok) {
-    res.status(result.code || 400).json({ ok: false, message: result.message || 'Failed to create news' });
-    return;
+  try {
+    const payload = req.body && typeof req.body === 'object' ? req.body : {};
+    const result = newsStore.create(payload);
+    if (!result.ok) {
+      res.status(result.code || 400).json({ ok: false, message: result.message || 'Failed to create news' });
+      return;
+    }
+    res.json({ ok: true, item: result.item, items: newsStore.listAdmin() });
+  } catch (err) {
+    console.error('Admin news create failed:', err?.message || err);
+    res.status(500).json({ ok: false, message: 'Failed to create news' });
   }
-  res.json({ ok: true, item: result.item, items: newsStore.listAdmin() });
 });
 
 app.put('/api/admin/news/:id', requireAdmin, (req, res) => {
-  const payload = req.body && typeof req.body === 'object' ? req.body : {};
-  const result = newsStore.update(req.params.id, payload);
-  if (!result.ok) {
-    res.status(result.code || 400).json({ ok: false, message: result.message || 'Failed to update news' });
-    return;
+  try {
+    const payload = req.body && typeof req.body === 'object' ? req.body : {};
+    const result = newsStore.update(req.params.id, payload);
+    if (!result.ok) {
+      res.status(result.code || 400).json({ ok: false, message: result.message || 'Failed to update news' });
+      return;
+    }
+    res.json({ ok: true, item: result.item, items: newsStore.listAdmin() });
+  } catch (err) {
+    console.error('Admin news update failed:', err?.message || err);
+    res.status(500).json({ ok: false, message: 'Failed to update news' });
   }
-  res.json({ ok: true, item: result.item, items: newsStore.listAdmin() });
 });
 
 app.delete('/api/admin/news/:id', requireAdmin, (req, res) => {
-  const result = newsStore.remove(req.params.id);
-  if (!result.ok) {
-    res.status(result.code || 400).json({ ok: false, message: result.message || 'Failed to delete news' });
-    return;
+  try {
+    const result = newsStore.remove(req.params.id);
+    if (!result.ok) {
+      res.status(result.code || 400).json({ ok: false, message: result.message || 'Failed to delete news' });
+      return;
+    }
+    res.json({ ok: true, item: result.item, items: newsStore.listAdmin() });
+  } catch (err) {
+    console.error('Admin news delete failed:', err?.message || err);
+    res.status(500).json({ ok: false, message: 'Failed to delete news' });
   }
-  res.json({ ok: true, item: result.item, items: newsStore.listAdmin() });
 });
 
 app.get('/api/rooms', (_req, res) => {

@@ -4,3 +4,4 @@ npm-debug.log*
 data/*.db
 data/*.db-shm
 data/*.db-wal
+data/news.json
