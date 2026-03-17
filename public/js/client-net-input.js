@@ -579,14 +579,12 @@ function renderCharacterPicker() {
   wheel.appendChild(center);
 
   const count = Math.max(1, heroes.length);
-  const step = 360 / count;
-  const anchorIndex = Math.max(0, heroes.findIndex((hero) => hero.id === heroFocusId));
-  for (let i = 0; i < heroes.length; i += 1) {
+  const step = 360 / count;  for (let i = 0; i < heroes.length; i += 1) {
     const hero = heroes[i];
     const unlocked = unlockedHeroes.has(hero.id);
     const active = selectedPlayerClass === hero.id;
     const focused = heroFocusId === hero.id;
-    const angle = -90 + step * (i - anchorIndex);
+    const angle = -90 + step * i;
 
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -3348,6 +3346,8 @@ function sendInput() {
 }
 
 void maybeStartReplayFromUrl();
+
+
 
 
 
