@@ -250,10 +250,24 @@ const heroGalleryV2El = document.getElementById('hero-gallery-v2');
 const profileSummaryEl = document.getElementById('profile-summary');
 const profileAchievementsEl = document.getElementById('profile-achievements');
 const profileCharacterStatsEl = document.getElementById('profile-character-stats');
+const profileRunHistoryEl = document.getElementById('profile-run-history');
 const mainMenuTabButtons = Array.from(document.querySelectorAll('#main-menu-tabs .main-menu-tab'));
 const mainMenuPanels = Array.from(document.querySelectorAll('#join-form [data-menu-panel]'));
 let heroFocusId = selectedPlayerClass;
 let currentMainMenuTab = 'play';
+const PROFILE_RUN_HISTORY_CACHE_MS = 12000;
+const profileRunHistoryUi = {
+  items: [],
+  page: 1,
+  totalPages: 1,
+  pageSize: 8,
+  total: 0,
+  loading: false,
+  error: '',
+  loadedNickname: '',
+  lastLoadedAt: 0,
+  fetchToken: 0,
+};
 
 function setMainMenuTab(tabId) {
   const nextTab = String(tabId || '').trim() || 'play';
@@ -266,6 +280,9 @@ function setMainMenuTab(tabId) {
   for (const panel of mainMenuPanels) {
     const active = panel.getAttribute('data-menu-panel') === nextTab;
     panel.classList.toggle('active', active);
+  }
+  if (nextTab === 'profile') {
+    void requestProfileRunHistory({ force: false, page: profileRunHistoryUi.page });
   }
 }
 
@@ -569,8 +586,13 @@ function renderCharacterPicker() {
 
   const wheel = document.createElement('div');
   wheel.className = 'hero-wheel';
-  const wheelSize = Math.max(260, Math.min(420, window.innerWidth - 90));
-  const wheelRadius = Math.max(98, Math.round(wheelSize * 0.39));
+  const isMobileWheel = window.innerWidth <= 720;
+  const wheelSize = isMobileWheel
+    ? Math.max(220, Math.min(320, window.innerWidth - 34))
+    : Math.max(260, Math.min(420, window.innerWidth - 90));
+  const wheelRadius = isMobileWheel
+    ? Math.max(82, Math.round(wheelSize * 0.31))
+    : Math.max(98, Math.round(wheelSize * 0.39));
   wheel.style.setProperty('--radius', wheelRadius + 'px');
 
   const center = document.createElement('div');
@@ -579,7 +601,8 @@ function renderCharacterPicker() {
   wheel.appendChild(center);
 
   const count = Math.max(1, heroes.length);
-  const step = 360 / count;  for (let i = 0; i < heroes.length; i += 1) {
+  const step = 360 / count;
+  for (let i = 0; i < heroes.length; i += 1) {
     const hero = heroes[i];
     const unlocked = unlockedHeroes.has(hero.id);
     const active = selectedPlayerClass === hero.id;
@@ -748,12 +771,227 @@ function renderHeroGalleryV2(heroes, progression, unlockedHeroes) {
   }
 }
 
+function resetProfileRunHistoryUi() {
+  profileRunHistoryUi.items = [];
+  profileRunHistoryUi.page = 1;
+  profileRunHistoryUi.totalPages = 1;
+  profileRunHistoryUi.total = 0;
+  profileRunHistoryUi.loading = false;
+  profileRunHistoryUi.error = '';
+  profileRunHistoryUi.loadedNickname = '';
+  profileRunHistoryUi.lastLoadedAt = 0;
+}
+
+function renderProfileRunHistory() {
+  if (!profileRunHistoryEl) return;
+  if (!game.playerAuth?.player) {
+    profileRunHistoryEl.innerHTML = '<b>Run history</b><div class="profile-run-empty">Login required.</div>';
+    return;
+  }
+
+  const canPrev = profileRunHistoryUi.page > 1;
+  const canNext = profileRunHistoryUi.page < profileRunHistoryUi.totalPages;
+
+  profileRunHistoryEl.innerHTML = '';
+
+  const head = document.createElement('div');
+  head.className = 'profile-run-history-head';
+
+  const title = document.createElement('div');
+  title.className = 'profile-run-history-title';
+  title.textContent = 'Run history (' + profileRunHistoryUi.total + ')';
+
+  const refreshBtn = document.createElement('button');
+  refreshBtn.type = 'button';
+  refreshBtn.className = 'mini';
+  refreshBtn.textContent = 'Refresh';
+  refreshBtn.disabled = profileRunHistoryUi.loading;
+  refreshBtn.addEventListener('click', () => {
+    void requestProfileRunHistory({ force: true, page: profileRunHistoryUi.page });
+  });
+
+  head.appendChild(title);
+  head.appendChild(refreshBtn);
+  profileRunHistoryEl.appendChild(head);
+
+  if (profileRunHistoryUi.loading && profileRunHistoryUi.items.length === 0) {
+    const loading = document.createElement('div');
+    loading.className = 'profile-run-empty';
+    loading.textContent = 'Loading run history...';
+    profileRunHistoryEl.appendChild(loading);
+    return;
+  }
+
+  if (profileRunHistoryUi.error && profileRunHistoryUi.items.length === 0) {
+    const error = document.createElement('div');
+    error.className = 'profile-run-empty';
+    error.textContent = profileRunHistoryUi.error;
+    profileRunHistoryEl.appendChild(error);
+    return;
+  }
+
+  if (!profileRunHistoryUi.items.length) {
+    const empty = document.createElement('div');
+    empty.className = 'profile-run-empty';
+    empty.textContent = 'No runs yet. Finish a run to see history here.';
+    profileRunHistoryEl.appendChild(empty);
+    return;
+  }
+
+  const list = document.createElement('div');
+  list.className = 'profile-run-list';
+  const rankOffset = (profileRunHistoryUi.page - 1) * profileRunHistoryUi.pageSize;
+
+  for (let i = 0; i < profileRunHistoryUi.items.length; i += 1) {
+    const run = profileRunHistoryUi.items[i];
+    const heroXp = Math.max(0, Number(run?.runDetails?.xp) || 0);
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'profile-run-row';
+
+    const headRow = document.createElement('div');
+    headRow.className = 'profile-run-head';
+
+    const when = document.createElement('span');
+    when.textContent = formatRecordDateTime(run?.at);
+
+    const room = document.createElement('span');
+    room.textContent = 'Room ' + String(run?.roomCode || '-');
+
+    headRow.appendChild(when);
+    headRow.appendChild(room);
+
+    const main = document.createElement('div');
+    main.className = 'profile-run-main';
+    main.innerHTML = '<span>' + Math.max(0, Number(run?.kills) || 0) + ' kills</span>'
+      + '<span>' + Math.max(0, Number(run?.score) || 0) + ' pts</span>'
+      + '<span>' + Math.max(1, Number(run?.durationSec) || 1) + 's</span>'
+      + '<span class="profile-run-meta">XP ' + heroXp + '</span>';
+
+    row.appendChild(headRow);
+    row.appendChild(main);
+
+    const runRank = 'Run #' + (rankOffset + i + 1);
+    row.addEventListener('click', () => {
+      openRecordDetailsModal(run, runRank);
+    });
+
+    list.appendChild(row);
+  }
+
+  profileRunHistoryEl.appendChild(list);
+
+  const pager = document.createElement('div');
+  pager.className = 'profile-run-history-pager';
+
+  const prevBtn = document.createElement('button');
+  prevBtn.type = 'button';
+  prevBtn.className = 'mini';
+  prevBtn.textContent = 'Prev';
+  prevBtn.disabled = profileRunHistoryUi.loading || !canPrev;
+  prevBtn.addEventListener('click', () => {
+    if (profileRunHistoryUi.page > 1) {
+      void requestProfileRunHistory({ force: true, page: profileRunHistoryUi.page - 1 });
+    }
+  });
+
+  const pageText = document.createElement('div');
+  pageText.className = 'profile-run-history-page';
+  pageText.textContent = 'Page ' + profileRunHistoryUi.page + '/' + profileRunHistoryUi.totalPages;
+
+  const nextBtn = document.createElement('button');
+  nextBtn.type = 'button';
+  nextBtn.className = 'mini';
+  nextBtn.textContent = 'Next';
+  nextBtn.disabled = profileRunHistoryUi.loading || !canNext;
+  nextBtn.addEventListener('click', () => {
+    if (profileRunHistoryUi.page < profileRunHistoryUi.totalPages) {
+      void requestProfileRunHistory({ force: true, page: profileRunHistoryUi.page + 1 });
+    }
+  });
+
+  pager.appendChild(prevBtn);
+  pager.appendChild(pageText);
+  pager.appendChild(nextBtn);
+
+  profileRunHistoryEl.appendChild(pager);
+}
+
+async function requestProfileRunHistory({ force = false, page = profileRunHistoryUi.page } = {}) {
+  if (!profileRunHistoryEl) return;
+  if (!game.playerAuth?.player) {
+    resetProfileRunHistoryUi();
+    renderProfileRunHistory();
+    return;
+  }
+
+  const nicknameKey = String(game.playerAuth.player.nickname || '').trim().toLowerCase();
+  if (!nicknameKey) {
+    resetProfileRunHistoryUi();
+    renderProfileRunHistory();
+    return;
+  }
+
+  if (profileRunHistoryUi.loadedNickname && profileRunHistoryUi.loadedNickname !== nicknameKey) {
+    resetProfileRunHistoryUi();
+  }
+
+  const nextPage = Math.max(1, Math.floor(page) || 1);
+  const now = Date.now();
+  if (!force
+    && !profileRunHistoryUi.loading
+    && profileRunHistoryUi.loadedNickname === nicknameKey
+    && profileRunHistoryUi.page === nextPage
+    && profileRunHistoryUi.items.length > 0
+    && (now - profileRunHistoryUi.lastLoadedAt) < PROFILE_RUN_HISTORY_CACHE_MS) {
+    renderProfileRunHistory();
+    return;
+  }
+
+  const token = profileRunHistoryUi.fetchToken + 1;
+  profileRunHistoryUi.fetchToken = token;
+  profileRunHistoryUi.loading = true;
+  profileRunHistoryUi.error = '';
+  profileRunHistoryUi.page = nextPage;
+  renderProfileRunHistory();
+
+  try {
+    const params = new URLSearchParams({
+      page: String(nextPage),
+      page_size: String(profileRunHistoryUi.pageSize),
+    });
+    const res = await fetch('/api/player/run-history?' + params.toString(), { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const payload = await res.json();
+
+    if (profileRunHistoryUi.fetchToken !== token) return;
+
+    profileRunHistoryUi.items = Array.isArray(payload.runs) ? payload.runs : [];
+    profileRunHistoryUi.page = Math.max(1, Number(payload.page) || nextPage);
+    profileRunHistoryUi.totalPages = Math.max(1, Number(payload.totalPages) || 1);
+    profileRunHistoryUi.total = Math.max(0, Number(payload.total) || 0);
+    profileRunHistoryUi.loadedNickname = nicknameKey;
+    profileRunHistoryUi.lastLoadedAt = Date.now();
+    profileRunHistoryUi.error = '';
+  } catch {
+    if (profileRunHistoryUi.fetchToken !== token) return;
+    profileRunHistoryUi.error = 'Failed to load run history.';
+  } finally {
+    if (profileRunHistoryUi.fetchToken === token) {
+      profileRunHistoryUi.loading = false;
+      renderProfileRunHistory();
+    }
+  }
+}
+
 function renderProfilePanel(heroes, progression, unlockedHeroes) {
-  if (!profileSummaryEl || !profileAchievementsEl || !profileCharacterStatsEl) return;
+  if (!profileSummaryEl || !profileAchievementsEl || !profileCharacterStatsEl || !profileRunHistoryEl) return;
   if (!game.playerAuth?.player || !progression) {
     profileSummaryEl.innerHTML = '<b>Guest profile</b><div>Login to save profile progression, achievements and hero stats.</div>';
     profileAchievementsEl.innerHTML = '<b>Achievements</b><div>Login required.</div>';
     profileCharacterStatsEl.innerHTML = '<b>Hero stats</b><div>Login required.</div>';
+    resetProfileRunHistoryUi();
+    renderProfileRunHistory();
     return;
   }
 
@@ -774,6 +1012,10 @@ function renderProfilePanel(heroes, progression, unlockedHeroes) {
     return `<div class="profile-hero-row"><span>${escapeHtml(hero.name)}</span><span>Lv${heroLvl}</span><span>${unlocked}</span></div>`;
   }).join('');
   profileCharacterStatsEl.innerHTML = `<b>Hero stats</b><div class="profile-hero-list">${rows}</div>`;
+  renderProfileRunHistory();
+  if (currentMainMenuTab === 'profile') {
+    void requestProfileRunHistory({ force: false, page: profileRunHistoryUi.page });
+  }
 }
 
 globalThis.renderCharacterPicker = renderCharacterPicker;
@@ -2854,15 +3096,77 @@ levelupOptionsEl?.addEventListener('click', handleSkillOptionInteract);
 
 
 const DEATH_OVERLAY_DELAY_MS = 3000;
+const DEATH_REWARDS_SHOW_DELAY_MS = 3000;
 let pendingDeathOverlayTimer = null;
 let pendingDeathResult = null;
+let pendingDeathRewardsTimer = null;
+let latestRunRewards = null;
+let latestDeathSnapshot = null;
+
+function clearDeathRewardsUi() {
+  joinOverlay.classList.remove('death-rewards-visible');
+  if (deathRewardsBodyEl) deathRewardsBodyEl.innerHTML = 'Collecting rewards...';
+}
+
+function formatRunRewardsPayload(rewards) {
+  const gainedXp = Math.max(0, Number(rewards?.gainedXp) || 0);
+  const gainedShards = Math.max(0, Number(rewards?.gainedShards) || 0);
+  const levelsGained = Math.max(0, Number(rewards?.levelsGained) || 0);
+  const gainedCards = rewards?.gainedCards && typeof rewards.gainedCards === 'object' ? rewards.gainedCards : {};
+  const catalogCards = Array.isArray(game.playerAuth?.progressionCatalog?.cards) ? game.playerAuth.progressionCatalog.cards : [];
+  const cardNameById = Object.fromEntries(catalogCards.map((card) => [String(card.id || ''), String(card.name || card.id || '')]));
+  const cards = [];
+  for (const cardId of Object.keys(gainedCards)) {
+    const cnt = Math.max(0, Number(gainedCards[cardId]) || 0);
+    if (cnt <= 0) continue;
+    cards.push({ id: cardId, count: cnt, name: cardNameById[cardId] || cardId });
+  }
+  return { gainedXp, gainedShards, levelsGained, cards };
+}
+
+function renderDeathRewardsPanel() {
+  if (!deathRewardsBodyEl) return;
+  const run = latestDeathSnapshot || {};
+  const rewards = latestRunRewards;
+  const baseRows = [
+    ['Score', Math.max(0, Number(run.score) || 0)],
+    ['Kills', Math.max(0, Number(run.kills) || 0)],
+    ['Enemy kills', Math.max(0, Number(run.enemyKills) || 0)],
+    ['Boss kills', Math.max(0, Number(run.bossKills) || 0)],
+    ['Survival', `${Math.max(1, Number(run.survivalSec) || 1)}s`],
+    ['Hero XP', `Lv${Math.max(1, Number(run.heroLevel) || 1)} | ${Math.max(0, Number(run.heroXp) || 0)}/${Math.max(1, Number(run.heroXpToNext) || 1)}`],
+    ['Account XP', rewards ? ('+' + rewards.gainedXp) : 'Calculating...'],
+    ['Shards', rewards ? ('+' + rewards.gainedShards) : 'Calculating...'],
+  ];
+  if (rewards && rewards.levelsGained > 0) baseRows.push(['Account level up', '+' + rewards.levelsGained]);
+  const rowsHtml = baseRows.map(([k, v]) => `<div class="death-reward-row"><span>${escapeHtml(String(k))}</span><b>${escapeHtml(String(v))}</b></div>`).join('');
+  const cardsHtml = rewards && rewards.cards.length > 0
+    ? (`<div class="death-reward-cards">` + rewards.cards.map((card) => `<span>+${card.count} ${escapeHtml(card.name)}</span>`).join('') + `</div>`)
+    : '<div class="death-reward-cards muted">No hero card drops this run</div>';
+  deathRewardsBodyEl.innerHTML = rowsHtml + cardsHtml;
+}
+
+function scheduleDeathRewardsReveal() {
+  if (pendingDeathRewardsTimer) clearTimeout(pendingDeathRewardsTimer);
+  clearDeathRewardsUi();
+  pendingDeathRewardsTimer = setTimeout(() => {
+    pendingDeathRewardsTimer = null;
+    renderDeathRewardsPanel();
+    joinOverlay.classList.add('death-rewards-visible');
+  }, DEATH_REWARDS_SHOW_DELAY_MS);
+}
 
 function cancelPendingDeathOverlay() {
   if (pendingDeathOverlayTimer) {
     clearTimeout(pendingDeathOverlayTimer);
     pendingDeathOverlayTimer = null;
   }
+  if (pendingDeathRewardsTimer) {
+    clearTimeout(pendingDeathRewardsTimer);
+    pendingDeathRewardsTimer = null;
+  }
   pendingDeathResult = null;
+  clearDeathRewardsUi();
 }
 
 function spawnPlayerDeathBloodFx(result) {
@@ -2982,6 +3286,7 @@ function setDeathCinematicActive(active) {
 }
 
 function openDeathMenuAfterCinematic() {
+  clearDeathRewardsUi();
   setDeathCinematicActive(false);
   joinOverlay.classList.add('death-mode');
   statusEl.textContent = 'You died. Last result is shown below.';
@@ -2991,6 +3296,7 @@ function openDeathMenuAfterCinematic() {
 }
 
 function openDeathOverlay(result) {
+  latestDeathSnapshot = result || null;
   cancelPendingDeathOverlay();
   if (typeof window.cwTrackMetrikaGoal === 'function') {
     window.cwTrackMetrikaGoal('player_death', {
@@ -3004,12 +3310,21 @@ function openDeathOverlay(result) {
   joinOverlay.style.display = 'grid';
   joinOverlay.classList.add('death-mode');
   renderDeathResult(result);
+  renderDeathRewardsPanel();
   setDeathCinematicActive(true);
+  scheduleDeathRewardsReveal();
 }
 
 deathContinueBtn?.addEventListener('click', () => {
   if (typeof window.cwTrackMetrikaGoal === 'function') {
     window.cwTrackMetrikaGoal('death_overlay_continue', { source: 'death_cinematic' });
+  }
+  openDeathMenuAfterCinematic();
+});
+
+deathRewardsMenuBtn?.addEventListener('click', () => {
+  if (typeof window.cwTrackMetrikaGoal === 'function') {
+    window.cwTrackMetrikaGoal('death_overlay_continue', { source: 'run_rewards' });
   }
   openDeathMenuAfterCinematic();
 });
@@ -3089,22 +3404,14 @@ message: (ev) => {
   if (msg.type === 'accountProgression') {
     if (msg.progression) game.playerAuth.progression = msg.progression;
     if (msg.rewards) {
-      const gainedXp = Math.max(0, Number(msg.rewards.gainedXp) || 0);
-      const gainedShards = Math.max(0, Number(msg.rewards.gainedShards) || 0);
-      const levelsGained = Math.max(0, Number(msg.rewards.levelsGained) || 0);
-      const gainedCards = msg.rewards.gainedCards && typeof msg.rewards.gainedCards === 'object' ? msg.rewards.gainedCards : {};
-      const cardPieces = [];
-      const catalogCards = Array.isArray(game.playerAuth?.progressionCatalog?.cards) ? game.playerAuth.progressionCatalog.cards : [];
-      const cardNameById = Object.fromEntries(catalogCards.map((card) => [String(card.id || ''), String(card.name || card.id || '')]));
-      for (const cardId of Object.keys(gainedCards)) {
-        const cnt = Math.max(0, Number(gainedCards[cardId]) || 0);
-        if (cnt <= 0) continue;
-        const cardName = cardNameById[cardId] || cardId;
-        cardPieces.push('+' + cnt + ' ' + cardName);
-      }
-      statusEl.textContent = 'Run rewards: +' + gainedXp + ' XP, +' + gainedShards + ' shards'
-        + (levelsGained > 0 ? (', +' + levelsGained + ' account level') : '')
+      latestRunRewards = formatRunRewardsPayload(msg.rewards);
+      const cardPieces = latestRunRewards.cards.map((card) => ('+' + card.count + ' ' + card.name));
+      statusEl.textContent = 'Run rewards: +' + latestRunRewards.gainedXp + ' XP, +' + latestRunRewards.gainedShards + ' shards'
+        + (latestRunRewards.levelsGained > 0 ? (', +' + latestRunRewards.levelsGained + ' account level') : '')
         + (cardPieces.length > 0 ? (', ' + cardPieces.join(', ')) : '');
+      if (joinOverlay.classList.contains('death-cinematic-active')) {
+        renderDeathRewardsPanel();
+      }
     }
     renderCharacterPicker();
     return;
@@ -3118,6 +3425,8 @@ message: (ev) => {
     renderInstanceMeta();
     resetNetStats();
     prevMyAlive = true;
+    latestRunRewards = null;
+    latestDeathSnapshot = null;
     sessionStartedAt = Date.now();
     if (msg.sync) applyRoomSync(msg.sync);
     game.roomCode = msg.roomCode;
@@ -3291,6 +3600,11 @@ message: (ev) => {
         const deathResult = {
           kills: Number(me.kills) || 0,
           score: Number(me.score) || 0,
+          enemyKills: Number(me.enemyKills) || Number(me.kills) || 0,
+          bossKills: Number(me.bossKills) || 0,
+          heroLevel: Math.max(1, Number(me.level) || 1),
+          heroXp: Math.max(0, Number(me.xp) || 0),
+          heroXpToNext: Math.max(1, Number(me.xpToNext) || 1),
           roomCode: game.roomCode || s.roomCode || '-',
           survivalSec: Math.max(1, Math.floor((Date.now() - (sessionStartedAt || Date.now())) / 1000)),
         };
@@ -3390,6 +3704,17 @@ function sendInput() {
 }
 
 void maybeStartReplayFromUrl();
+
+
+
+
+
+
+
+
+
+
+
 
 
 

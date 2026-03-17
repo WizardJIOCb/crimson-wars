@@ -867,7 +867,8 @@ body.replay-game-active #scoreboard {
 .character-select {
   display: grid;
   place-items: center;
-  padding: 8px 0;
+  padding: 14px 0 12px;
+  overflow: visible;
 }
 
 .hero-wheel {
@@ -1235,14 +1236,14 @@ body.replay-game-active #scoreboard {
   .actions {
     grid-template-columns: 1fr;
   }
-
   .hero-wheel {
-    width: min(320px, calc(100vw - 34px));
-    --radius: 124px;
+    width: min(300px, calc(100vw - 42px));
+    --radius: 96px;
   }
 
   .wheel-option {
-    width: 74px;
+    width: 68px;
+    padding: 5px 4px;
     transform: translate(-50%, -50%) translate(var(--x, 0px), var(--y, 0px));
   }
 
@@ -1250,6 +1251,18 @@ body.replay-game-active #scoreboard {
     transform: translate(-50%, -50%) translate(var(--x, 0px), var(--y, 0px)) scale(1.03);
   }
 
+  .wheel-option .char-preview {
+    width: 44px;
+    height: 50px;
+  }
+
+  .wheel-option .char-label {
+    font-size: 10px;
+  }
+
+  .wheel-option .char-lock {
+    font-size: 9px;
+  }
   .hero-tree-head {
     display: grid;
     gap: 6px;
@@ -2890,6 +2903,77 @@ body.levelup-open #dev-console-toggle {
   color: #cbd5e1;
 }
 
+.profile-run-list {
+  display: grid;
+  gap: 6px;
+}
+
+.profile-run-row {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.56);
+  color: #dbeafe;
+  text-align: left;
+  padding: 7px 9px;
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+}
+
+.profile-run-row:hover {
+  border-color: rgba(56, 189, 248, 0.62);
+  background: rgba(15, 23, 42, 0.82);
+}
+
+.profile-run-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+.profile-run-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 13px;
+  color: #e2e8f0;
+}
+
+.profile-run-meta {
+  color: #86efac;
+}
+
+.profile-run-empty {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.profile-run-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.profile-run-history-title {
+  font-weight: 700;
+}
+
+.profile-run-history-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.profile-run-history-page {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
 /* keep global red buttons from overriding custom menu controls */
 #join-form .main-menu-tab,
 #join-form .char-option,
@@ -2999,3 +3083,124 @@ body.levelup-open #dev-console-toggle {
   filter: drop-shadow(0 0 8px rgba(248, 250, 252, 0.28));
 }
 
+
+
+
+
+.death-rewards-panel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -42%) scale(0.96);
+  width: min(560px, calc(100vw - 28px));
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 14px;
+  background: rgba(8, 14, 22, 0.92);
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.45), 0 0 24px rgba(220, 38, 38, 0.22);
+  backdrop-filter: blur(8px);
+  padding: 12px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.45s ease, transform 0.45s ease;
+}
+
+.death-rewards-title {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  color: #fecaca;
+  margin-bottom: 8px;
+}
+
+.death-rewards-body {
+  display: grid;
+  gap: 6px;
+  color: #e2e8f0;
+  font-size: 13px;
+}
+.death-rewards-menu-btn {
+  margin-top: 10px;
+  width: 100%;
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(12, 74, 110, 0.95), rgba(2, 132, 199, 0.9));
+  color: #e0f2fe;
+  font-weight: 700;
+  padding: 9px 12px;
+  cursor: pointer;
+}
+
+.death-rewards-menu-btn:hover {
+  border-color: rgba(125, 211, 252, 0.8);
+  filter: brightness(1.08);
+}
+
+
+.death-reward-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(15, 23, 42, 0.56);
+}
+
+.death-reward-row b {
+  color: #fef3c7;
+}
+
+.death-reward-cards {
+  margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.death-reward-cards span {
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(244, 63, 94, 0.34);
+  background: rgba(127, 29, 29, 0.36);
+  color: #fecdd3;
+  font-size: 12px;
+}
+
+.death-reward-cards.muted {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+#join-overlay.death-rewards-visible .death-text,
+#join-overlay.death-rewards-visible .death-impact,
+#join-overlay.death-rewards-visible .death-drips {
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+#join-overlay.death-rewards-visible .death-rewards-panel {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+  pointer-events: auto;
+}
+
+#join-overlay.death-cinematic-active .death-continue {
+  animation: deathContinueIn 0.35s ease-out 3.2s forwards;
+  pointer-events: auto;
+}
+
+@media (max-width: 720px) {
+  .death-rewards-panel {
+    width: min(94vw, 460px);
+    padding: 10px;
+  }
+
+  .death-rewards-title {
+    font-size: 16px;
+  }
+
+  .death-reward-row {
+    font-size: 12px;
+    padding: 5px 7px;
+  }
+}

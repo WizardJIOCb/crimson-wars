@@ -1,4 +1,4 @@
-const fs = require('fs');
+﻿const fs = require('fs');
 const Database = require('better-sqlite3');
 
 function parseRecordRunDetails(raw) {
@@ -74,12 +74,21 @@ function isBetterRecord(next, prev) {
 
 function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPageSize }) {
   const records = [];
+  const runHistory = [];
   let recordsDb = null;
   let stmtInsertRecord = null;
   let stmtPruneRecords = null;
   let stmtTopRecords = null;
   let stmtDeleteRecordByName = null;
   let stmtReplayById = null;
+  let stmtInsertPlayerRun = null;
+  let stmtListPlayerRuns = null;
+  let stmtCountPlayerRuns = null;
+  let stmtPrunePlayerRuns = null;
+
+  const PLAYER_RUN_HISTORY_LIMIT = 50000;
+  const PLAYER_RUN_HISTORY_PAGE_SIZE = 20;
+  const MEMORY_RUN_HISTORY_LIMIT = 300;
 
   function loadRecordsFromDb() {
     if (!recordsDb || !stmtTopRecords) return;
@@ -128,6 +137,18 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
         '  run_replay TEXT NULL',
         ');',
         'CREATE INDEX IF NOT EXISTS idx_records_rank ON records (kills DESC, score DESC, at DESC);',
+        'CREATE TABLE IF NOT EXISTS player_runs (',
+        '  id INTEGER PRIMARY KEY AUTOINCREMENT,',
+        '  name TEXT NOT NULL,',
+        '  name_key TEXT NOT NULL,',
+        '  kills INTEGER NOT NULL,',
+        '  score INTEGER NOT NULL,',
+        '  room_code TEXT NOT NULL,',
+        '  duration_sec INTEGER NOT NULL,',
+        '  at INTEGER NOT NULL,',
+        '  run_details TEXT NULL',
+        ');',
+        'CREATE INDEX IF NOT EXISTS idx_player_runs_name_at ON player_runs (name_key, at DESC);',
       ].join('\n'));
 
       const columns = recordsDb.prepare('PRAGMA table_info(records)').all();
@@ -188,6 +209,37 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
         'LIMIT 1',
       ].join('\n'));
 
+      stmtInsertPlayerRun = recordsDb.prepare([
+        'INSERT INTO player_runs (name, name_key, kills, score, room_code, duration_sec, at, run_details)',
+        'VALUES (@name, @nameKey, @kills, @score, @roomCode, @durationSec, @at, @runDetailsJson)',
+      ].join('\n'));
+
+      stmtListPlayerRuns = recordsDb.prepare([
+        'SELECT',
+        '  id,',
+        '  name,',
+        '  kills,',
+        '  score,',
+        '  room_code AS roomCode,',
+        '  duration_sec AS durationSec,',
+        '  at,',
+        '  run_details AS runDetails',
+        'FROM player_runs',
+        'WHERE name_key = ?',
+        'ORDER BY at DESC',
+        'LIMIT ? OFFSET ?',
+      ].join('\n'));
+
+      stmtCountPlayerRuns = recordsDb.prepare('SELECT COUNT(1) AS total FROM player_runs WHERE name_key = ?');
+      stmtPrunePlayerRuns = recordsDb.prepare([
+        'DELETE FROM player_runs',
+        'WHERE id NOT IN (',
+        '  SELECT id FROM player_runs',
+        '  ORDER BY at DESC',
+        '  LIMIT ?',
+        ')',
+      ].join('\n'));
+
       loadRecordsFromDb();
       console.log(`Records DB ready: ${dbPath} (loaded ${records.length})`);
     } catch (err) {
@@ -197,6 +249,10 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
       stmtTopRecords = null;
       stmtDeleteRecordByName = null;
       stmtReplayById = null;
+      stmtInsertPlayerRun = null;
+      stmtListPlayerRuns = null;
+      stmtCountPlayerRuns = null;
+      stmtPrunePlayerRuns = null;
       console.error('Records DB init failed, using in-memory records only:', err.message);
     }
   }
@@ -224,6 +280,12 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
 
   function pushRecord(entry) {
     const normalized = normalizeRecordEntry(entry);
+
+    runHistory.unshift(normalized);
+    if (runHistory.length > MEMORY_RUN_HISTORY_LIMIT) {
+      runHistory.length = MEMORY_RUN_HISTORY_LIMIT;
+    }
+
     const key = recordNameKey(normalized.name);
     const existingIndex = records.findIndex((x) => recordNameKey(x.name) === key);
 
@@ -245,6 +307,13 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
 
     if (!recordsDb || !stmtInsertRecord || !stmtPruneRecords || !stmtDeleteRecordByName) return;
     try {
+      if (stmtInsertPlayerRun) {
+        stmtInsertPlayerRun.run({
+          ...normalized,
+          nameKey: recordNameKey(normalized.name),
+          runDetailsJson: normalized.runDetails ? JSON.stringify(normalized.runDetails) : null,
+        });
+      }
       stmtDeleteRecordByName.run(normalized.name);
       stmtInsertRecord.run({
         ...persistedRecord,
@@ -252,9 +321,57 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
         runReplayJson: persistedRecord.runReplay ? JSON.stringify(persistedRecord.runReplay) : null,
       });
       stmtPruneRecords.run(leaderboardLimit);
+      if (stmtPrunePlayerRuns) stmtPrunePlayerRuns.run(PLAYER_RUN_HISTORY_LIMIT);
     } catch (err) {
       console.error('Records DB write failed:', err.message);
     }
+  }
+
+  function listPlayerRunsByName(name, page = 1, pageSize = PLAYER_RUN_HISTORY_PAGE_SIZE) {
+    const normalizedNameKey = recordNameKey(name);
+    if (!normalizedNameKey) {
+      return {
+        page: 1,
+        pageSize: PLAYER_RUN_HISTORY_PAGE_SIZE,
+        total: 0,
+        totalPages: 1,
+        items: [],
+      };
+    }
+
+    const size = Math.max(1, Math.min(50, Math.floor(pageSize) || PLAYER_RUN_HISTORY_PAGE_SIZE));
+
+    if (recordsDb && stmtListPlayerRuns && stmtCountPlayerRuns) {
+      try {
+        const total = Math.max(0, Number(stmtCountPlayerRuns.get(normalizedNameKey)?.total) || 0);
+        const totalPages = Math.max(1, Math.ceil(total / size));
+        const currentPage = Math.max(1, Math.min(totalPages, Math.floor(page) || 1));
+        const offset = (currentPage - 1) * size;
+        const rows = stmtListPlayerRuns.all(normalizedNameKey, size, offset);
+        return {
+          page: currentPage,
+          pageSize: size,
+          total,
+          totalPages,
+          items: rows.map((row) => publicRecordEntry(row)),
+        };
+      } catch (err) {
+        console.error('Records DB player run history read failed:', err.message);
+      }
+    }
+
+    const localRuns = runHistory.filter((entry) => recordNameKey(entry.name) === normalizedNameKey);
+    const total = localRuns.length;
+    const totalPages = Math.max(1, Math.ceil(total / size));
+    const currentPage = Math.max(1, Math.min(totalPages, Math.floor(page) || 1));
+    const start = (currentPage - 1) * size;
+    return {
+      page: currentPage,
+      pageSize: size,
+      total,
+      totalPages,
+      items: localRuns.slice(start, start + size).map((entry) => publicRecordEntry(entry)),
+    };
   }
 
   function getRecordReplay(recordId) {
@@ -283,6 +400,7 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
 
   return {
     listRecordsForLobby,
+    listPlayerRunsByName,
     pushRecord,
     getRecordReplay,
   };

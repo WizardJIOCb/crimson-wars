@@ -85,6 +85,9 @@ const replayGameProgressEl = document.getElementById('replay-game-progress');
 const deathResultEl = document.getElementById('death-result');
 const deathCinematicEl = document.getElementById('death-cinematic');
 const deathContinueBtn = document.getElementById('death-continue');
+const deathRewardsPanelEl = document.getElementById('death-rewards-panel');
+const deathRewardsBodyEl = document.getElementById('death-rewards-body');
+const deathRewardsMenuBtn = document.getElementById('death-rewards-menu');
 const syncSettingsEl = document.getElementById('sync-settings');
 const syncPresetEl = document.getElementById('sync-preset');
 const syncTickrateEl = document.getElementById('sync-tickrate');
@@ -2198,6 +2201,7 @@ function updateMobileControlsVisibility() {
   }
   setMobileControlsVisible(!overlayOpen);
 }
+
 
 
 
