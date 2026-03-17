@@ -1010,25 +1010,32 @@ function render(ts) {
   updateTopCenterHud(Number(game.state.now) || Date.now());
   updateBottomHud();
 
-  const me = game.state.players.find((p) => p.id === game.myId) || game.state.players[0];
-  if (me) {
-    const m = getPlayerRenderPos(me);
-    const targetCamX = Math.max(0, Math.min(m.x - canvas.width / 2, game.world.width - canvas.width));
-    const targetCamY = Math.max(0, Math.min(m.y - canvas.height / 2, game.world.height - canvas.height));
-    const camDx = targetCamX - camera.x;
-    const camDy = targetCamY - camera.y;
-    const camDist = Math.hypot(camDx, camDy);
+  const deathCamLock = game.deathCameraLock;
+  if (deathCamLock?.active) {
+    const worldMaxX = Math.max(0, (Number(game.world?.width) || canvas.width) - canvas.width);
+    const worldMaxY = Math.max(0, (Number(game.world?.height) || canvas.height) - canvas.height);
+    camera.x = Math.max(0, Math.min(Number(deathCamLock.x) || 0, worldMaxX));
+    camera.y = Math.max(0, Math.min(Number(deathCamLock.y) || 0, worldMaxY));
+  } else {
+    const me = game.state.players.find((p) => p.id === game.myId) || game.state.players[0];
+    if (me) {
+      const m = getPlayerRenderPos(me);
+      const targetCamX = Math.max(0, Math.min(m.x - canvas.width / 2, game.world.width - canvas.width));
+      const targetCamY = Math.max(0, Math.min(m.y - canvas.height / 2, game.world.height - canvas.height));
+      const camDx = targetCamX - camera.x;
+      const camDy = targetCamY - camera.y;
+      const camDist = Math.hypot(camDx, camDy);
 
-    if (camDist >= CLIENT_CAMERA_SNAP_DIST) {
-      camera.x = targetCamX;
-      camera.y = targetCamY;
-    } else {
-      const k = 1 - Math.exp(-CLIENT_CAMERA_FOLLOW_RATE * dt);
-      camera.x += camDx * k;
-      camera.y += camDy * k;
+      if (camDist >= CLIENT_CAMERA_SNAP_DIST) {
+        camera.x = targetCamX;
+        camera.y = targetCamY;
+      } else {
+        const k = 1 - Math.exp(-CLIENT_CAMERA_FOLLOW_RATE * dt);
+        camera.x += camDx * k;
+        camera.y += camDy * k;
+      }
     }
   }
-
   drawGround();
   drawBloodPuddles();
   drawXpOrbs(game.state.xpOrbs || [], Number(game.state.now) || Date.now());

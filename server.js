@@ -796,13 +796,49 @@ app.get('/api/player/run-history', (req, res) => {
   const pageSize = Number(req.query.page_size) || 20;
   const payload = recordsStore.listPlayerRunsByName(req.playerUser.nickname, page, pageSize);
 
+  const runs = payload.items.map((run) => ({
+    ...run,
+    replayApiPath: '/api/player/run-history/' + Math.max(0, Number(run?.id) || 0) + '/replay',
+  }));
+
   res.json({
     ok: true,
-    runs: payload.items,
+    runs,
     page: payload.page,
     pageSize: payload.pageSize,
     total: payload.total,
     totalPages: payload.totalPages,
+    now: Date.now(),
+  });
+});
+
+app.get('/api/player/run-history/:id/replay', (req, res) => {
+  if (!req.playerUser) {
+    res.status(401).json({ ok: false, message: 'Authentication required' });
+    return;
+  }
+
+  const payload = recordsStore.getPlayerRunReplayByNameAndId(req.playerUser.nickname, req.params.id);
+  if (!payload?.replay) {
+    res.status(404).json({
+      error: 'Replay not found.',
+      recordId: Math.max(0, Number(req.params.id) || 0),
+      now: Date.now(),
+    });
+    return;
+  }
+
+  res.json({
+    record: {
+      id: payload.id,
+      name: payload.name,
+      kills: payload.kills,
+      score: payload.score,
+      roomCode: payload.roomCode,
+      durationSec: payload.durationSec,
+      at: payload.at,
+    },
+    replay: payload.replay,
     now: Date.now(),
   });
 });

@@ -85,6 +85,7 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
   let stmtListPlayerRuns = null;
   let stmtCountPlayerRuns = null;
   let stmtPrunePlayerRuns = null;
+  let stmtPlayerRunReplayById = null;
 
   const PLAYER_RUN_HISTORY_LIMIT = 50000;
   const PLAYER_RUN_HISTORY_PAGE_SIZE = 20;
@@ -146,7 +147,8 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
         '  room_code TEXT NOT NULL,',
         '  duration_sec INTEGER NOT NULL,',
         '  at INTEGER NOT NULL,',
-        '  run_details TEXT NULL',
+        '  run_details TEXT NULL,',
+        '  run_replay TEXT NULL',
         ');',
         'CREATE INDEX IF NOT EXISTS idx_player_runs_name_at ON player_runs (name_key, at DESC);',
       ].join('\n'));
@@ -160,6 +162,14 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
       }
       if (!columns.some((c) => c.name === 'run_replay')) {
         recordsDb.exec('ALTER TABLE records ADD COLUMN run_replay TEXT NULL');
+      }
+
+      const playerRunColumns = recordsDb.prepare('PRAGMA table_info(player_runs)').all();
+      if (!playerRunColumns.some((c) => c.name === 'run_details')) {
+        recordsDb.exec('ALTER TABLE player_runs ADD COLUMN run_details TEXT NULL');
+      }
+      if (!playerRunColumns.some((c) => c.name === 'run_replay')) {
+        recordsDb.exec('ALTER TABLE player_runs ADD COLUMN run_replay TEXT NULL');
       }
 
       stmtInsertRecord = recordsDb.prepare([
@@ -210,8 +220,8 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
       ].join('\n'));
 
       stmtInsertPlayerRun = recordsDb.prepare([
-        'INSERT INTO player_runs (name, name_key, kills, score, room_code, duration_sec, at, run_details)',
-        'VALUES (@name, @nameKey, @kills, @score, @roomCode, @durationSec, @at, @runDetailsJson)',
+        'INSERT INTO player_runs (name, name_key, kills, score, room_code, duration_sec, at, run_details, run_replay)',
+        'VALUES (@name, @nameKey, @kills, @score, @roomCode, @durationSec, @at, @runDetailsJson, @runReplayJson)',
       ].join('\n'));
 
       stmtListPlayerRuns = recordsDb.prepare([
@@ -240,6 +250,21 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
         ')',
       ].join('\n'));
 
+      stmtPlayerRunReplayById = recordsDb.prepare([
+        'SELECT',
+        '  id,',
+        '  name,',
+        '  kills,',
+        '  score,',
+        '  room_code AS roomCode,',
+        '  duration_sec AS durationSec,',
+        '  at,',
+        '  run_replay AS runReplay',
+        'FROM player_runs',
+        'WHERE id = ? AND name_key = ?',
+        'LIMIT 1',
+      ].join('\n'));
+
       loadRecordsFromDb();
       console.log(`Records DB ready: ${dbPath} (loaded ${records.length})`);
     } catch (err) {
@@ -253,6 +278,7 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
       stmtListPlayerRuns = null;
       stmtCountPlayerRuns = null;
       stmtPrunePlayerRuns = null;
+      stmtPlayerRunReplayById = null;
       console.error('Records DB init failed, using in-memory records only:', err.message);
     }
   }
@@ -312,6 +338,7 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
           ...normalized,
           nameKey: recordNameKey(normalized.name),
           runDetailsJson: normalized.runDetails ? JSON.stringify(normalized.runDetails) : null,
+          runReplayJson: normalized.runReplay ? JSON.stringify(normalized.runReplay) : null,
         });
       }
       stmtDeleteRecordByName.run(normalized.name);
@@ -374,6 +401,45 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
     };
   }
 
+  function getPlayerRunReplayByNameAndId(name, runId) {
+    const id = Math.max(0, Number(runId) || 0);
+    const nameKey = recordNameKey(name);
+    if (!id || !nameKey) return null;
+
+    if (recordsDb && stmtPlayerRunReplayById) {
+      try {
+        const row = stmtPlayerRunReplayById.get(id, nameKey);
+        if (!row) return null;
+        return {
+          id: row.id,
+          name: row.name,
+          kills: row.kills,
+          score: row.score,
+          roomCode: row.roomCode,
+          durationSec: row.durationSec,
+          at: row.at,
+          replay: parseRecordReplay(row.runReplay),
+        };
+      } catch (err) {
+        console.error('Records DB player run replay read failed:', err.message);
+        return null;
+      }
+    }
+
+    const local = runHistory.find((entry) => entry.id === id && recordNameKey(entry.name) === nameKey);
+    if (!local) return null;
+    return {
+      id: local.id,
+      name: local.name,
+      kills: local.kills,
+      score: local.score,
+      roomCode: local.roomCode,
+      durationSec: local.durationSec,
+      at: local.at,
+      replay: parseRecordReplay(local.runReplay),
+    };
+  }
+
   function getRecordReplay(recordId) {
     const id = Math.max(0, Number(recordId) || 0);
     if (id <= 0 || !recordsDb || !stmtReplayById) return null;
@@ -403,6 +469,7 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
     listPlayerRunsByName,
     pushRecord,
     getRecordReplay,
+    getPlayerRunReplayByNameAndId,
   };
 }
 

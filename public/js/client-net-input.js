@@ -251,6 +251,7 @@ const profileSummaryEl = document.getElementById('profile-summary');
 const profileAchievementsEl = document.getElementById('profile-achievements');
 const profileCharacterStatsEl = document.getElementById('profile-character-stats');
 const profileRunHistoryEl = document.getElementById('profile-run-history');
+const deathScreenBloodOverlayEl = document.getElementById('death-screen-blood');
 const mainMenuTabButtons = Array.from(document.querySelectorAll('#main-menu-tabs .main-menu-tab'));
 const mainMenuPanels = Array.from(document.querySelectorAll('#join-form [data-menu-panel]'));
 let heroFocusId = selectedPlayerClass;
@@ -2204,6 +2205,7 @@ async function loadRecordReplay(recordId, options = {}) {
   updateRecordReplayStageButton();
   try {
     const payload = await fetchReplayPayloadByRecordId(id, {
+      replayApiPath: recordReplay.record?.replayApiPath || '',
       onProgress(info) {
         const text = describeReplayLoadProgress(info);
         updateReplayLoadOverlay(info);
@@ -2246,7 +2248,9 @@ async function fetchReplayPayloadByRecordId(recordId, options = {}) {
   const id = Math.max(0, Number(recordId) || 0);
   if (id <= 0) return null;
   const onProgress = typeof options?.onProgress === 'function' ? options.onProgress : null;
-  const res = await fetch(`/api/records/${id}/replay`, { cache: 'no-store' });
+  const replayApiPath = String(options?.replayApiPath || '').trim();
+  const replayUrl = replayApiPath || (`/api/records/${id}/replay`);
+  const res = await fetch(replayUrl, { cache: 'no-store' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const total = Math.max(0, Number(res.headers.get('content-length')) || 0);
   if (!res.body || typeof res.body.getReader !== 'function') {
@@ -2370,6 +2374,11 @@ function openRecordDetailsModal(record, rankLabel) {
   recordDetailsBodyEl.innerHTML = summary + renderRunDetailsHtml(record?.runDetails || null);
   resetRecordReplayUi(record?.id);
   recordReplay.record = record || null;
+  if (recordReplayCopyLinkBtn) {
+    const isHistoryReplay = !!String(record?.replayApiPath || '').trim();
+    recordReplayCopyLinkBtn.disabled = isHistoryReplay;
+    recordReplayCopyLinkBtn.title = isHistoryReplay ? 'Share link is available only for Top records replays.' : '';
+  }
   recordDetailsModalEl.classList.remove('hidden');
 }
 
@@ -2455,6 +2464,10 @@ recordReplayInGameBtn?.addEventListener('click', async () => {
   startReplayGame(recordReplay.payload, recordReplay.record);
 });
 recordReplayCopyLinkBtn?.addEventListener('click', async () => {
+  if (String(recordReplay.record?.replayApiPath || '').trim()) {
+    if (recordReplayMetaEl) recordReplayMetaEl.textContent = 'Share link is available only for Top records replays.';
+    return;
+  }
   await copyReplayLink(recordReplay.recordId);
 });
 recordReplayStageLoadBtn?.addEventListener('click', async () => {
@@ -3166,7 +3179,59 @@ function cancelPendingDeathOverlay() {
     pendingDeathRewardsTimer = null;
   }
   pendingDeathResult = null;
+  clearDeathScreenBloodFx();
   clearDeathRewardsUi();
+}
+
+function clearDeathScreenBloodFx() {
+  if (!deathScreenBloodOverlayEl) return;
+  deathScreenBloodOverlayEl.innerHTML = '';
+}
+
+function spawnDeathScreenBloodFx() {
+  if (!deathScreenBloodOverlayEl) return;
+  clearDeathScreenBloodFx();
+
+  const shotCount = 22;
+  const w = Math.max(320, window.innerWidth || 0);
+  const h = Math.max(240, window.innerHeight || 0);
+  const maxX = (w * 0.48);
+  const maxY = (h * 0.46);
+
+  for (let i = 0; i < shotCount; i += 1) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = (0.24 + Math.random() * 0.78) * Math.min(maxX, maxY);
+    const tx = Math.cos(angle) * dist + ((Math.random() - 0.5) * 56);
+    const ty = Math.sin(angle) * dist + ((Math.random() - 0.5) * 44);
+    const delay = Math.round(Math.random() * 360);
+    const flyDur = Math.round(280 + Math.random() * 360);
+    const fadeDur = Math.round(760 + Math.random() * 680);
+
+    const shot = document.createElement('div');
+    shot.className = 'death-screen-shot';
+    shot.style.setProperty('--tx', tx.toFixed(1) + 'px');
+    shot.style.setProperty('--ty', ty.toFixed(1) + 'px');
+    shot.style.setProperty('--delay', delay + 'ms');
+    shot.style.setProperty('--fly-dur', flyDur + 'ms');
+    shot.style.setProperty('--drop-size', (6 + Math.random() * 8).toFixed(1) + 'px');
+    deathScreenBloodOverlayEl.appendChild(shot);
+
+    const splat = document.createElement('div');
+    splat.className = 'death-screen-splat';
+    splat.style.setProperty('--tx', tx.toFixed(1) + 'px');
+    splat.style.setProperty('--ty', ty.toFixed(1) + 'px');
+    splat.style.setProperty('--rot', Math.round((Math.random() * 70) - 35) + 'deg');
+    splat.style.setProperty('--delay', (delay + Math.max(70, Math.round(flyDur * 0.64))) + 'ms');
+    splat.style.setProperty('--fade-dur', fadeDur + 'ms');
+    splat.style.setProperty('--splat-size', (24 + Math.random() * 78).toFixed(1) + 'px');
+    deathScreenBloodOverlayEl.appendChild(splat);
+
+    const cleanupMs = delay + flyDur + fadeDur + 420;
+    setTimeout(() => {
+      shot.remove();
+      splat.remove();
+    }, cleanupMs);
+  }
 }
 
 function spawnPlayerDeathBloodFx(result) {
@@ -3188,6 +3253,21 @@ function spawnPlayerDeathBloodFx(result) {
     }
   }
 }
+function lockCameraForDeathSequence() {
+  game.deathCameraLock = {
+    active: true,
+    x: Math.max(0, Number(camera.x) || 0),
+    y: Math.max(0, Number(camera.y) || 0),
+  };
+}
+
+function clearDeathCameraLock() {
+  if (game.deathCameraLock && typeof game.deathCameraLock === 'object') {
+    game.deathCameraLock.active = false;
+  }
+  game.deathCameraLock = null;
+}
+
 function scheduleDeathOverlay(result) {
   if (pendingDeathOverlayTimer) return;
   pendingDeathResult = result || null;
@@ -3201,6 +3281,7 @@ function scheduleDeathOverlay(result) {
 }
 function clearLocalSessionState() {
   cancelPendingDeathOverlay();
+  clearDeathCameraLock();
   game.myId = null;
   game.roomCode = null;
   game.state = null;
@@ -3286,6 +3367,7 @@ function setDeathCinematicActive(active) {
 }
 
 function openDeathMenuAfterCinematic() {
+  clearDeathCameraLock();
   clearDeathRewardsUi();
   setDeathCinematicActive(false);
   joinOverlay.classList.add('death-mode');
@@ -3309,6 +3391,7 @@ function openDeathOverlay(result) {
   leaveActiveRoom();
   joinOverlay.style.display = 'grid';
   joinOverlay.classList.add('death-mode');
+  spawnDeathScreenBloodFx();
   renderDeathResult(result);
   renderDeathRewardsPanel();
   setDeathCinematicActive(true);
@@ -3425,6 +3508,7 @@ message: (ev) => {
     renderInstanceMeta();
     resetNetStats();
     prevMyAlive = true;
+    clearDeathCameraLock();
     latestRunRewards = null;
     latestDeathSnapshot = null;
     sessionStartedAt = Date.now();
@@ -3608,6 +3692,7 @@ message: (ev) => {
           roomCode: game.roomCode || s.roomCode || '-',
           survivalSec: Math.max(1, Math.floor((Date.now() - (sessionStartedAt || Date.now())) / 1000)),
         };
+        lockCameraForDeathSequence();
         spawnPlayerDeathBloodFx(deathResult);
         scheduleDeathOverlay(deathResult);
       }
