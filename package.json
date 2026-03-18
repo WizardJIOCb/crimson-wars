@@ -5,7 +5,8 @@
   "description": "Web co-op arena shooter inspired by Crimsonland",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "check:encoding": "node scripts/encoding-guard.js"
   },
   "engines": {
     "node": ">=20"
