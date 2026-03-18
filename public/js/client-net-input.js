@@ -347,6 +347,11 @@ const initialMenuTab = MENU_TAB_IDS.has(initialMenuTabParam) ? initialMenuTabPar
 
 const GAME_VERSION_HISTORY = [
   {
+    version: 'v0.8.1',
+    date: '18.03.2026',
+    summary: 'Чат теперь сохраняется в реплей и воспроизводится синхронно при просмотре повтора.',
+  },
+  {
     version: 'v0.8.0',
     date: '18.03.2026',
     summary: 'Новый блок версии в меню: кнопка справа снизу и окно с историей обновлений.',
@@ -363,7 +368,7 @@ const GAME_VERSION_HISTORY = [
   },
 ];
 
-const CURRENT_GAME_VERSION = GAME_VERSION_HISTORY[0]?.version || 'v0.8.0';
+const CURRENT_GAME_VERSION = GAME_VERSION_HISTORY[0]?.version || 'v0.8.1';
 
 function renderGameVersionHistory() {
   if (!gameVersionBodyEl) return;
