@@ -804,6 +804,23 @@ function drawFx() {
   }
 
 
+  for (const w of visuals.dodgeWind) {
+    if (!isVisibleWorld(w.x, w.y, 22)) continue;
+    const a = Math.max(0, w.life / w.ttl) * Math.max(0, Number(w.alpha) || 0.4);
+    if (a <= 0.01) continue;
+    const sx = w.x - camera.x;
+    const sy = w.y - camera.y;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = Math.min(1, a);
+    ctx.fillStyle = w.color || '#cbd5e1';
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, Math.max(1, w.r * 1.6), Math.max(0.7, w.r * 0.85), 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   for (const h of visuals.hitFx) {
     if (!isVisibleWorld(h.x, h.y, 24)) continue;
     const a = Math.max(0, h.life / h.ttl);

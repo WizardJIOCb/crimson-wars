@@ -128,6 +128,7 @@
       <span class="menu-label">Menu</span>
     </button>
     <div class="panel" id="scoreboard"></div>
+    <div id="tab-scoreboard" class="tab-scoreboard hidden" aria-live="polite"></div>
   </div>
 
   <div id="fps-corner" class="hidden" aria-live="polite">FPS: --</div>
@@ -330,6 +331,19 @@
               <b>Hardcore</b>
               <span>x3 monsters, enemy HP x2</span>
             </button>
+            <button type="button" class="game-mode-option" data-game-mode="pvp">
+              <b>PvP</b>
+              <span>Up to 16 players, low NPC pressure</span>
+            </button>
+          </div>
+          <div id="pvp-duration-wrap" class="field-row hidden">
+            <label for="pvp-duration-select">Match duration</label>
+            <select id="pvp-duration-select">
+              <option value="3">3 min</option>
+              <option value="5">5 min</option>
+              <option value="10" selected>10 min</option>
+              <option value="15">15 min</option>
+            </select>
           </div>
         </div>
         <div id="join-feedback" class="join-feedback hidden" aria-live="polite"></div>
@@ -462,4 +476,5 @@
   <script src="/js/client-render.js?v=20260317t"></script>
 </body>
 </html>
+
 

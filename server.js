@@ -1,4 +1,4 @@
-﻿const path = require('path');
+const path = require('path');
 const http = require('http');
 const crypto = require('crypto');
 const express = require('express');
@@ -154,7 +154,8 @@ const XP_SURGE_PULL_MAX_MUL = 3.9;
 
 function normalizeGameMode(rawMode) {
   const mode = String(rawMode || '').trim().toLowerCase();
-  return mode === 'hardcore' ? 'hardcore' : 'normal';
+  if (mode === 'hardcore' || mode === 'pvp') return mode;
+  return 'normal';
 }
 
 function normalizeRespawnMode(rawMode) {
@@ -163,12 +164,29 @@ function normalizeRespawnMode(rawMode) {
   return 'none';
 }
 
+function normalizePvpDurationMin(raw) {
+  const value = Math.floor(Number(raw) || 0);
+  if (PVP_MATCH_DURATION_OPTIONS_MIN.includes(value)) return value;
+  return PVP_DEFAULT_MATCH_DURATION_MIN;
+}
+
+function getRoomMaxPlayers(gameMode) {
+  return normalizeGameMode(gameMode) === 'pvp' ? PVP_MAX_PLAYERS : MAX_PLAYERS;
+}
+
 const RESPAWN_MODE = normalizeRespawnMode(process.env.PLAYER_RESPAWN_MODE || PLAYER_RESPAWN_MODE);
 const RESPAWN_DELAY_MS = Math.max(0, Number(process.env.PLAYER_RESPAWN_DELAY_MS) || PLAYER_RESPAWN_DELAY_MS || 3000);
 const RESPAWN_EXTRA_LIVES = Math.max(0, Math.floor(Number(process.env.PLAYER_RESPAWN_EXTRA_LIVES) || PLAYER_RESPAWN_EXTRA_LIVES || 0));
 const RESPAWN_START_TOKENS = Math.max(0, Math.floor(Number(process.env.PLAYER_RESPAWN_START_TOKENS) || PLAYER_RESPAWN_START_TOKENS || 0));
 const HARDCORE_ENEMY_SPAWN_MUL = 3;
 const HARDCORE_ENEMY_HP_MUL = 2;
+const PVP_MAX_PLAYERS = Math.max(MAX_PLAYERS, Math.floor(Number(process.env.PVP_MAX_PLAYERS) || 16));
+const PVP_RESPAWN_DELAY_MS = Math.max(1000, Number(process.env.PVP_RESPAWN_DELAY_MS) || 2500);
+const PVP_PLAYER_SCORE_KILL = Math.max(10, Number(process.env.PVP_PLAYER_SCORE_KILL) || 120);
+const PVP_ENEMY_SPAWN_MUL = Math.max(0, Number(process.env.PVP_ENEMY_SPAWN_MUL) || 0.2);
+const PVP_ENEMY_HP_MUL = Math.max(0.3, Number(process.env.PVP_ENEMY_HP_MUL) || 0.9);
+const PVP_MATCH_DURATION_OPTIONS_MIN = [3, 5, 10, 15];
+const PVP_DEFAULT_MATCH_DURATION_MIN = 10;
 const adminAuthStore = createAdminAuthStore({
   dataDir: DATA_DIR,
   dbPath: ADMIN_AUTH_DB_PATH,
@@ -225,6 +243,7 @@ const heroDefsById = Object.fromEntries((progressionCatalog.heroes || []).map((h
 
 const LEADERBOARD_CATEGORIES = {
   best_kills_run: { key: 'best_kills_run', title: '\u0423\u0431\u0438\u0442\u043e \u0437\u0430 \u0437\u0430\u0431\u0435\u0433', source: 'runs', unit: 'kills' },
+  best_pvp_kills_run: { key: 'best_pvp_kills_run', title: 'Best PvP kills run', source: 'runs', unit: 'pvp_kills' },
   runs_count: { key: 'runs_count', title: '\u041a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e \u0437\u0430\u0431\u0435\u0433\u043e\u0432', source: 'account', unit: 'runs' },
   best_score_run: { key: 'best_score_run', title: '\u041b\u0443\u0447\u0448\u0438\u0439 \u0437\u0430\u0431\u0435\u0433 \u043f\u043e pts', source: 'runs', unit: 'pts' },
   best_dps_run: { key: 'best_dps_run', title: '\u041b\u0443\u0447\u0448\u0438\u0439 DPS \u0437\u0430 \u0437\u0430\u0431\u0435\u0433', source: 'runs', unit: 'dps' },
@@ -239,6 +258,7 @@ const LEADERBOARD_MODES = {
   all: { key: 'all', title: 'Все режимы' },
   normal: { key: 'normal', title: 'Обычный' },
   hardcore: { key: 'hardcore', title: 'Хард-кор' },
+  pvp: { key: 'pvp', title: 'PvP' },
 };
 
 let leaderboardAuthDb = null;
@@ -258,13 +278,14 @@ function getLeaderboardRecordsDb() {
 
 function normalizeLeaderboardMode(rawMode) {
   const mode = String(rawMode || '').trim().toLowerCase();
-  if (mode === 'normal' || mode === 'hardcore') return mode;
+  if (mode === 'normal' || mode === 'hardcore' || mode === 'pvp') return mode;
   return 'all';
 }
 
 function buildLeaderboardModeWhere(modeKey) {
   if (modeKey === 'normal') return "WHERE run_details LIKE '%\"gameMode\":\"normal\"%'";
   if (modeKey === 'hardcore') return "WHERE run_details LIKE '%\"gameMode\":\"hardcore\"%'";
+  if (modeKey === 'pvp') return "WHERE run_details LIKE '%\"gameMode\":\"pvp\"%'";
   return '';
 }
 
@@ -284,18 +305,21 @@ function parseLeaderboardRunDetails(raw) {
 function buildLeaderboardReplayOrderSql(categoryKey) {
   if (categoryKey === 'best_kills_run') return 'kills DESC, score DESC, duration_sec DESC, at DESC, id DESC';
   if (categoryKey === 'best_score_run') return 'score DESC, kills DESC, duration_sec DESC, at DESC, id DESC';
+  if (categoryKey === 'best_pvp_kills_run') return 'at DESC, score DESC, kills DESC, id DESC';
   if (categoryKey === 'best_dps_run') return '(CASE WHEN duration_sec > 0 THEN (score * 1.0 / duration_sec) ELSE 0 END) DESC, score DESC, kills DESC, at DESC, id DESC';
   if (categoryKey === 'best_time_run') return 'duration_sec DESC, score DESC, kills DESC, at DESC, id DESC';
   return 'at DESC, score DESC, kills DESC, id DESC';
 }
 
 function getLeaderboardReplayRun(db, nameKey, categoryKey, modeKey) {
+  if (categoryKey === 'best_pvp_kills_run') return getLeaderboardReplayRunForPvpCategory(db, nameKey, modeKey);
   if (!db) return null;
   const normalizedNameKey = String(nameKey || '').trim().toLowerCase();
   if (!normalizedNameKey) return null;
   const whereParts = ['name_key = ?'];
   if (modeKey === 'normal') whereParts.push("run_details LIKE '%\"gameMode\":\"normal\"%'");
   if (modeKey === 'hardcore') whereParts.push("run_details LIKE '%\"gameMode\":\"hardcore\"%'");
+  if (modeKey === 'pvp') whereParts.push("run_details LIKE '%\"gameMode\":\"pvp\"%'");
   const sql = [
     'SELECT id, name, kills, score, room_code AS roomCode, duration_sec AS durationSec, at, run_details AS runDetails',
     'FROM player_runs',
@@ -321,9 +345,122 @@ function getLeaderboardReplayRun(db, nameKey, categoryKey, modeKey) {
   }
 }
 
+function extractPvpKillsFromRunDetails(runDetails) {
+  const parsed = parseLeaderboardRunDetails(runDetails);
+  return Math.max(0, Number(parsed?.pvpKills) || 0);
+}
+
+function getLeaderboardReplayRunForPvpCategory(db, nameKey, modeKey) {
+  if (!db) return null;
+  const normalizedNameKey = String(nameKey || '').trim().toLowerCase();
+  if (!normalizedNameKey) return null;
+  const whereParts = ['name_key = ?'];
+  if (modeKey === 'normal') whereParts.push("run_details LIKE '%\"gameMode\":\"normal\"%'");
+  if (modeKey === 'hardcore') whereParts.push("run_details LIKE '%\"gameMode\":\"hardcore\"%'");
+  if (modeKey === 'pvp') whereParts.push("run_details LIKE '%\"gameMode\":\"pvp\"%'");
+  const sql = [
+    'SELECT id, name, kills, score, room_code AS roomCode, duration_sec AS durationSec, at, run_details AS runDetails',
+    'FROM player_runs',
+    'WHERE ' + whereParts.join(' AND '),
+    'ORDER BY at DESC, id DESC',
+  ].join('\n');
+  try {
+    const rows = db.prepare(sql).all(normalizedNameKey);
+    let best = null;
+    for (const row of rows) {
+      const pvpKills = extractPvpKillsFromRunDetails(row?.runDetails);
+      if (pvpKills <= 0) continue;
+      if (!best || pvpKills > best.pvpKills || (pvpKills === best.pvpKills && Number(row?.at || 0) > Number(best.at || 0))) {
+        best = { row, pvpKills };
+      }
+    }
+    if (!best) return null;
+    const row = best.row;
+    return {
+      id: Math.max(0, Number(row.id) || 0),
+      name: String(row.name || 'Unknown').slice(0, 18),
+      kills: Math.max(0, Number(row.kills) || 0),
+      score: Math.max(0, Number(row.score) || 0),
+      roomCode: String(row.roomCode || '-').slice(0, 12),
+      durationSec: Math.max(1, Number(row.durationSec) || 1),
+      at: Math.max(0, Number(row.at) || 0),
+      runDetails: parseLeaderboardRunDetails(row.runDetails),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function listBestPvpKillsRunLeaderboardRows(db, page, pageSize, modeKey = 'all') {
+  if (!db) return { page: 1, pageSize, total: 0, totalPages: 1, items: [] };
+  const whereClause = buildLeaderboardModeWhere(modeKey);
+  const rows = db.prepare([
+    'SELECT name_key AS nameKey, name, run_details AS runDetails, at, kills, score, duration_sec AS durationSec',
+    'FROM player_runs',
+    whereClause,
+    'ORDER BY at DESC, id DESC',
+  ].filter(Boolean).join('\n')).all();
+
+  const bestByName = new Map();
+  for (const row of rows) {
+    const nameKey = String(row?.nameKey || '').trim().toLowerCase();
+    if (!nameKey) continue;
+    const pvpKills = extractPvpKillsFromRunDetails(row?.runDetails);
+    if (pvpKills <= 0) continue;
+    const prev = bestByName.get(nameKey);
+    if (!prev || pvpKills > prev.value || (pvpKills === prev.value && Number(row?.at || 0) > Number(prev.at || 0))) {
+      bestByName.set(nameKey, {
+        nameKey,
+        nickname: String(row?.name || 'Unknown').slice(0, 18),
+        value: pvpKills,
+        at: Math.max(0, Number(row?.at) || 0),
+      });
+    }
+  }
+
+  const allItems = Array.from(bestByName.values()).sort((a, b) => (b.value - a.value) || (b.at - a.at));
+  const total = allItems.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.max(1, Math.min(totalPages, Math.floor(page) || 1));
+  const offset = (currentPage - 1) * pageSize;
+  const pageItems = allItems.slice(offset, offset + pageSize);
+
+  const authDb = getLeaderboardAuthDb();
+  const authStmt = authDb ? authDb.prepare('SELECT id, nickname FROM player_accounts WHERE nickname_key = ? LIMIT 1') : null;
+
+  const items = pageItems.map((item) => {
+    const a = authStmt ? authStmt.get(item.nameKey) : null;
+    const replayRun = getLeaderboardReplayRunForPvpCategory(db, item.nameKey, modeKey);
+    return {
+      playerId: Math.max(0, Number(a?.id) || 0),
+      nickname: String(a?.nickname || item.nickname || 'Unknown').slice(0, 18),
+      value: Math.max(0, Number(item.value) || 0),
+      runs: 0,
+      bestKills: 0,
+      bestScore: 0,
+      bestDurationSec: 0,
+      at: Math.max(0, Number(item.at) || 0),
+      replayRunId: Math.max(0, Number(replayRun?.id) || 0),
+      replayRun: replayRun ? {
+        id: replayRun.id,
+        name: replayRun.name,
+        kills: replayRun.kills,
+        score: replayRun.score,
+        roomCode: replayRun.roomCode,
+        durationSec: replayRun.durationSec,
+        at: replayRun.at,
+        runDetails: replayRun.runDetails,
+      } : null,
+    };
+  });
+
+  return { page: currentPage, pageSize, total, totalPages, items };
+}
+
 function listRunLeaderboardRows(categoryKey, page, pageSize, modeKey = 'all') {
   const db = getLeaderboardRecordsDb();
   if (!db) return { page: 1, pageSize, total: 0, totalPages: 1, items: [] };
+  if (categoryKey === 'best_pvp_kills_run') return listBestPvpKillsRunLeaderboardRows(db, page, pageSize, modeKey);
   const metricSqlMap = {
     best_kills_run: { metric: 'MAX(kills)', order: 'metric DESC, tieAt DESC' },
     best_score_run: { metric: 'MAX(score)', order: 'metric DESC, tieAt DESC' },
@@ -515,7 +652,7 @@ function publishRuntimeRegistry() {
     .map((room) => ({
       code: room.code,
       players: room.players.size,
-      maxPlayers: MAX_PLAYERS,
+      maxPlayers: getRoomMaxPlayers(room.gameMode),
       startedAt: room.startedAt,
     }));
   let inGamePlayers = 0;
@@ -552,13 +689,21 @@ function cleanRoomCodeForLookup(raw) {
   return (raw || '').toString().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
 }
 
-function buildRoomRedirectUrl(baseUrl, roomCode, mode = 'join', gameMode = 'normal') {
+function buildRoomRedirectUrl(baseUrl, roomCode, mode = 'join', gameMode = 'normal', pvpDurationMin = PVP_DEFAULT_MATCH_DURATION_MIN) {
   const base = (baseUrl || '').toString().trim().replace(/\/+$/, '');
   if (!base) return '';
   const url = new URL(base);
+  const normalizedMode = mode === 'create' ? 'create' : 'join';
+  const normalizedGameMode = normalizeGameMode(gameMode);
+  const normalizedPvpDurationMin = normalizePvpDurationMin(pvpDurationMin);
   if (roomCode) url.searchParams.set('room', cleanRoomCodeForLookup(roomCode));
-  if (mode) url.searchParams.set('mode', mode);
-  if (mode === 'create' && normalizeGameMode(gameMode) === 'hardcore') url.searchParams.set('gameMode', 'hardcore');
+  if (normalizedMode) url.searchParams.set('mode', normalizedMode);
+  if (normalizedMode === 'create' && normalizedGameMode !== 'normal') {
+    url.searchParams.set('gameMode', normalizedGameMode);
+  }
+  if (normalizedMode === 'create' && normalizedGameMode === 'pvp') {
+    url.searchParams.set('pvpDurationMin', String(normalizedPvpDurationMin));
+  }
   return url.toString();
 }
 
@@ -734,6 +879,7 @@ app.get('/api/room-route', (req, res) => {
   const mode = (req.query.mode || 'join').toString().trim().toLowerCase() === 'create' ? 'create' : 'join';
   const roomCode = cleanRoomCodeForLookup(req.query.roomCode || req.query.room_code || '');
   const gameMode = normalizeGameMode(req.query.gameMode || req.query.game_mode || 'normal');
+  const pvpDurationMin = normalizePvpDurationMin(req.query.pvpDurationMin || req.query.pvp_duration_min);
 
   if (mode === 'join') {
     if (!roomCode) {
@@ -750,7 +896,7 @@ app.get('/api/room-route', (req, res) => {
         target: {
           instanceId: INSTANCE_ID,
           publicBaseUrl: PUBLIC_BASE_URL,
-          redirectUrl: buildRoomRedirectUrl(PUBLIC_BASE_URL, roomCode, mode, gameMode),
+          redirectUrl: buildRoomRedirectUrl(PUBLIC_BASE_URL, roomCode, mode, gameMode, pvpDurationMin),
           isCurrentInstance: true,
         },
       });
@@ -770,7 +916,7 @@ app.get('/api/room-route', (req, res) => {
       target: {
         instanceId: room.instanceId,
         publicBaseUrl: room.publicBaseUrl || PUBLIC_BASE_URL,
-        redirectUrl: buildRoomRedirectUrl(room.publicBaseUrl || PUBLIC_BASE_URL, room.code, mode, gameMode),
+        redirectUrl: buildRoomRedirectUrl(room.publicBaseUrl || PUBLIC_BASE_URL, room.code, mode, gameMode, pvpDurationMin),
         isCurrentInstance: room.instanceId === INSTANCE_ID,
       },
     });
@@ -787,7 +933,7 @@ app.get('/api/room-route', (req, res) => {
     target: {
       instanceId: target.instanceId,
       publicBaseUrl: target.publicBaseUrl || PUBLIC_BASE_URL,
-      redirectUrl: buildRoomRedirectUrl(target.publicBaseUrl || PUBLIC_BASE_URL, '', mode, gameMode),
+      redirectUrl: buildRoomRedirectUrl(target.publicBaseUrl || PUBLIC_BASE_URL, '', mode, gameMode, pvpDurationMin),
       isCurrentInstance: target.instanceId === INSTANCE_ID,
     },
   });
@@ -1505,7 +1651,14 @@ function randomSpawnEdge() {
   return { x: 0, y: Math.random() * WORLD_HEIGHT };
 }
 
-function randomPlayerSpawn() {
+function randomPlayerSpawn(gameMode = 'normal') {
+  if (normalizeGameMode(gameMode) === 'pvp') {
+    const margin = PLAYER_RADIUS + 40;
+    return {
+      x: margin + Math.random() * Math.max(1, WORLD_WIDTH - margin * 2),
+      y: margin + Math.random() * Math.max(1, WORLD_HEIGHT - margin * 2),
+    };
+  }
   return {
     x: WORLD_WIDTH / 2 + (Math.random() - 0.5) * 260,
     y: WORLD_HEIGHT / 2 + (Math.random() - 0.5) * 200,
@@ -1615,7 +1768,7 @@ function resolveJoinIdentity(ws, rawName) {
   };
 }
 
-function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode) {
+function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode, requestedPvpDurationMin) {
   const provided = cleanRoomCode(requestedCode);
   let code = provided;
 
@@ -1628,13 +1781,25 @@ function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode) {
   if (!rooms.has(code)) {
     const sync = normalizeRoomSync(requestedSync || DEFAULT_ROOM_SYNC);
     const gameMode = normalizeGameMode(requestedGameMode || 'normal');
-    const enemySpawnMul = gameMode === 'hardcore' ? HARDCORE_ENEMY_SPAWN_MUL : 1;
-    const enemyHpMul = gameMode === 'hardcore' ? HARDCORE_ENEMY_HP_MUL : 1;
+    const pvpDurationMin = normalizePvpDurationMin(requestedPvpDurationMin);
+    const enemySpawnMul = gameMode === 'hardcore'
+      ? HARDCORE_ENEMY_SPAWN_MUL
+      : (gameMode === 'pvp' ? PVP_ENEMY_SPAWN_MUL : 1);
+    const enemyHpMul = gameMode === 'hardcore'
+      ? HARDCORE_ENEMY_HP_MUL
+      : (gameMode === 'pvp' ? PVP_ENEMY_HP_MUL : 1);
+    const startedAt = Date.now();
+    const matchDurationSec = gameMode === 'pvp' ? (pvpDurationMin * 60) : 0;
     rooms.set(code, {
       code,
       instanceId: INSTANCE_ID,
       sync,
       gameMode,
+      maxPlayers: getRoomMaxPlayers(gameMode),
+      pvpDurationMin,
+      matchDurationSec,
+      matchEndsAt: matchDurationSec > 0 ? (startedAt + matchDurationSec * 1000) : 0,
+      pvpMatchEnded: false,
       enemySpawnMul,
       enemyHpMul,
       tickMs: 1000 / sync.tickRate,
@@ -1666,7 +1831,7 @@ function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode) {
       totalBossKills: 0,
       nextBossAtKills: BOSS_KILL_INTERVAL,
       lastEnemySpawnAt: 0,
-      startedAt: Date.now(),
+      startedAt,
       trees: generateTrees(),
     });
     publishRuntimeRegistry();
@@ -1935,7 +2100,7 @@ function tickCompanions(room, dtSec, now) {
     }
 
     const range = getCompanionWeaponRange(companion.weaponKey);
-    const target = nearestEnemyTo(room, companion.x, companion.y, range);
+    const target = nearestEnemyTo(room, companion.x, companion.y, range, { excludePlayerId: owner.id });
     if (target) {
       companion.aimX = target.x;
       companion.aimY = target.y;
@@ -1966,20 +2131,45 @@ function tickCompanions(room, dtSec, now) {
   }
 }
 
-function nearestEnemyTo(room, x, y, maxRange = Infinity) {
+function isPvpRoom(room) {
+  return normalizeGameMode(room?.gameMode) === 'pvp';
+}
+
+function nearestHostileTargetTo(room, x, y, maxRange = Infinity, options = {}) {
+  const excludePlayerId = String(options?.excludePlayerId || '');
   let best = null;
   let bestD2 = maxRange * maxRange;
+
   for (const enemy of room.enemies) {
     if (!enemy || enemy.hp <= 0) continue;
     const dx = enemy.x - x;
     const dy = enemy.y - y;
     const d2 = dx * dx + dy * dy;
     if (d2 < bestD2) {
-      best = enemy;
+      best = { kind: 'enemy', id: enemy.id, x: enemy.x, y: enemy.y, enemy };
       bestD2 = d2;
     }
   }
+
+  if (isPvpRoom(room)) {
+    for (const player of room.players.values()) {
+      if (!player || !player.alive) continue;
+      if (excludePlayerId && String(player.id) === excludePlayerId) continue;
+      const dx = player.x - x;
+      const dy = player.y - y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD2) {
+        best = { kind: 'player', id: player.id, x: player.x, y: player.y, player };
+        bestD2 = d2;
+      }
+    }
+  }
+
   return best;
+}
+
+function nearestEnemyTo(room, x, y, maxRange = Infinity, options = {}) {
+  return nearestHostileTargetTo(room, x, y, maxRange, options);
 }
 
 function wrapAngleDelta(delta) {
@@ -1990,20 +2180,65 @@ function wrapAngleDelta(delta) {
 }
 
 function collectSkillTargets(room, player, maxTargets, radius) {
-  return room.enemies
-    .map((e) => ({ e, d2: (e.x - player.x) ** 2 + (e.y - player.y) ** 2 }))
+  const items = room.enemies
+    .map((enemy) => ({
+      target: { kind: 'enemy', id: enemy.id, x: enemy.x, y: enemy.y, enemy },
+      d2: (enemy.x - player.x) ** 2 + (enemy.y - player.y) ** 2,
+    }));
+
+  if (isPvpRoom(room)) {
+    for (const other of room.players.values()) {
+      if (!other || !other.alive || other.id === player.id) continue;
+      items.push({
+        target: { kind: 'player', id: other.id, x: other.x, y: other.y, player: other },
+        d2: (other.x - player.x) ** 2 + (other.y - player.y) ** 2,
+      });
+    }
+  }
+
+  return items
     .filter((x) => x.d2 <= radius * radius)
     .sort((a, b) => a.d2 - b.d2)
     .slice(0, maxTargets)
-    .map((x) => x.e);
+    .map((x) => x.target);
 }
 
-function collectEnemiesInRadius(room, x, y, radius) {
-  return room.enemies
-    .map((enemy) => ({ enemy, d2: (enemy.x - x) ** 2 + (enemy.y - y) ** 2 }))
+function collectEnemiesInRadius(room, x, y, radius, sourcePlayerId = '') {
+  const items = room.enemies
+    .map((enemy) => ({
+      target: { kind: 'enemy', id: enemy.id, x: enemy.x, y: enemy.y, enemy },
+      d2: (enemy.x - x) ** 2 + (enemy.y - y) ** 2,
+    }));
+
+  if (isPvpRoom(room)) {
+    const ownerId = String(sourcePlayerId || '');
+    for (const other of room.players.values()) {
+      if (!other || !other.alive) continue;
+      if (ownerId && String(other.id) === ownerId) continue;
+      items.push({
+        target: { kind: 'player', id: other.id, x: other.x, y: other.y, player: other },
+        d2: (other.x - x) ** 2 + (other.y - y) ** 2,
+      });
+    }
+  }
+
+  return items
     .filter((item) => item.d2 <= radius * radius)
     .sort((a, b) => a.d2 - b.d2)
-    .map((item) => item.enemy);
+    .map((item) => item.target);
+}
+
+function applySkillDamageToTarget(room, target, damage, ownerId, now) {
+  if (!target) return false;
+  if (target.kind === 'enemy' && target.enemy) {
+    return enemyTakeDamage(room, target.enemy, damage, ownerId, now);
+  }
+  if (target.kind === 'player' && target.player) {
+    const attacker = ownerId ? room.players.get(ownerId) : null;
+    if (!attacker) return false;
+    return applyPlayerHitToPlayer(room, attacker, target.player, damage, now);
+  }
+  return false;
 }
 
 function castHomingMissiles(room, player, def, st, now) {
@@ -2039,6 +2274,7 @@ function castHomingMissiles(room, player, def, st, now) {
       radius: 6,
       color: '#fb923c',
       targetId: target.id,
+      targetKind: target.kind || 'enemy',
       turnRate,
       wobbleAmp: 0.28 + Math.random() * 0.16,
       wobbleFreq: 7 + Math.random() * 3.5,
@@ -2063,8 +2299,8 @@ function castLaserStrike(room, player, def, st, now) {
   const damageMul = Math.max(0.2, Number(player.damageMul) || 1);
   const damage = Math.max(1, Math.round(baseDamage * damageMul));
 
-  for (const enemy of targets) {
-    enemyTakeDamage(room, enemy, damage, player.id, now);
+  for (const target of targets) {
+    applySkillDamageToTarget(room, target, damage, player.id, now);
   }
   return true;
 }
@@ -2081,6 +2317,23 @@ function explodeRocket(room, bullet, now) {
     const falloff = 1 - Math.min(0.45, (dist / Math.max(1, reach)) * 0.45);
     enemyTakeDamage(room, enemy, Math.max(1, Math.round((Number(bullet.damage) || 1) * falloff)), bullet.ownerId, now);
   }
+
+  if (isPvpRoom(room)) {
+    const attacker = bullet?.ownerId ? room.players.get(bullet.ownerId) : null;
+    if (attacker) {
+      for (const player of room.players.values()) {
+        if (!player || !player.alive || player.id === attacker.id) continue;
+        const dx = player.x - bullet.x;
+        const dy = player.y - bullet.y;
+        const reach = radius + PLAYER_RADIUS;
+        const dist = Math.hypot(dx, dy);
+        if (dist > reach) continue;
+        const falloff = 1 - Math.min(0.45, (dist / Math.max(1, reach)) * 0.45);
+        const amount = Math.max(1, Math.round((Number(bullet.damage) || 1) * falloff));
+        applyPlayerHitToPlayer(room, attacker, player, amount, now, { allowDeadAttacker: true });
+      }
+    }
+  }
 }
 
 function castPlayerActiveSkill(room, player, def, st, now) {
@@ -2096,10 +2349,10 @@ function castPlayerActiveSkill(room, player, def, st, now) {
   const radius = Math.max(40, (Number(def.radius) || 120) + (Number(def.radiusPerLevel) || 0) * (lvl - 1));
   const damage = Math.max(1, (Number(def.damage) || 10) + (Number(def.damagePerLevel) || 0) * (lvl - 1));
   if (skillId === 'shockwave') {
-    const targets = collectEnemiesInRadius(room, player.x, player.y, radius);
+    const targets = collectEnemiesInRadius(room, player.x, player.y, radius, player.id);
     if (targets.length <= 0) return false;
-    for (const enemy of targets) {
-      enemyTakeDamage(room, enemy, damage * player.damageMul, player.id, now);
+    for (const target of targets) {
+      applySkillDamageToTarget(room, target, damage * player.damageMul, player.id, now);
     }
     return true;
   }
@@ -2108,8 +2361,8 @@ function castPlayerActiveSkill(room, player, def, st, now) {
   const targets = collectSkillTargets(room, player, maxTargets, radius);
   if (targets.length <= 0) return false;
 
-  for (const enemy of targets) {
-    enemyTakeDamage(room, enemy, damage * player.damageMul, player.id, now);
+  for (const target of targets) {
+    applySkillDamageToTarget(room, target, damage * player.damageMul, player.id, now);
   }
   return true;
 }
@@ -2165,6 +2418,8 @@ function serializeRoom(room) {
     pendingSkillChoices: [],
     enemyKills: Math.max(0, Math.floor(Number(p.enemyKills) || 0)),
     bossKills: Math.max(0, Math.floor(Number(p.bossKills) || 0)),
+    pvpKills: Math.max(0, Math.floor(Number(p.pvpKills) || 0)),
+    pvpDeaths: Math.max(0, Math.floor(Number(p.pvpDeaths) || 0)),
     skills: (p.skillOrder || []).map((sid) => {
       const st = p.skills?.[sid] || { level: 0, cooldownMs: 0, maxCooldownMs: 0 };
       const def = skillsStore.getById(sid) || { id: sid, name: sid, kind: 'passive', rarity: 'common', desc: '' };
@@ -2228,7 +2483,11 @@ function serializeRoom(room) {
     instanceId: room.instanceId || INSTANCE_ID,
     isShuttingDown,
     roomCode: room.code,
+    gameMode: normalizeGameMode(room.gameMode || 'normal'),
     roomStartedAt: room.startedAt,
+    matchDurationSec: Math.max(0, Number(room.matchDurationSec) || 0),
+    matchEndsAt: Math.max(0, Number(room.matchEndsAt) || 0),
+    pvpMatchEnded: Boolean(room.pvpMatchEnded),
     totalEnemyKills: room.totalEnemyKills || 0,
     nextBossAtKills: room.nextBossAtKills || BOSS_KILL_INTERVAL,
     bossAlive: hasAliveBoss(room),
@@ -2715,6 +2974,21 @@ function appendReplayChatMessage(replay, payload, now = Date.now()) {
   }
 }
 
+function applyPlayerHitToPlayer(room, attacker, target, damage, now, options = {}) {
+  if (!attacker || !target || attacker.id === target.id) return false;
+  if (!target.alive) return false;
+  const allowDeadAttacker = options?.allowDeadAttacker === true;
+  if (!allowDeadAttacker && !attacker.alive) return false;
+  if (target.godMode) return false;
+  if ((Number(target.dodgeInvulnUntil) || 0) > now) return false;
+  const amount = Math.max(1, Math.round(Number(damage) || 1));
+  target.hp -= amount;
+  if (target.hp <= 0) {
+    downPlayer(room, target, now, { killerId: attacker.id });
+  }
+  return true;
+}
+
 function captureReplayFrame(room, replay, now, options = {}) {
   const force = options.force === true;
   if (!replay || replay.truncated) return;
@@ -2995,9 +3269,11 @@ function enemyTakeDamage(room, enemy, damage, ownerId, now) {
 
   if (ownerId && room.players.has(ownerId)) {
     room.scores.set(ownerId, (room.scores.get(ownerId) || 0) + getEnemyScoreValue(enemy));
-    room.kills.set(ownerId, (room.kills.get(ownerId) || 0) + 1);
     const killer = room.players.get(ownerId);
     if (killer) {
+      if (normalizeGameMode(room.gameMode) !== 'pvp') {
+        room.kills.set(ownerId, (room.kills.get(ownerId) || 0) + 1);
+      }
       if (enemy.type === 'boss') killer.bossKills = Math.max(0, Number(killer.bossKills) || 0) + 1;
       else killer.enemyKills = Math.max(0, Number(killer.enemyKills) || 0) + 1;
       gainPlayerXp(room, killer, getEnemyXpValue(enemy), now);
@@ -3101,16 +3377,39 @@ function buildRunDetails(room, target, now) {
     moveSpeedMul: Math.max(0.1, Number(target.moveSpeedMul) || 1),
     enemyKills: Math.max(0, Number(target.enemyKills) || 0),
     bossKills: Math.max(0, Number(target.bossKills) || 0),
+    pvpKills: Math.max(0, Number(target.pvpKills) || 0),
+    pvpDeaths: Math.max(0, Number(target.pvpDeaths) || 0),
     totalEnemyKills: Math.max(0, Number(room.totalEnemyKills) || 0),
     totalBossKills: Math.max(0, Number(room.totalBossKills) || 0),
+    matchDurationSec: Math.max(0, Number(room.matchDurationSec) || 0),
     roomAlivePlayers: Math.max(0, Number(room.players?.size) || 0),
     survivedSec: Math.max(1, Math.floor((now - (target.joinedAt || now)) / 1000)),
     skills,
   };
 }
 
-function downPlayer(room, target, now) {
+function buildPvpRewardRunStats(room, target, placement = null) {
+  const pvpKills = Math.max(0, Number(target?.pvpKills) || 0);
+  const enemyKills = Math.max(0, Number(target?.enemyKills) || 0);
+  const survivalSec = Math.max(1, Math.floor((Date.now() - (target?.joinedAt || Date.now())) / 1000));
+  const totalPlayers = Math.max(1, Number(room?.players?.size) || 1);
+  const place = placement && Number.isFinite(Number(placement.place)) ? Math.max(1, Number(placement.place)) : null;
+  const placeBonusByRank = { 1: 360, 2: 220, 3: 140 };
+  const bonusScore = place ? (placeBonusByRank[place] || 0) : 0;
+  const score = Math.max(0, pvpKills * PVP_PLAYER_SCORE_KILL + enemyKills * 14 + bonusScore);
+  const weightedKills = Math.max(0, Math.round(pvpKills * 3 + enemyKills * 0.7 + (place ? Math.max(0, totalPlayers - place) * 0.8 : 0)));
+  return {
+    score,
+    kills: weightedKills,
+    bossKills: 0,
+    survivalSec,
+  };
+}
+
+function downPlayer(room, target, now, options = {}) {
   if (!target || target.isOut) return;
+  const forceFinal = options?.forceFinal === true;
+  const killerId = options?.killerId ? String(options.killerId) : '';
 
   const weaponKeyBeforeDown = target.weaponKey;
   target.hp = 0;
@@ -3124,7 +3423,9 @@ function downPlayer(room, target, now) {
   target.jumpQueued = false;
 
   let willRespawn = false;
-  if (RESPAWN_MODE === 'lives') {
+  if (!forceFinal && normalizeGameMode(room?.gameMode) === 'pvp') {
+    willRespawn = true;
+  } else if (RESPAWN_MODE === 'lives') {
     const left = Math.max(0, Math.floor(Number(target.livesLeft) || 0));
     if (left > 0) {
       target.livesLeft = left - 1;
@@ -3140,14 +3441,30 @@ function downPlayer(room, target, now) {
 
   target.canRespawn = willRespawn;
   target.isOut = !willRespawn;
-  target.respawnAt = willRespawn ? (now + RESPAWN_DELAY_MS) : 0;
+  const respawnDelayMs = normalizeGameMode(room?.gameMode) === 'pvp' ? PVP_RESPAWN_DELAY_MS : RESPAWN_DELAY_MS;
+  target.respawnAt = willRespawn ? (now + respawnDelayMs) : 0;
 
   if (willRespawn) {
+    if (normalizeGameMode(room?.gameMode) === 'pvp') {
+      target.pvpDeaths = Math.max(0, Number(target.pvpDeaths) || 0) + 1;
+      const killer = killerId ? room.players.get(killerId) : null;
+      if (killer && killer.id !== target.id) {
+        const nextKills = Math.max(0, Number(killer.pvpKills) || 0) + 1;
+        killer.pvpKills = nextKills;
+        room.kills.set(killer.id, nextKills);
+        room.scores.set(killer.id, (room.scores.get(killer.id) || 0) + PVP_PLAYER_SCORE_KILL);
+      }
+      broadcastRoom(room, {
+        type: 'system',
+        message: `${target.name} was eliminated${killer && killer.id !== target.id ? ` by ${killer.name}` : ''} and will respawn in ${Math.max(0, Math.ceil(respawnDelayMs / 1000))}s.`,
+      });
+      return;
+    }
     setPlayerWeapon(target, 'pistol');
     const suffix = RESPAWN_MODE === 'lives'
       ? ` (${Math.max(0, Number(target.livesLeft) || 0)} lives left)`
       : ` (${Math.max(0, Number(target.reviveTokens) || 0)} revive tokens left)`;
-    broadcastRoom(room, { type: 'system', message: `${target.name} was downed and will respawn in ${Math.max(0, Math.ceil(RESPAWN_DELAY_MS / 1000))}s${suffix}.` });
+    broadcastRoom(room, { type: 'system', message: `${target.name} was downed and will respawn in ${Math.max(0, Math.ceil(respawnDelayMs / 1000))}s${suffix}.` });
     return;
   }
 
@@ -3155,8 +3472,10 @@ function downPlayer(room, target, now) {
   const runDetails = buildRunDetails(room, { ...target, weaponKey: weaponKeyBeforeDown }, now);
   setPlayerWeapon(target, 'pistol');
 
-  const kills = room.kills.get(target.id) || 0;
-  const score = room.scores.get(target.id) || 0;
+  const isPvpMode = normalizeGameMode(room?.gameMode) === 'pvp';
+  const pvpStats = isPvpMode ? buildPvpRewardRunStats(room, target, options?.pvpPlacement || null) : null;
+  const kills = isPvpMode ? pvpStats.kills : (room.kills.get(target.id) || 0);
+  const score = isPvpMode ? pvpStats.score : (room.scores.get(target.id) || 0);
   const survivalSec = Math.max(1, Math.floor((now - (target.joinedAt || now)) / 1000));
   recordsStore.pushRecord({
     name: target.name,
@@ -3173,8 +3492,8 @@ function downPlayer(room, target, now) {
     const rewardResult = accountProgressionStore.grantRunRewards(target.playerAccountId, {
       score,
       kills,
-      bossKills: target.bossKills,
-      survivalSec,
+      bossKills: isPvpMode ? 0 : target.bossKills,
+      survivalSec: isPvpMode ? (pvpStats?.survivalSec || survivalSec) : survivalSec,
       heroId: target.playerClass,
     });
     if (rewardResult?.progression) {
@@ -3359,7 +3678,7 @@ function applyDevCheatCommand(room, player, rawCommand, now = Date.now()) {
     // Voluntary exit should always finalize the run immediately, without respawn.
     player.livesLeft = 0;
     player.reviveTokens = 0;
-    downPlayer(room, player, now);
+    downPlayer(room, player, now, { forceFinal: true });
     sendDevConsole(player, 'Self-destruct executed.');
     return;
   }
@@ -3581,10 +3900,11 @@ function joinRoom(ws, join) {
       return null;
     }
   }
-  const room = getOrCreateRoom(join?.roomCode, join?.sync, join?.gameMode);
+  const room = getOrCreateRoom(join?.roomCode, join?.sync, join?.gameMode, join?.pvpDurationMin);
+  const roomMaxPlayers = Math.max(1, Number(room.maxPlayers) || getRoomMaxPlayers(room.gameMode));
 
-  if (room.players.size >= MAX_PLAYERS) {
-    sendTo(ws, { type: 'joinError', message: `Room ${room.code} is full (8/8).` });
+  if (room.players.size >= roomMaxPlayers) {
+    sendTo(ws, { type: 'joinError', message: `Room ${room.code} is full (${roomMaxPlayers}/${roomMaxPlayers}).` });
     return null;
   }
 
@@ -3598,7 +3918,7 @@ function joinRoom(ws, join) {
   const name = identity.name;
   const joinHero = resolveJoinHeroForPlayer(identity.playerAccountId, join?.playerClass);
   const playerClass = joinHero.heroId;
-  const spawn = randomPlayerSpawn();
+  const spawn = randomPlayerSpawn(room.gameMode);
 
   const player = {
     id,
@@ -3647,6 +3967,8 @@ function joinRoom(ws, join) {
     pickupRadius: PLAYER_PICKUP_RADIUS_BASE,
     enemyKills: 0,
     bossKills: 0,
+    pvpKills: 0,
+    pvpDeaths: 0,
     extraDodgeCharges: 0,
     joinedAt: Date.now(),
     devUnlocked: false,
@@ -3678,7 +4000,7 @@ function joinRoom(ws, join) {
     instanceId: room.instanceId || INSTANCE_ID,
     tickRate: room.sync.tickRate,
     sync: room.sync,
-    maxPlayers: MAX_PLAYERS,
+    maxPlayers: roomMaxPlayers,
     skillCatalog: skillsStore.getList(),
     me: {
       name,
@@ -3693,7 +4015,7 @@ function joinRoom(ws, join) {
 
   broadcastRoom(room, {
     type: 'system',
-    message: `${name} joined room ${room.code} (${room.players.size}/${MAX_PLAYERS})`,
+    message: `${name} joined room ${room.code} (${room.players.size}/${roomMaxPlayers})`,
   });
 
   return player;
@@ -3887,17 +4209,38 @@ wss.on('connection', (ws, req) => {
 });
 
 function tickRoom(room, dtSec, now) {
+  if (normalizeGameMode(room.gameMode) === 'pvp' && !room.pvpMatchEnded) {
+    const matchEndsAt = Math.max(0, Number(room.matchEndsAt) || 0);
+    if (matchEndsAt > 0 && now >= matchEndsAt) {
+      room.pvpMatchEnded = true;
+      const ranked = Array.from(room.players.values())
+        .sort((a, b) =>
+          (Math.max(0, Number(b.pvpKills) || 0) - Math.max(0, Number(a.pvpKills) || 0))
+          || ((room.scores.get(b.id) || 0) - (room.scores.get(a.id) || 0))
+          || ((b.joinedAt || 0) - (a.joinedAt || 0)));
+      broadcastRoom(room, { type: 'system', message: 'PvP match ended. Calculating results...' });
+      ranked.forEach((player, index) => {
+        downPlayer(room, player, now, {
+          forceFinal: true,
+          pvpPlacement: { place: index + 1, total: ranked.length },
+        });
+      });
+      return;
+    }
+  }
+
   syncRoomCompanions(room);
   const roomDifficulty = getRoomDifficulty(room, now);
-  if (room.players.size > 0 && now - room.lastEnemySpawnAt >= roomDifficulty.spawnIntervalMs) {
+  if (!room.pvpMatchEnded && room.players.size > 0 && now - room.lastEnemySpawnAt >= roomDifficulty.spawnIntervalMs) {
     room.lastEnemySpawnAt = now;
     const spawnMul = Math.max(1, Number(room.enemySpawnMul) || 1);
     for (let i = 0; i < spawnMul; i += 1) {
+      if (normalizeGameMode(room.gameMode) === 'pvp' && Math.random() > Math.max(0.03, Math.min(1, PVP_ENEMY_SPAWN_MUL))) continue;
       spawnEnemy(room, now, roomDifficulty);
     }
   }
 
-  if (room.players.size > 0) {
+  if (normalizeGameMode(room.gameMode) !== 'pvp' && room.players.size > 0) {
     maybeScheduleBossSpawn(room, now);
   }
 
@@ -3916,7 +4259,7 @@ function tickRoom(room, dtSec, now) {
     );
     if (!p.alive) {
       if (!p.isOut && p.canRespawn && now >= p.respawnAt) {
-        const spawn = randomPlayerSpawn();
+        const spawn = randomPlayerSpawn(room.gameMode);
         p.x = spawn.x;
         p.y = spawn.y;
         p.hp = p.maxHp || PLAYER_HP_MAX;
@@ -3962,9 +4305,23 @@ function tickRoom(room, dtSec, now) {
   for (let i = room.bullets.length - 1; i >= 0; i -= 1) {
     const b = room.bullets[i];
     if (b.kind === 'rocket' && !b.fromEnemy) {
-      const target = room.enemies.find((enemy) => enemy.id === b.targetId && enemy.hp > 0)
-        || nearestEnemyTo(room, b.x, b.y, Math.max(140, Number(b.retargetRange) || 520));
-      if (target) b.targetId = target.id;
+      let target = null;
+      if (String(b.targetKind || 'enemy') === 'player') {
+        const p = room.players.get(String(b.targetId || ''));
+        if (p && p.alive && String(p.id) !== String(b.ownerId || '')) {
+          target = { kind: 'player', id: p.id, x: p.x, y: p.y, player: p };
+        }
+      } else {
+        const enemy = room.enemies.find((e) => e.id === b.targetId && e.hp > 0);
+        if (enemy) target = { kind: 'enemy', id: enemy.id, x: enemy.x, y: enemy.y, enemy };
+      }
+      if (!target) {
+        target = nearestEnemyTo(room, b.x, b.y, Math.max(140, Number(b.retargetRange) || 520), { excludePlayerId: String(b.ownerId || '') });
+      }
+      if (target) {
+        b.targetId = target.id;
+        b.targetKind = target.kind || 'enemy';
+      }
 
       const speed = Math.max(120, Number(b.speed) || Math.hypot(Number(b.vx) || 0, Number(b.vy) || 0) || 120);
       let angle = Math.atan2(Number(b.vy) || 0, Number(b.vx) || speed);
@@ -4007,17 +4364,34 @@ function tickRoom(room, dtSec, now) {
         }
       }
     } else {
-      for (let ei = room.enemies.length - 1; ei >= 0; ei -= 1) {
-        const e = room.enemies[ei];
-        const rr = (Number(e.radius) || ENEMY_RADIUS) + bulletR;
-        const collides = useSegmentHit
-          ? segmentIntersectsCircle(prevX, prevY, b.x, b.y, e.x, e.y, rr)
-          : (((e.x - b.x) ** 2 + (e.y - b.y) ** 2) <= rr * rr);
-        if (collides) {
-          hit = true;
-          if (b.kind === 'rocket') explodeRocket(room, b, now);
-          else enemyTakeDamage(room, e, b.damage, b.ownerId, now);
-          break;
+      const owner = room.players.get(b.ownerId);
+      if (normalizeGameMode(room.gameMode) === 'pvp' && owner) {
+        for (const p of room.players.values()) {
+          if (p.id === owner.id || !p.alive) continue;
+          const rr = PLAYER_RADIUS + bulletR;
+          const collides = useSegmentHit
+            ? segmentIntersectsCircle(prevX, prevY, b.x, b.y, p.x, p.y, rr)
+            : (((p.x - b.x) ** 2 + (p.y - b.y) ** 2) <= rr * rr);
+          if (!collides) continue;
+          if (applyPlayerHitToPlayer(room, owner, p, b.damage, now, { allowDeadAttacker: true })) {
+            hit = true;
+            break;
+          }
+        }
+      }
+      if (!hit) {
+        for (let ei = room.enemies.length - 1; ei >= 0; ei -= 1) {
+          const e = room.enemies[ei];
+          const rr = (Number(e.radius) || ENEMY_RADIUS) + bulletR;
+          const collides = useSegmentHit
+            ? segmentIntersectsCircle(prevX, prevY, b.x, b.y, e.x, e.y, rr)
+            : (((e.x - b.x) ** 2 + (e.y - b.y) ** 2) <= rr * rr);
+          if (collides) {
+            hit = true;
+            if (b.kind === 'rocket') explodeRocket(room, b, now);
+            else enemyTakeDamage(room, e, b.damage, b.ownerId, now);
+            break;
+          }
         }
       }
     }
@@ -4334,6 +4708,7 @@ server.listen(PORT, () => {
     console.log(`Bootstrap admin password: ${ADMIN_BOOTSTRAP_PASSWORD}`);
   }
 });
+
 
 
 

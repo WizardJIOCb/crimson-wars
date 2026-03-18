@@ -211,6 +211,38 @@ function spawnSkillBurstFx(x, y, color = '#7dd3fc', radius = 100) {
   if (visuals.skillBursts.length > 36) visuals.skillBursts.splice(0, visuals.skillBursts.length - 36);
 }
 
+function spawnDodgeWindFx(x, y, dirX = 1, dirY = 0, isMe = false) {
+  const len = Math.hypot(Number(dirX) || 0, Number(dirY) || 0) || 1;
+  const nx = (Number(dirX) || 0) / len;
+  const ny = (Number(dirY) || 0) / len;
+  const px = -ny;
+  const py = nx;
+  const count = isMe ? 14 : 10;
+
+  for (let i = 0; i < count; i += 1) {
+    const t = i / Math.max(1, count - 1);
+    const back = 8 + t * (isMe ? 36 : 28) + Math.random() * 8;
+    const side = (Math.random() - 0.5) * (isMe ? 14 : 10);
+    const sx = x - nx * back + px * side;
+    const sy = y - ny * back + py * side;
+    const drift = 18 + Math.random() * 42;
+
+    visuals.dodgeWind.push({
+      x: sx,
+      y: sy,
+      vx: -nx * drift + px * (Math.random() * 24 - 12),
+      vy: -ny * drift + py * (Math.random() * 24 - 12),
+      r: 2.5 + Math.random() * (isMe ? 3.4 : 2.8),
+      life: 0.16 + Math.random() * 0.12,
+      ttl: 0.16 + Math.random() * 0.12,
+      alpha: isMe ? 0.52 : 0.4,
+      color: isMe ? '#bfdbfe' : '#cbd5e1',
+    });
+  }
+
+  if (visuals.dodgeWind.length > 220) visuals.dodgeWind.splice(0, visuals.dodgeWind.length - 220);
+}
+
 function spawnBladeOrbitFx(x, y) {
   for (let i = 0; i < 3; i += 1) {
     visuals.skillArcs.push({
@@ -389,7 +421,17 @@ function processStateFx(nextState) {
   const prevPlayerMap = visuals.playerPrev;
   const nextPlayerMap = new Map();
   for (const p of nextState.players) {
-    nextPlayerMap.set(p.id, { x: p.x, y: p.y, hp: p.hp, alive: Boolean(p.alive) });
+    nextPlayerMap.set(p.id, {
+      x: p.x,
+      y: p.y,
+      hp: p.hp,
+      alive: Boolean(p.alive),
+      dodgeInvulnUntil: Number(p.dodgeInvulnUntil) || 0,
+      moveX: Number(p.moveX) || 0,
+      moveY: Number(p.moveY) || 0,
+      aimX: Number(p.aimX) || Number(p.x) || 0,
+      aimY: Number(p.aimY) || Number(p.y) || 0,
+    });
     const prev = prevPlayerMap.get(p.id);
     if (prev && p.hp < prev.hp) {
       const hitDamage = Math.max(1, prev.hp - p.hp);
@@ -404,6 +446,42 @@ function processStateFx(nextState) {
       spawnBloodPuddle(p.x, p.y, 1.15);
       spawnGoreBurst(p.x, p.y, 20);
       spawnHitFx(p.x, p.y, 18, true);
+    }
+
+    const prevDodgeUntil = Number(prev?.dodgeInvulnUntil) || 0;
+    const nextDodgeUntil = Number(p?.dodgeInvulnUntil) || 0;
+    if (nextDodgeUntil > prevDodgeUntil + 80) {
+      const startX = Number(prev?.x) || Number(p.x) || 0;
+      const startY = Number(prev?.y) || Number(p.y) || 0;
+      const endX = Number(p.x) || startX;
+      const endY = Number(p.y) || startY;
+
+      let dirX = endX - startX;
+      let dirY = endY - startY;
+      if (Math.hypot(dirX, dirY) < 0.08) {
+        dirX = Number(p.moveX) || 0;
+        dirY = Number(p.moveY) || 0;
+      }
+      if (Math.hypot(dirX, dirY) < 0.08) {
+        dirX = (Number(p.aimX) || endX) - endX;
+        dirY = (Number(p.aimY) || endY) - endY;
+      }
+
+      const isMe = p.id === game.myId;
+      // Phase 1: immediate gust at dodge start point.
+      spawnDodgeWindFx(startX, startY, dirX, dirY, isMe);
+      // Phase 2: tiny delayed gust at dodge end point.
+      visuals.dodgeWindScheduled.push({
+        x: endX,
+        y: endY,
+        dirX,
+        dirY,
+        isMe,
+        delay: 0.045,
+      });
+      if (visuals.dodgeWindScheduled.length > 80) {
+        visuals.dodgeWindScheduled.splice(0, visuals.dodgeWindScheduled.length - 80);
+      }
     }
   }
   visuals.playerPrev = nextPlayerMap;
@@ -576,6 +654,26 @@ function updateFx(dt) {
   for (let i = visuals.muzzle.length - 1; i >= 0; i -= 1) {
     visuals.muzzle[i].life -= dt;
     if (visuals.muzzle[i].life <= 0) visuals.muzzle.splice(i, 1);
+  }
+
+  for (let i = visuals.dodgeWind.length - 1; i >= 0; i -= 1) {
+    const w = visuals.dodgeWind[i];
+    w.life -= dt;
+    w.x += w.vx * dt;
+    w.y += w.vy * dt;
+    w.vx *= 0.92;
+    w.vy *= 0.92;
+    w.r *= 0.985;
+    if (w.life <= 0 || w.r <= 0.6) visuals.dodgeWind.splice(i, 1);
+  }
+
+  for (let i = visuals.dodgeWindScheduled.length - 1; i >= 0; i -= 1) {
+    const s = visuals.dodgeWindScheduled[i];
+    s.delay -= dt;
+    if (s.delay <= 0) {
+      spawnDodgeWindFx(s.x, s.y, s.dirX, s.dirY, s.isMe);
+      visuals.dodgeWindScheduled.splice(i, 1);
+    }
   }
 
   for (let i = visuals.hitFx.length - 1; i >= 0; i -= 1) {

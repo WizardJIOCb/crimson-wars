@@ -1,5 +1,4 @@
-﻿
-const canvas = document.getElementById('game');
+﻿const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
 const statusEl = document.getElementById('status');
@@ -250,6 +249,9 @@ const game = {
   sampledNet: null,
   nextInputSeq: 0,
   roomStartedAt: 0,
+  gameMode: 'normal',
+  matchDurationSec: 0,
+  matchEndsAt: 0,
   totalEnemyKills: 0,
   nextBossAtKills: 50,
   nextBossSpawnAt: 0,
@@ -293,6 +295,8 @@ const visuals = {
   skillArcs: [],
   skillLinks: [],
   skillLabels: [],
+  dodgeWind: [],
+  dodgeWindScheduled: [],
   skillCdPrev: new Map(),
   skillOfferPrev: new Map(),
   enemyPrev: new Map(),
@@ -307,8 +311,10 @@ let joinMode = 'create';
 const NICKNAME_STORAGE_KEY = 'cw:nickname';
 const PLAYER_CLASS_STORAGE_KEY = 'cw:playerClass';
 const GAME_MODE_STORAGE_KEY = 'cw:gameMode';
+const PVP_DURATION_STORAGE_KEY = 'cw:pvpDurationMin';
 let selectedPlayerClass = 'cyber';
 let selectedGameMode = normalizeGameMode(localStorage.getItem(GAME_MODE_STORAGE_KEY) || 'normal');
+let selectedPvpDurationMin = normalizePvpDurationMin(localStorage.getItem(PVP_DURATION_STORAGE_KEY) || '10');
 const storedInfoPanelHidden = localStorage.getItem('cw:infoPanelHidden');
 let infoPanelHidden = storedInfoPanelHidden === null ? true : storedInfoPanelHidden === '1';
 const storedStatsPanelOpen = localStorage.getItem('cw:statsPanelOpen');
@@ -767,7 +773,14 @@ function renderInstanceMeta() {
 
 function normalizeGameMode(raw) {
   const mode = String(raw || '').trim().toLowerCase();
-  return mode === 'hardcore' ? 'hardcore' : 'normal';
+  if (mode === 'hardcore' || mode === 'pvp') return mode;
+  return 'normal';
+}
+
+function normalizePvpDurationMin(raw) {
+  const value = Math.floor(Number(raw) || 0);
+  if (value === 3 || value === 5 || value === 10 || value === 15) return value;
+  return 10;
 }
 
 function applyInitialRoomIntent() {
@@ -777,6 +790,7 @@ function applyInitialRoomIntent() {
   const room = (params.get('room') || '').trim().toUpperCase();
   const mode = (params.get('mode') || '').trim().toLowerCase();
   const gameMode = normalizeGameMode(params.get('gameMode') || params.get('game_mode') || selectedGameMode);
+  const pvpDurationMin = normalizePvpDurationMin(params.get('pvpDurationMin') || params.get('pvp_duration_min') || selectedPvpDurationMin);
   const routed = params.get('routed') === '1';
   pendingReplayRecordId = replay;
   pendingReplayStartSec = replayAt;
@@ -789,7 +803,9 @@ function applyInitialRoomIntent() {
   pendingAutoJoin = Boolean(room && joinMode === 'join');
   pendingAutoCreate = Boolean(!room && joinMode === 'create' && routed);
   selectedGameMode = gameMode;
+  selectedPvpDurationMin = pvpDurationMin;
   localStorage.setItem(GAME_MODE_STORAGE_KEY, selectedGameMode);
+  localStorage.setItem(PVP_DURATION_STORAGE_KEY, String(selectedPvpDurationMin));
 
   if (pendingReplayRecordId > 0) {
     pendingAutoJoin = false;
@@ -804,8 +820,10 @@ async function resolveRoomRoute(mode, roomCode = '', options = {}) {
   });
   const normalizedCode = String(roomCode || '').trim().toUpperCase();
   const requestedGameMode = normalizeGameMode(options?.gameMode || selectedGameMode);
+  const requestedPvpDurationMin = normalizePvpDurationMin(options?.pvpDurationMin || selectedPvpDurationMin);
   if (normalizedCode) params.set('roomCode', normalizedCode);
-  if ((mode === 'create') && requestedGameMode === 'hardcore') params.set('gameMode', 'hardcore');
+  if ((mode === 'create') && requestedGameMode !== 'normal') params.set('gameMode', requestedGameMode);
+  if ((mode === 'create') && requestedGameMode === 'pvp') params.set('pvpDurationMin', String(requestedPvpDurationMin));
   return apiJson(`/api/room-route?${params.toString()}`, { method: 'GET' });
 }
 
@@ -1194,6 +1212,18 @@ function updateTopCenterHud(nowMs = Date.now()) {
   const startedAt = Number(game.roomStartedAt) || Number(game.state.roomStartedAt) || nowMs;
   const elapsedSec = Math.max(0, (nowMs - startedAt) / 1000);
   matchTimerEl.textContent = `${trCore('ui.hud.time', 'Time')} ${formatClock(elapsedSec)}`;
+
+  if (String(game.gameMode || 'normal').toLowerCase() === 'pvp') {
+    const endsAt = Number(game.matchEndsAt) || 0;
+    const leftSec = endsAt > nowMs ? Math.max(0, (endsAt - nowMs) / 1000) : 0;
+    bossProgressEl.textContent = `${trCore('ui.hud.pvp_ends', 'PvP ends in')} ${formatClock(leftSec)}`;
+    const alivePlayers = Array.isArray(game.state?.players)
+      ? game.state.players.filter((p) => !p.isCompanion && p.alive).length
+      : 0;
+    difficultyMetaEl.textContent = `${trCore('ui.scoreboard.players', 'Players')}: ${alivePlayers}`;
+    if (bossSpawnAlertEl) bossSpawnAlertEl.classList.add('hidden');
+    return;
+  }
 
   const nextSpawnAt = Number(game.nextBossSpawnAt) || 0;
   const bossAlive = Boolean(game.bossAlive);
@@ -1845,8 +1875,8 @@ function getConnectionIndicatorData(player) {
   else if (level >= 7) label = 'Good';
   else if (level >= 5) label = 'Fair';
 
-  const pingPart = pingMs > 0 ? ` | Ping: ${pingMs}ms` : '';
-  const shortText = pingMs > 0 ? `${pingMs}ms` : `Q${level}`;
+  const pingPart = ` | Ping: ${Math.max(0, pingMs)}ms`;
+  const shortText = `${Math.max(0, pingMs)}ms`;
   return { level, title: `Connection: ${label} (${level}/10)${pingPart}`, shortText };
 }
 
@@ -2261,22 +2291,6 @@ function updateMobileControlsVisibility() {
   }
   setMobileControlsVisible(!overlayOpen);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

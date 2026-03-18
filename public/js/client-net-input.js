@@ -190,6 +190,9 @@ jumpBtnEl?.addEventListener('mousedown', (e) => { e.preventDefault(); queueJump(
 
 const joinToggleInfoBtn = document.getElementById('join-toggle-info');
 const sessionExitBtn = document.getElementById('session-exit-btn');
+const pvpDurationWrapEl = document.getElementById('pvp-duration-wrap');
+const pvpDurationSelectEl = document.getElementById('pvp-duration-select');
+const tabScoreboardEl = document.getElementById('tab-scoreboard');
 const tr = (key, params = null) => {
   if (typeof window.cwI18nT === 'function') return window.cwI18nT(key, params);
   return String(key || '');
@@ -304,6 +307,10 @@ const mainMenuTabButtons = Array.from(document.querySelectorAll('#main-menu-tabs
 const mainMenuPanels = Array.from(document.querySelectorAll('#join-form [data-menu-panel]'));
 let heroFocusId = selectedPlayerClass;
 let currentMainMenuTab = 'play';
+let tabScoreboardVisible = false;
+let lastTabScoreboardHtml = '';
+let lastBattlePlayers = [];
+const playerAliveState = new Map();
 const PROFILE_RUN_HISTORY_CACHE_MS = 12000;
 const profileRunHistoryUi = {
   items: [],
@@ -2388,7 +2395,7 @@ async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
   clearJoinFeedback();
   if (!skipRouting) {
     try {
-      const route = await resolveRoomRoute(mode, roomCode, { gameMode: selectedGameMode });
+      const route = await resolveRoomRoute(mode, roomCode, { gameMode: selectedGameMode, pvpDurationMin: selectedPvpDurationMin });
       if (mode === 'join' && route?.found && route?.room?.isFull) {
         const message = `Room ${route.room.code} is full (${route.room.players}/${route.room.maxPlayers}).`;
         statusEl.textContent = message;
@@ -2430,6 +2437,7 @@ async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
     roomCode,
     sync: joinSync || undefined,
     gameMode: mode === 'create' ? selectedGameMode : undefined,
+    pvpDurationMin: mode === 'create' && selectedGameMode === 'pvp' ? normalizePvpDurationMin(selectedPvpDurationMin) : undefined,
   });
   closeGameVersionModal();
   joinOverlay.style.display = 'none';
@@ -2794,6 +2802,8 @@ function seekReplayGame(elapsedMs, { keepPaused = null } = {}) {
   visuals.skillArcs = [];
   visuals.skillLinks = [];
   visuals.skillLabels = [];
+  visuals.dodgeWind = [];
+  visuals.dodgeWindScheduled = [];
   replayGame.fxFrameIndex = -1;
   tickReplayGame(performance.now());
   updateReplayGameButtons();
@@ -3300,6 +3310,8 @@ function startReplayGame(payload, record) {
   visuals.skillArcs = [];
   visuals.skillLinks = [];
   visuals.skillLabels = [];
+  visuals.dodgeWind = [];
+  visuals.dodgeWindScheduled = [];
   visuals.skillCdPrev = new Map();
   visuals.skillOfferPrev = new Map();
   closeGameVersionModal();
@@ -3989,19 +4001,49 @@ function updatePlayerInterpolation(dt) {
 
   for (const [id, p] of targetMap.entries()) {
     alive.add(id);
+    const live = liveMap.get(id);
+    const sampledAlive = (typeof p?.alive === 'boolean') ? Boolean(p.alive) : Boolean(live?.alive);
+    const isAlive = Boolean(live?.alive ?? sampledAlive);
+    const targetX = (live && sampledAlive !== isAlive) ? Number(live.x) || Number(p.x) || 0 : (Number(p.x) || Number(live?.x) || 0);
+    const targetY = (live && sampledAlive !== isAlive) ? Number(live.y) || Number(p.y) || 0 : (Number(p.y) || Number(live?.y) || 0);
+
     let r = game.renderPlayers.get(id);
     if (!r) {
-      r = { x: p.x, y: p.y, vx: 0, vy: 0 };
+      r = { x: targetX, y: targetY, vx: 0, vy: 0, alive: isAlive };
       game.renderPlayers.set(id, r);
       continue;
     }
 
-    const nx = r.x + (p.x - r.x) * alpha;
-    const ny = r.y + (p.y - r.y) * alpha;
-    r.vx = (nx - r.x) / Math.max(0.001, dt);
-    r.vy = (ny - r.y) / Math.max(0.001, dt);
-    r.x = nx;
-    r.y = ny;
+    const wasAlive = Boolean(r.alive);
+    const dx = targetX - r.x;
+    const dy = targetY - r.y;
+    const d2 = dx * dx + dy * dy;
+    const nowMs = Date.now();
+    const dodgeUntil = Number(live?.dodgeInvulnUntil) || Number(p?.dodgeInvulnUntil) || 0;
+    const dodgeActive = dodgeUntil > nowMs;
+    const respawnSnap = !wasAlive && isAlive;
+    // Keep respawn instant, but do not snap dodge-jumps: they should look smooth.
+    const longJumpSnap = !dodgeActive && d2 > (340 * 340);
+
+    if (respawnSnap || longJumpSnap) {
+      r.vx = 0;
+      r.vy = 0;
+      r.x = targetX;
+      r.y = targetY;
+    } else {
+      const isLocalPlayer = Boolean(game.myId) && String(id) === String(game.myId);
+      // For remote players: keep regular motion responsive, but make dodge/jump movement smoother.
+      const alphaRemote = dodgeActive ? Math.max(alpha, 0.26) : Math.max(alpha, 0.52);
+      const alphaPlayer = isLocalPlayer ? alpha : alphaRemote;
+      const nx = r.x + (targetX - r.x) * alphaPlayer;
+      const ny = r.y + (targetY - r.y) * alphaPlayer;
+      r.vx = (nx - r.x) / Math.max(0.001, dt);
+      r.vy = (ny - r.y) / Math.max(0.001, dt);
+      r.x = nx;
+      r.y = ny;
+    }
+
+    r.alive = isAlive;
   }
 
   for (const id of Array.from(game.renderPlayers.keys())) {
@@ -4081,7 +4123,8 @@ function syncBulletsFromState(nextState) {
 }
 
 function updateBulletInterpolation(dt) {
-  const targets = game.sampledNet?.bullets || mapById(game.state?.bullets || []);
+  const liveBullets = mapById(game.state?.bullets || []);
+  const targets = game.sampledNet?.bullets || new Map(liveBullets);
   const alive = new Set();
 
   for (const [id, tb] of targets.entries()) {
@@ -4120,8 +4163,10 @@ function updateBulletInterpolation(dt) {
       continue;
     }
 
-    r.x += r.vx * dt;
-    r.y += r.vy * dt;
+    // Keep full bullet speed for all players; position alignment is handled by player interpolation.
+    const predictMul = 1;
+    r.x += r.vx * dt * predictMul;
+    r.y += r.vy * dt * predictMul;
 
     const dx = r.serverX - r.x;
     const dy = r.serverY - r.y;
@@ -4177,7 +4222,13 @@ function getBulletRenderPos(bullet) {
 function pushNetSnapshot(state) {
   const snap = {
     t: performance.now(),
-    players: state.players.map((p) => ({ id: p.id, x: p.x, y: p.y })),
+    players: state.players.map((p) => ({
+      id: p.id,
+      x: p.x,
+      y: p.y,
+      alive: Boolean(p.alive),
+      dodgeInvulnUntil: Number(p.dodgeInvulnUntil) || 0,
+    })),
     enemies: state.enemies.map((e) => ({ id: e.id, x: e.x, y: e.y })),
     bullets: state.bullets.map((b) => ({
       id: b.id ?? `${b.x.toFixed(1)}:${b.y.toFixed(1)}`,
@@ -4240,7 +4291,7 @@ function sampleBufferedState() {
   const dt = Math.max(1, b.t - a.t);
   const k = Math.max(0, Math.min(1, (target - a.t) / dt));
 
-  const lerpMap = (la, lb, withVel) => {
+  const lerpMap = (la, lb, withVel, snapDistanceSq = Infinity) => {
     const ma = mapById(la);
     const mb = mapById(lb);
     const ids = new Set([...ma.keys(), ...mb.keys()]);
@@ -4250,6 +4301,16 @@ function sampleBufferedState() {
       const pa = ma.get(id);
       const pb = mb.get(id);
       if (pa && pb) {
+        const paAliveKnown = typeof pa.alive === 'boolean';
+        const pbAliveKnown = typeof pb.alive === 'boolean';
+        const aliveChanged = paAliveKnown && pbAliveKnown && (Boolean(pa.alive) !== Boolean(pb.alive));
+
+        const dx = pb.x - pa.x;
+        const dy = pb.y - pa.y;
+        if (aliveChanged || dx * dx + dy * dy > snapDistanceSq) {
+          out.set(id, { ...pb, id });
+          continue;
+        }
         out.set(id, {
           id,
           x: pa.x + (pb.x - pa.x) * k,
@@ -4259,6 +4320,8 @@ function sampleBufferedState() {
           color: pb.color ?? pa.color,
           kind: pb.kind ?? pa.kind,
           radius: pb.radius ?? pa.radius,
+          alive: pbAliveKnown ? Boolean(pb.alive) : (paAliveKnown ? Boolean(pa.alive) : undefined),
+          dodgeInvulnUntil: Number(pb.dodgeInvulnUntil ?? pa.dodgeInvulnUntil) || 0,
         });
       } else {
         out.set(id, pb || pa);
@@ -4269,7 +4332,7 @@ function sampleBufferedState() {
   };
 
   return {
-    players: lerpMap(a.players, b.players, false),
+    players: lerpMap(a.players, b.players, false, 210 * 210),
     enemies: lerpMap(a.enemies, b.enemies, false),
     bullets: lerpMap(a.bullets, b.bullets, true),
     xpOrbs: lerpMap(a.xpOrbs || [], b.xpOrbs || [], false),
@@ -4281,7 +4344,65 @@ function isVisibleWorld(x, y, pad = 0) {
   return sx >= -pad && sx <= canvas.width + pad && sy >= -pad && sy <= canvas.height + pad;
 }
 
+function setTabScoreboardVisible(visible) {
+  const overlayOpen = getComputedStyle(joinOverlay).display !== 'none';
+  tabScoreboardVisible = Boolean(visible) && !overlayOpen;
+  if (!tabScoreboardEl) return;
+  tabScoreboardEl.classList.toggle('hidden', !tabScoreboardVisible);
+  if (tabScoreboardVisible) updateTabScoreboard(lastBattlePlayers);
+}
+
+function updateTabScoreboard(players) {
+  if (!tabScoreboardEl) return;
+  const list = Array.isArray(players) ? players.filter((p) => !p.isCompanion) : [];
+  lastBattlePlayers = list;
+  const overlayOpen = getComputedStyle(joinOverlay).display !== 'none';
+  if (!tabScoreboardVisible || overlayOpen) {
+    tabScoreboardEl.classList.add('hidden');
+    return;
+  }
+
+  const pvpMode = normalizeGameMode(game.gameMode) === 'pvp';
+  const sorted = [...list].sort((a, b) => (Math.max(0, Number(b?.score) || 0) - Math.max(0, Number(a?.score) || 0))
+    || (Math.max(0, Number(b?.pvpKills) || 0) - Math.max(0, Number(a?.pvpKills) || 0))
+    || (Math.max(0, Number(b?.kills) || 0) - Math.max(0, Number(a?.kills) || 0))
+    || String(a?.name || '').localeCompare(String(b?.name || '')));
+
+  const title = trWithFallback('ui.scoreboard.tab_title', 'Players in battle (TAB)');
+  const headRank = trWithFallback('ui.scoreboard.rank', '#');
+  const headNick = trWithFallback('ui.scoreboard.nick', 'Nickname');
+  const headDeaths = trWithFallback('ui.scoreboard.deaths', 'Deaths');
+  const headPing = trWithFallback('ui.scoreboard.ping', 'Ping');
+  const headKills = trWithFallback('ui.scoreboard.kills', 'Kills');
+  const headPvp = trWithFallback('ui.scoreboard.pvp_kills', 'PvP');
+  const headPve = trWithFallback('ui.scoreboard.pve_kills', 'PvE');
+
+  const rows = sorted.map((p, index) => {
+    const kills = Math.max(0, Number(p?.kills) || 0);
+    const pvpKills = Math.max(0, Number(p?.pvpKills) || 0);
+    const enemyKills = Math.max(0, Number(p?.enemyKills) || kills);
+    const deaths = Math.max(0, Number(p?.pvpDeaths) || 0);
+    const ping = Math.max(0, Number(p?.netPingMs) || 0);
+    const meClass = p?.id === game.myId ? ' class="me"' : '';
+
+    if (pvpMode) {
+      return `<tr${meClass}><td class="num">${index + 1}</td><td>${escapeHtml(String(p?.name || '-'))}</td><td class="num">${pvpKills}</td><td class="num">${enemyKills}</td><td class="num">${deaths}</td><td class="num">${ping > 0 ? ping : '--'}</td></tr>`;
+    }
+    return `<tr${meClass}><td class="num">${index + 1}</td><td>${escapeHtml(String(p?.name || '-'))}</td><td class="num">${kills}</td><td class="num">${deaths}</td><td class="num">${ping > 0 ? ping : '--'}</td></tr>`;
+  }).join('');
+
+  const headHtml = pvpMode
+    ? `<tr><th class="num">${escapeHtml(headRank)}</th><th>${escapeHtml(headNick)}</th><th class="num">${escapeHtml(headPvp)}</th><th class="num">${escapeHtml(headPve)}</th><th class="num">${escapeHtml(headDeaths)}</th><th class="num">${escapeHtml(headPing)}</th></tr>`
+    : `<tr><th class="num">${escapeHtml(headRank)}</th><th>${escapeHtml(headNick)}</th><th class="num">${escapeHtml(headKills)}</th><th class="num">${escapeHtml(headDeaths)}</th><th class="num">${escapeHtml(headPing)}</th></tr>`;
+
+  const nextHtml = `<p class="tab-scoreboard-title">${escapeHtml(title)}</p><table><thead>${headHtml}</thead><tbody>${rows}</tbody></table>`;
+  if (nextHtml === lastTabScoreboardHtml) return;
+  lastTabScoreboardHtml = nextHtml;
+  tabScoreboardEl.innerHTML = nextHtml;
+}
+
 function updateScoreboard(players) {
+  updateTabScoreboard(players);
   const sorted = [...players].filter((p) => !p.isCompanion).sort((a, b) => b.score - a.score);
   const titleBase = tr('ui.scoreboard.players');
   const titleText = scoreboardMinimized ? `${titleBase}: ${sorted.length}` : titleBase;
@@ -4289,13 +4410,19 @@ function updateScoreboard(players) {
   const toggleIcon = scoreboardMinimized ? '+' : '&minus;';
   const rows = sorted.map((p) => {
     const kills = Number(p.kills) || 0;
+    const pvpKills = Math.max(0, Number(p.pvpKills) || 0);
+    const enemyKills = Math.max(0, Number(p.enemyKills) || kills);
     const ammo = p.ammo === null ? 'inf' : p.ammo;
     const meClass = p.id === game.myId ? ' me' : '';
     const conn = getConnectionIndicatorData(p);
     const connIcon = game.connectionIndicatorEnabled
       ? `<span class="conn-wrap" aria-label="${conn.title}"><span class="conn-indicator conn-lvl-${conn.level}"></span><span class="conn-meta">${conn.shortText}</span></span>`
       : '';
-    return `<div class="score-row${meClass}">${connIcon}<span class="score-player-text">${p.name} - Kills: ${kills} (${p.weaponLabel} ${ammo})</span></div>`;
+    const pvpMode = normalizeGameMode(game.gameMode) === 'pvp';
+    const killsText = pvpMode
+      ? `${trWithFallback('ui.scoreboard.pvp_kills', 'PvP')}: ${pvpKills} | ${trWithFallback('ui.scoreboard.pve_kills', 'PvE')}: ${enemyKills}`
+      : `${trWithFallback('ui.scoreboard.kills', 'Kills')}: ${kills}`;
+    return `<div class="score-row${meClass}">${connIcon}<span class="score-player-text">${p.name} - ${killsText} (${p.weaponLabel} ${ammo})</span></div>`;
   });
 
   const nextHtml = scoreboardMinimized
@@ -4325,6 +4452,12 @@ function updateSyncSettingsVisibility() {
   syncSettingsEl.style.display = joinMode === 'create' ? '' : 'none';
 }
 
+function updatePvpDurationVisibility() {
+  if (!pvpDurationWrapEl) return;
+  const visible = joinMode === 'create' && selectedGameMode === 'pvp';
+  pvpDurationWrapEl.classList.toggle('hidden', !visible);
+}
+
 function renderGameModeSelection() {
   if (!Array.isArray(gameModeOptionButtons) || !gameModeOptionButtons.length) return;
   for (const btn of gameModeOptionButtons) {
@@ -4332,6 +4465,8 @@ function renderGameModeSelection() {
     const mode = normalizeGameMode(btn.dataset.gameMode || 'normal');
     btn.classList.toggle('active', mode === selectedGameMode);
   }
+  if (pvpDurationSelectEl) pvpDurationSelectEl.value = String(normalizePvpDurationMin(selectedPvpDurationMin));
+  updatePvpDurationVisibility();
 }
 
 let immediateInputSendQueued = false;
@@ -4378,6 +4513,12 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
+  if (!typing && !overlayOpen && e.code === 'Tab') {
+    e.preventDefault();
+    setTabScoreboardVisible(true);
+    return;
+  }
+
   if (typing) return;
 
   if (!typing && e.code === 'KeyH') {
@@ -4414,6 +4555,10 @@ window.addEventListener('keydown', (e) => {
   }
 });
 window.addEventListener('keyup', (e) => {
+  if (e.code === 'Tab') {
+    setTabScoreboardVisible(false);
+    return;
+  }
   if (isDevConsoleOpen()) return;
   const t = e.target;
   const typing = t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement;
@@ -4422,6 +4567,10 @@ window.addEventListener('keyup', (e) => {
   keyStateFromCode(e.code, false);
   const after = `${input.up}:${input.down}:${input.left}:${input.right}`;
   if (before !== after) requestImmediateInputSend();
+});
+
+window.addEventListener('blur', () => {
+  setTabScoreboardVisible(false);
 });
 
 function setPointerFromClient(clientX, clientY) {
@@ -4569,6 +4718,43 @@ function formatRunRewardsPayload(rewards) {
   return { gainedXp, gainedShards, levelsGained, cards };
 }
 
+function buildDeathRewardsPvpResultsHtml() {
+  const players = Array.isArray(game.state?.players)
+    ? game.state.players.filter((p) => p && !p.isCompanion)
+    : [];
+  if (!players.length) return '';
+
+  const sorted = [...players].sort((a, b) => (
+    (Math.max(0, Number(b?.pvpKills) || 0) - Math.max(0, Number(a?.pvpKills) || 0))
+    || (Math.max(0, Number(b?.enemyKills) || 0) - Math.max(0, Number(a?.enemyKills) || 0))
+    || (Math.max(0, Number(b?.score) || 0) - Math.max(0, Number(a?.score) || 0))
+  ));
+
+  const headRank = trWithFallback('ui.scoreboard.rank', '#');
+  const headNick = trWithFallback('ui.scoreboard.nick', 'Nickname');
+  const headPvp = trWithFallback('ui.scoreboard.pvp_kills', 'PvP');
+  const headPve = trWithFallback('ui.scoreboard.pve_kills', 'PvE');
+  const headDeaths = trWithFallback('ui.scoreboard.deaths', 'Deaths');
+  const title = trWithFallback('ui.run_rewards.pvp_results', 'PvP match results');
+
+  const rows = sorted.map((pl, index) => {
+    const pvpKills = Math.max(0, Number(pl?.pvpKills) || 0);
+    const pveKills = Math.max(0, Number(pl?.enemyKills) || 0);
+    const deaths = Math.max(0, Number(pl?.pvpDeaths) || 0);
+    const meClass = pl?.id === game.myId ? ' class="me"' : '';
+    return `<tr${meClass}><td class="num">${index + 1}</td><td>${escapeHtml(String(pl?.name || '-'))}</td><td class="num">${pvpKills}</td><td class="num">${pveKills}</td><td class="num">${deaths}</td></tr>`;
+  }).join('');
+
+  return ''
+    + `<details class="death-reward-pvp" open>`
+    +   `<summary class="death-reward-pvp-title">${escapeHtml(title)}</summary>`
+    +   `<table class="death-reward-pvp-table">`
+    +     `<thead><tr><th class="num">${escapeHtml(headRank)}</th><th>${escapeHtml(headNick)}</th><th class="num">${escapeHtml(headPvp)}</th><th class="num">${escapeHtml(headPve)}</th><th class="num">${escapeHtml(headDeaths)}</th></tr></thead>`
+    +     `<tbody>${rows}</tbody>`
+    +   `</table>`
+    + `</details>`;
+}
+
 function renderDeathRewardsPanel() {
   if (!deathRewardsBodyEl) return;
   const run = latestDeathSnapshot || {};
@@ -4580,9 +4766,12 @@ function renderDeathRewardsPanel() {
   const shardsLabel = rewards
     ? ('+' + rewards.gainedShards)
     : (isLoggedIn ? trWithFallback('ui.pending', 'Pending...') : trWithFallback('ui.profile.login_required', 'Login required.'));
+  const isPvpRun = normalizeGameMode(run.gameMode || game.gameMode || 'normal') === 'pvp';
+  const deathsValue = Math.max(0, Number(run.deaths) || Number(run.pvpDeaths) || 0);
   const baseRows = [
     [trWithFallback('ui.run_rewards.score', 'Score'), Math.max(0, Number(run.score) || 0)],
     [trWithFallback('ui.run_rewards.kills', 'Kills'), Math.max(0, Number(run.kills) || 0)],
+    [trWithFallback('ui.run_rewards.deaths', 'Deaths'), deathsValue],
     [trWithFallback('ui.run_rewards.enemy_kills', 'Enemy kills'), Math.max(0, Number(run.enemyKills) || 0)],
     [trWithFallback('ui.run_rewards.boss_kills', 'Boss kills'), Math.max(0, Number(run.bossKills) || 0)],
     [trWithFallback('ui.run_rewards.survival', 'Survival'), `${Math.max(1, Number(run.survivalSec) || 1)}s`],
@@ -4595,7 +4784,8 @@ function renderDeathRewardsPanel() {
   const cardsHtml = rewards && rewards.cards.length > 0
     ? (`<div class="death-reward-cards">` + rewards.cards.map((card) => `<span>+${card.count} ${escapeHtml(card.name)}</span>`).join('') + `</div>`)
     : '<div class="death-reward-cards muted">' + trWithFallback('ui.run_rewards.no_cards', 'No hero card drops this run') + '</div>';
-  deathRewardsBodyEl.innerHTML = rowsHtml + cardsHtml;
+  const pvpResultsHtml = (isPvpRun && Boolean(run.pvpMatchEnded)) ? buildDeathRewardsPvpResultsHtml() : '';
+  deathRewardsBodyEl.innerHTML = rowsHtml + cardsHtml + pvpResultsHtml;
 }
 
 function scheduleDeathRewardsReveal() {
@@ -4756,6 +4946,10 @@ function clearLocalSessionState() {
   input.jumpQueued = false;
   scoreboardEl.innerHTML = '';
   lastScoreboardHtml = '';
+  lastTabScoreboardHtml = '';
+  lastBattlePlayers = [];
+  playerAliveState.clear();
+  setTabScoreboardVisible(false);
   lastLevelupHtml = '';
   visuals.bossBlast = [];
   visuals.bloodMist = [];
@@ -4766,6 +4960,8 @@ function clearLocalSessionState() {
   visuals.skillArcs = [];
   visuals.skillLinks = [];
   visuals.skillLabels = [];
+  visuals.dodgeWind = [];
+  visuals.dodgeWindScheduled = [];
   visuals.skillCdPrev = new Map();
   visuals.skillOfferPrev = new Map();
   visuals.rocketPrev = new Map();
@@ -4965,6 +5161,7 @@ message: (ev) => {
     sessionStartedAt = Date.now();
     if (msg.sync) applyRoomSync(msg.sync);
     game.roomCode = msg.roomCode;
+    if (msg.gameMode) game.gameMode = normalizeGameMode(msg.gameMode);
     game.skillCatalog = {};
     const catalog = Array.isArray(msg.skillCatalog) ? msg.skillCatalog : [];
     for (const sk of catalog) { if (sk && sk.id) game.skillCatalog[sk.id] = sk; }
@@ -4991,6 +5188,8 @@ message: (ev) => {
     visuals.skillArcs = [];
     visuals.skillLinks = [];
     visuals.skillLabels = [];
+  visuals.dodgeWind = [];
+  visuals.dodgeWindScheduled = [];
     visuals.skillCdPrev = new Map();
     visuals.skillOfferPrev = new Map();
     visuals.rocketPrev = new Map();
@@ -5097,6 +5296,7 @@ message: (ev) => {
     game.state = s;
     game.world = s.world;
     game.roomCode = s.roomCode;
+    game.gameMode = normalizeGameMode(s.gameMode || game.gameMode || 'normal');
     game.roomStartedAt = Number(s.roomStartedAt) || game.roomStartedAt || Date.now();
     game.totalEnemyKills = Number(s.totalEnemyKills) || 0;
     game.nextBossAtKills = Number(s.nextBossAtKills) || game.nextBossAtKills || 50;
@@ -5114,6 +5314,31 @@ message: (ev) => {
 
     game.sortedTrees = (s.decor?.trees || []).slice().sort((a, b) => a.y - b.y);
     updateScoreboard(s.players);
+
+    const seenAliveIds = new Set();
+    for (const pl of Array.isArray(s.players) ? s.players : []) {
+      if (!pl || pl.isCompanion) continue;
+      seenAliveIds.add(pl.id);
+      const wasAlive = playerAliveState.get(pl.id);
+      if (wasAlive === false && pl.alive) {
+        if (typeof spawnSkillBurstFx === 'function') spawnSkillBurstFx(pl.x, pl.y, '#93c5fd', 78);
+        if (typeof spawnHitFx === 'function') spawnHitFx(pl.x, pl.y, 24, pl.id === game.myId);
+        const rp = game.renderPlayers.get(pl.id);
+        if (rp) {
+          rp.x = pl.x;
+          rp.y = pl.y;
+          rp.vx = 0;
+          rp.vy = 0;
+          rp.alive = true;
+        } else {
+          game.renderPlayers.set(pl.id, { x: pl.x, y: pl.y, vx: 0, vy: 0, alive: true });
+        }
+      }
+      playerAliveState.set(pl.id, Boolean(pl.alive));
+    }
+    for (const id of Array.from(playerAliveState.keys())) {
+      if (!seenAliveIds.has(id)) playerAliveState.delete(id);
+    }
 
     const me = s.players.find((p) => p.id === game.myId);
     if (me) {
@@ -5138,11 +5363,20 @@ message: (ev) => {
         movementMetaEl.textContent = `Move: ${slowText} | Jump: ${dodgeText}${invuln ? ' | i-frames' : ''}`;
       }
       if (prevMyAlive === true && !me.alive) {
+        const deathsByLives = Math.max(0,
+          Math.max(1, Number(me.livesTotal) || 1) - Math.max(0, Number(me.livesLeft) || 0),
+        );
+        const pvpDeaths = Math.max(0, Number(me.pvpDeaths) || 0);
         const deathResult = {
           kills: Number(me.kills) || 0,
           score: Number(me.score) || 0,
           enemyKills: Number(me.enemyKills) || Number(me.kills) || 0,
           bossKills: Number(me.bossKills) || 0,
+          pvpKills: Math.max(0, Number(me.pvpKills) || 0),
+          pvpDeaths,
+          deaths: Math.max(deathsByLives, pvpDeaths, 1),
+          gameMode: normalizeGameMode(game.gameMode || s.gameMode || 'normal'),
+          pvpMatchEnded: Boolean(s.pvpMatchEnded),
           heroLevel: Math.max(1, Number(me.level) || 1),
           heroXp: Math.max(0, Number(me.xp) || 0),
           heroXpToNext: Math.max(1, Number(me.xpToNext) || 1),
@@ -5215,8 +5449,11 @@ function buildCurrentInputPayload(includeJump = true) {
   const manualAimOverride = Boolean(input.shooting || (mobile.enabled && mobile.aimStrength > 0.2));
 
   if (game.autoFireEnabled && !manualAimOverride) {
+    const pvpMode = normalizeGameMode(game.gameMode) === 'pvp';
     let nearest = null;
     let bestD2 = Infinity;
+
+    // Monsters are always valid targets.
     for (const e of game.state.enemies || []) {
       const dx = e.x - me.x;
       const dy = e.y - me.y;
@@ -5226,6 +5463,21 @@ function buildCurrentInputPayload(includeJump = true) {
         nearest = e;
       }
     }
+
+    // In PvP, include other players into the same nearest-target search.
+    if (pvpMode) {
+      for (const p of game.state.players || []) {
+        if (!p || p.id === me.id || p.isCompanion || !p.alive) continue;
+        const dx = p.x - me.x;
+        const dy = p.y - me.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestD2) {
+          bestD2 = d2;
+          nearest = p;
+        }
+      }
+    }
+
     if (nearest) {
       aimX = nearest.x;
       aimY = nearest.y;
@@ -5268,6 +5520,7 @@ window.addEventListener('cw:i18n-changed', () => {
   renderNewsFeed();
   renderRatingBoard();
   renderProfileRunHistory();
+  updateTabScoreboard(lastBattlePlayers);
 });
 
 void maybeStartReplayFromUrl();
