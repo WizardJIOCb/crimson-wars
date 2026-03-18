@@ -189,6 +189,7 @@ jumpBtnEl?.addEventListener('touchstart', (e) => { e.preventDefault(); queueJump
 jumpBtnEl?.addEventListener('mousedown', (e) => { e.preventDefault(); queueJump(); });
 
 const joinToggleInfoBtn = document.getElementById('join-toggle-info');
+const sessionExitBtn = document.getElementById('session-exit-btn');
 
 function applyMenuButtonGlyph(buttonEl) {
   if (!(buttonEl instanceof HTMLElement)) return;
@@ -243,6 +244,29 @@ if (infoPanelCloseBtn) {
 
 setInfoPanelHidden(infoPanelHidden);
 
+function requestManualRunExit() {
+  if (!game.connected || !game.myId || ws.readyState !== WebSocket.OPEN || !game.state) {
+    statusEl.textContent = 'You are not in an active run.';
+    return;
+  }
+  const me = Array.isArray(game.state.players) ? game.state.players.find((p) => p.id === game.myId) : null;
+  if (!me || !me.alive) {
+    statusEl.textContent = 'Run is already ending...';
+    return;
+  }
+  if (!sendJson({ type: 'devCheat', command: 'killme' })) {
+    statusEl.textContent = 'Failed to end run. Connection lost.';
+    return;
+  }
+  pendingManualExitRequested = true;
+  statusEl.textContent = 'Ending current run...';
+  setInfoPanelHidden(true);
+}
+
+sessionExitBtn?.addEventListener('click', () => {
+  requestManualRunExit();
+});
+
 const accountProgressSummaryEl = document.getElementById('account-progress-summary');
 const heroTreePanelEl = document.getElementById('hero-tree-panel');
 const heroActionFeedbackEl = document.getElementById('hero-action-feedback');
@@ -251,6 +275,10 @@ const profileSummaryEl = document.getElementById('profile-summary');
 const profileAchievementsEl = document.getElementById('profile-achievements');
 const profileCharacterStatsEl = document.getElementById('profile-character-stats');
 const profileRunHistoryEl = document.getElementById('profile-run-history');
+const menuVersionTriggerEl = document.getElementById('menu-version-trigger');
+const gameVersionModalEl = document.getElementById('game-version-modal');
+const gameVersionCloseBtn = document.getElementById('game-version-close');
+const gameVersionBodyEl = document.getElementById('game-version-body');
 const newsFeedEl = document.getElementById('news-feed');
 const ratingBoardEl = document.getElementById('rating-board');
 const deathScreenBloodOverlayEl = document.getElementById('death-screen-blood');
@@ -292,6 +320,7 @@ const newsUi = {
   shareCopied: false,
 };
 let newsShareToastTimer = null;
+let pendingManualExitRequested = false;
 const ratingUi = {
   categories: [],
   currentCategory: 'best_kills_run',
@@ -316,6 +345,66 @@ const initialMenuTabParam = String(initialUrlParams.get('tab') || '').trim().toL
 const initialNewsIdParam = String(initialUrlParams.get('news') || '').trim();
 const initialMenuTab = MENU_TAB_IDS.has(initialMenuTabParam) ? initialMenuTabParam : 'play';
 
+const GAME_VERSION_HISTORY = [
+  {
+    version: 'v0.8.0',
+    date: '18.03.2026',
+    summary: 'Новый блок версии в меню: кнопка справа снизу и окно с историей обновлений.',
+  },
+  {
+    version: 'v0.7.4',
+    date: '17.03.2026',
+    summary: 'Добавлены новости и улучшен экран профиля с историей забегов.',
+  },
+  {
+    version: 'v0.7.0',
+    date: '15.03.2026',
+    summary: 'Обновлено главное меню: вкладки, галерея персонажей и доработанный выбор режима.',
+  },
+];
+
+const CURRENT_GAME_VERSION = GAME_VERSION_HISTORY[0]?.version || 'v0.8.0';
+
+function renderGameVersionHistory() {
+  if (!gameVersionBodyEl) return;
+  const rows = GAME_VERSION_HISTORY.map((item) => {
+    const version = escapeNewsHtml(item?.version || '--');
+    const date = escapeNewsHtml(item?.date || '--');
+    const summary = escapeNewsHtml(item?.summary || '--');
+    return ''
+      + '<article class="version-entry">'
+      +   '<div class="version-entry-head"><b>' + version + '</b><span>' + date + '</span></div>'
+      +   '<p>' + summary + '</p>'
+      + '</article>';
+  }).join('');
+  gameVersionBodyEl.innerHTML = '<div class="version-history">' + rows + '</div>';
+}
+
+function openGameVersionModal() {
+  if (!gameVersionModalEl) return;
+  renderGameVersionHistory();
+  gameVersionModalEl.classList.remove('hidden');
+}
+
+function closeGameVersionModal() {
+  if (!gameVersionModalEl) return;
+  gameVersionModalEl.classList.add('hidden');
+}
+
+if (menuVersionTriggerEl) {
+  menuVersionTriggerEl.textContent = CURRENT_GAME_VERSION;
+  menuVersionTriggerEl.addEventListener('click', () => {
+    openGameVersionModal();
+  });
+}
+
+gameVersionCloseBtn?.addEventListener('click', () => {
+  closeGameVersionModal();
+});
+
+gameVersionModalEl?.addEventListener('click', (e) => {
+  if (e.target === gameVersionModalEl) closeGameVersionModal();
+});
 
 function escapeNewsHtml(raw) {
   const text = String(raw ?? '');
@@ -2171,6 +2260,7 @@ async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
     sync: joinSync || undefined,
     gameMode: mode === 'create' ? selectedGameMode : undefined,
   });
+  closeGameVersionModal();
   joinOverlay.style.display = 'none';
   joinOverlay.classList.remove('death-mode');
   setDeathCinematicActive(false);
@@ -2988,6 +3078,7 @@ function startReplayGame(payload, record) {
   visuals.skillLabels = [];
   visuals.skillCdPrev = new Map();
   visuals.skillOfferPrev = new Map();
+  closeGameVersionModal();
   joinOverlay.style.display = 'none';
   document.body.classList.add('replay-game-active');
   if (replayGameControlsEl) replayGameControlsEl.classList.remove('hidden');
@@ -4037,6 +4128,19 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
+  if (e.code === 'Escape') {
+    if (recordDetailsModalEl && !recordDetailsModalEl.classList.contains('hidden')) {
+      e.preventDefault();
+      closeRecordDetailsModal();
+      return;
+    }
+    if (gameVersionModalEl && !gameVersionModalEl.classList.contains('hidden')) {
+      e.preventDefault();
+      closeGameVersionModal();
+      return;
+    }
+  }
+
   if (isDevConsoleOpen()) return;
 
   const t = e.target;
@@ -4371,6 +4475,7 @@ function clearLocalSessionState() {
   cancelPendingDeathOverlay();
   clearDeathCameraLock();
   localDeathStateLocked = false;
+  pendingManualExitRequested = false;
   game.myId = null;
   game.roomCode = null;
   game.state = null;
@@ -4598,6 +4703,7 @@ message: (ev) => {
     resetNetStats();
     prevMyAlive = true;
     localDeathStateLocked = false;
+    pendingManualExitRequested = false;
     clearDeathCameraLock();
     latestRunRewards = null;
     latestDeathSnapshot = null;
@@ -4791,7 +4897,12 @@ message: (ev) => {
         if (finalDeath) {
           lockCameraForDeathSequence();
           spawnPlayerDeathBloodFx(deathResult);
-          scheduleDeathOverlay(deathResult);
+          if (pendingManualExitRequested) {
+            pendingManualExitRequested = false;
+            openDeathOverlay(deathResult);
+          } else {
+            scheduleDeathOverlay(deathResult);
+          }
         }
       }
       if (!me.alive && Boolean(me.canRespawn) && !Boolean(me.isOut)) {
@@ -4895,37 +5006,4 @@ function sendInput() {
 }
 
 void maybeStartReplayFromUrl();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Crimson Wars</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <link rel="stylesheet" href="/style.css?v=20260317t" />
+  <link rel="stylesheet" href="/style.css?v=20260318x" />
   <!-- Yandex.Metrika counter -->
   <script type="text/javascript">
     (function(m,e,t,r,i,k,a){
@@ -111,6 +111,7 @@
           </label>
         </p>
       </div>
+      <button id="session-exit-btn" type="button" class="session-exit-btn" aria-label="End current run">Exit Run</button>
     </div>
     <button id="toggle-info" class="hud-toggle" type="button" aria-label="Menu">
       <span class="menu-burger" aria-hidden="true">&#9776;</span>
@@ -393,6 +394,16 @@
         </div>
       </div>
     </div>
+    <button id="menu-version-trigger" class="menu-version-trigger" type="button" aria-label="Открыть историю версий">v0.8.0</button>
+    <div id="game-version-modal" class="record-details-modal hidden" aria-live="polite">
+      <div class="record-details-card game-version-card">
+        <div class="record-details-head">
+          <b id="game-version-title">История версий</b>
+          <button id="game-version-close" type="button" class="mini">Закрыть</button>
+        </div>
+        <div id="game-version-body" class="record-details-body">Загрузка...</div>
+      </div>
+    </div>
   </div>
 
   <button id="stats-toggle" type="button" aria-expanded="false">Stats</button>
@@ -428,29 +439,10 @@
     </form>
   </div>
   <script src="/js/client-core.js?v=20260317t"></script>
-  <script src="/js/client-net-input.js?v=20260317t"></script>
+  <script src="/js/client-net-input.js?v=20260318w"></script>
   <script src="/js/client-fx.js?v=20260317t"></script>
   <script src="/js/client-render.js?v=20260317t"></script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 

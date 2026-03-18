@@ -3257,6 +3257,9 @@ function applyDevCheatCommand(room, player, rawCommand, now = Date.now()) {
       sendDevConsole(player, 'You are already down.', false);
       return;
     }
+    // Voluntary exit should always finalize the run immediately, without respawn.
+    player.livesLeft = 0;
+    player.reviveTokens = 0;
     downPlayer(room, player, now);
     sendDevConsole(player, 'Self-destruct executed.');
     return;
@@ -4228,13 +4231,4 @@ server.listen(PORT, () => {
     console.log(`Bootstrap admin password: ${ADMIN_BOOTSTRAP_PASSWORD}`);
   }
 });
-
-
-
-
-
-
-
-
-
 
