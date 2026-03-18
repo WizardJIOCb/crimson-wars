@@ -1420,16 +1420,36 @@ function formatRatingValue(item, categoryKey) {
   if (categoryKey === 'best_time_run') return value + 's';
   if (categoryKey === 'best_dps_run') return value.toFixed(2) + ' DPS';
   if (categoryKey === 'profile_level') return 'Lv' + value + ' (XP ' + Math.max(0, Number(item?.accountXp) || 0) + ')';
-  if (categoryKey === 'heroes_unlocked') return value + ' гер.';
-  if (categoryKey === 'runs_count') return value + ' заб.';
+  if (categoryKey === 'heroes_unlocked') return value + ' ' + trWithFallback('ui.rating.unit.heroes_short', 'heroes');
+  if (categoryKey === 'runs_count') return value + ' ' + trWithFallback('ui.rating.unit.runs_short', 'runs');
   return String(value);
+}
+
+function getRatingCategoryTitle(cat) {
+  const key = String(cat?.key || '').trim();
+  const map = {
+    best_kills_run: 'ui.rating.category.best_kills_run',
+    best_pvp_kills_run: 'ui.rating.category.best_pvp_kills_run',
+    runs_count: 'ui.rating.category.runs_count',
+    best_score_run: 'ui.rating.category.best_score_run',
+    best_dps_run: 'ui.rating.category.best_dps_run',
+    total_pts: 'ui.rating.category.total_pts',
+    best_time_run: 'ui.rating.category.best_time_run',
+    profile_level: 'ui.rating.category.profile_level',
+    total_kills: 'ui.rating.category.total_kills',
+    shards_balance: 'ui.rating.category.shards_balance',
+    heroes_unlocked: 'ui.rating.category.heroes_unlocked',
+  };
+  const titleKey = map[key] || '';
+  if (titleKey) return trWithFallback(titleKey, String(cat?.title || key || 'Category'));
+  return String(cat?.title || key || 'Category');
 }
 
 function renderRatingBoard() {
   if (!ratingBoardEl) return;
-  const title = '<b>Рейтинг игроков</b>';
+  const title = '<b>' + escapeNewsHtml(trWithFallback('ui.rating.title', 'Player Rating')) + '</b>';
   if (ratingUi.loading && ratingUi.items.length === 0) {
-    ratingBoardEl.innerHTML = title + '<div class="profile-run-empty">Загрузка рейтинга...</div>';
+    ratingBoardEl.innerHTML = title + '<div class="profile-run-empty">' + escapeNewsHtml(trWithFallback('ui.rating.loading', 'Loading rating...')) + '</div>';
     return;
   }
   if (ratingUi.error && ratingUi.items.length === 0) {
@@ -1439,7 +1459,7 @@ function renderRatingBoard() {
 
   const categories = (ratingUi.categories || []).map((cat) => {
     const active = cat.key === ratingUi.currentCategory ? ' active' : '';
-    return '<button type="button" class="mini rating-category-btn' + active + '" data-rating-cat="' + escapeNewsHtml(String(cat.key || '')) + '">' + escapeNewsHtml(String(cat.title || cat.key || 'Category')) + '</button>';
+    return '<button type="button" class="mini rating-category-btn' + active + '" data-rating-cat="' + escapeNewsHtml(String(cat.key || '')) + '">' + escapeNewsHtml(getRatingCategoryTitle(cat)) + '</button>';
   }).join('');
 
   const modeOptions = (ratingUi.modes || []).map((mode) => {
@@ -1458,17 +1478,17 @@ function renderRatingBoard() {
       : nick;
     const replayRunId = Math.max(0, Number(item?.replayRunId) || 0);
     const valueText = escapeNewsHtml(formatRatingValue(item, ratingUi.currentCategory));
-    const playBtn = replayRunId > 0 ? ('<button type="button" class="mini rating-play-btn" data-rating-replay="' + replayRunId + '" data-rating-rank="' + rank + '">Play</button>') : '';
+    const playBtn = replayRunId > 0 ? ('<button type="button" class="mini rating-play-btn" data-rating-replay="' + replayRunId + '" data-rating-rank="' + rank + '">' + escapeNewsHtml(trWithFallback('ui.rating.play', 'Play')) + '</button>') : '';
     return '<div class="record-row rating-row"><div class="record-rank">#' + rank + '</div><div class="record-name">' + nickHtml + '</div><div class="record-meta"><span class="rating-value-text">' + valueText + '</span>' + playBtn + '</div></div>';
   }).join('');
 
-  const pager = '<div class="profile-run-history-pager"><button type="button" class="mini" data-rating-prev ' + (ratingUi.page <= 1 ? 'disabled' : '') + '>Prev</button><span class="profile-run-history-page">Page ' + ratingUi.page + '/' + ratingUi.totalPages + ' | Total: ' + ratingUi.total + '</span><button type="button" class="mini" data-rating-next ' + (ratingUi.page >= ratingUi.totalPages ? 'disabled' : '') + '>Next</button></div>';
-  const modeControl = '<div class="rating-mode-wrap"><label class="rating-mode-label" for="rating-mode-select">Режим:</label><select id="rating-mode-select" class="rating-mode-select">' + modeOptions + '</select></div>';
+  const pager = '<div class="profile-run-history-pager"><button type="button" class="mini" data-rating-prev ' + (ratingUi.page <= 1 ? 'disabled' : '') + '>' + escapeNewsHtml(trWithFallback('ui.prev', 'Prev')) + '</button><span class="profile-run-history-page">' + escapeNewsHtml(trWithFallback('ui.page', 'Page')) + ' ' + ratingUi.page + '/' + ratingUi.totalPages + ' | ' + escapeNewsHtml(trWithFallback('ui.total', 'Total')) + ': ' + ratingUi.total + '</span><button type="button" class="mini" data-rating-next ' + (ratingUi.page >= ratingUi.totalPages ? 'disabled' : '') + '>' + escapeNewsHtml(trWithFallback('ui.next', 'Next')) + '</button></div>';
+  const modeControl = '<div class="rating-mode-wrap"><label class="rating-mode-label" for="rating-mode-select">' + escapeNewsHtml(trWithFallback('ui.rating.mode', 'Mode:')) + '</label><select id="rating-mode-select" class="rating-mode-select">' + modeOptions + '</select></div>';
 
   ratingBoardEl.innerHTML = title
     + modeControl
     + '<div class="rating-categories">' + categories + '</div>'
-    + (rows || '<div class="profile-run-empty">Пока нет данных.</div>')
+    + (rows || '<div class="profile-run-empty">' + escapeNewsHtml(trWithFallback('ui.rating.empty', 'No data yet.')) + '</div>')
     + pager;
 
   for (const b of Array.from(ratingBoardEl.querySelectorAll('[data-rating-cat]'))) {
@@ -1521,7 +1541,7 @@ function renderRatingBoard() {
   const modeSelect = ratingBoardEl.querySelector('#rating-mode-select');
   modeSelect?.addEventListener('change', () => {
     const nextMode = String(modeSelect.value || 'all').trim().toLowerCase();
-    ratingUi.currentMode = (nextMode === 'normal' || nextMode === 'hardcore') ? nextMode : 'all';
+    ratingUi.currentMode = (nextMode === 'normal' || nextMode === 'hardcore' || nextMode === 'pvp') ? nextMode : 'all';
     ratingUi.page = 1;
     void requestLeaderboard({ force: true, page: 1, category: ratingUi.currentCategory, mode: ratingUi.currentMode });
   });
@@ -1537,7 +1557,7 @@ async function requestLeaderboard({ force = false, page = ratingUi.page, categor
   ratingUi.page = Math.max(1, Number(page) || 1);
   ratingUi.currentCategory = String(category || ratingUi.currentCategory || 'best_kills_run');
   ratingUi.currentMode = String(mode || ratingUi.currentMode || 'all').trim().toLowerCase();
-  if (ratingUi.currentMode !== 'normal' && ratingUi.currentMode !== 'hardcore') ratingUi.currentMode = 'all';
+  if (ratingUi.currentMode !== 'normal' && ratingUi.currentMode !== 'hardcore' && ratingUi.currentMode !== 'pvp') ratingUi.currentMode = 'all';
   renderRatingBoard();
   try {
     const params = new URLSearchParams({
@@ -1558,7 +1578,7 @@ async function requestLeaderboard({ force = false, page = ratingUi.page, categor
     ratingUi.total = Math.max(0, Number(payload.total) || 0);
     ratingUi.currentCategory = String(payload?.category?.key || ratingUi.currentCategory || 'best_kills_run');
     ratingUi.currentMode = String(payload?.mode?.key || ratingUi.currentMode || 'all').trim().toLowerCase();
-    if (ratingUi.currentMode !== 'normal' && ratingUi.currentMode !== 'hardcore') ratingUi.currentMode = 'all';
+    if (ratingUi.currentMode !== 'normal' && ratingUi.currentMode !== 'hardcore' && ratingUi.currentMode !== 'pvp') ratingUi.currentMode = 'all';
     ratingUi.error = '';
   } catch (err) {
     if (ratingUi.fetchToken !== token) return;
