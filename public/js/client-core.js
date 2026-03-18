@@ -1,4 +1,4 @@
-
+﻿
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
@@ -138,6 +138,21 @@ const devConsoleEl = document.getElementById('dev-console');
 const devConsoleLogEl = document.getElementById('dev-console-log');
 const devConsoleFormEl = document.getElementById('dev-console-form');
 const devConsoleInputEl = document.getElementById('dev-console-input');
+const trCore = (key, fb = key, params = null) => {
+  if (typeof window.cwI18nT !== 'function') return fb;
+  const out = window.cwI18nT(key, params);
+  return out === key ? fb : out;
+};
+const trHeroNameCore = (heroId, fallback = '') => {
+  const id = String(heroId || '').trim().toLowerCase();
+  if (!id) return String(fallback || '');
+  return trCore(`hero.${id}.name`, String(fallback || id));
+};
+const trSkillNameCore = (skillId, fallback = '') => {
+  const id = String(skillId || '').trim().toLowerCase();
+  if (!id) return String(fallback || '');
+  return trCore(`skill.${id}.name`, String(fallback || id));
+};
 
 ctx.imageSmoothingEnabled = false;
 
@@ -880,8 +895,8 @@ function renderPlayerAuthUi() {
   const loggedIn = Boolean(player);
   if (playerAuthSummaryEl) {
     playerAuthSummaryEl.textContent = loggedIn
-      ? `Logged in as ${player.nickname}. This nickname is reserved for your account.`
-      : 'Guest mode. Registered nicknames require login.';
+      ? trCore('ui.auth.summary_logged_in', `Logged in as ${player.nickname}. This nickname is reserved for your account.`, { nickname: player.nickname })
+      : trCore('ui.auth.summary_guest', 'Guest mode. Registered nicknames require login.');
   }
   if (playerLogoutBtn) playerLogoutBtn.classList.toggle('hidden', !loggedIn);
   if (nameInput) {
@@ -897,19 +912,19 @@ function renderPlayerAuthUi() {
   if (nicknameHintEl) {
     const status = game.playerAuth.nicknameStatus;
     if (loggedIn) {
-      nicknameHintEl.textContent = 'Authenticated nickname. Join will use your reserved account name.';
+      nicknameHintEl.textContent = trCore('ui.auth.nick_authenticated', 'Authenticated nickname. Join will use your reserved account name.');
       nicknameHintEl.className = 'field-hint ok';
     } else if (status?.isRegistered) {
-      nicknameHintEl.textContent = `Nickname ${status.nickname} is registered. Use Login to play with it.`;
+      nicknameHintEl.textContent = trCore('ui.auth.nick_registered', `Nickname ${status.nickname} is registered. Use Login to play with it.`, { nickname: status.nickname });
       nicknameHintEl.className = 'field-hint err';
     } else if (status?.isOccupied) {
-      nicknameHintEl.textContent = `Nickname ${status.nickname} is already in use right now.`;
+      nicknameHintEl.textContent = trCore('ui.auth.nick_in_use', `Nickname ${status.nickname} is already in use right now.`, { nickname: status.nickname });
       nicknameHintEl.className = 'field-hint err';
     } else if (status?.nickname) {
-      nicknameHintEl.textContent = `Nickname ${status.nickname} is available for guest play.`;
+      nicknameHintEl.textContent = trCore('ui.auth.nick_available', `Nickname ${status.nickname} is available for guest play.`, { nickname: status.nickname });
       nicknameHintEl.className = 'field-hint ok';
     } else {
-      nicknameHintEl.textContent = 'Guest mode: choose any free nickname.';
+      nicknameHintEl.textContent = trCore('ui.nickname_hint_guest', 'Guest mode: choose any free nickname.');
       nicknameHintEl.className = 'field-hint';
     }
   }
@@ -1045,7 +1060,7 @@ async function loginPlayerAccount() {
     game.playerAuth.player = data.player || null;
     game.playerAuth.identities = Array.isArray(data.identities) ? data.identities : [];
     if (authLoginPasswordEl) authLoginPasswordEl.value = '';
-    statusEl.textContent = `Logged in as ${data.player?.nickname || nickname}.`;
+    statusEl.textContent = trCore('ui.auth.logged_in_short', `Logged in as ${data.player?.nickname || nickname}.`, { nickname: data.player?.nickname || nickname });
     renderPlayerAuthUi();
     setPlayerAccessCollapsed(true);
     reloadForPlayerSession('Logged in. Refreshing session...');
@@ -1079,7 +1094,7 @@ async function registerPlayerAccount() {
     game.playerAuth.player = data.player || null;
     game.playerAuth.identities = Array.isArray(data.identities) ? data.identities : [];
     if (authRegisterPasswordEl) authRegisterPasswordEl.value = '';
-    statusEl.textContent = `Nickname ${data.player?.nickname || nickname} registered.`;
+    statusEl.textContent = trCore('ui.auth.registered_short', `Nickname ${data.player?.nickname || nickname} registered.`, { nickname: data.player?.nickname || nickname });
     renderPlayerAuthUi();
     setPlayerAccessCollapsed(true);
     reloadForPlayerSession('Nickname registered. Refreshing session...');
@@ -1169,32 +1184,32 @@ void refreshPlayerAuthSession({ silent: true });
 function updateTopCenterHud(nowMs = Date.now()) {
   if (!matchTimerEl || !bossProgressEl || !difficultyMetaEl) return;
   if (!game.state) {
-    matchTimerEl.textContent = 'Time 00:00';
-    bossProgressEl.textContent = 'Boss in -- kills';
-    difficultyMetaEl.textContent = 'Threat Lv1';
+    matchTimerEl.textContent = `${trCore('ui.hud.time', 'Time')} 00:00`;
+    bossProgressEl.textContent = `${trCore('ui.hud.boss_in', 'Boss in')} -- kills`;
+    difficultyMetaEl.textContent = `${trCore('ui.hud.threat', 'Threat')} Lv1`;
     if (bossSpawnAlertEl) bossSpawnAlertEl.classList.add('hidden');
     return;
   }
 
   const startedAt = Number(game.roomStartedAt) || Number(game.state.roomStartedAt) || nowMs;
   const elapsedSec = Math.max(0, (nowMs - startedAt) / 1000);
-  matchTimerEl.textContent = `Time ${formatClock(elapsedSec)}`;
+  matchTimerEl.textContent = `${trCore('ui.hud.time', 'Time')} ${formatClock(elapsedSec)}`;
 
   const nextSpawnAt = Number(game.nextBossSpawnAt) || 0;
   const bossAlive = Boolean(game.bossAlive);
   if (bossAlive) {
-    bossProgressEl.textContent = 'Boss: ACTIVE';
+    bossProgressEl.textContent = trCore('ui.hud.boss_active', 'Boss: ACTIVE');
   } else if (nextSpawnAt > nowMs) {
-    bossProgressEl.textContent = `Boss in ${(Math.max(0, nextSpawnAt - nowMs) / 1000).toFixed(1)}s`;
+    bossProgressEl.textContent = `${trCore('ui.hud.boss_in', 'Boss in')} ${(Math.max(0, nextSpawnAt - nowMs) / 1000).toFixed(1)}s`;
   } else {
     const leftKills = Math.max(0, (Number(game.nextBossAtKills) || 0) - (Number(game.totalEnemyKills) || 0));
-    bossProgressEl.textContent = `Boss in ${leftKills} kills`;
+    bossProgressEl.textContent = `${trCore('ui.hud.boss_in', 'Boss in')} ${leftKills} kills`;
   }
 
   const diff = game.roomDifficulty || {};
   const level = Math.max(1, Number(diff.level) || 1);
   const hpMul = Math.max(1, Number(diff.hpMul) || 1);
-  difficultyMetaEl.textContent = `Threat Lv${level} x${hpMul.toFixed(2)}`;
+  difficultyMetaEl.textContent = `${trCore('ui.hud.threat', 'Threat')} Lv${level} x${hpMul.toFixed(2)}`;
 
   if (bossSpawnAlertEl) {
     const portals = Array.isArray(game.state?.bossPortals) ? game.state.bossPortals : [];
@@ -1363,12 +1378,14 @@ function showSkillTooltip(chip) {
   const def = game.skillCatalog?.[sid] || {};
   const rarity = String(skill.rarity || def.rarity || 'common').toLowerCase();
   const color = rarityColor(rarity);
-  const desc = String(skill.desc || def.desc || 'No description').trim();
+  const descFallback = String(skill.desc || def.desc || trCore('ui.skill.no_description', 'No description')).trim();
+  const desc = trCore(`skill.${sid}.desc`, descFallback);
   const lines = buildSkillCurrentStatLines(skill, def);
 
   const tip = ensureSkillTooltipElement();
   const linesHtml = lines.map((line) => '<div class="skill-tooltip-line">' + escapeHtml(line) + '</div>').join('');
-  tip.innerHTML = '<div class="skill-tooltip-title" style="color:' + color + '">' + escapeHtml(skill.name || sid) + ' Lv' + Math.max(1, Number(skill.level) || 1) + '</div>'
+  const skillTitle = trSkillNameCore(skill.id || sid, skill.name || sid);
+  tip.innerHTML = '<div class="skill-tooltip-title" style="color:' + color + '">' + escapeHtml(skillTitle) + ' Lv' + Math.max(1, Number(skill.level) || 1) + '</div>'
     + '<div class="skill-tooltip-desc">' + escapeHtml(desc) + '</div>'
     + '<div class="skill-tooltip-stats">' + linesHtml + '</div>';
   tip.classList.remove('hidden');
@@ -1481,11 +1498,13 @@ function updateBottomHud() {
       if (compactSkills) {
         const badge = skillBadgeLabel(s);
         const stateText = s.kind === 'active' ? (cd > 0 ? `${Math.max(0.1, cd / 1000).toFixed(1)}` : 'R') : '';
-        const label = `${s.name} Lv${s.level}${stateText ? `, ${stateText === 'R' ? 'ready' : `${stateText}s cooldown`}` : ''}`;
+        const localizedSkillName = trSkillNameCore(s.id, s.name);
+        const label = `${localizedSkillName} Lv${s.level}${stateText ? `, ${stateText === 'R' ? trCore('ui.skill.ready', 'ready') : `${stateText}s ${trCore('ui.skill.cooldown', 'cooldown')}`}` : ''}`;
         return `<div class="skill-chip compact" data-skill-id="${s.id}" title="${label}" aria-label="${label}" style="border-color:${rarityColor(rarity)}66"><span class="skill-chip-icon">${badge}</span><span class="skill-chip-level">Lv${s.level}</span>${stateText ? `<span class="skill-chip-state${stateText === 'R' ? ' ready' : ''}">${stateText}</span>` : ''}</div>`;
       }
-      const cdText = s.kind === 'active' ? (cd > 0 ? `${(cd / 1000).toFixed(1)}s` : 'ready') : `Lv${s.level}`;
-      return `<div class="skill-chip" data-skill-id="${s.id}" style="border-color:${rarityColor(rarity)}66"><div>${s.name} Lv${s.level}</div><div class="cd">${cdText}</div></div>`;
+      const localizedSkillName = trSkillNameCore(s.id, s.name);
+      const cdText = s.kind === 'active' ? (cd > 0 ? `${(cd / 1000).toFixed(1)}s` : trCore('ui.skill.ready', 'ready')) : `Lv${s.level}`;
+      return `<div class="skill-chip" data-skill-id="${s.id}" style="border-color:${rarityColor(rarity)}66"><div>${localizedSkillName} Lv${s.level}</div><div class="cd">${cdText}</div></div>`;
     });
     const nextSkillBarHtml = chips.join('');
     if (nextSkillBarHtml !== lastSkillBarHtml) {
@@ -2242,6 +2261,7 @@ function updateMobileControlsVisibility() {
   }
   setMobileControlsVisible(!overlayOpen);
 }
+
 
 
 

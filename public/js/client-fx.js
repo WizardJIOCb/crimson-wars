@@ -180,6 +180,12 @@ function spawnHitFx(x, y, severity = 1, isPlayerHit = false) {
   if (visuals.hitFx.length > 220) visuals.hitFx.splice(0, visuals.hitFx.length - 220);
 }
 
+const trFx = (key, fallback = key) => {
+  if (typeof window.cwI18nT !== 'function') return fallback;
+  const out = window.cwI18nT(key);
+  return out === key ? fallback : out;
+};
+
 function spawnSkillLabel(skillName, x, y) {
   visuals.skillLabels.push({
     text: String(skillName || 'Skill'),
@@ -296,27 +302,27 @@ function spawnSkillCastFx(skillId, caster, nextState, skill) {
   if (sid === 'shockwave') {
     spawnSkillBurstFx(caster.x, caster.y, '#86efac', shockwaveFxRadius(skill));
     spawnHitFx(caster.x, caster.y, 12, caster.id === game.myId);
-    spawnSkillLabel('Shockwave', caster.x, caster.y - 12);
+    spawnSkillLabel(trFx('skill.shockwave.name', 'Shockwave'), caster.x, caster.y - 12);
     return;
   }
   if (sid === 'blade_orbit') {
     spawnBladeOrbitFx(caster.x, caster.y);
-    spawnSkillLabel('Blade Orbit', caster.x, caster.y - 10);
+    spawnSkillLabel(trFx('skill.blade_orbit.name', 'Blade Orbit'), caster.x, caster.y - 10);
     return;
   }
   if (sid === 'chain_lightning') {
     spawnChainLightningFx(caster, nextState);
-    spawnSkillLabel('Chain Lightning', caster.x, caster.y - 10);
+    spawnSkillLabel(trFx('skill.chain_lightning.name', 'Chain Lightning'), caster.x, caster.y - 10);
     return;
   }
   if (sid === 'laser_strike') {
     spawnLaserStrikeFx(caster, nextState, skill);
-    spawnSkillLabel('Laser Strike', caster.x, caster.y - 10);
+    spawnSkillLabel(trFx('skill.laser_strike.name', 'Laser Strike'), caster.x, caster.y - 10);
     return;
   }
   if (sid === 'homing_missiles') {
     spawnSkillBurstFx(caster.x, caster.y, '#fb923c', 102);
-    spawnSkillLabel('Homing Missiles', caster.x, caster.y - 10);
+    spawnSkillLabel(trFx('skill.homing_missiles.name', 'Homing Missiles'), caster.x, caster.y - 10);
     return;
   }
 

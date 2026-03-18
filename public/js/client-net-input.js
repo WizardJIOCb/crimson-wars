@@ -190,15 +190,33 @@ jumpBtnEl?.addEventListener('mousedown', (e) => { e.preventDefault(); queueJump(
 
 const joinToggleInfoBtn = document.getElementById('join-toggle-info');
 const sessionExitBtn = document.getElementById('session-exit-btn');
+const tr = (key, params = null) => {
+  if (typeof window.cwI18nT === 'function') return window.cwI18nT(key, params);
+  return String(key || '');
+};
+const trWithFallback = (key, fallback, params = null) => {
+  const out = tr(key, params);
+  return out === key ? String(fallback ?? key) : out;
+};
+const trHeroName = (heroId, fallback = '') => {
+  const id = String(heroId || '').trim().toLowerCase();
+  if (!id) return String(fallback || '');
+  return trWithFallback(`hero.${id}.name`, String(fallback || id));
+};
+const trSkillName = (skillId, fallback = '') => {
+  const id = String(skillId || '').trim().toLowerCase();
+  if (!id) return String(fallback || '');
+  return trWithFallback(`skill.${id}.name`, String(fallback || id));
+};
 
 function applyMenuButtonGlyph(buttonEl) {
   if (!(buttonEl instanceof HTMLElement)) return;
   const burger = buttonEl.querySelector('.menu-burger');
   const label = buttonEl.querySelector('.menu-label');
   if (burger) burger.textContent = '☰';
-  if (label) label.textContent = 'Menu';
-  buttonEl.setAttribute('aria-label', 'Show menu');
-  buttonEl.title = 'Show menu';
+  if (label) label.textContent = tr('ui.menu');
+  buttonEl.setAttribute('aria-label', tr('ui.show_menu')); 
+  buttonEl.title = tr('ui.show_menu');
 }
 
 function setInfoPanelHidden(hidden) {
@@ -325,9 +343,9 @@ const ratingUi = {
   categories: [],
   currentCategory: 'best_kills_run',
   modes: [
-    { key: 'all', title: 'Все режимы' },
-    { key: 'normal', title: 'Обычный' },
-    { key: 'hardcore', title: 'Хард-кор' },
+    { key: 'all', titleKey: 'ui.rating.mode.all' },
+    { key: 'normal', titleKey: 'ui.rating.mode.normal' },
+    { key: 'hardcore', titleKey: 'ui.rating.mode.hardcore' },
   ],
   currentMode: 'all',
   items: [],
@@ -349,22 +367,22 @@ const GAME_VERSION_HISTORY = [
   {
     version: 'v0.8.1',
     date: '18.03.2026',
-    summary: 'Чат теперь сохраняется в реплей и воспроизводится синхронно при просмотре повтора.',
+    summaryKey: 'ui.version.v081',
   },
   {
     version: 'v0.8.0',
     date: '18.03.2026',
-    summary: 'Новый блок версии в меню: кнопка справа снизу и окно с историей обновлений.',
+    summaryKey: 'ui.version.v080',
   },
   {
     version: 'v0.7.4',
     date: '17.03.2026',
-    summary: 'Добавлены новости и улучшен экран профиля с историей забегов.',
+    summaryKey: 'ui.version.v074',
   },
   {
     version: 'v0.7.0',
     date: '15.03.2026',
-    summary: 'Обновлено главное меню: вкладки, галерея персонажей и доработанный выбор режима.',
+    summaryKey: 'ui.version.v070',
   },
 ];
 
@@ -375,7 +393,7 @@ function renderGameVersionHistory() {
   const rows = GAME_VERSION_HISTORY.map((item) => {
     const version = escapeNewsHtml(item?.version || '--');
     const date = escapeNewsHtml(item?.date || '--');
-    const summary = escapeNewsHtml(item?.summary || '--');
+    const summary = escapeNewsHtml(item?.summaryKey ? tr(item.summaryKey) : (item?.summary || '--'));
     return ''
       + '<article class="version-entry">'
       +   '<div class="version-entry-head"><b>' + version + '</b><span>' + date + '</span></div>'
@@ -460,7 +478,7 @@ function renderChatMessages() {
     if (item.system) {
       return '<div class="' + lineClass + '">' + timeHtml + '<span>' + escapeHtml(item.text || '') + '</span></div>';
     }
-    const nameHtml = '<span class="chat-name">' + escapeHtml(item.name || 'Player') + ':</span>';
+    const nameHtml = '<span class="chat-name">' + escapeHtml(item.name || tr('ui.chat.system.player')) + ':</span>';
     return '<div class="' + lineClass + '">' + timeHtml + nameHtml + '<span>' + escapeHtml(item.text || '') + '</span></div>';
   }).join('');
   if (nearBottom) chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
@@ -504,38 +522,38 @@ function handleLocalChatCommand(rawText) {
 
   if (cmd === 'mute') {
     if (!key) {
-      pushLocalChatSystem('Usage: /mute nickname');
+      pushLocalChatSystem(tr('ui.chat.cmd.usage_mute'));
       return true;
     }
     chatUi.mutedNames.add(key);
     saveChatMutedNames();
-    pushLocalChatSystem(`Muted ${argName}.`);
+    pushLocalChatSystem(tr('ui.chat.cmd.muted', { name: argName }));
     return true;
   }
 
   if (cmd === 'unmute') {
     if (!key) {
-      pushLocalChatSystem('Usage: /unmute nickname');
+      pushLocalChatSystem(tr('ui.chat.cmd.usage_unmute'));
       return true;
     }
     chatUi.mutedNames.delete(key);
     saveChatMutedNames();
-    pushLocalChatSystem(`Unmuted ${argName}.`);
+    pushLocalChatSystem(tr('ui.chat.cmd.unmuted', { name: argName }));
     return true;
   }
 
   if (cmd === 'muted') {
     const names = Array.from(chatUi.mutedNames.values());
-    pushLocalChatSystem(names.length ? ('Muted: ' + names.join(', ')) : 'Muted list is empty.');
+    pushLocalChatSystem(names.length ? tr('ui.chat.cmd.muted_list', { names: names.join(', ') }) : tr('ui.chat.cmd.muted_empty'));
     return true;
   }
 
   if (cmd === 'chathelp' || cmd === 'help') {
-    pushLocalChatSystem('Chat commands: /mute <name>, /unmute <name>, /muted');
+    pushLocalChatSystem(tr('ui.chat.cmd.help'));
     return true;
   }
 
-  pushLocalChatSystem('Unknown chat command. Use /chathelp');
+  pushLocalChatSystem(tr('ui.chat.cmd.unknown'));
   return true;
 }
 
@@ -544,7 +562,7 @@ function submitChatMessage(rawText) {
   if (!text) return false;
   if (handleLocalChatCommand(text)) return true;
   if (!sendJson({ type: 'chatSend', text })) {
-    pushLocalChatSystem('Chat is unavailable while disconnected.');
+    pushLocalChatSystem(tr('ui.chat.unavailable'));
   }
   return true;
 }
@@ -582,7 +600,7 @@ function formatNewsDate(ts) {
   const ms = Math.max(0, Number(ts) || 0);
   if (!ms) return '--';
   try {
-    return new Date(ms).toLocaleString('ru-RU', {
+    return new Date(ms).toLocaleString(window.cwI18nGetLanguage?.() === 'ru' ? 'ru-RU' : 'en-US', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -614,12 +632,12 @@ function ensureAuthorProfileModal() {
 
   const title = document.createElement('b');
   title.id = 'author-profile-title';
-  title.textContent = 'Профиль игрока';
+  title.textContent = tr('ui.profile.player');
 
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
   closeBtn.className = 'mini';
-  closeBtn.textContent = 'Закрыть';
+  closeBtn.textContent = tr('ui.close');
   closeBtn.addEventListener('click', () => {
     modal.classList.add('hidden');
   });
@@ -630,7 +648,7 @@ function ensureAuthorProfileModal() {
   const body = document.createElement('div');
   body.id = 'author-profile-body';
   body.className = 'record-details-body';
-  body.textContent = 'Загрузка...';
+  body.textContent = tr('ui.loading');
 
   card.appendChild(head);
   card.appendChild(body);
@@ -651,7 +669,7 @@ function formatPublicProfileDate(ts) {
   const ms = Math.max(0, Number(ts) || 0);
   if (!ms) return '--';
   try {
-    return new Date(ms).toLocaleString('ru-RU', {
+    return new Date(ms).toLocaleString(window.cwI18nGetLanguage?.() === 'ru' ? 'ru-RU' : 'en-US', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -665,8 +683,8 @@ function formatPublicProfileDate(ts) {
 
 function formatRunGameModeLabel(run) {
   const raw = String(run?.runDetails?.gameMode || '').trim().toLowerCase();
-  if (raw === 'hardcore') return 'Хард-кор';
-  if (raw === 'normal') return 'Обычный';
+  if (raw === 'hardcore') return tr('ui.play.mode.hardcore');
+  if (raw === 'normal') return tr('ui.play.mode.normal');
   return 'Неизвестно';
 }
 
@@ -710,20 +728,20 @@ function bindAuthorProfileRunHistoryRows() {
 
 function renderAuthorProfileBody(profile, runPayload) {
   const heroRows = (Array.isArray(profile?.heroStats) ? profile.heroStats : []).map((hero) => {
-    const heroName = escapeNewsHtml(hero?.name || hero?.id || '-');
+    const heroName = escapeNewsHtml(trHeroName(hero?.id, hero?.name || hero?.id || '-'));
     const heroLevel = Math.max(1, Number(hero?.level) || 1);
     const heroRuns = Math.max(0, Number(hero?.runs) || 0);
-    const heroState = hero?.unlocked ? 'Открыт' : 'Закрыт';
-    return '<div class="profile-hero-row"><span>' + heroName + '</span><span>Lv' + heroLevel + ' | Runs: ' + heroRuns + '</span><span>' + heroState + '</span></div>';
+    const heroState = hero?.unlocked ? tr('ui.profile.hero_open') : tr('ui.profile.hero_closed');
+    return '<div class="profile-hero-row"><span>' + heroName + '</span><span>Lv' + heroLevel + ' | ' + trWithFallback('ui.profile.runs', 'Runs') + ': ' + heroRuns + '</span><span>' + heroState + '</span></div>';
   }).join('');
 
   return ''
     + '<div class="profile-card"><b>Профиль Lv' + Math.max(1, Number(profile?.accountLevel) || 1) + '</b><div>'
     + 'XP ' + Math.max(0, Number(profile?.accountXp) || 0) + '/' + Math.max(1, Number(profile?.accountXpToNext) || 1)
-    + ' | Skill points: ' + Math.max(0, Number(profile?.accountSkillPoints) || 0)
-    + ' | Shards: ' + Math.max(0, Number(profile?.shards) || 0)
-    + ' | Heroes: ' + Math.max(0, Number(profile?.heroesUnlocked) || 0) + '/' + Math.max(0, Number(profile?.heroesTotal) || 0)
-    + ' | Runs: ' + Math.max(0, Number(profile?.totalRuns) || 0)
+    + ' | ' + trWithFallback('ui.profile.skill_points', 'Skill points') + ': ' + Math.max(0, Number(profile?.accountSkillPoints) || 0)
+    + ' | ' + trWithFallback('ui.profile.shards', 'Shards') + ': ' + Math.max(0, Number(profile?.shards) || 0)
+    + ' | ' + trWithFallback('ui.profile.heroes', 'Heroes') + ': ' + Math.max(0, Number(profile?.heroesUnlocked) || 0) + '/' + Math.max(0, Number(profile?.heroesTotal) || 0)
+    + ' | ' + trWithFallback('ui.profile.runs', 'Runs') + ': ' + Math.max(0, Number(profile?.totalRuns) || 0)
     + '</div></div>'
     + '<div class="profile-card"><b>Инфо аккаунта</b><div>Создан: ' + formatPublicProfileDate(profile?.createdAt) + ' | Последний вход: ' + formatPublicProfileDate(profile?.lastLoginAt) + '</div></div>'
     + '<div class="profile-card"><b>Герои</b><div class="profile-hero-list">' + (heroRows || '<div class="record-details-empty">Нет данных по героям.</div>') + '</div></div>'
@@ -1419,7 +1437,7 @@ function renderRatingBoard() {
 
   const modeOptions = (ratingUi.modes || []).map((mode) => {
     const key = String(mode?.key || 'all');
-    const modeTitle = String(mode?.title || key || 'Mode');
+    const modeTitle = String(mode?.titleKey ? tr(mode.titleKey) : (mode?.title || key || 'Mode'));
     const selected = key === ratingUi.currentMode ? ' selected' : '';
     return '<option value="' + escapeNewsHtml(key) + '"' + selected + '>' + escapeNewsHtml(modeTitle) + '</option>';
   }).join('');
@@ -1767,7 +1785,7 @@ function drawCharacterPreview(previewCanvas, variant) {
 function renderAccountSummary(catalog, progression) {
   if (!accountProgressSummaryEl) return;
   if (!game.playerAuth?.player || !progression) {
-    accountProgressSummaryEl.innerHTML = '<b>Guest mode:</b> account progression, heroes and talents are saved only for logged in players.';
+    accountProgressSummaryEl.innerHTML = '<b>' + trWithFallback('ui.profile.guest_mode', 'Guest mode:') + '</b> ' + trWithFallback('ui.profile.guest_progression_hint', 'account progression, heroes and talents are saved only for logged in players.') ;
     return;
   }
   const level = Math.max(1, Number(progression.accountLevel) || 1);
@@ -1775,7 +1793,7 @@ function renderAccountSummary(catalog, progression) {
   const xpToNext = Math.max(1, Number(progression.accountXpToNext) || 1);
   const points = Math.max(0, Number(progression.accountSkillPoints) || 0);
   const shards = Math.max(0, Number(progression.shards) || 0);
-  accountProgressSummaryEl.innerHTML = `Account Lv${level} | XP ${xp}/${xpToNext} | Skill points: <b>${points}</b> | Shards: <b>${shards}</b>`;
+  accountProgressSummaryEl.innerHTML = `${trWithFallback('ui.profile.account', 'Account')} Lv${level} | XP ${xp}/${xpToNext} | ${trWithFallback('ui.profile.skill_points', 'Skill points')}: <b>${points}</b> | ${trWithFallback('ui.profile.shards', 'Shards')}: <b>${shards}</b>`;
 }
 
 function getNodeLevel(progression, heroId, nodeId) {
@@ -1796,7 +1814,7 @@ function renderHeroTreePanel(catalog, progression, hero, unlocked) {
   const needShardCost = Math.max(0, Number(hero.unlockShardCost ?? hero.unlockCost) || 0);
   const needCardId = String(hero.unlockCardId || '').trim();
   const needCards = Math.max(0, Number(hero.unlockCardNeed) || 0);
-  const cardName = String(hero.unlockCardName || hero.name || 'Hero Card');
+  const cardName = trWithFallback(`hero.${String(hero.id || '').toLowerCase()}.card`, String(hero.unlockCardName || hero.name || trWithFallback('ui.hero.card', 'Hero Card')));
   const haveCards = needCardId ? Math.max(0, Number(progression?.heroCards?.[needCardId]) || 0) : needCards;
   const canUnlock = game.playerAuth?.player
     && !unlocked
@@ -1811,26 +1829,30 @@ function renderHeroTreePanel(catalog, progression, hero, unlocked) {
     const maxLevel = Math.max(1, Number(node.maxLevel) || 1);
     const cost = Math.max(1, Number(node.cost) || 1);
     const canUpgrade = Boolean(game.playerAuth?.player && unlocked && lvl < maxLevel && points >= cost);
-    rows.push(`<div class="hero-node"><div><div class="hero-node-name">${escapeHtml(node.name || node.id)}</div><div class="hero-node-desc">${escapeHtml(node.desc || '')}</div></div><button type="button" class="hero-node-up" data-node-id="${escapeHtml(node.id)}" ${canUpgrade ? '' : 'disabled'}>Lv ${lvl}/${maxLevel} (+${cost})</button></div>`);
+    const nodeName = trWithFallback(`hero.node.${String(node.id || '').toLowerCase()}.name`, node.name || node.id);
+    const nodeDesc = trWithFallback(`hero.node.${String(node.id || '').toLowerCase()}.desc`, node.desc || '');
+    rows.push(`<div class="hero-node"><div><div class="hero-node-name">${escapeHtml(nodeName)}</div><div class="hero-node-desc">${escapeHtml(nodeDesc)}</div></div><button type="button" class="hero-node-up" data-node-id="${escapeHtml(node.id)}" ${canUpgrade ? '' : 'disabled'}>Lv ${lvl}/${maxLevel} (+${cost})</button></div>`);
   }
 
   const unlockMeta = !unlocked
-    ? `<div class="hero-lock-meta">Unlock: Lv${needLevel} | ${haveCards}/${needCards} ${escapeHtml(cardName)} | ${needShardCost} shards</div>`
-    : '<div class="hero-lock-meta unlocked">Unlocked</div>';
+    ? `<div class="hero-lock-meta">${trWithFallback('ui.hero.unlock', 'Unlock')}: Lv${needLevel} | ${haveCards}/${needCards} ${escapeHtml(cardName)} | ${needShardCost} ${trWithFallback('ui.profile.shards', 'Shards').toLowerCase()}</div>`
+    : '<div class="hero-lock-meta unlocked">' + trWithFallback('ui.hero.unlocked', 'Unlocked') + '</div>';
 
   const actionBtn = !game.playerAuth?.player
-    ? '<button type="button" class="hero-main-action" disabled>Login to unlock/progress</button>'
+    ? '<button type="button" class="hero-main-action" disabled>' + trWithFallback('ui.auth.login_required_unlock', 'Login to unlock/progress') + '</button>'
     : (!unlocked
-      ? `<button type="button" class="hero-main-action" data-hero-unlock="1" ${canUnlock ? '' : 'disabled'}>Unlock hero</button>`
-      : `<button type="button" class="hero-main-action" data-hero-select="1" ${(selectedPlayerClass === hero.id) ? 'disabled' : ''}>Select hero</button>`);
+      ? `<button type="button" class="hero-main-action" data-hero-unlock="1" ${canUnlock ? '' : 'disabled'}>${trWithFallback('ui.hero.unlock_btn', 'Unlock hero')}</button>`
+      : '');
 
-  heroTreePanelEl.innerHTML = `<div class="hero-tree-head"><div><b>${escapeHtml(hero.name)}</b><div class="hero-tagline">${escapeHtml(hero.tagline || '')}</div></div>${unlockMeta}</div>${actionBtn}<div class="hero-tree-list">${rows.join('')}</div>`;
+  const heroDisplayName = trHeroName(hero.id, hero.name);
+  const heroTagline = trWithFallback(`hero.${String(hero.id || '').toLowerCase()}.tagline`, hero.tagline || '');
+  heroTreePanelEl.innerHTML = `<div class="hero-tree-head"><div><b>${escapeHtml(heroDisplayName)}</b><div class="hero-tagline">${escapeHtml(heroTagline)}</div></div>${unlockMeta}</div>${actionBtn}<div class="hero-tree-list">${rows.join('')}</div>`;
 
   const unlockBtn = heroTreePanelEl.querySelector('[data-hero-unlock="1"]');
   unlockBtn?.addEventListener('click', async () => {
     try {
       await unlockHeroForAccount(hero.id);
-      setHeroActionFeedback(`${hero.name} unlocked.`, 'ok');
+      setHeroActionFeedback(trWithFallback('ui.hero.unlocked_msg', `${hero.name} unlocked.`, { hero: trHeroName(hero.id, hero.name) }), 'ok');
       selectedPlayerClass = hero.id;
       localStorage.setItem(PLAYER_CLASS_STORAGE_KEY, selectedPlayerClass);
       await selectHeroForAccount(hero.id);
@@ -1838,19 +1860,6 @@ function renderHeroTreePanel(catalog, progression, hero, unlocked) {
     } catch (err) {
       setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to unlock hero.'), 'err');
     }
-  });
-
-  const selectBtn = heroTreePanelEl.querySelector('[data-hero-select="1"]');
-  selectBtn?.addEventListener('click', async () => {
-    selectedPlayerClass = hero.id;
-    localStorage.setItem(PLAYER_CLASS_STORAGE_KEY, selectedPlayerClass);
-    try {
-      await selectHeroForAccount(hero.id);
-      setHeroActionFeedback(`${hero.name} selected.`, 'ok');
-    } catch (err) {
-      setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to select hero.'), 'err');
-    }
-    renderCharacterPicker();
   });
 
   for (const btn of heroTreePanelEl.querySelectorAll('.hero-node-up')) {
@@ -1903,7 +1912,7 @@ function renderCharacterPicker() {
 
   const center = document.createElement('div');
   center.className = 'hero-wheel-center';
-  center.innerHTML = `<div class="hero-center-label">Selected hero</div><div class="hero-center-name">${escapeHtml(getPlayerVariant(selectedPlayerClass).name || selectedPlayerClass)}</div>`;
+  center.innerHTML = `<div class="hero-center-label">${escapeHtml(trWithFallback('ui.hero.selected_label', 'Selected hero'))}</div><div class="hero-center-name">${escapeHtml(trHeroName(selectedPlayerClass, getPlayerVariant(selectedPlayerClass).name || selectedPlayerClass))}</div>`;
   wheel.appendChild(center);
 
   const count = Math.max(1, heroes.length);
@@ -1934,7 +1943,7 @@ function renderCharacterPicker() {
 
     const label = document.createElement('span');
     label.className = 'char-label';
-    label.textContent = hero.name;
+    label.textContent = trHeroName(hero.id, hero.name);
 
     btn.appendChild(preview);
     btn.appendChild(label);
@@ -1961,7 +1970,7 @@ function renderCharacterPicker() {
       if (game.playerAuth?.player) {
         try {
           await selectHeroForAccount(hero.id);
-          setHeroActionFeedback(`${hero.name} selected.`, 'ok');
+          setHeroActionFeedback(trWithFallback('ui.hero.selected', `${hero.name} selected.`, { hero: trHeroName(hero.id, hero.name) }), 'ok');
         } catch (err) {
           setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to select hero.'), 'err');
         }
@@ -1986,8 +1995,8 @@ function buildHeroUnlockHint(hero, progression) {
   const cardId = String(hero.unlockCardId || '').trim();
   const cardNeed = Math.max(0, Number(hero.unlockCardNeed) || 0);
   const haveCards = cardId ? Math.max(0, Number(progression?.heroCards?.[cardId]) || 0) : cardNeed;
-  if (cardNeed > 0) return `Lv${needLevel} | Cores ${haveCards}/${cardNeed} | ${needShardCost} shards`;
-  return `Lv${needLevel} | ${needShardCost} shards`;
+  if (cardNeed > 0) return `Lv${needLevel} | ${trWithFallback('ui.hero.cores', 'Cores')} ${haveCards}/${cardNeed} | ${needShardCost} ${trWithFallback('ui.profile.shards', 'Shards').toLowerCase()}`;
+  return `Lv${needLevel} | ${needShardCost} ${trWithFallback('ui.profile.shards', 'Shards').toLowerCase()}`;
 }
 
 function getHeroCardImagePath(heroId) {
@@ -2009,7 +2018,7 @@ function renderHeroGalleryV2(heroes, progression, unlockedHeroes) {
     cardBtn.type = 'button';
     cardBtn.className = `hero-v2-card${active ? ' active' : ''}${focused ? ' focused' : ''}${unlocked ? '' : ' locked'}`;
     cardBtn.style.setProperty('--accent', hero.accent || '#38bdf8');
-    cardBtn.setAttribute('aria-label', `Hero ${hero.name}`);
+    cardBtn.setAttribute('aria-label', trWithFallback('ui.hero.aria', `Hero ${hero.name}`, { hero: trHeroName(hero.id, hero.name) }));
 
     const inner = document.createElement('div');
     inner.className = 'hero-v2-inner';
@@ -2036,18 +2045,18 @@ function renderHeroGalleryV2(heroes, progression, unlockedHeroes) {
       const lockBadge = document.createElement('img');
       lockBadge.className = 'hero-v2-lock';
       lockBadge.src = '/assets/ui/lock-overlay.svg';
-      lockBadge.alt = 'Locked';
+      lockBadge.alt = trWithFallback('ui.hero.locked', 'Locked');
       inner.appendChild(lockBadge);
     }
     cardBtn.appendChild(inner);
 
     const name = document.createElement('div');
     name.className = 'hero-v2-name';
-    name.textContent = hero.name;
+    name.textContent = trHeroName(hero.id, hero.name);
 
     const status = document.createElement('div');
     status.className = `hero-v2-status${unlocked ? '' : ' locked'}`;
-    status.textContent = unlocked ? (active ? 'Selected' : 'Unlocked') : buildHeroUnlockHint(hero, progression);
+    status.textContent = unlocked ? (active ? trWithFallback('ui.hero.selected_short', 'Selected') : trWithFallback('ui.hero.unlocked', 'Unlocked')) : buildHeroUnlockHint(hero, progression);
 
     cardBtn.addEventListener('click', async () => {
       heroFocusId = hero.id;
@@ -2060,7 +2069,7 @@ function renderHeroGalleryV2(heroes, progression, unlockedHeroes) {
       if (game.playerAuth?.player) {
         try {
           await selectHeroForAccount(hero.id);
-          setHeroActionFeedback(`${hero.name} selected.`, 'ok');
+          setHeroActionFeedback(trWithFallback('ui.hero.selected', `${hero.name} selected.`, { hero: trHeroName(hero.id, hero.name) }), 'ok');
         } catch (err) {
           setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to select hero.'), 'err');
         }
@@ -2091,7 +2100,7 @@ function resetProfileRunHistoryUi() {
 function renderProfileRunHistory() {
   if (!profileRunHistoryEl) return;
   if (!game.playerAuth?.player) {
-    profileRunHistoryEl.innerHTML = '<b>Run history</b><div class="profile-run-empty">Login required.</div>';
+    profileRunHistoryEl.innerHTML = '<b>' + trWithFallback('ui.profile.history', 'Run history ({total})', { total: profileRunHistoryUi.total || 0 }) + '</b><div class="profile-run-empty">' + trWithFallback('ui.profile.login_required', 'Login required.') + '</div>';
     return;
   }
 
@@ -2105,12 +2114,12 @@ function renderProfileRunHistory() {
 
   const title = document.createElement('div');
   title.className = 'profile-run-history-title';
-  title.textContent = 'Run history (' + profileRunHistoryUi.total + ')';
+  title.textContent = trWithFallback('ui.profile.history', 'Run history ({total})', { total: profileRunHistoryUi.total });
 
   const refreshBtn = document.createElement('button');
   refreshBtn.type = 'button';
   refreshBtn.className = 'mini';
-  refreshBtn.textContent = 'Refresh';
+  refreshBtn.textContent = trWithFallback('ui.refresh', 'Refresh');
   refreshBtn.disabled = profileRunHistoryUi.loading;
   refreshBtn.addEventListener('click', () => {
     void requestProfileRunHistory({ force: true, page: profileRunHistoryUi.page });
@@ -2282,7 +2291,7 @@ async function requestProfileRunHistory({ force = false, page = profileRunHistor
     profileRunHistoryUi.error = '';
   } catch {
     if (profileRunHistoryUi.fetchToken !== token) return;
-    profileRunHistoryUi.error = 'Failed to load run history.';
+    profileRunHistoryUi.error = trWithFallback('ui.profile.run_history_failed', 'Failed to load run history.');
   } finally {
     if (profileRunHistoryUi.fetchToken === token) {
       profileRunHistoryUi.loading = false;
@@ -2294,9 +2303,9 @@ async function requestProfileRunHistory({ force = false, page = profileRunHistor
 function renderProfilePanel(heroes, progression, unlockedHeroes) {
   if (!profileSummaryEl || !profileAchievementsEl || !profileCharacterStatsEl || !profileRunHistoryEl) return;
   if (!game.playerAuth?.player || !progression) {
-    profileSummaryEl.innerHTML = '<b>Guest profile</b><div>Login to save profile progression, achievements and hero stats.</div>';
-    profileAchievementsEl.innerHTML = '<b>Achievements</b><div>Login required.</div>';
-    profileCharacterStatsEl.innerHTML = '<b>Hero stats</b><div>Login required.</div>';
+    profileSummaryEl.innerHTML = '<b>' + trWithFallback('ui.profile.guest_profile', 'Guest profile') + '</b><div>' + trWithFallback('ui.profile.login_to_save', 'Login to save profile progression, achievements and hero stats.') + '</div>';
+    profileAchievementsEl.innerHTML = '<b>' + trWithFallback('ui.profile.achievements', 'Achievements') + '</b><div>' + trWithFallback('ui.profile.login_required', 'Login required.') + '</div>';
+    profileCharacterStatsEl.innerHTML = '<b>' + trWithFallback('ui.profile.hero_stats', 'Hero stats') + '</b><div>' + trWithFallback('ui.profile.login_required', 'Login required.') + '</div>';
     resetProfileRunHistoryUi();
     renderProfileRunHistory();
     return;
@@ -2312,16 +2321,16 @@ function renderProfilePanel(heroes, progression, unlockedHeroes) {
   const totalRuns = Math.max(0, Number(progression.totalRuns) || 0);
   const heroRuns = progression.heroRuns && typeof progression.heroRuns === 'object' ? progression.heroRuns : {};
 
-  profileSummaryEl.innerHTML = `<b>Profile Lv${level}</b><div>XP ${xp}/${xpToNext} | Skill points: ${points} | Shards: ${shards} | Heroes: ${unlockedCount}/${heroes.length} | Runs: ${totalRuns}</div>`;
-  profileAchievementsEl.innerHTML = '<b>Achievements</b><div>First Blood, Survivor, Boss Hunter and account milestones can be shown here.</div>';
+  profileSummaryEl.innerHTML = `<b>${trWithFallback('ui.profile.profile', 'Profile')} Lv${level}</b><div>XP ${xp}/${xpToNext} | ${trWithFallback('ui.profile.skill_points', 'Skill points')}: ${points} | ${trWithFallback('ui.profile.shards', 'Shards')}: ${shards} | ${trWithFallback('ui.profile.heroes', 'Heroes')}: ${unlockedCount}/${heroes.length} | ${trWithFallback('ui.profile.runs', 'Runs')}: ${totalRuns}</div>`;
+  profileAchievementsEl.innerHTML = '<b>' + trWithFallback('ui.profile.achievements', 'Achievements') + '</b><div>' + trWithFallback('ui.profile.achievements_hint', 'First Blood, Survivor, Boss Hunter and account milestones can be shown here.') + '</div>';
 
   const rows = heroes.map((hero) => {
     const heroLvl = Math.max(1, Number(heroLevels[hero.id]) || 1);
     const runs = Math.max(0, Number(heroRuns[hero.id]) || 0);
-    const unlocked = unlockedHeroes.has(hero.id) ? 'Unlocked' : 'Locked';
-    return `<div class="profile-hero-row"><span>${escapeHtml(hero.name)}</span><span>Lv${heroLvl} | Runs: ${runs}</span><span>${unlocked}</span></div>`;
+    const unlocked = unlockedHeroes.has(hero.id) ? trWithFallback('ui.hero.unlocked', 'Unlocked') : trWithFallback('ui.hero.locked', 'Locked');
+    return `<div class="profile-hero-row"><span>${escapeHtml(trHeroName(hero.id, hero.name))}</span><span>Lv${heroLvl} | ${trWithFallback('ui.profile.runs', 'Runs')}: ${runs}</span><span>${unlocked}</span></div>`;
   }).join('');
-  profileCharacterStatsEl.innerHTML = `<b>Hero stats</b><div class="profile-hero-list">${rows}</div>`;
+  profileCharacterStatsEl.innerHTML = `<b>${trWithFallback('ui.profile.hero_stats', 'Hero stats')}</b><div class="profile-hero-list">${rows}</div>`;
   renderProfileRunHistory();
   if (currentMainMenuTab === 'profile') {
     void requestProfileRunHistory({ force: false, page: profileRunHistoryUi.page });
@@ -3719,10 +3728,10 @@ function renderRunDetailsHtml(details) {
   const rows = list.map(([k, v]) => `<div class="rd-row"><span>${k}</span><b>${v}</b></div>`).join('');
   const skills = Array.isArray(details.skills) ? details.skills : [];
   const skillsHtml = skills.length
-    ? `<div class="rd-skills">${skills.map((s) => `<span class="rd-skill">${s.name || s.id} Lv${Math.max(1, Number(s.level) || 1)}</span>`).join('')}</div>`
-    : '<div class="record-details-empty">No skills picked.</div>';
+    ? `<div class="rd-skills">${skills.map((s) => `<span class="rd-skill">${trSkillName(s.id, s.name || s.id)} Lv${Math.max(1, Number(s.level) || 1)}</span>`).join('')}</div>`
+    : '<div class="record-details-empty">' + trWithFallback('ui.record.no_skills', 'No skills picked.') + '</div>';
 
-  return `<div class="rd-grid">${rows}</div><div class="rd-subtitle">Skills</div>${skillsHtml}`;
+  return `<div class="rd-grid">${rows}</div><div class="rd-subtitle">${trWithFallback('ui.main.skills', 'Skills')}</div>${skillsHtml}`;
 }
 
 function openRecordDetailsModal(record, rankLabel) {
@@ -4274,8 +4283,9 @@ function isVisibleWorld(x, y, pad = 0) {
 
 function updateScoreboard(players) {
   const sorted = [...players].filter((p) => !p.isCompanion).sort((a, b) => b.score - a.score);
-  const titleText = scoreboardMinimized ? `Players: ${sorted.length}` : 'Players';
-  const toggleLabel = scoreboardMinimized ? 'Expand players list' : 'Minimize players list';
+  const titleBase = tr('ui.scoreboard.players');
+  const titleText = scoreboardMinimized ? `${titleBase}: ${sorted.length}` : titleBase;
+  const toggleLabel = scoreboardMinimized ? tr('ui.scoreboard.expand') : tr('ui.scoreboard.minimize');
   const toggleIcon = scoreboardMinimized ? '+' : '&minus;';
   const rows = sorted.map((p) => {
     const kills = Number(p.kills) || 0;
@@ -4528,7 +4538,7 @@ let localDeathStateLocked = false;
 
 function clearDeathRewardsUi() {
   joinOverlay.classList.remove('death-rewards-visible');
-  if (deathRewardsBodyEl) deathRewardsBodyEl.innerHTML = 'Collecting rewards...';
+  if (deathRewardsBodyEl) deathRewardsBodyEl.innerHTML = escapeNewsHtml(tr('ui.death.collecting_rewards'));
 }
 
 function formatRunRewardsPayload(rewards) {
@@ -4766,7 +4776,7 @@ function leaveActiveRoom() {
 function renderDeathResult(result) {
   if (!deathResultEl) return;
   if (!result) {
-    deathResultEl.textContent = 'Last result: --';
+    deathResultEl.textContent = tr('ui.death.last_result');
     return;
   }
   deathResultEl.textContent = `Last result: ${result.kills} kills | ${result.score} pts | ${result.survivalSec}s | room ${result.roomCode}`;
@@ -4793,7 +4803,7 @@ function openDeathMenuAfterCinematic() {
   clearDeathRewardsUi();
   setDeathCinematicActive(false);
   joinOverlay.classList.add('death-mode');
-  statusEl.textContent = 'You died. Last result is shown below.';
+  statusEl.textContent = tr('ui.death.you_died');
   updateMobileControlsVisibility();
   requestRoomsList();
   requestRecordsList(recordsUi.page);
@@ -5238,5 +5248,14 @@ function sendInput() {
 
   input.jumpQueued = false;
 }
+
+window.addEventListener('cw:i18n-changed', () => {
+  applyMenuButtonGlyph(toggleInfoBtn);
+  applyMenuButtonGlyph(joinToggleInfoBtn);
+  renderGameVersionHistory();
+  renderNewsFeed();
+  renderRatingBoard();
+  renderProfileRunHistory();
+});
 
 void maybeStartReplayFromUrl();

@@ -403,12 +403,19 @@ function drawXpOrbs(orbs, nowMs) {
   }
 }
 
+const trRender = (key, fallback = key) => {
+  if (typeof window.cwI18nT !== 'function') return fallback;
+  const out = window.cwI18nT(key);
+  return out === key ? fallback : out;
+};
+
 function skillOrbDisplayData(skillId) {
   const sid = String(skillId || '').toLowerCase();
   const def = game.skillCatalog?.[sid] || game.skillCatalog?.[skillId] || {};
   const rarity = String(def.rarity || 'common').toLowerCase();
+  const fallbackName = String(def.name || sid || 'Skill');
   return {
-    name: String(def.name || sid || 'Skill'),
+    name: trRender(`skill.${sid}.name`, fallbackName),
     rarity,
   };
 }

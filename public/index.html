@@ -116,6 +116,10 @@
             Show chat
           </label>
         </p>
+        <p class="shadow-option">
+          <label id="language-label" for="language-select">Language</label>
+          <select id="language-select"></select>
+        </p>
       </div>
       <button id="session-exit-btn" type="button" class="session-exit-btn" aria-label="End current run">Exit Run</button>
     </div>
@@ -264,12 +268,12 @@
       <div id="nickname-hint" class="field-hint">Guest mode: choose any free nickname.</div>
 
       <div id="main-menu-tabs" class="main-menu-tabs" role="tablist" aria-label="Main menu">        
-        <button type="button" class="main-menu-tab active" data-menu-tab="play">Играть</button>
-        <button type="button" class="main-menu-tab" data-menu-tab="characters">Персонажи</button>
-        <button type="button" class="main-menu-tab" data-menu-tab="skills">Навыки</button>
-        <button type="button" class="main-menu-tab" data-menu-tab="profile">Профиль</button>        
-        <button type="button" class="main-menu-tab" data-menu-tab="rating">Рейтинг</button>
-        <button type="button" class="main-menu-tab" data-menu-tab="news">Новости</button>
+        <button type="button" class="main-menu-tab active" data-menu-tab="play">Play</button>
+        <button type="button" class="main-menu-tab" data-menu-tab="characters">Characters</button>
+        <button type="button" class="main-menu-tab" data-menu-tab="skills">Skills</button>
+        <button type="button" class="main-menu-tab" data-menu-tab="profile">Profile</button>        
+        <button type="button" class="main-menu-tab" data-menu-tab="rating">Rating</button>
+        <button type="button" class="main-menu-tab" data-menu-tab="news">News</button>
       </div>
 
       <section id="menu-panel-play" class="menu-panel active" data-menu-panel="play">
@@ -319,12 +323,12 @@
           </div>
           <div class="game-mode-options">
             <button type="button" class="game-mode-option active" data-game-mode="normal">
-              <b>Обычный</b>
-              <span>Текущий баланс игры</span>
+              <b>Normal</b>
+              <span>Current game balance</span>
             </button>
             <button type="button" class="game-mode-option" data-game-mode="hardcore">
-              <b>Хард-кор</b>
-              <span>x3 монстров, HP врагов x2</span>
+              <b>Hardcore</b>
+              <span>x3 monsters, enemy HP x2</span>
             </button>
           </div>
         </div>
@@ -407,14 +411,14 @@
         </div>
       </div>
     </div>
-    <button id="menu-version-trigger" class="menu-version-trigger" type="button" aria-label="Открыть историю версий">v0.8.1</button>
+    <button id="menu-version-trigger" class="menu-version-trigger" type="button" aria-label="Open version history">v0.8.1</button>
     <div id="game-version-modal" class="record-details-modal hidden" aria-live="polite">
       <div class="record-details-card game-version-card">
         <div class="record-details-head">
-          <b id="game-version-title">История версий</b>
-          <button id="game-version-close" type="button" class="mini">Закрыть</button>
+          <b id="game-version-title">Version history</b>
+          <button id="game-version-close" type="button" class="mini">Close</button>
         </div>
-        <div id="game-version-body" class="record-details-body">Загрузка...</div>
+        <div id="game-version-body" class="record-details-body">Loading...</div>
       </div>
     </div>
   </div>
@@ -451,8 +455,9 @@
       <input id="dev-console-input" maxlength="180" placeholder="type command..." />
     </form>
   </div>
-  <script src="/js/client-core.js?v=20260318chat1"></script>
-  <script src="/js/client-net-input.js?v=20260318chat1"></script>
+  <script src="/js/client-i18n.js?v=20260318i18n1"></script>
+  <script src="/js/client-core.js?v=20260318i18n1"></script>
+  <script src="/js/client-net-input.js?v=20260318i18n1"></script>
   <script src="/js/client-fx.js?v=20260317t"></script>
   <script src="/js/client-render.js?v=20260317t"></script>
 </body>
