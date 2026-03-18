@@ -2706,7 +2706,51 @@ function getReplayDurationMs(payload) {
   const lastFrameMs = Math.max(0, Number(payload?.frames?.at(-1)?.t || 0));
   return Math.max(secondsMs, lastFrameMs);
 }
-
+function getReplayChatTimeline(payload) {
+  const source = Array.isArray(payload?.chat) ? payload.chat : [];
+  if (payload && Array.isArray(payload.__chatTimeline) && Number(payload.__chatTimelineSourceLen) === source.length) {
+    return payload.__chatTimeline;
+  }
+  const timeline = source.map((entry, idx) => ({
+    idx,
+    t: Math.max(0, Number(entry?.t) || 0),
+    at: Math.max(0, Number(entry?.at) || 0),
+    name: String(entry?.name || 'Player').trim().slice(0, 32),
+    text: String(entry?.text || '').trim(),
+    system: Boolean(entry?.system),
+  })).filter((entry) => entry.text.length > 0)
+    .sort((a, b) => (a.t - b.t) || (a.at - b.at) || (a.idx - b.idx));
+  if (payload) {
+    payload.__chatTimeline = timeline;
+    payload.__chatTimelineSourceLen = source.length;
+  }
+  return timeline;
+}
+function syncReplayGameChat(elapsedMs, payload) {
+  const timeline = getReplayChatTimeline(payload);
+  const t = Math.max(0, Number(elapsedMs) || 0);
+  let lo = 0;
+  let hi = timeline.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if ((Number(timeline[mid]?.t) || 0) <= t) lo = mid + 1;
+    else hi = mid;
+  }
+  const visibleCount = lo;
+  if (replayGame.chatPayloadRef === payload && replayGame.chatShownCount === visibleCount) return;
+  replayGame.chatPayloadRef = payload || null;
+  replayGame.chatShownCount = visibleCount;
+  chatUi.items = timeline.slice(0, visibleCount).map((entry) => ({
+    at: entry.at > 0 ? entry.at : (Number(payload?.startedAt) || Date.now()) + entry.t,
+    name: entry.name || 'Player',
+    text: entry.text,
+    system: entry.system,
+  }));
+  if (chatUi.items.length > CHAT_MAX_CLIENT_MESSAGES) {
+    chatUi.items.splice(0, chatUi.items.length - CHAT_MAX_CLIENT_MESSAGES);
+  }
+  renderChatMessages();
+}
 function updateReplayGameButtons() {
   if (replayGameToggleBtn) replayGameToggleBtn.textContent = replayGame.playing ? 'Pause' : 'Continue';
 }
@@ -2739,6 +2783,7 @@ function seekReplayGame(elapsedMs, { keepPaused = null } = {}) {
   replayGame.fxFrameIndex = -1;
   tickReplayGame(performance.now());
   updateReplayGameButtons();
+  syncReplayGameChat(replayGame.elapsedMs, replayGame.payload);
 }
 
 function makeReplayBulletId(kind, fromEnemy, x, y, matchIndex) {
@@ -3141,6 +3186,8 @@ function stopReplayGame({ showMenu = true } = {}) {
   replayGame.elapsedMs = 0;
   replayGame.fxFrameIndex = -1;
   replayGame.seeking = false;
+  replayGame.chatShownCount = -1;
+  replayGame.chatPayloadRef = null;
   if (replayGameControlsEl) replayGameControlsEl.classList.add('hidden');
   if (replayGameMetaEl) replayGameMetaEl.textContent = 'Replay';
   if (replayGameProgressEl) replayGameProgressEl.value = '0';
@@ -3190,9 +3237,10 @@ function tickReplayGame(ts) {
     roomMetaEl.textContent = `Replay: ${nextState.roomCode}`;
     weaponMetaEl.textContent = 'Replay mode';
     if (movementMetaEl) movementMetaEl.textContent = 'Controls disabled';
-  }
-  if (replayGameMetaEl) {
-    replayGameMetaEl.textContent = `Replay ${formatReplayClock(replayGame.elapsedMs)} / ${formatReplayClock(totalMs)} | x${replayGame.speed}`;
+    syncReplayGameChat(replayGame.elapsedMs, replayGame.payload);
+    if (replayGameMetaEl) {
+      replayGameMetaEl.textContent = `Replay ${formatReplayClock(replayGame.elapsedMs)} / ${formatReplayClock(totalMs)} | x${replayGame.speed}`;
+    }
   }
   if (replayGameProgressEl && !replayGame.seeking) {
     const value = totalMs > 0 ? Math.round((replayGame.elapsedMs / totalMs) * 1000) : 0;
@@ -3212,6 +3260,11 @@ function startReplayGame(payload, record) {
   replayGame.startedAt = 0;
   replayGame.elapsedMs = 0;
   replayGame.fxFrameIndex = -1;
+  replayGame.seeking = false;
+  replayGame.chatShownCount = -1;
+  replayGame.chatPayloadRef = payload;
+  chatUi.items = [];
+  renderChatMessages();
   game.connected = false;
   game.myId = payload.playerId || 'replay-player';
   game.roomCode = payload.roomCode || 'REPLAY';
@@ -5182,14 +5235,3 @@ function sendInput() {
 }
 
 void maybeStartReplayFromUrl();
-
-
-
-
-
-
-
-
-
-
-

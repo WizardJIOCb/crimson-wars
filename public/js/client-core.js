@@ -346,6 +346,8 @@ const replayGame = {
   elapsedMs: 0,
   fxFrameIndex: -1,
   seeking: false,
+  chatShownCount: -1,
+  chatPayloadRef: null,
 };
 const DEV_CMD_HISTORY_LIMIT = 60;
 const DEV_CMD_HISTORY_STORAGE_KEY = 'cw:devConsoleHistory';

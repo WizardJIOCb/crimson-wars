@@ -147,6 +147,7 @@ let forceShutdownTimer = null;
 const processStartedAt = Date.now();
 const REPLAY_CAPTURE_INTERVAL_MS = 200;
 const REPLAY_FRAME_LIMIT = 7200;
+const REPLAY_CHAT_LIMIT = 240;
 const XP_SURGE_DURATION_MS = 3200;
 const XP_SURGE_PULL_MIN_MUL = 0.22;
 const XP_SURGE_PULL_MAX_MUL = 3.9;
@@ -1750,6 +1751,9 @@ function handleRoomChatMessage(room, player, msg, now = Date.now()) {
     text,
   };
   pushRoomChat(room, payload);
+  for (const p of room.players.values()) {
+    appendReplayChatMessage(p.runReplay, payload, now);
+  }
   broadcastRoom(room, payload);
 }
 
@@ -2683,10 +2687,32 @@ function createRunReplay(room, player, now) {
       tickRate: room.sync?.tickRate || DEFAULT_ROOM_SYNC.tickRate,
       stateSendHz: room.sync?.stateSendHz || DEFAULT_ROOM_SYNC.stateSendHz,
     },
+    chat: [],
     frames: [],
     truncated: false,
     lastCaptureAt: 0,
   };
+}
+
+function appendReplayChatMessage(replay, payload, now = Date.now()) {
+  if (!replay || !payload) return;
+  const text = String(payload.text || '').trim();
+  if (!text) return;
+  if (!Array.isArray(replay.chat)) replay.chat = [];
+
+  const at = Math.max(0, Number(payload.at) || now);
+  const startedAt = Math.max(0, Number(replay.startedAt) || at);
+  replay.chat.push({
+    t: Math.max(0, at - startedAt),
+    at,
+    id: String(payload.id || ''),
+    name: String(payload.name || 'Player').slice(0, 32),
+    playerId: String(payload.playerId || ''),
+    text,
+  });
+  if (replay.chat.length > REPLAY_CHAT_LIMIT) {
+    replay.chat.splice(0, replay.chat.length - REPLAY_CHAT_LIMIT);
+  }
 }
 
 function captureReplayFrame(room, replay, now, options = {}) {
@@ -2823,6 +2849,7 @@ function finalizeRunReplay(room, replay, now) {
     world: replay.world,
     decor: replay.decor,
     meta: replay.meta,
+    chat: Array.isArray(replay.chat) ? replay.chat.slice() : [],
     truncated: Boolean(replay.truncated),
     frames: replay.frames.slice(),
   };
