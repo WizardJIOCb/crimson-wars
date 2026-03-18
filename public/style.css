@@ -687,7 +687,7 @@ body.replay-game-active #scoreboard {
 }
 
 .auth-card-summary::after {
-  content: 'Hide';
+  content: attr(data-label-close);
   float: right;
   font-size: 11px;
   font-weight: 600;
@@ -695,7 +695,7 @@ body.replay-game-active #scoreboard {
 }
 
 .auth-card:not([open]) .auth-card-summary::after {
-  content: 'Show';
+  content: attr(data-label-open);
 }
 
 .auth-card-body {
@@ -1409,9 +1409,9 @@ body.replay-game-active #scoreboard {
 
 #toggle-info,
 #join-toggle-info {
-  position: fixed;
-  top: calc(env(safe-area-inset-top) + 12px);
-  left: 244px;
+  position: fixed;  
+  top: calc(env(safe-area-inset-top) + 14px);
+  left: 235px;
   pointer-events: auto;
   display: inline-flex;
   align-items: center;
@@ -3960,3 +3960,4 @@ body.levelup-open #dev-console-toggle {
     max-height: min(24vh, 180px);
   }
 }
+

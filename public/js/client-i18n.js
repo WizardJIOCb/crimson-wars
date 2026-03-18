@@ -1,4 +1,4 @@
-﻿(() => {
+(() => {
   const LANG_STORAGE_KEY = 'cw:uiLang';
   const DEFAULT_LANG = 'ru';
   const SUPPORTED_LANGS = new Set(['en', 'ru']);
@@ -11,6 +11,8 @@
       'ui.menu': 'Menu',
       'ui.show_menu': 'Show menu',
       'ui.hide_menu': 'Hide menu',
+      'ui.show': 'Show',
+      'ui.hide': 'Hide',
       'ui.settings.show_fps': 'Show FPS',
       'ui.settings.show_chat': 'Show chat',
       'ui.settings.shadows': 'Shadows',
@@ -304,6 +306,8 @@
       'ui.menu': 'Меню',
       'ui.show_menu': 'Показать меню',
       'ui.hide_menu': 'Скрыть меню',
+      'ui.show': 'Показать',
+      'ui.hide': 'Скрыть',
       'ui.settings.show_fps': 'Показывать FPS',
       'ui.settings.show_chat': 'Показывать чат',
       'ui.settings.shadows': 'Тени',
@@ -866,6 +870,8 @@
     setText('#death-rewards-menu', 'ui.death.back_to_menu');
     setText('.death-rewards-title', 'ui.death.run_rewards');
     setText('#player-access-details .auth-card-summary', 'ui.auth.player_access');
+    setAttr('#player-access-details .auth-card-summary', 'data-label-open', 'ui.show');
+    setAttr('#player-access-details .auth-card-summary', 'data-label-close', 'ui.hide');
     setText('#player-auth-summary', 'ui.auth.summary_guest');
     setText('#player-logout', 'ui.auth.logout');
     setText('#auth-tab-guest', 'ui.auth.guest');
