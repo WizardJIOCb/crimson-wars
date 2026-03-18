@@ -1,11 +1,11 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Crimson Wars</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <link rel="stylesheet" href="/style.css?v=20260318x" />
+  <link rel="stylesheet" href="/style.css?v=20260318chat1" />
   <!-- Yandex.Metrika counter -->
   <script type="text/javascript">
     (function(m,e,t,r,i,k,a){
@@ -110,6 +110,12 @@
             Show FPS
           </label>
         </p>
+        <p class="shadow-option">
+          <label>
+            <input id="show-chat-toggle" type="checkbox" checked />
+            Show chat
+          </label>
+        </p>
       </div>
       <button id="session-exit-btn" type="button" class="session-exit-btn" aria-label="End current run">Exit Run</button>
     </div>
@@ -121,6 +127,13 @@
   </div>
 
   <div id="fps-corner" class="hidden" aria-live="polite">FPS: --</div>
+  <div id="chat-wrap" class="hidden" aria-live="polite">
+    <div id="chat-messages" class="chat-messages"></div>
+    <form id="chat-form" class="chat-form" autocomplete="off">
+      <input id="chat-input" maxlength="180" placeholder="Enter to chat. /mute name" />
+      <button id="chat-send" type="submit" class="chat-send" aria-label="Send message" title="Send"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M21.75 2.88a1 1 0 0 0-1.04-.17L2.95 10.1a1 1 0 0 0 .08 1.87l7.03 2.35 2.35 7.03a1 1 0 0 0 .9.68h.04a1 1 0 0 0 .93-.61l7.39-17.76a1 1 0 0 0 .08-.78zM11.2 13.74l-5.17-1.73L18.12 6.9l-6.92 6.84zm1.06 1.1 6.84-6.92-5.11 12.09-1.73-5.17z"/></svg></button>
+    </form>
+  </div>
   <div id="minimap-wrap" class="hidden" aria-hidden="true">
     <canvas id="minimap" width="220" height="220"></canvas>
   </div>
@@ -156,11 +169,11 @@
     </div>
     <div class="replay-game-row replay-game-row-bottom">
       <div class="replay-game-nav">
-        <button id="replay-game-start" type="button" class="mini" title="To start">|&lt;</button>
-        <button id="replay-game-back" type="button" class="mini" title="Back 5s">&lt;&lt;</button>
+        <button id="replay-game-start" type="button" class="mini" title="To start">|<</button>
+        <button id="replay-game-back" type="button" class="mini" title="Back 5s"><<</button>
         <button id="replay-game-toggle" type="button" class="mini" title="Pause or continue">Pause</button>
-        <button id="replay-game-forward" type="button" class="mini" title="Forward 5s">&gt;&gt;</button>
-        <button id="replay-game-end" type="button" class="mini" title="To end">&gt;|</button>
+        <button id="replay-game-forward" type="button" class="mini" title="Forward 5s">>></button>
+        <button id="replay-game-end" type="button" class="mini" title="To end">>|</button>
       </div>
       <input id="replay-game-progress" type="range" min="0" max="1000" value="0" step="1" />
     </div>
@@ -378,11 +391,11 @@
           </div>
           <div id="record-replay-controls" class="record-replay-controls hidden">
             <div class="replay-game-nav">
-              <button id="record-replay-start" type="button" class="mini" title="To start">|&lt;</button>
-              <button id="record-replay-back" type="button" class="mini" title="Back 5s">&lt;&lt;</button>
+              <button id="record-replay-start" type="button" class="mini" title="To start">|<</button>
+              <button id="record-replay-back" type="button" class="mini" title="Back 5s"><<</button>
               <button id="record-replay-toggle" type="button" class="mini" title="Pause or continue">Pause</button>
-              <button id="record-replay-forward" type="button" class="mini" title="Forward 5s">&gt;&gt;</button>
-              <button id="record-replay-end" type="button" class="mini" title="To end">&gt;|</button>
+              <button id="record-replay-forward" type="button" class="mini" title="Forward 5s">>></button>
+              <button id="record-replay-end" type="button" class="mini" title="To end">>|</button>
             </div>
             <input id="record-replay-progress" type="range" min="0" max="1000" value="0" step="1" />
           </div>
@@ -407,7 +420,7 @@
   </div>
 
   <button id="stats-toggle" type="button" aria-expanded="false">Stats</button>
-  <button id="dev-console-toggle" type="button" class="hidden" aria-label="Open console">&gt;_</button>
+  <button id="dev-console-toggle" type="button" class="hidden" aria-label="Open console">>_</button>
   <div id="stats-panel" class="hidden" aria-live="polite">
     <div class="panel-head">
       <div class="stats-title">Character stats</div>
@@ -438,11 +451,13 @@
       <input id="dev-console-input" maxlength="180" placeholder="type command..." />
     </form>
   </div>
-  <script src="/js/client-core.js?v=20260317t"></script>
-  <script src="/js/client-net-input.js?v=20260318w"></script>
+  <script src="/js/client-core.js?v=20260318chat1"></script>
+  <script src="/js/client-net-input.js?v=20260318chat1"></script>
   <script src="/js/client-fx.js?v=20260317t"></script>
   <script src="/js/client-render.js?v=20260317t"></script>
 </body>
 </html>
+
+
 
 

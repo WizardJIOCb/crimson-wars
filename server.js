@@ -28,6 +28,12 @@ const SHUTDOWN_GRACE_MS = Math.max(1000, Number(process.env.SHUTDOWN_GRACE_MS) |
 const RESTART_RETRY_MS = Math.max(1000, Number(process.env.RESTART_RETRY_MS) || 2500);
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || (IS_PROD ? '' : `http://localhost:${PORT}`)).toString().trim().replace(/\/+$/, '');
 const SESSION_COOKIE_DOMAIN = (process.env.SESSION_COOKIE_DOMAIN || (IS_PROD ? '.rodion.pro' : '')).toString().trim();
+const CHAT_MAX_LEN = 180;
+const CHAT_HISTORY_LIMIT = 50;
+const CHAT_WELCOME_LIMIT = 30;
+const CHAT_SPAM_WINDOW_MS = 8000;
+const CHAT_SPAM_MAX_MESSAGES = 4;
+const CHAT_SPAM_MUTE_MS = 15000;
 
 const {
   MAIN_LOOP_RATE,
@@ -1641,6 +1647,7 @@ function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode) {
       drops: [],
       xpOrbs: [],
       skillOrbs: [],
+      chatHistory: [],
       xpMagnetPlayerId: '',
       xpMagnetUntil: 0,
       xpMagnetStartedAt: 0,
@@ -1679,6 +1686,71 @@ function broadcastRoom(room, payload) {
       p.ws.send(raw);
     }
   }
+}
+
+function sanitizeChatText(rawText) {
+  let text = String(rawText || '')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (text.length > CHAT_MAX_LEN) text = text.slice(0, CHAT_MAX_LEN).trim();
+  return text;
+}
+
+function pushRoomChat(room, entry) {
+  if (!room || !entry) return;
+  if (!Array.isArray(room.chatHistory)) room.chatHistory = [];
+  room.chatHistory.push(entry);
+  if (room.chatHistory.length > CHAT_HISTORY_LIMIT) {
+    room.chatHistory.splice(0, room.chatHistory.length - CHAT_HISTORY_LIMIT);
+  }
+}
+
+function canSendChatMessage(player, now) {
+  if (!player) return { ok: false, reason: 'unavailable' };
+  const mutedUntil = Math.max(0, Number(player.chatMutedUntil) || 0);
+  if (mutedUntil > now) return { ok: false, reason: 'muted', leftMs: mutedUntil - now };
+
+  if (!Array.isArray(player.chatRecentAt)) player.chatRecentAt = [];
+  player.chatRecentAt = player.chatRecentAt.filter((ts) => now - ts <= CHAT_SPAM_WINDOW_MS);
+  if (player.chatRecentAt.length >= CHAT_SPAM_MAX_MESSAGES) {
+    player.chatMutedUntil = now + CHAT_SPAM_MUTE_MS;
+    return { ok: false, reason: 'spam', leftMs: CHAT_SPAM_MUTE_MS };
+  }
+
+  player.chatRecentAt.push(now);
+  return { ok: true };
+}
+
+function handleRoomChatMessage(room, player, msg, now = Date.now()) {
+  const text = sanitizeChatText(msg?.text);
+  if (!text) return;
+
+  const gate = canSendChatMessage(player, now);
+  if (!gate.ok) {
+    if (gate.reason === 'spam') {
+      sendTo(player.ws, { type: 'system', message: 'Chat: too many messages, muted for 15s.' });
+      return;
+    }
+    if (gate.reason === 'muted') {
+      const leftSec = Math.max(1, Math.ceil((Number(gate.leftMs) || 0) / 1000));
+      sendTo(player.ws, { type: 'system', message: `Chat muted for ${leftSec}s.` });
+      return;
+    }
+    sendTo(player.ws, { type: 'system', message: 'Chat is unavailable.' });
+    return;
+  }
+
+  const payload = {
+    type: 'chat',
+    id: `c${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+    at: now,
+    name: String(player.name || 'Player').slice(0, 32),
+    playerId: player.id,
+    text,
+  };
+  pushRoomChat(room, payload);
+  broadcastRoom(room, payload);
 }
 
 function getCompanionSkillDefs() {
@@ -3555,6 +3627,8 @@ function joinRoom(ws, join) {
     livesLeft: RESPAWN_MODE === 'lives' ? RESPAWN_EXTRA_LIVES : 0,
     reviveTokens: RESPAWN_MODE === 'token' ? RESPAWN_START_TOKENS : 0,
     godMode: false,
+    chatRecentAt: [],
+    chatMutedUntil: 0,
     playerAccountId: identity.playerAccountId || null,
     isRegisteredNickname: !!identity.isRegistered,
     runReplay: null,
@@ -3587,6 +3661,7 @@ function joinRoom(ws, join) {
     },
     progression: player.accountProgression,
     progressionCatalog,
+    chatHistory: Array.isArray(room.chatHistory) ? room.chatHistory.slice(-CHAT_WELCOME_LIMIT) : [],
   });
 
   broadcastRoom(room, {
@@ -3758,9 +3833,10 @@ wss.on('connection', (ws, req) => {
       }
     }
 
-    if (msg.type === 'skillPick') {
-      const picked = playerSelectSkill(room, current, msg.skillId, Date.now());
-      if (picked) sendTo(current.ws, { type: 'system', message: 'Skill upgraded.' });
+    
+
+    if (msg.type === 'chatSend') {
+      handleRoomChatMessage(room, current, msg, Date.now());
       return;
     }
 
@@ -4231,4 +4307,14 @@ server.listen(PORT, () => {
     console.log(`Bootstrap admin password: ${ADMIN_BOOTSTRAP_PASSWORD}`);
   }
 });
+
+
+
+
+
+
+
+
+
+
 

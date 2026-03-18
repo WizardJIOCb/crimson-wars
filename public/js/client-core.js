@@ -1,4 +1,4 @@
-﻿
+
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
@@ -9,7 +9,12 @@ const weaponMetaEl = document.getElementById('weapon-meta');
 const movementMetaEl = document.getElementById('movement-meta');
 const netMetaEl = document.getElementById('net-meta');
 const showFpsToggleEl = document.getElementById('show-fps-toggle');
+const showChatToggleEl = document.getElementById('show-chat-toggle');
 const fpsCornerEl = document.getElementById('fps-corner');
+const chatWrapEl = document.getElementById('chat-wrap');
+const chatMessagesEl = document.getElementById('chat-messages');
+const chatFormEl = document.getElementById('chat-form');
+const chatInputEl = document.getElementById('chat-input');
 const showMinimapToggleEl = document.getElementById('show-minimap-toggle');
 const showAimStickToggleEl = document.getElementById('show-aim-stick-toggle');
 const dynamicSticksToggleEl = document.getElementById('dynamic-sticks-toggle');
@@ -218,6 +223,7 @@ const game = {
   autoFireEnabled: getToggleDefaultOn('cw:autoFireEnabled'),
   connectionIndicatorEnabled: getToggleDefaultOn('cw:connectionIndicatorEnabled'),
   showFpsEnabled: getToggleDefaultOn('cw:showFpsEnabled'),
+  showChatEnabled: getToggleDefaultOn('cw:showChatEnabled'),
   showMinimapEnabled: getToggleDefaultOn('cw:showMinimapEnabled'),
   showAimStickEnabled: getToggleDefaultOn('cw:showAimStickEnabled'),
   dynamicSticksEnabled: getToggleDefaultOff('cw:dynamicSticksEnabled'),
@@ -1972,6 +1978,19 @@ showFpsToggleEl?.addEventListener('change', () => {
 });
 setShowFpsEnabled(game.showFpsEnabled);
 
+function setShowChatEnabled(enabled) {
+  game.showChatEnabled = Boolean(enabled);
+  if (showChatToggleEl) showChatToggleEl.checked = game.showChatEnabled;
+  localStorage.setItem('cw:showChatEnabled', game.showChatEnabled ? '1' : '0');
+  if (!game.showChatEnabled && chatInputEl && document.activeElement === chatInputEl) chatInputEl.blur();
+  updateHudVisibility(getComputedStyle(joinOverlay).display !== 'none');
+}
+
+showChatToggleEl?.addEventListener('change', () => {
+  setShowChatEnabled(showChatToggleEl.checked);
+});
+setShowChatEnabled(game.showChatEnabled);
+
 function setShowMinimapEnabled(enabled) {
   game.showMinimapEnabled = Boolean(enabled);
   if (showMinimapToggleEl) showMinimapToggleEl.checked = game.showMinimapEnabled;
@@ -2161,6 +2180,8 @@ function updateHudVisibility(overlayOpen) {
   if (topCenterHudEl) topCenterHudEl.classList.toggle('hidden', menuOpen);
   if (bottomHudEl) bottomHudEl.classList.toggle('hidden', menuOpen);
   if (statsToggleBtn) statsToggleBtn.classList.toggle('hidden', menuOpen);
+  if (chatWrapEl) chatWrapEl.classList.toggle('hidden', menuOpen || !game.showChatEnabled);
+  if (menuOpen && chatInputEl && document.activeElement === chatInputEl) chatInputEl.blur();
   if (replayGameControlsEl) replayGameControlsEl.classList.toggle('hidden', menuOpen || !replayGame.active);
   if (menuOpen) {
     if (statsPanelEl) statsPanelEl.classList.add('hidden');
@@ -2219,6 +2240,10 @@ function updateMobileControlsVisibility() {
   }
   setMobileControlsVisible(!overlayOpen);
 }
+
+
+
+
 
 
 

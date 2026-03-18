@@ -1,4 +1,4 @@
-﻿function resetMobileStick(kind) {
+function resetMobileStick(kind) {
   if (kind === 'move') {
     mobile.moveId = null;
     mobile.moveX = 0;
@@ -195,7 +195,7 @@ function applyMenuButtonGlyph(buttonEl) {
   if (!(buttonEl instanceof HTMLElement)) return;
   const burger = buttonEl.querySelector('.menu-burger');
   const label = buttonEl.querySelector('.menu-label');
-  if (burger) burger.textContent = '\u2630';
+  if (burger) burger.textContent = '☰';
   if (label) label.textContent = 'Menu';
   buttonEl.setAttribute('aria-label', 'Show menu');
   buttonEl.title = 'Show menu';
@@ -406,6 +406,163 @@ gameVersionModalEl?.addEventListener('click', (e) => {
   if (e.target === gameVersionModalEl) closeGameVersionModal();
 });
 
+const CHAT_MAX_CLIENT_MESSAGES = 80;
+const CHAT_MUTED_NAMES_STORAGE_KEY = 'cw:chatMutedNames';
+const chatUi = {
+  items: [],
+  mutedNames: new Set(),
+};
+
+function normalizeChatNameKey(name) {
+  return String(name || '').trim().toLowerCase();
+}
+
+function loadChatMutedNames() {
+  try {
+    const raw = localStorage.getItem(CHAT_MUTED_NAMES_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return;
+    chatUi.mutedNames = new Set(parsed.map((x) => normalizeChatNameKey(x)).filter(Boolean));
+  } catch {
+    chatUi.mutedNames = new Set();
+  }
+}
+
+function saveChatMutedNames() {
+  try {
+    localStorage.setItem(CHAT_MUTED_NAMES_STORAGE_KEY, JSON.stringify(Array.from(chatUi.mutedNames.values())));
+  } catch {
+    // ignore storage failures
+  }
+}
+
+function formatChatClock(ts) {
+  const ms = Math.max(0, Number(ts) || Date.now());
+  const d = new Date(ms);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+function renderChatMessages() {
+  if (!chatMessagesEl) return;
+  const nearBottom = (chatMessagesEl.scrollHeight - chatMessagesEl.scrollTop - chatMessagesEl.clientHeight) < 24;
+  const hasMessages = chatUi.items.length > 0;
+  chatMessagesEl.classList.toggle('hidden', !hasMessages);
+  chatMessagesEl.innerHTML = chatUi.items.map((item) => {
+    const lineClass = item.system ? 'chat-line system' : 'chat-line';
+    const timeHtml = '<span class="chat-time">[' + escapeHtml(formatChatClock(item.at)) + ']</span>';
+    if (item.system) {
+      return '<div class="' + lineClass + '">' + timeHtml + '<span>' + escapeHtml(item.text || '') + '</span></div>';
+    }
+    const nameHtml = '<span class="chat-name">' + escapeHtml(item.name || 'Player') + ':</span>';
+    return '<div class="' + lineClass + '">' + timeHtml + nameHtml + '<span>' + escapeHtml(item.text || '') + '</span></div>';
+  }).join('');
+  if (nearBottom) chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+}
+
+function pushChatItem(item) {
+  if (!item) return;
+  const isSystem = Boolean(item.system);
+  const name = String(item.name || '').trim();
+  if (!isSystem && chatUi.mutedNames.has(normalizeChatNameKey(name))) return;
+  chatUi.items.push({
+    at: Number(item.at) || Date.now(),
+    name,
+    text: String(item.text || ''),
+    system: isSystem,
+  });
+  if (chatUi.items.length > CHAT_MAX_CLIENT_MESSAGES) {
+    chatUi.items.splice(0, chatUi.items.length - CHAT_MAX_CLIENT_MESSAGES);
+  }
+  renderChatMessages();
+}
+
+function pushLocalChatSystem(text) {
+  pushChatItem({ system: true, text: String(text || ''), at: Date.now() });
+}
+
+function applyChatHistory(history) {
+  chatUi.items = [];
+  for (const item of Array.isArray(history) ? history : []) {
+    pushChatItem(item);
+  }
+}
+
+function handleLocalChatCommand(rawText) {
+  const src = String(rawText || '').trim();
+  if (!src.startsWith('/')) return false;
+  const parts = src.slice(1).split(/\s+/).filter(Boolean);
+  const cmd = String(parts.shift() || '').toLowerCase();
+  const argName = String(parts.join(' ') || '').trim();
+  const key = normalizeChatNameKey(argName);
+
+  if (cmd === 'mute') {
+    if (!key) {
+      pushLocalChatSystem('Usage: /mute nickname');
+      return true;
+    }
+    chatUi.mutedNames.add(key);
+    saveChatMutedNames();
+    pushLocalChatSystem(`Muted ${argName}.`);
+    return true;
+  }
+
+  if (cmd === 'unmute') {
+    if (!key) {
+      pushLocalChatSystem('Usage: /unmute nickname');
+      return true;
+    }
+    chatUi.mutedNames.delete(key);
+    saveChatMutedNames();
+    pushLocalChatSystem(`Unmuted ${argName}.`);
+    return true;
+  }
+
+  if (cmd === 'muted') {
+    const names = Array.from(chatUi.mutedNames.values());
+    pushLocalChatSystem(names.length ? ('Muted: ' + names.join(', ')) : 'Muted list is empty.');
+    return true;
+  }
+
+  if (cmd === 'chathelp' || cmd === 'help') {
+    pushLocalChatSystem('Chat commands: /mute <name>, /unmute <name>, /muted');
+    return true;
+  }
+
+  pushLocalChatSystem('Unknown chat command. Use /chathelp');
+  return true;
+}
+
+function submitChatMessage(rawText) {
+  const text = String(rawText || '').trim();
+  if (!text) return false;
+  if (handleLocalChatCommand(text)) return true;
+  if (!sendJson({ type: 'chatSend', text })) {
+    pushLocalChatSystem('Chat is unavailable while disconnected.');
+  }
+  return true;
+}
+
+chatFormEl?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (!chatInputEl) return;
+  const value = chatInputEl.value;
+  chatInputEl.value = '';
+  const handled = submitChatMessage(value);
+  if (handled) chatInputEl.blur();
+});
+
+chatInputEl?.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape') {
+    e.preventDefault();
+    chatInputEl.blur();
+  }
+});
+
+loadChatMutedNames();
+renderChatMessages();
+
 function escapeNewsHtml(raw) {
   const text = String(raw ?? '');
   return text
@@ -452,12 +609,12 @@ function ensureAuthorProfileModal() {
 
   const title = document.createElement('b');
   title.id = 'author-profile-title';
-  title.textContent = '\u041f\u0440\u043e\u0444\u0438\u043b\u044c \u0438\u0433\u0440\u043e\u043a\u0430';
+  title.textContent = 'Профиль игрока';
 
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
   closeBtn.className = 'mini';
-  closeBtn.textContent = '\u0417\u0430\u043a\u0440\u044b\u0442\u044c';
+  closeBtn.textContent = 'Закрыть';
   closeBtn.addEventListener('click', () => {
     modal.classList.add('hidden');
   });
@@ -468,7 +625,7 @@ function ensureAuthorProfileModal() {
   const body = document.createElement('div');
   body.id = 'author-profile-body';
   body.className = 'record-details-body';
-  body.textContent = '\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430...';
+  body.textContent = 'Загрузка...';
 
   card.appendChild(head);
   card.appendChild(body);
@@ -512,7 +669,7 @@ function renderAuthorProfileRunHistory(runPayload) {
   const runs = Array.isArray(runPayload?.runs) ? runPayload.runs : [];
   const total = Math.max(0, Number(runPayload?.total) || 0);
   if (!runs.length) {
-    return '<div class="profile-card"><b>\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u0437\u0430\u0431\u0435\u0433\u043e\u0432 (0)</b><div class="record-details-empty">\u0417\u0430\u0431\u0435\u0433\u0438 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u044b.</div></div>';
+    return '<div class="profile-card"><b>История забегов (0)</b><div class="record-details-empty">Забеги не найдены.</div></div>';
   }
 
   const rows = runs.map((run, i) => {
@@ -529,7 +686,7 @@ function renderAuthorProfileRunHistory(runPayload) {
       + '</button>';
   }).join('');
 
-  return '<div class="profile-card"><b>\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u0437\u0430\u0431\u0435\u0433\u043e\u0432 (' + total + ')</b><div class="profile-run-list author-run-list">' + rows + '</div></div>';
+  return '<div class="profile-card"><b>История забегов (' + total + ')</b><div class="profile-run-list author-run-list">' + rows + '</div></div>';
 }
 
 function bindAuthorProfileRunHistoryRows() {
@@ -551,20 +708,20 @@ function renderAuthorProfileBody(profile, runPayload) {
     const heroName = escapeNewsHtml(hero?.name || hero?.id || '-');
     const heroLevel = Math.max(1, Number(hero?.level) || 1);
     const heroRuns = Math.max(0, Number(hero?.runs) || 0);
-    const heroState = hero?.unlocked ? '\u041e\u0442\u043a\u0440\u044b\u0442' : '\u0417\u0430\u043a\u0440\u044b\u0442';
+    const heroState = hero?.unlocked ? 'Открыт' : 'Закрыт';
     return '<div class="profile-hero-row"><span>' + heroName + '</span><span>Lv' + heroLevel + ' | Runs: ' + heroRuns + '</span><span>' + heroState + '</span></div>';
   }).join('');
 
   return ''
-    + '<div class="profile-card"><b>\u041f\u0440\u043e\u0444\u0438\u043b\u044c Lv' + Math.max(1, Number(profile?.accountLevel) || 1) + '</b><div>'
+    + '<div class="profile-card"><b>Профиль Lv' + Math.max(1, Number(profile?.accountLevel) || 1) + '</b><div>'
     + 'XP ' + Math.max(0, Number(profile?.accountXp) || 0) + '/' + Math.max(1, Number(profile?.accountXpToNext) || 1)
     + ' | Skill points: ' + Math.max(0, Number(profile?.accountSkillPoints) || 0)
     + ' | Shards: ' + Math.max(0, Number(profile?.shards) || 0)
     + ' | Heroes: ' + Math.max(0, Number(profile?.heroesUnlocked) || 0) + '/' + Math.max(0, Number(profile?.heroesTotal) || 0)
     + ' | Runs: ' + Math.max(0, Number(profile?.totalRuns) || 0)
     + '</div></div>'
-    + '<div class="profile-card"><b>\u0418\u043d\u0444\u043e \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0430</b><div>\u0421\u043e\u0437\u0434\u0430\u043d: ' + formatPublicProfileDate(profile?.createdAt) + ' | \u041f\u043e\u0441\u043b\u0435\u0434\u043d\u0438\u0439 \u0432\u0445\u043e\u0434: ' + formatPublicProfileDate(profile?.lastLoginAt) + '</div></div>'
-    + '<div class="profile-card"><b>\u0413\u0435\u0440\u043e\u0438</b><div class="profile-hero-list">' + (heroRows || '<div class="record-details-empty">\u041d\u0435\u0442 \u0434\u0430\u043d\u043d\u044b\u0445 \u043f\u043e \u0433\u0435\u0440\u043e\u044f\u043c.</div>') + '</div></div>'
+    + '<div class="profile-card"><b>Инфо аккаунта</b><div>Создан: ' + formatPublicProfileDate(profile?.createdAt) + ' | Последний вход: ' + formatPublicProfileDate(profile?.lastLoginAt) + '</div></div>'
+    + '<div class="profile-card"><b>Герои</b><div class="profile-hero-list">' + (heroRows || '<div class="record-details-empty">Нет данных по героям.</div>') + '</div></div>'
     + renderAuthorProfileRunHistory(runPayload);
 }
 
@@ -574,8 +731,8 @@ async function openAuthorProfileModal(accountId, fallbackName = '') {
   ensureAuthorProfileModal();
   if (!authorProfileModalEl || !authorProfileBodyEl || !authorProfileTitleEl) return;
 
-  authorProfileTitleEl.textContent = '\u041f\u0440\u043e\u0444\u0438\u043b\u044c \u0438\u0433\u0440\u043e\u043a\u0430';
-  authorProfileBodyEl.innerHTML = '<div class="record-details-empty">\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u043f\u0440\u043e\u0444\u0438\u043b\u044f...</div>';
+  authorProfileTitleEl.textContent = 'Профиль игрока';
+  authorProfileBodyEl.innerHTML = '<div class="record-details-empty">Загрузка профиля...</div>';
   authorProfileModalEl.classList.remove('hidden');
 
   try {
@@ -600,12 +757,12 @@ async function openAuthorProfileModal(accountId, fallbackName = '') {
     authorProfileRuns = runData.runs;
 
     const profile = profilePayload.profile;
-    authorProfileTitleEl.textContent = '\u041f\u0440\u043e\u0444\u0438\u043b\u044c: ' + String(profile?.nickname || fallbackName || ('ID ' + id));
+    authorProfileTitleEl.textContent = 'Профиль: ' + String(profile?.nickname || fallbackName || ('ID ' + id));
     authorProfileBodyEl.innerHTML = renderAuthorProfileBody(profile, runData);
     bindAuthorProfileRunHistoryRows();
   } catch (err) {
     authorProfileRuns = [];
-    authorProfileBodyEl.innerHTML = '<div class="record-details-empty">' + escapeNewsHtml(err?.message || '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u043f\u0440\u043e\u0444\u0438\u043b\u044c.') + '</div>';
+    authorProfileBodyEl.innerHTML = '<div class="record-details-empty">' + escapeNewsHtml(err?.message || 'Не удалось загрузить профиль.') + '</div>';
   }
 }
 
@@ -622,8 +779,8 @@ async function openAuthorProfileFromComment(authorAccountId, authorNameText) {
 
   ensureAuthorProfileModal();
   if (authorProfileModalEl && authorProfileBodyEl && authorProfileTitleEl) {
-    authorProfileTitleEl.textContent = '\u041f\u0440\u043e\u0444\u0438\u043b\u044c \u0438\u0433\u0440\u043e\u043a\u0430';
-    authorProfileBodyEl.innerHTML = '<div class="record-details-empty">\u041f\u043e\u0438\u0441\u043a \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0430 \u043f\u043e \u043d\u0438\u043a\u0443...</div>';
+    authorProfileTitleEl.textContent = 'Профиль игрока';
+    authorProfileBodyEl.innerHTML = '<div class="record-details-empty">Поиск аккаунта по нику...</div>';
     authorProfileModalEl.classList.remove('hidden');
   }
 
@@ -632,12 +789,12 @@ async function openAuthorProfileFromComment(authorAccountId, authorNameText) {
     const payload = await res.json().catch(() => ({}));
     const foundId = Math.max(0, Number(payload?.player?.id) || 0);
     if (!res.ok || !payload?.ok || !payload?.isRegistered || !foundId) {
-      throw new Error('\u041f\u0440\u043e\u0444\u0438\u043b\u044c \u0434\u043b\u044f \u044d\u0442\u043e\u0433\u043e \u043d\u0438\u043a\u0430 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d.');
+      throw new Error('Профиль для этого ника недоступен.');
     }
     await openAuthorProfileModal(foundId, nickname);
   } catch (err) {
     if (authorProfileBodyEl) {
-      authorProfileBodyEl.innerHTML = '<div class="record-details-empty">' + escapeNewsHtml(err?.message || '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043e\u0442\u043a\u0440\u044b\u0442\u044c \u043f\u0440\u043e\u0444\u0438\u043b\u044c.') + '</div>';
+      authorProfileBodyEl.innerHTML = '<div class="record-details-empty">' + escapeNewsHtml(err?.message || 'Не удалось открыть профиль.') + '</div>';
     }
   }
 }
@@ -819,7 +976,7 @@ function renderNewsReplyComposer(container, parentId) {
   const cancelBtn = document.createElement('button');
   cancelBtn.type = 'button';
   cancelBtn.className = 'mini';
-  cancelBtn.textContent = '\u041e\u0442\u043c\u0435\u043d\u0430';
+  cancelBtn.textContent = 'Отмена';
   cancelBtn.disabled = newsUi.postingComment;
   cancelBtn.addEventListener('click', () => {
     newsUi.replyTargetId = '';
@@ -881,7 +1038,7 @@ function renderNewsCommentNode(comment, isReply = false, parentCommentId = '') {
     const replyBtn = document.createElement('button');
     replyBtn.type = 'button';
     replyBtn.className = 'mini news-comment-reply-btn';
-    replyBtn.textContent = newsUi.replyTargetId === parentId ? '\u0417\u0430\u043a\u0440\u044b\u0442\u044c \u043e\u0442\u0432\u0435\u0442' : '\u041e\u0442\u0432\u0435\u0442\u0438\u0442\u044c';
+    replyBtn.textContent = newsUi.replyTargetId === parentId ? 'Закрыть ответ' : 'Ответить';
     replyBtn.addEventListener('click', () => {
       newsUi.replyTargetId = newsUi.replyTargetId === parentId ? '' : parentId;
       renderNewsFeed();
@@ -894,7 +1051,7 @@ function renderNewsCommentNode(comment, isReply = false, parentCommentId = '') {
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
     deleteBtn.className = 'mini news-comment-delete-btn';
-    deleteBtn.textContent = '\u0423\u0434\u0430\u043b\u0438\u0442\u044c';
+    deleteBtn.textContent = 'Удалить';
     deleteBtn.disabled = newsUi.postingComment;
     deleteBtn.addEventListener('click', () => {
       void deleteNewsComment(newsUi.activeId, {
@@ -959,7 +1116,7 @@ function renderNewsFeed() {
     const backBtn = document.createElement('button');
     backBtn.type = 'button';
     backBtn.className = 'mini news-back-btn';
-    backBtn.textContent = '\u2190 \u041a \u0441\u043f\u0438\u0441\u043a\u0443 \u043d\u043e\u0432\u043e\u0441\u0442\u0435\u0439';
+    backBtn.textContent = '← К списку новостей';
     backBtn.addEventListener('click', () => {
       newsUi.activeId = '';
       newsUi.activeItem = null;
@@ -973,12 +1130,12 @@ function renderNewsFeed() {
     const shareBtn = document.createElement('button');
     shareBtn.type = 'button';
     shareBtn.className = 'mini news-share-btn';
-    shareBtn.textContent = newsUi.shareCopied ? '\u0421\u0441\u044b\u043b\u043a\u0430 \u0441\u043a\u043e\u043f\u0438\u0440\u043e\u0432\u0430\u043d\u0430' : '\u041f\u043e\u0434\u0435\u043b\u0438\u0442\u044c\u0441\u044f';
+    shareBtn.textContent = newsUi.shareCopied ? 'Ссылка скопирована' : 'Поделиться';
     shareBtn.addEventListener('click', async () => {
       try {
         await shareNewsLink(newsUi.activeId);
       } catch {
-        newsUi.commentError = '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u043a\u043e\u043f\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u0441\u0441\u044b\u043b\u043a\u0443.';
+        newsUi.commentError = 'Не удалось скопировать ссылку.';
         renderNewsFeed();
       }
     });
@@ -1233,8 +1390,8 @@ function formatRatingValue(item, categoryKey) {
   if (categoryKey === 'best_time_run') return value + 's';
   if (categoryKey === 'best_dps_run') return value.toFixed(2) + ' DPS';
   if (categoryKey === 'profile_level') return 'Lv' + value + ' (XP ' + Math.max(0, Number(item?.accountXp) || 0) + ')';
-  if (categoryKey === 'heroes_unlocked') return value + ' \u0433\u0435\u0440.';
-  if (categoryKey === 'runs_count') return value + ' \u0437\u0430\u0431.';
+  if (categoryKey === 'heroes_unlocked') return value + ' гер.';
+  if (categoryKey === 'runs_count') return value + ' заб.';
   return String(value);
 }
 
@@ -4147,6 +4304,14 @@ window.addEventListener('keydown', (e) => {
   const typing = t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement;
   const overlayOpen = getComputedStyle(joinOverlay).display !== 'none';
 
+  if (!typing && !overlayOpen && e.code === 'Enter' && chatInputEl && game.showChatEnabled) {
+    e.preventDefault();
+    chatInputEl.focus();
+    return;
+  }
+
+  if (typing) return;
+
   if (!typing && e.code === 'KeyH') {
     setInfoPanelHidden(!infoPanelHidden);
     return;
@@ -4182,6 +4347,9 @@ window.addEventListener('keydown', (e) => {
 });
 window.addEventListener('keyup', (e) => {
   if (isDevConsoleOpen()) return;
+  const t = e.target;
+  const typing = t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement;
+  if (typing) return;
   const before = `${input.up}:${input.down}:${input.left}:${input.right}`;
   keyStateFromCode(e.code, false);
   const after = `${input.up}:${input.down}:${input.left}:${input.right}`;
@@ -4526,6 +4694,8 @@ function clearLocalSessionState() {
   updateStatsPanel(null);
   updateJumpButtonUi(null);
   immediateInputSendQueued = false;
+  chatUi.items = [];
+  renderChatMessages();
 }
 
 function leaveActiveRoom() {
@@ -4673,6 +4843,11 @@ message: (ev) => {
     return;
   }
 
+  if (msg.type === 'chat') {
+    pushChatItem(msg);
+    return;
+  }
+
   if (msg.type === 'serverRestart') {
     handleServerRestartNotice(msg);
     return;
@@ -4773,6 +4948,7 @@ message: (ev) => {
     }
     if (msg.progressionCatalog) game.playerAuth.progressionCatalog = msg.progressionCatalog;
     if (msg.progression) game.playerAuth.progression = msg.progression;
+    applyChatHistory(msg.chatHistory);
     if (msg.me?.activeHero) {
       selectedPlayerClass = sanitizePlayerClass(msg.me.activeHero);
       localStorage.setItem(PLAYER_CLASS_STORAGE_KEY, selectedPlayerClass);
@@ -5006,4 +5182,14 @@ function sendInput() {
 }
 
 void maybeStartReplayFromUrl();
+
+
+
+
+
+
+
+
+
+
 
