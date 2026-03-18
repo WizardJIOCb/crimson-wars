@@ -3001,6 +3001,59 @@ function interpolateReplayBullets(currentBullets, nextBullets, alpha, currentT, 
   return out;
 }
 
+function isNewReplayXpOrbTuple(orb) {
+  if (!Array.isArray(orb)) return false;
+  return orb.length >= 4;
+}
+
+function interpolateReplayXpOrbs(currentOrbs, nextOrbs, alpha) {
+  const source = Array.isArray(currentOrbs) ? currentOrbs : [];
+  const target = Array.isArray(nextOrbs) ? nextOrbs : [];
+
+  if (source.some(isNewReplayXpOrbTuple)) {
+    const targetById = new Map();
+    for (const nextOrb of target) {
+      if (!isNewReplayXpOrbTuple(nextOrb)) continue;
+      targetById.set(Number(nextOrb[0]) || 0, nextOrb);
+    }
+    return source.map((orb, index) => {
+      if (!isNewReplayXpOrbTuple(orb)) {
+        return {
+          id: `rx-legacy-${index}`,
+          x: Number(orb?.[0]) || 0,
+          y: Number(orb?.[1]) || 0,
+          xp: Math.max(1, Number(orb?.[2]) || 1),
+          ttlMs: 999999,
+          ttlMaxMs: 999999,
+        };
+      }
+      const orbId = Number(orb[0]) || 0;
+      const nextOrb = targetById.get(orbId) || orb;
+      return {
+        id: `rx-${orbId}`,
+        x: lerp(Number(orb[1]) || 0, Number(nextOrb[1]) || Number(orb[1]) || 0, alpha),
+        y: lerp(Number(orb[2]) || 0, Number(nextOrb[2]) || Number(orb[2]) || 0, alpha),
+        xp: Math.max(1, Number(orb[3]) || 1),
+        pullSpeed: Math.max(0, Number(orb[4]) || 0),
+        ttlMs: 999999,
+        ttlMaxMs: 999999,
+      };
+    });
+  }
+
+  return source.map((orb, index) => {
+    const nextOrb = target[index] || orb;
+    return {
+      id: `rx-${index}`,
+      x: lerp(Number(orb?.[0]) || 0, Number(nextOrb?.[0]) || Number(orb?.[0]) || 0, alpha),
+      y: lerp(Number(orb?.[1]) || 0, Number(nextOrb?.[1]) || Number(orb?.[1]) || 0, alpha),
+      xp: Math.max(1, Number(orb?.[2]) || 1),
+      ttlMs: 999999,
+      ttlMaxMs: 999999,
+    };
+  });
+}
+
 function updateReplayGameSpeed(speed) {
   const nextSpeed = Math.max(1, Number(speed) || 1);
   replayGame.speed = nextSpeed;
@@ -3175,14 +3228,7 @@ function buildReplayState(payload, elapsedMs) {
     };
   });
 
-  const xpOrbs = (Array.isArray(current.x) ? current.x : []).map((orb, index) => ({
-    id: `rx-${index}`,
-    x: Number(orb[0]) || 0,
-    y: Number(orb[1]) || 0,
-    xp: Math.max(1, Number(orb[2]) || 1),
-    ttlMs: 999999,
-    ttlMaxMs: 999999,
-  }));
+  const xpOrbs = interpolateReplayXpOrbs(current.x, next?.x, alpha);
 
   const bossPortals = (Array.isArray(current.bp) ? current.bp : []).map((portal, index) => ({
     id: `rp-${index}`,
@@ -3473,8 +3519,9 @@ function drawRecordReplay() {
   }
 
   for (const orb of Array.isArray(current.x) ? current.x : []) {
-    const sx = toScreenX(orb[0]);
-    const sy = toScreenY(orb[1]);
+    const useNewTuple = Array.isArray(orb) && orb.length >= 4;
+    const sx = toScreenX(useNewTuple ? orb[1] : orb[0]);
+    const sy = toScreenY(useNewTuple ? orb[2] : orb[1]);
     replayCtx.fillStyle = '#60a5fa';
     replayCtx.beginPath();
     replayCtx.arc(sx, sy, 3.5, 0, Math.PI * 2);
@@ -4178,6 +4225,16 @@ function updateBulletInterpolation(dt) {
     r.radius = tb.radius || 3;
 
     if (replayGame.active) {
+      if (isRocket && typeof spawnRocketTrailFx === 'function') {
+        const dx = tb.x - r.x;
+        const dy = tb.y - r.y;
+        if ((dx * dx + dy * dy) >= 0.49) {
+          const invDt = 1 / Math.max(0.001, dt);
+          const trailVx = Number(tb.vx) || (dx * invDt);
+          const trailVy = Number(tb.vy) || (dy * invDt);
+          spawnRocketTrailFx(r.x, r.y, trailVx, trailVy, tb.color || '#fb923c');
+        }
+      }
       r.x = tb.x;
       r.y = tb.y;
       continue;
@@ -4218,6 +4275,11 @@ function updateXpOrbInterpolation(dt) {
     if (!r) {
       r = { x: o.x, y: o.y };
       game.renderXpOrbs.set(id, r);
+      continue;
+    }
+    if (replayGame.active) {
+      r.x = o.x;
+      r.y = o.y;
       continue;
     }
     r.x += (o.x - r.x) * alpha;

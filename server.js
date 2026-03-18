@@ -145,8 +145,8 @@ let isShuttingDown = false;
 let shutdownStartedAt = 0;
 let forceShutdownTimer = null;
 const processStartedAt = Date.now();
-const REPLAY_CAPTURE_INTERVAL_MS = 200;
-const REPLAY_FRAME_LIMIT = 7200;
+const REPLAY_CAPTURE_INTERVAL_MS = 100;
+const REPLAY_FRAME_LIMIT = 14400;
 const REPLAY_CHAT_LIMIT = 240;
 const XP_SURGE_DURATION_MS = 3200;
 const XP_SURGE_PULL_MIN_MUL = 0.22;
@@ -3076,9 +3076,11 @@ function captureReplayFrame(room, replay, now, options = {}) {
     d.kind || 'weapon',
   ]));
   const xpOrbs = room.xpOrbs.map((o) => ([
+    Math.max(0, Math.floor(Number(o.id) || 0)),
     roundReplayCoord(o.x),
     roundReplayCoord(o.y),
     Math.max(1, Math.round(Number(o.xp) || 1)),
+    Math.max(0, Math.round(Number(o.pullSpeed) || 0)),
   ]));
   const bossPortals = room.bossPortals.map((bp) => ([
     roundReplayCoord(bp.x),
@@ -4708,7 +4710,6 @@ server.listen(PORT, () => {
     console.log(`Bootstrap admin password: ${ADMIN_BOOTSTRAP_PASSWORD}`);
   }
 });
-
 
 
 
