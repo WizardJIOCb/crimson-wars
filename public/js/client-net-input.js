@@ -4541,6 +4541,17 @@ function clearDeathRewardsUi() {
   if (deathRewardsBodyEl) deathRewardsBodyEl.innerHTML = escapeNewsHtml(tr('ui.death.collecting_rewards'));
 }
 
+function localizeRewardCardName(cardId, fallbackName) {
+  const id = String(cardId || '').trim().toLowerCase();
+  const fb = String(fallbackName || id);
+  if (id.endsWith('_core_card')) {
+    const heroId = id.slice(0, -'_core_card'.length);
+    const heroName = trHeroName(heroId, heroId);
+    return trWithFallback('ui.hero.core_card', `${heroName} Core Card`, { hero: heroName });
+  }
+  return fb;
+}
+
 function formatRunRewardsPayload(rewards) {
   const gainedXp = Math.max(0, Number(rewards?.gainedXp) || 0);
   const gainedShards = Math.max(0, Number(rewards?.gainedShards) || 0);
@@ -4552,7 +4563,8 @@ function formatRunRewardsPayload(rewards) {
   for (const cardId of Object.keys(gainedCards)) {
     const cnt = Math.max(0, Number(gainedCards[cardId]) || 0);
     if (cnt <= 0) continue;
-    cards.push({ id: cardId, count: cnt, name: cardNameById[cardId] || cardId });
+    const rawName = cardNameById[cardId] || cardId;
+    cards.push({ id: cardId, count: cnt, name: localizeRewardCardName(cardId, rawName) });
   }
   return { gainedXp, gainedShards, levelsGained, cards };
 }
@@ -4564,25 +4576,25 @@ function renderDeathRewardsPanel() {
   const isLoggedIn = Boolean(game.playerAuth?.player);
   const accountXpLabel = rewards
     ? ('+' + rewards.gainedXp)
-    : (isLoggedIn ? 'Pending...' : 'Login required');
+    : (isLoggedIn ? trWithFallback('ui.pending', 'Pending...') : trWithFallback('ui.profile.login_required', 'Login required.'));
   const shardsLabel = rewards
     ? ('+' + rewards.gainedShards)
-    : (isLoggedIn ? 'Pending...' : 'Login required');
+    : (isLoggedIn ? trWithFallback('ui.pending', 'Pending...') : trWithFallback('ui.profile.login_required', 'Login required.'));
   const baseRows = [
-    ['Score', Math.max(0, Number(run.score) || 0)],
-    ['Kills', Math.max(0, Number(run.kills) || 0)],
-    ['Enemy kills', Math.max(0, Number(run.enemyKills) || 0)],
-    ['Boss kills', Math.max(0, Number(run.bossKills) || 0)],
-    ['Survival', `${Math.max(1, Number(run.survivalSec) || 1)}s`],
-    ['Hero XP', `Lv${Math.max(1, Number(run.heroLevel) || 1)} | ${Math.max(0, Number(run.heroXp) || 0)}/${Math.max(1, Number(run.heroXpToNext) || 1)}`],
-    ['Account XP', accountXpLabel],
-    ['Shards', shardsLabel],
+    [trWithFallback('ui.run_rewards.score', 'Score'), Math.max(0, Number(run.score) || 0)],
+    [trWithFallback('ui.run_rewards.kills', 'Kills'), Math.max(0, Number(run.kills) || 0)],
+    [trWithFallback('ui.run_rewards.enemy_kills', 'Enemy kills'), Math.max(0, Number(run.enemyKills) || 0)],
+    [trWithFallback('ui.run_rewards.boss_kills', 'Boss kills'), Math.max(0, Number(run.bossKills) || 0)],
+    [trWithFallback('ui.run_rewards.survival', 'Survival'), `${Math.max(1, Number(run.survivalSec) || 1)}s`],
+    [trWithFallback('ui.run_rewards.hero_xp', 'Hero XP'), `Lv${Math.max(1, Number(run.heroLevel) || 1)} | ${Math.max(0, Number(run.heroXp) || 0)}/${Math.max(1, Number(run.heroXpToNext) || 1)}`],
+    [trWithFallback('ui.run_rewards.account_xp', 'Account XP'), accountXpLabel],
+    [trWithFallback('ui.run_rewards.shards', 'Shards'), shardsLabel],
   ];
-  if (rewards && rewards.levelsGained > 0) baseRows.push(['Account level up', '+' + rewards.levelsGained]);
+  if (rewards && rewards.levelsGained > 0) baseRows.push([trWithFallback('ui.run_rewards.account_level_up', 'Account level up'), '+' + rewards.levelsGained]);
   const rowsHtml = baseRows.map(([k, v]) => `<div class="death-reward-row"><span>${escapeHtml(String(k))}</span><b>${escapeHtml(String(v))}</b></div>`).join('');
   const cardsHtml = rewards && rewards.cards.length > 0
     ? (`<div class="death-reward-cards">` + rewards.cards.map((card) => `<span>+${card.count} ${escapeHtml(card.name)}</span>`).join('') + `</div>`)
-    : '<div class="death-reward-cards muted">No hero card drops this run</div>';
+    : '<div class="death-reward-cards muted">' + trWithFallback('ui.run_rewards.no_cards', 'No hero card drops this run') + '</div>';
   deathRewardsBodyEl.innerHTML = rowsHtml + cardsHtml;
 }
 
@@ -4926,7 +4938,7 @@ message: (ev) => {
     if (msg.rewards) {
       latestRunRewards = formatRunRewardsPayload(msg.rewards);
       const cardPieces = latestRunRewards.cards.map((card) => ('+' + card.count + ' ' + card.name));
-      statusEl.textContent = 'Run rewards: +' + latestRunRewards.gainedXp + ' XP, +' + latestRunRewards.gainedShards + ' shards'
+      statusEl.textContent = trWithFallback('ui.run_rewards.status', 'Run rewards: +{xp} XP, +{shards} shards', { xp: latestRunRewards.gainedXp, shards: latestRunRewards.gainedShards })
         + (latestRunRewards.levelsGained > 0 ? (', +' + latestRunRewards.levelsGained + ' account level') : '')
         + (cardPieces.length > 0 ? (', ' + cardPieces.join(', ')) : '');
       if (joinOverlay.classList.contains('death-cinematic-active')) {
