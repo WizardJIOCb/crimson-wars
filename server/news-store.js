@@ -1,4 +1,4 @@
-﻿const fs = require('fs');
+const fs = require('fs');
 const path = require('path');
 
 function nowMs() {
@@ -287,7 +287,9 @@ function createNewsStore({ dataDir, filePath }) {
 
     item.updatedAt = now;
     all[idx] = item;
-    writeAll(all);
+    if (!tryWriteAll(all)) {
+      return { ok: false, code: 503, message: 'News storage is temporarily read-only' };
+    }
     return {
       ok: true,
       item: {
@@ -360,7 +362,9 @@ function createNewsStore({ dataDir, filePath }) {
 
     item.updatedAt = nowMs();
     all[idx] = item;
-    writeAll(all);
+    if (!tryWriteAll(all)) {
+      return { ok: false, code: 503, message: 'News storage is temporarily read-only' };
+    }
     return {
       ok: true,
       item: {
@@ -390,4 +394,5 @@ function createNewsStore({ dataDir, filePath }) {
 module.exports = {
   createNewsStore,
 };
+
 
