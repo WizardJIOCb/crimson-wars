@@ -9,6 +9,8 @@ const movementMetaEl = document.getElementById('movement-meta');
 const netMetaEl = document.getElementById('net-meta');
 const showFpsToggleEl = document.getElementById('show-fps-toggle');
 const showChatToggleEl = document.getElementById('show-chat-toggle');
+const replayPlayerToggleEl = document.getElementById('replay-player-toggle');
+const replayPlayerToggleWrapEl = document.getElementById('replay-player-toggle-wrap');
 const fpsCornerEl = document.getElementById('fps-corner');
 const chatWrapEl = document.getElementById('chat-wrap');
 const chatMessagesEl = document.getElementById('chat-messages');
@@ -238,6 +240,7 @@ const game = {
   connectionIndicatorEnabled: getToggleDefaultOn('cw:connectionIndicatorEnabled'),
   showFpsEnabled: getToggleDefaultOn('cw:showFpsEnabled'),
   showChatEnabled: getToggleDefaultOn('cw:showChatEnabled'),
+  showReplayPlayerEnabled: getToggleDefaultOn('cw:showReplayPlayerEnabled'),
   showMinimapEnabled: getToggleDefaultOn('cw:showMinimapEnabled'),
   showAimStickEnabled: getToggleDefaultOn('cw:showAimStickEnabled'),
   dynamicSticksEnabled: getToggleDefaultOff('cw:dynamicSticksEnabled'),
@@ -2048,6 +2051,23 @@ showChatToggleEl?.addEventListener('change', () => {
 });
 setShowChatEnabled(game.showChatEnabled);
 
+function updateReplayPlayerToggleVisibility() {
+  if (!replayPlayerToggleWrapEl) return;
+  replayPlayerToggleWrapEl.classList.toggle('hidden', !replayGame.active);
+}
+
+function setShowReplayPlayerEnabled(enabled) {
+  game.showReplayPlayerEnabled = Boolean(enabled);
+  if (replayPlayerToggleEl) replayPlayerToggleEl.checked = game.showReplayPlayerEnabled;
+  localStorage.setItem('cw:showReplayPlayerEnabled', game.showReplayPlayerEnabled ? '1' : '0');
+  updateHudVisibility(getComputedStyle(joinOverlay).display !== 'none');
+}
+
+replayPlayerToggleEl?.addEventListener('change', () => {
+  setShowReplayPlayerEnabled(replayPlayerToggleEl.checked);
+});
+setShowReplayPlayerEnabled(game.showReplayPlayerEnabled);
+
 function setShowMinimapEnabled(enabled) {
   game.showMinimapEnabled = Boolean(enabled);
   if (showMinimapToggleEl) showMinimapToggleEl.checked = game.showMinimapEnabled;
@@ -2239,7 +2259,8 @@ function updateHudVisibility(overlayOpen) {
   if (statsToggleBtn) statsToggleBtn.classList.toggle('hidden', menuOpen);
   if (chatWrapEl) chatWrapEl.classList.toggle('hidden', menuOpen || !game.showChatEnabled);
   if (menuOpen && chatInputEl && document.activeElement === chatInputEl) chatInputEl.blur();
-  if (replayGameControlsEl) replayGameControlsEl.classList.toggle('hidden', menuOpen || !replayGame.active);
+  if (replayGameControlsEl) replayGameControlsEl.classList.toggle('hidden', menuOpen || !replayGame.active || !game.showReplayPlayerEnabled);
+  updateReplayPlayerToggleVisibility();
   if (menuOpen) {
     if (statsPanelEl) statsPanelEl.classList.add('hidden');
   } else {
@@ -2297,4 +2318,3 @@ function updateMobileControlsVisibility() {
   }
   setMobileControlsVisible(!overlayOpen);
 }
-

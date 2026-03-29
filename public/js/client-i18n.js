@@ -15,6 +15,7 @@
       'ui.hide': 'Hide',
       'ui.settings.show_fps': 'Show FPS',
       'ui.settings.show_chat': 'Show chat',
+      'ui.settings.replay_player': 'Show replay player',
       'ui.settings.shadows': 'Shadows',
       'ui.settings.show_minimap': 'Show minimap',
       'ui.settings.bullet_tracers': 'Bullet tracers',
@@ -120,6 +121,7 @@
       'ui.profile.hero_closed': 'Locked',
       'ui.play.mode.unknown': 'Unknown',
       'ui.version.v081': 'Chat is now stored in replay and synced during playback.',
+      'ui.version.v082': 'Replay UX polish: replay player toggle in menu, replay link copy for all replay sources, and improved enemy facing in replay.',
       'ui.version.v080': 'Added game version badge in menu and version history modal.',
       'ui.version.v074': 'Added news and improved profile with run history.',
       'ui.version.v070': 'Updated main menu tabs, character gallery and mode selection.',
@@ -351,6 +353,7 @@
       'ui.hide': 'Скрыть',
       'ui.settings.show_fps': 'Показывать FPS',
       'ui.settings.show_chat': 'Показывать чат',
+      'ui.settings.replay_player': 'Показать/скрыть плеер реплея',
       'ui.settings.shadows': 'Тени',
       'ui.settings.show_minimap': 'Показывать миникарту',
       'ui.settings.bullet_tracers': 'Трассеры пуль',
@@ -456,6 +459,7 @@
       'ui.profile.hero_closed': 'Закрыт',
       'ui.play.mode.unknown': 'Неизвестно',
       'ui.version.v081': 'Чат теперь сохраняется в реплей и воспроизводится синхронно при просмотре повтора.',
+      'ui.version.v082': 'Полировка реплеев: тумблер плеера в меню, копирование ссылки для всех источников реплея и улучшенный поворот монстров в повторах.',
       'ui.version.v080': 'Новый блок версии в меню: кнопка справа снизу и окно с историей обновлений.',
       'ui.version.v074': 'Добавлены новости и улучшен экран профиля с историей забегов.',
       'ui.version.v070': 'Обновлено главное меню: вкладки, галерея персонажей и доработанный выбор режима.',
@@ -1011,6 +1015,7 @@
     setText('#record-replay-play', 'ui.record.play_replay');
     setText('#record-replay-ingame', 'ui.record.show_replay_ingame');
     setText('#record-replay-copy-link', 'ui.record.copy_replay_link');
+    setText('#replay-player-toggle-label', 'ui.settings.replay_player');
     setText('#language-label', 'settings.language');
     const langSelect = document.getElementById('language-select');
     if (langSelect) {

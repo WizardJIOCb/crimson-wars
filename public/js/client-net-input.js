@@ -266,6 +266,12 @@ if (infoPanelCloseBtn) {
 setInfoPanelHidden(infoPanelHidden);
 
 function requestManualRunExit() {
+  if (replayGame.active) {
+    stopReplayGame({ showMenu: true });
+    setInfoPanelHidden(true);
+    statusEl.textContent = 'Returned to menu.';
+    return;
+  }
   if (!game.connected || !game.myId || ws.readyState !== WebSocket.OPEN || !game.state) {
     statusEl.textContent = 'You are not in an active run.';
     return;
@@ -372,6 +378,11 @@ const initialMenuTab = MENU_TAB_IDS.has(initialMenuTabParam) ? initialMenuTabPar
 
 const GAME_VERSION_HISTORY = [
   {
+    version: 'v0.8.2',
+    date: '30.03.2026',
+    summaryKey: 'ui.version.v082',
+  },
+  {
     version: 'v0.8.1',
     date: '18.03.2026',
     summaryKey: 'ui.version.v081',
@@ -393,7 +404,7 @@ const GAME_VERSION_HISTORY = [
   },
 ];
 
-const CURRENT_GAME_VERSION = GAME_VERSION_HISTORY[0]?.version || 'v0.8.1';
+const CURRENT_GAME_VERSION = GAME_VERSION_HISTORY[0]?.version || 'v0.8.2';
 
 function renderGameVersionHistory() {
   if (!gameVersionBodyEl) return;
