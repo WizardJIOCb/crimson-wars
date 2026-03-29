@@ -316,6 +316,7 @@
       'skill.shotgun_buddy.name': 'Shotgun Buddy',
       'skill.sniper_buddy.name': 'Sniper Buddy',
       'skill.shockwave.name': 'Shockwave',
+      'skill.psi_blast.name': 'Psi Blast',
       'skill.blade_orbit.name': 'Blade Orbit',
       'skill.chain_lightning.name': 'Chain Lightning',
       'skill.laser_strike.name': 'Laser Strike',
@@ -333,6 +334,7 @@
       'skill.shotgun_buddy.desc': '+1 shotgun bot',
       'skill.sniper_buddy.desc': '+1 sniper bot',
       'skill.shockwave.desc': 'AoE blast around hero',
+      'skill.psi_blast.desc': 'Massive radial knockback blast',
       'skill.blade_orbit.desc': 'Hits nearest enemies',
       'skill.chain_lightning.desc': 'Chains to nearest enemies',
       'skill.laser_strike.desc': 'Instantly zaps nearest enemies',
@@ -650,6 +652,7 @@
       'skill.shotgun_buddy.name': 'Дробовик-дрон',
       'skill.sniper_buddy.name': 'Снайпер-дрон',
       'skill.shockwave.name': 'Ударная волна',
+      'skill.psi_blast.name': 'Пси-взрыв',
       'skill.blade_orbit.name': 'Орбита клинков',
       'skill.chain_lightning.name': 'Цепная молния',
       'skill.laser_strike.name': 'Лазерный удар',
@@ -667,6 +670,7 @@
       'skill.shotgun_buddy.desc': '+1 бот с дробовиком',
       'skill.sniper_buddy.desc': '+1 бот снайпер',
       'skill.shockwave.desc': 'Ударная AoE-волна вокруг героя',
+      'skill.psi_blast.desc': 'Мощный круговой выброс, сильно отталкивает врагов',
       'skill.blade_orbit.desc': 'Бьёт ближайших врагов',
       'skill.chain_lightning.desc': 'Цепная молния по ближним целям',
       'skill.laser_strike.desc': 'Мгновенно поражает ближайших врагов',
@@ -1086,4 +1090,3 @@
     init();
   }
 })()
-

@@ -71,6 +71,12 @@ const {
   ENEMY_RANGED_FIRE_COOLDOWN_MS,
   ENEMY_RANGED_MIN_RANGE,
   ENEMY_RANGED_MAX_RANGE,
+  ENEMY_HIT_STUN_MS,
+  ENEMY_HIT_KNOCKBACK_SPEED,
+  ENEMY_HIT_KNOCKBACK_FRICTION,
+  ENEMY_SKILL_KNOCKBACK_BONUS,
+  ENEMY_KNOCKBACK_BOSS_RESIST,
+  ENEMY_KNOCKBACK_CHARGER_RESIST,
   BOSS_KILL_INTERVAL,
   BOSS_PORTAL_WARN_MS,
   BOSS_RADIUS,
@@ -2228,10 +2234,10 @@ function collectEnemiesInRadius(room, x, y, radius, sourcePlayerId = '') {
     .map((item) => item.target);
 }
 
-function applySkillDamageToTarget(room, target, damage, ownerId, now) {
+function applySkillDamageToTarget(room, target, damage, ownerId, now, options = {}) {
   if (!target) return false;
   if (target.kind === 'enemy' && target.enemy) {
-    return enemyTakeDamage(room, target.enemy, damage, ownerId, now);
+    return enemyTakeDamage(room, target.enemy, damage, ownerId, now, options);
   }
   if (target.kind === 'player' && target.player) {
     const attacker = ownerId ? room.players.get(ownerId) : null;
@@ -2315,7 +2321,12 @@ function explodeRocket(room, bullet, now) {
     const dist = Math.hypot(dx, dy);
     if (dist > reach) continue;
     const falloff = 1 - Math.min(0.45, (dist / Math.max(1, reach)) * 0.45);
-    enemyTakeDamage(room, enemy, Math.max(1, Math.round((Number(bullet.damage) || 1) * falloff)), bullet.ownerId, now);
+    enemyTakeDamage(room, enemy, Math.max(1, Math.round((Number(bullet.damage) || 1) * falloff)), bullet.ownerId, now, {
+      sourceX: bullet.x,
+      sourceY: bullet.y,
+      stunMs: ENEMY_HIT_STUN_MS * 1.2,
+      knockback: ENEMY_HIT_KNOCKBACK_SPEED * 1.9 * falloff,
+    });
   }
 
   if (isPvpRoom(room)) {
@@ -2352,7 +2363,28 @@ function castPlayerActiveSkill(room, player, def, st, now) {
     const targets = collectEnemiesInRadius(room, player.x, player.y, radius, player.id);
     if (targets.length <= 0) return false;
     for (const target of targets) {
-      applySkillDamageToTarget(room, target, damage * player.damageMul, player.id, now);
+      applySkillDamageToTarget(room, target, damage * player.damageMul, player.id, now, {
+        sourceX: player.x,
+        sourceY: player.y,
+        stunMs: ENEMY_HIT_STUN_MS * ENEMY_SKILL_KNOCKBACK_BONUS,
+        knockback: ENEMY_HIT_KNOCKBACK_SPEED * ENEMY_SKILL_KNOCKBACK_BONUS,
+      });
+    }
+    return true;
+  }
+
+  if (skillId === 'psi_blast') {
+    const targets = collectEnemiesInRadius(room, player.x, player.y, radius, player.id);
+    if (targets.length <= 0) return false;
+    const knockbackMul = Math.max(1.8, Number(def.knockbackMul) || 2.6);
+    const stunMs = Math.max(120, Number(def.stunMs) || 180);
+    for (const target of targets) {
+      applySkillDamageToTarget(room, target, damage * player.damageMul, player.id, now, {
+        sourceX: player.x,
+        sourceY: player.y,
+        stunMs,
+        knockback: ENEMY_HIT_KNOCKBACK_SPEED * knockbackMul,
+      });
     }
     return true;
   }
@@ -2520,6 +2552,7 @@ function serializeRoom(room) {
       type: e.type || 'normal',
       x: e.x,
       y: e.y,
+      faceLeft: Boolean(e.faceLeft),
       hp: e.hp,
       maxHp: e.maxHp,
       radius: Math.max(ENEMY_RADIUS, Number(e.radius) || ENEMY_RADIUS),
@@ -2652,6 +2685,10 @@ function spawnEnemy(room, now, difficulty = null) {
     attackWindupMs: 0,
     attackCooldownMs: 0,
     attackTargetId: null,
+    hitStunMs: 0,
+    knockbackVx: 0,
+    knockbackVy: 0,
+    faceLeft: false,
   });
 }
 function spawnBossEnemy(room, x, y, now, difficulty = null) {
@@ -2676,6 +2713,10 @@ function spawnBossEnemy(room, x, y, now, difficulty = null) {
     attackWindupMs: 0,
     attackCooldownMs: 500,
     attackTargetId: null,
+    hitStunMs: 0,
+    knockbackVx: 0,
+    knockbackVy: 0,
+    faceLeft: false,
   });
   broadcastRoom(room, { type: 'system', message: 'BOSS arrived. Keep moving.' });
 }
@@ -3261,9 +3302,78 @@ function getEnemyScoreValue(enemy) {
   return 10;
 }
 
-function enemyTakeDamage(room, enemy, damage, ownerId, now) {
+function getEnemyKnockbackResist(enemy) {
+  if (!enemy) return 1;
+  if (enemy.type === 'boss') return ENEMY_KNOCKBACK_BOSS_RESIST;
+  if (enemy.type === 'charger') return ENEMY_KNOCKBACK_CHARGER_RESIST;
+  return 1;
+}
+
+function normalizeKnockDirection(enemy, options = {}, owner = null) {
+  const optDirX = Number(options?.dirX);
+  const optDirY = Number(options?.dirY);
+  if (Number.isFinite(optDirX) || Number.isFinite(optDirY)) {
+    const len = Math.hypot(optDirX || 0, optDirY || 0) || 1;
+    return { x: (optDirX || 0) / len, y: (optDirY || 0) / len };
+  }
+
+  const sourceX = Number(options?.sourceX ?? options?.fromX);
+  const sourceY = Number(options?.sourceY ?? options?.fromY);
+  if (Number.isFinite(sourceX) && Number.isFinite(sourceY)) {
+    const dx = enemy.x - sourceX;
+    const dy = enemy.y - sourceY;
+    const len = Math.hypot(dx, dy) || 1;
+    return { x: dx / len, y: dy / len };
+  }
+
+  if (owner) {
+    const dx = enemy.x - owner.x;
+    const dy = enemy.y - owner.y;
+    const len = Math.hypot(dx, dy) || 1;
+    return { x: dx / len, y: dy / len };
+  }
+
+  const rnd = Math.random() * Math.PI * 2;
+  return { x: Math.cos(rnd), y: Math.sin(rnd) };
+}
+
+function applyEnemyHitReaction(room, enemy, ownerId, options = {}) {
+  if (!enemy || enemy.hp <= 0) return;
+  const owner = ownerId ? room.players.get(ownerId) : null;
+  const resist = Math.max(0.05, getEnemyKnockbackResist(enemy));
+  const stunMs = Math.max(0, Number(options?.stunMs));
+  const knockback = Math.max(0, Number(options?.knockback));
+  if (stunMs <= 0 && knockback <= 0) return;
+
+  if (stunMs > 0) {
+    enemy.hitStunMs = Math.max(Number(enemy.hitStunMs) || 0, stunMs * resist);
+  }
+
+  if (knockback > 0) {
+    const dir = normalizeKnockDirection(enemy, options, owner);
+    const push = knockback * resist;
+    enemy.knockbackVx = (Number(enemy.knockbackVx) || 0) + dir.x * push;
+    enemy.knockbackVy = (Number(enemy.knockbackVy) || 0) + dir.y * push;
+    const maxVec = Math.max(90, push * 1.9);
+    const len = Math.hypot(enemy.knockbackVx, enemy.knockbackVy);
+    if (len > maxVec) {
+      enemy.knockbackVx = (enemy.knockbackVx / len) * maxVec;
+      enemy.knockbackVy = (enemy.knockbackVy / len) * maxVec;
+    }
+  }
+}
+
+function enemyTakeDamage(room, enemy, damage, ownerId, now, options = {}) {
   if (!enemy) return false;
-  enemy.hp -= Math.max(1, Math.round(Number(damage) || 1));
+  const amount = Math.max(1, Math.round(Number(damage) || 1));
+  enemy.hp -= amount;
+  const damageSource = String(options?.damageSource || '').toLowerCase();
+  const skipControlFromBulletOnBoss = enemy.type === 'boss' && damageSource === 'bullet';
+  if (!skipControlFromBulletOnBoss) {
+    const hitStunMs = Math.max(0, Number(options?.stunMs ?? ENEMY_HIT_STUN_MS) || 0);
+    const hitKnockback = Math.max(0, Number(options?.knockback ?? ENEMY_HIT_KNOCKBACK_SPEED) || 0);
+    applyEnemyHitReaction(room, enemy, ownerId, { ...options, stunMs: hitStunMs, knockback: hitKnockback });
+  }
   if (enemy.hp > 0) return false;
 
   const idx = room.enemies.findIndex((e) => e.id === enemy.id);
@@ -4391,7 +4501,13 @@ function tickRoom(room, dtSec, now) {
           if (collides) {
             hit = true;
             if (b.kind === 'rocket') explodeRocket(room, b, now);
-            else enemyTakeDamage(room, e, b.damage, b.ownerId, now);
+            else enemyTakeDamage(room, e, b.damage, b.ownerId, now, {
+              fromX: prevX,
+              fromY: prevY,
+              dirX: b.vx,
+              dirY: b.vy,
+              damageSource: 'bullet',
+            });
             break;
           }
         }
@@ -4406,6 +4522,29 @@ function tickRoom(room, dtSec, now) {
     if (e.attackCooldownMs > 0) e.attackCooldownMs = Math.max(0, e.attackCooldownMs - dtSec * 1000);
 
     const er = Math.max(ENEMY_RADIUS, Number(e.radius) || ENEMY_RADIUS);
+    e.hitStunMs = Math.max(0, Number(e.hitStunMs) || 0);
+    e.knockbackVx = Number(e.knockbackVx) || 0;
+    e.knockbackVy = Number(e.knockbackVy) || 0;
+    if (e.hitStunMs > 0) {
+      e.hitStunMs = Math.max(0, e.hitStunMs - dtSec * 1000);
+    }
+    if (Math.abs(e.knockbackVx) > 0.2 || Math.abs(e.knockbackVy) > 0.2) {
+      e.x = clamp(e.x + e.knockbackVx * dtSec, er, WORLD_WIDTH - er);
+      e.y = clamp(e.y + e.knockbackVy * dtSec, er, WORLD_HEIGHT - er);
+      const decay = Math.max(0, 1 - dtSec * ENEMY_HIT_KNOCKBACK_FRICTION);
+      e.knockbackVx *= decay;
+      e.knockbackVy *= decay;
+      if (Math.abs(e.knockbackVx) < 0.2) e.knockbackVx = 0;
+      if (Math.abs(e.knockbackVy) < 0.2) e.knockbackVy = 0;
+    }
+    if (e.hitStunMs > 0) {
+      e.vx = 0;
+      e.vy = 0;
+      e.attackWindupMs = 0;
+      e.attackTargetId = null;
+      continue;
+    }
+
     const speed = Number(e.speed) || ENEMY_SPEED_MIN;
     const target = nearestAlivePlayer(room, e.x, e.y);
     if (!target) {
@@ -4433,6 +4572,8 @@ function tickRoom(room, dtSec, now) {
         e.vx = 0;
         e.vy = 0;
       }
+      if (Math.abs(Number(e.vx) || 0) > 0.15) e.faceLeft = (Number(e.vx) || 0) < 0;
+      else e.faceLeft = dx < 0;
 
       e.x = clamp(e.x + e.vx * dtSec, er, WORLD_WIDTH - er);
       e.y = clamp(e.y + e.vy * dtSec, er, WORLD_HEIGHT - er);
@@ -4452,6 +4593,7 @@ function tickRoom(room, dtSec, now) {
       if (e.attackWindupMs <= 0) {
         const lockedTarget = room.players.get(e.attackTargetId);
         if (lockedTarget && lockedTarget.alive) {
+          e.faceLeft = (lockedTarget.x - e.x) < 0;
           if (e.type === 'charger' || e.type === 'boss') {
             const cdx = lockedTarget.x - e.x;
             const cdy = lockedTarget.y - e.y;
@@ -4482,6 +4624,7 @@ function tickRoom(room, dtSec, now) {
     if (e.attackCooldownMs <= 0 && (e.x - target.x) ** 2 + (e.y - target.y) ** 2 <= attackTriggerRange * attackTriggerRange && target.alive) {
       e.vx = 0;
       e.vy = 0;
+      e.faceLeft = dx < 0;
       e.attackWindupMs = e.type === 'boss' ? BOSS_ATTACK_WINDUP_MS : ENEMY_ATTACK_WINDUP_MS;
       e.attackTargetId = target.id;
       continue;
@@ -4489,6 +4632,7 @@ function tickRoom(room, dtSec, now) {
 
     e.vx = (dx / d) * speed;
     e.vy = (dy / d) * speed;
+    if (Math.abs(Number(e.vx) || 0) > 0.15) e.faceLeft = (Number(e.vx) || 0) < 0;
     e.x = clamp(e.x + e.vx * dtSec, er, WORLD_WIDTH - er);
     e.y = clamp(e.y + e.vy * dtSec, er, WORLD_HEIGHT - er);
   }
@@ -4710,14 +4854,3 @@ server.listen(PORT, () => {
     console.log(`Bootstrap admin password: ${ADMIN_BOOTSTRAP_PASSWORD}`);
   }
 });
-
-
-
-
-
-
-
-
-
-
-

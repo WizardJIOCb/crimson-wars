@@ -1345,6 +1345,8 @@ function buildSkillCurrentStatLines(skill, def) {
     if (damage > 0) lines.push('Damage: ' + Math.round(damage));
     if (radius > 0) lines.push('Radius: ' + Math.round(radius));
     if (targets > 0) lines.push('Targets: ' + Math.max(1, Math.round(targets)));
+    if (Number(def?.knockbackMul) > 0) lines.push('Knockback: x' + fmtSkillNumber(Number(def?.knockbackMul), 2));
+    if (Number(def?.stunMs) > 0) lines.push('Stun: ' + Math.round(Number(def?.stunMs)) + 'ms');
 
     const baseCd = Math.max(0, Number(def?.cooldownMs) || 0);
     const cdMul = Math.max(0, Number(def?.cooldownMulPerLevel) || 0);
@@ -2291,6 +2293,5 @@ function updateMobileControlsVisibility() {
   }
   setMobileControlsVisible(!overlayOpen);
 }
-
 
 

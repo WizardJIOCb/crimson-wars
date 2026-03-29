@@ -4132,7 +4132,7 @@ function updateEnemyInterpolation(dt) {
     alive.add(id);
     let r = game.renderEnemies.get(id);
     if (!r) {
-      r = { x: e.x, y: e.y, vx: 0, vy: 0 };
+      r = { x: e.x, y: e.y, vx: 0, vy: 0, faceLeft: Boolean(e.faceLeft) };
       game.renderEnemies.set(id, r);
       continue;
     }
@@ -4141,6 +4141,7 @@ function updateEnemyInterpolation(dt) {
     const ny = r.y + (e.y - r.y) * alpha;
     r.vx = (nx - r.x) / Math.max(0.001, dt);
     r.vy = (ny - r.y) / Math.max(0.001, dt);
+    if (typeof e.faceLeft === 'boolean') r.faceLeft = e.faceLeft;
     r.x = nx;
     r.y = ny;
   }
@@ -4311,7 +4312,7 @@ function pushNetSnapshot(state) {
       alive: Boolean(p.alive),
       dodgeInvulnUntil: Number(p.dodgeInvulnUntil) || 0,
     })),
-    enemies: state.enemies.map((e) => ({ id: e.id, x: e.x, y: e.y })),
+    enemies: state.enemies.map((e) => ({ id: e.id, x: e.x, y: e.y, faceLeft: Boolean(e.faceLeft) })),
     bullets: state.bullets.map((b) => ({
       id: b.id ?? `${b.x.toFixed(1)}:${b.y.toFixed(1)}`,
       x: b.x,
@@ -4402,6 +4403,7 @@ function sampleBufferedState() {
           color: pb.color ?? pa.color,
           kind: pb.kind ?? pa.kind,
           radius: pb.radius ?? pa.radius,
+          faceLeft: typeof pb.faceLeft === 'boolean' ? pb.faceLeft : pa.faceLeft,
           alive: pbAliveKnown ? Boolean(pb.alive) : (paAliveKnown ? Boolean(pa.alive) : undefined),
           dodgeInvulnUntil: Number(pb.dodgeInvulnUntil ?? pa.dodgeInvulnUntil) || 0,
         });
@@ -4588,6 +4590,12 @@ window.addEventListener('keydown', (e) => {
   const t = e.target;
   const typing = t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement;
   const overlayOpen = getComputedStyle(joinOverlay).display !== 'none';
+
+  if (!typing && e.code === 'Escape' && !overlayOpen && game.state && !e.repeat) {
+    e.preventDefault();
+    setInfoPanelHidden(!infoPanelHidden);
+    return;
+  }
 
   if (!typing && !overlayOpen && e.code === 'Enter' && chatInputEl && game.showChatEnabled) {
     e.preventDefault();

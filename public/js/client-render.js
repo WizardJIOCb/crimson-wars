@@ -342,8 +342,7 @@ function drawEnemies(enemies, t) {
 
     if (sprites.enemy.complete && sprites.enemy.naturalWidth >= fw * 2) {
       const frame = Math.floor(t * (isBoss ? 9 : 12)) % frames;
-      if (Math.abs(re.vx || 0) > 0.15) re.faceLeft = (re.vx || 0) < 0;
-      const faceLeft = Boolean(re.faceLeft);
+      const faceLeft = Boolean(re.faceLeft ?? e.faceLeft);
 
       ctx.save();
       ctx.translate(x, y + (isBoss ? 6 : 2));
@@ -1218,7 +1217,6 @@ startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 setInterval(sendNetStatsReport, 1500);
 scheduleNextFrame();
-
 
 
 

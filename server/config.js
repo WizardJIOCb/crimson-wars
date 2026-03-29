@@ -36,6 +36,12 @@ const ENEMY_RANGED_BULLET_LIFE_MS = 1300;
 const ENEMY_RANGED_FIRE_COOLDOWN_MS = 900;
 const ENEMY_RANGED_MIN_RANGE = 170;
 const ENEMY_RANGED_MAX_RANGE = 280;
+const ENEMY_HIT_STUN_MS = 110;
+const ENEMY_HIT_KNOCKBACK_SPEED = 200;
+const ENEMY_HIT_KNOCKBACK_FRICTION = 7.2;
+const ENEMY_SKILL_KNOCKBACK_BONUS = 1.35;
+const ENEMY_KNOCKBACK_BOSS_RESIST = 0.42;
+const ENEMY_KNOCKBACK_CHARGER_RESIST = 0.72;
 const BOSS_KILL_INTERVAL = 50;
 const BOSS_PORTAL_WARN_MS = 4200;
 const BOSS_RADIUS = 42;
@@ -148,6 +154,7 @@ const DEFAULT_SKILL_DEFS = {
   shotgun_buddy: { id: 'shotgun_buddy', name: 'Shotgun Buddy', kind: 'passive', rarity: 'rare', maxLevel: 4, weight: 0.56, companionWeaponKey: 'shotgun', desc: '+1 shotgun bot' },
   sniper_buddy: { id: 'sniper_buddy', name: 'Sniper Buddy', kind: 'passive', rarity: 'epic', maxLevel: 3, weight: 0.34, companionWeaponKey: 'sniper', desc: '+1 sniper bot' },
   shockwave: { id: 'shockwave', name: 'Shockwave', kind: 'active', rarity: 'rare', maxLevel: 8, weight: 0.84, cooldownMs: 5400, cooldownMulPerLevel: 0.08, radius: 170, radiusPerLevel: 14, damage: 38, damagePerLevel: 16, desc: 'AoE blast around hero' },
+  psi_blast: { id: 'psi_blast', name: 'Psi Blast', kind: 'active', rarity: 'epic', maxLevel: 6, weight: 0.55, cooldownMs: 8600, cooldownMulPerLevel: 0.07, radius: 220, radiusPerLevel: 22, damage: 54, damagePerLevel: 20, knockbackMul: 2.7, stunMs: 180, desc: 'Massive radial knockback blast' },
   blade_orbit: { id: 'blade_orbit', name: 'Blade Orbit', kind: 'active', rarity: 'common', maxLevel: 8, weight: 1.02, cooldownMs: 1450, cooldownMulPerLevel: 0.05, radius: 190, radiusPerLevel: 12, damage: 23, damagePerLevel: 10, targets: 2, targetsPerLevel: 1, desc: 'Hits nearest enemies' },
   chain_lightning: { id: 'chain_lightning', name: 'Chain Lightning', kind: 'active', rarity: 'epic', maxLevel: 7, weight: 0.52, cooldownMs: 6200, cooldownMulPerLevel: 0.08, radius: 330, radiusPerLevel: 18, damage: 52, damagePerLevel: 19, targets: 3, targetsPerLevel: 1, desc: 'Chains to nearest enemies' },
   laser_strike: { id: 'laser_strike', name: 'Laser Strike', kind: 'active', rarity: 'rare', maxLevel: 8, weight: 0.72, cooldownMs: 2600, cooldownMulPerLevel: 0.06, radius: 320, radiusPerLevel: 34, damage: 40, damagePerLevel: 15, targets: 1, targetsPerLevel: 1, desc: 'Instantly zaps nearest enemies' },
@@ -328,6 +335,12 @@ module.exports = {
   ENEMY_RANGED_FIRE_COOLDOWN_MS,
   ENEMY_RANGED_MIN_RANGE,
   ENEMY_RANGED_MAX_RANGE,
+  ENEMY_HIT_STUN_MS,
+  ENEMY_HIT_KNOCKBACK_SPEED,
+  ENEMY_HIT_KNOCKBACK_FRICTION,
+  ENEMY_SKILL_KNOCKBACK_BONUS,
+  ENEMY_KNOCKBACK_BOSS_RESIST,
+  ENEMY_KNOCKBACK_CHARGER_RESIST,
   BOSS_KILL_INTERVAL,
   BOSS_PORTAL_WARN_MS,
   BOSS_RADIUS,

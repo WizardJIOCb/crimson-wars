@@ -360,7 +360,13 @@ function createAccountProgressionStore({
       return Boolean(cardId && cardDefMap[cardId]);
     });
 
-    const pool = lockedHeroes.length > 0 ? lockedHeroes : heroes.filter((hero) => String(hero.unlockCardId || '').trim());
+    const sequentialLocked = lockedHeroes
+      .slice()
+      .sort((a, b) =>
+        (clampInt(a.unlockLevel, 1) - clampInt(b.unlockLevel, 1))
+        || (heroes.findIndex((hero) => hero.id === a.id) - heroes.findIndex((hero) => hero.id === b.id)));
+    const nextHero = sequentialLocked[0] || null;
+    const pool = nextHero ? [nextHero] : heroes.filter((hero) => String(hero.unlockCardId || '').trim());
     if (pool.length <= 0) return {};
 
     const gainedCards = {};
