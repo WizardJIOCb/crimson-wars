@@ -682,6 +682,31 @@ body.replay-game-active #scoreboard {
   overflow: hidden;
 }
 
+#join-overlay .menu-logo-wrap {
+  position: absolute;
+  left: 50%;
+  top: clamp(6px, 2.2vh, 24px);
+  transform: translateX(-50%);
+  width: min(760px, calc(100vw - 84px));
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 3;
+}
+
+#join-overlay .menu-logo-img {
+  width: min(100%, 700px);
+  height: auto;
+  display: block;
+  object-fit: contain;
+  filter: drop-shadow(0 12px 28px rgba(80, 0, 0, 0.45));
+}
+
+#join-overlay.death-mode .menu-logo-wrap,
+#join-overlay.death-cinematic-active .menu-logo-wrap {
+  display: none;
+}
+
 #join-overlay::before,
 #join-overlay::after {
   content: '';
@@ -720,7 +745,7 @@ body.replay-game-active #scoreboard {
 
 #join-form {
   position: relative;
-  z-index: 1;
+  z-index: 2;
   background: #10151d;
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 12px;
@@ -728,7 +753,8 @@ body.replay-game-active #scoreboard {
   display: grid;
   gap: 8px;
   width: min(1460px, calc(100vw - 24px));
-  max-height: calc(100vh - 20px);
+  margin-top: clamp(96px, 14vh, 156px);
+  max-height: calc(100vh - 20px - clamp(96px, 14vh, 156px));
   overflow: auto;
 }
 #join-form input,
@@ -2866,8 +2892,18 @@ body.levelup-open #dev-console-toggle {
     padding: calc(env(safe-area-inset-top) + 8px) 6px calc(env(safe-area-inset-bottom) + 8px);
   }
 
+  #join-overlay .menu-logo-wrap {
+    top: calc(env(safe-area-inset-top) + -16px);
+    width: calc(100vw - 74px);
+  }
+
+  #join-overlay .menu-logo-img {
+    width: min(100%, 500px);
+  }
+
   #join-form {
     margin: 0 auto;
+    margin-top: clamp(128px, 24vw, 176px);
     width: calc(100vw - 12px);
     max-height: none;
     min-height: 0;
@@ -4095,4 +4131,3 @@ body.levelup-open #dev-console-toggle {
 #pvp-duration-wrap {
   margin-top: 6px;
 }
-
