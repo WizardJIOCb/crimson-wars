@@ -1,10 +1,31 @@
-function spawnBlood(x, y, count) {
+function spawnBlood(x, y, count, dirX = 0, dirY = 0, dirBias = 0.58) {
   const q = getQ();
   const n = Math.floor(count * q.bloodMult);
+  const len = Math.hypot(Number(dirX) || 0, Number(dirY) || 0);
+  const hasDir = len > 0.0001;
+  const ndx = hasDir ? (Number(dirX) || 0) / len : 0;
+  const ndy = hasDir ? (Number(dirY) || 0) / len : 0;
+  const bias = hasDir ? Math.max(0, Math.min(0.95, Number(dirBias) || 0.58)) : 0;
+  const baseDirAngle = hasDir ? Math.atan2(ndy, ndx) : 0;
+  const cone = 0.34 + (1 - bias) * 0.22;
   for (let i = 0; i < n; i += 1) {
-    const a = Math.random() * Math.PI * 2;
-    const sp = 30 + Math.random() * 170;
-    visuals.blood.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.2 + Math.random() * 0.45, ttl: 0.2 + Math.random() * 0.45, s: 1.2 + Math.random() * 2.4 });
+    const randA = Math.random() * Math.PI * 2;
+    const a = hasDir ? (baseDirAngle + (Math.random() - 0.5) * cone * 2) : randA;
+    const rx = Math.cos(a);
+    const ry = Math.sin(a);
+    let ox = rx;
+    let oy = ry;
+    if (hasDir) {
+      ox = rx * (1 - bias * 0.25) + ndx * (bias * 0.25);
+      oy = ry * (1 - bias * 0.25) + ndy * (bias * 0.25);
+      const olen = Math.hypot(ox, oy) || 1;
+      ox /= olen;
+      oy /= olen;
+    }
+    const sp = hasDir
+      ? (95 + Math.random() * 220 + bias * 90)
+      : (30 + Math.random() * 170);
+    visuals.blood.push({ x, y, vx: ox * sp, vy: oy * sp, life: 0.2 + Math.random() * 0.45, ttl: 0.2 + Math.random() * 0.45, s: 1.2 + Math.random() * 2.4 });
   }
   if (visuals.blood.length > q.maxBlood) visuals.blood.splice(0, visuals.blood.length - q.maxBlood);
 }
@@ -20,19 +41,39 @@ function spawnBloodPuddle(x, y, intensity = 1) {
   if (visuals.bloodPuddles.length > 60) visuals.bloodPuddles.splice(0, visuals.bloodPuddles.length - 60);
 }
 
-function spawnGoreBurst(x, y, damage = 10) {
+function spawnGoreBurst(x, y, damage = 10, dirX = 0, dirY = 0, dirBias = 0.44) {
   if (!game.extraBloodEnabled) return;
   const chunks = Math.max(3, Math.min(14, Math.floor(damage * 0.45)));
+  const len = Math.hypot(Number(dirX) || 0, Number(dirY) || 0);
+  const hasDir = len > 0.0001;
+  const ndx = hasDir ? (Number(dirX) || 0) / len : 0;
+  const ndy = hasDir ? (Number(dirY) || 0) / len : 0;
+  const bias = hasDir ? Math.max(0, Math.min(0.9, Number(dirBias) || 0.44)) : 0;
+  const baseDirAngle = hasDir ? Math.atan2(ndy, ndx) : 0;
+  const cone = 0.5 + (1 - bias) * 0.24;
   for (let i = 0; i < chunks; i += 1) {
-    const angle = (Math.random() - 0.5) * Math.PI * 0.9;
-    const speed = 26 + Math.random() * 120;
+    const angle = hasDir ? (baseDirAngle + (Math.random() - 0.5) * cone * 2) : (Math.random() * Math.PI * 2);
+    const rx = Math.cos(angle);
+    const ry = Math.sin(angle);
+    let ox = rx;
+    let oy = ry;
+    if (hasDir) {
+      ox = rx * (1 - bias * 0.22) + ndx * (bias * 0.22);
+      oy = ry * (1 - bias * 0.22) + ndy * (bias * 0.22);
+      const olen = Math.hypot(ox, oy) || 1;
+      ox /= olen;
+      oy /= olen;
+    }
+    const speed = hasDir
+      ? (80 + Math.random() * 150 + bias * 55)
+      : (26 + Math.random() * 120);
     const lift = 45 + Math.random() * 120;
     visuals.gore.push({
       x,
       y,
       z: 4 + Math.random() * 8,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
+      vx: ox * speed,
+      vy: oy * speed,
       vz: lift,
       life: 0.45 + Math.random() * 0.55,
       ttl: 0.45 + Math.random() * 0.55,
@@ -283,6 +324,19 @@ function spawnChainLightningFx(caster, nextState) {
     .slice(0, 5);
 
   for (const t of targets) {
+    const dx = t.e.x - caster.x;
+    const dy = t.e.y - caster.y;
+    registerImpactSource({
+      x: t.e.x,
+      y: t.e.y,
+      dirX: dx,
+      dirY: dy,
+      radial: false,
+      radius: 150,
+      strength: 1.28,
+      ttlMs: 260,
+      target: 'enemy',
+    });
     visuals.skillLinks.push({
       x1: caster.x,
       y1: caster.y - 8,
@@ -317,6 +371,19 @@ function spawnLaserStrikeFx(caster, nextState, skill) {
 
   spawnSkillBurstFx(caster.x, caster.y, '#f9a8d4', Math.min(170, 80 + maxTargets * 14));
   for (const t of targets) {
+    const dx = t.e.x - caster.x;
+    const dy = t.e.y - caster.y;
+    registerImpactSource({
+      x: t.e.x,
+      y: t.e.y,
+      dirX: dx,
+      dirY: dy,
+      radial: false,
+      radius: 170,
+      strength: 1.45,
+      ttlMs: 280,
+      target: 'enemy',
+    });
     visuals.skillLinks.push({
       x1: caster.x,
       y1: caster.y - 7,
@@ -340,16 +407,53 @@ function shockwaveFxRadius(skill) {
   return Math.max(70, base + perLevel * (lvl - 1));
 }
 
+function registerImpactSource(options = {}) {
+  if (!Array.isArray(visuals.recentImpactSources)) visuals.recentImpactSources = [];
+  visuals.recentImpactSources.push({
+    x: Number(options.x) || 0,
+    y: Number(options.y) || 0,
+    dirX: Number(options.dirX) || 0,
+    dirY: Number(options.dirY) || 0,
+    radial: options.radial !== false,
+    target: String(options.target || 'enemy').toLowerCase(),
+    radius: Math.max(36, Number(options.radius) || 36),
+    strength: Math.max(0.25, Math.min(3.2, Number(options.strength) || 1)),
+    expireAt: Date.now() + Math.max(100, Number(options.ttlMs) || 300),
+  });
+  if (visuals.recentImpactSources.length > 48) {
+    visuals.recentImpactSources.splice(0, visuals.recentImpactSources.length - 48);
+  }
+}
+
 function spawnSkillCastFx(skillId, caster, nextState, skill) {
   const sid = String(skillId || '').toLowerCase();
   if (sid === 'shockwave') {
-    spawnSkillBurstFx(caster.x, caster.y, '#86efac', shockwaveFxRadius(skill));
+    const radius = shockwaveFxRadius(skill);
+    spawnSkillBurstFx(caster.x, caster.y, '#86efac', radius);
+    registerImpactSource({
+      x: caster.x,
+      y: caster.y,
+      radius,
+      strength: 1.45,
+      ttlMs: 340,
+      radial: true,
+      target: 'enemy',
+    });
     spawnHitFx(caster.x, caster.y, 12, caster.id === game.myId);
     spawnSkillLabel(trFx('skill.shockwave.name', 'Shockwave'), caster.x, caster.y - 12);
     return;
   }
   if (sid === 'blade_orbit') {
     spawnBladeOrbitFx(caster.x, caster.y);
+    registerImpactSource({
+      x: caster.x,
+      y: caster.y,
+      radius: 220,
+      strength: 1.18,
+      ttlMs: 300,
+      radial: true,
+      target: 'enemy',
+    });
     spawnSkillLabel(trFx('skill.blade_orbit.name', 'Blade Orbit'), caster.x, caster.y - 10);
     return;
   }
@@ -369,10 +473,20 @@ function spawnSkillCastFx(skillId, caster, nextState, skill) {
     return;
   }
   if (sid === 'psi_blast') {
-    spawnSkillBurstFx(caster.x, caster.y, '#60a5fa', psiBlastFxRadius(skill), {
+    const radius = psiBlastFxRadius(skill);
+    spawnSkillBurstFx(caster.x, caster.y, '#60a5fa', radius, {
       style: 'psi_blast',
       growSpeed: 3900,
       trailRings: 6,
+    });
+    registerImpactSource({
+      x: caster.x,
+      y: caster.y,
+      radius,
+      strength: 2.15,
+      ttlMs: 460,
+      radial: true,
+      target: 'enemy',
     });
     spawnSkillLabel(trFx('skill.psi_blast.name', 'Psi Blast'), caster.x, caster.y - 12);
     return;
@@ -410,6 +524,68 @@ function processSkillCastFx(nextState) {
 }
 
 function processStateFx(nextState) {
+  processSkillCastFx(nextState);
+
+  const nowMs = Date.now();
+  if (!Array.isArray(visuals.recentImpactSources)) visuals.recentImpactSources = [];
+  visuals.recentImpactSources = visuals.recentImpactSources.filter((src) => Number(src?.expireAt) > nowMs);
+
+  const prevBulletsForImpact = visuals.prevBulletsForImpact instanceof Map ? visuals.prevBulletsForImpact : new Map();
+  const currentBulletIds = new Set((nextState.bullets || []).map((b) => b.id));
+  const vanishedBullets = [];
+  for (const [id, bullet] of prevBulletsForImpact.entries()) {
+    if (!currentBulletIds.has(id)) vanishedBullets.push(bullet);
+  }
+
+  const resolveImpactDir = (x, y, targetIsPlayer = false) => {
+    let best = null;
+    let bestScore = Infinity;
+
+    for (const b of vanishedBullets) {
+      if (!b) continue;
+      const fromEnemy = Boolean(b.fromEnemy);
+      if (targetIsPlayer && !fromEnemy) continue;
+      if (!targetIsPlayer && fromEnemy) continue;
+      const dx = x - (Number(b.x) || 0);
+      const dy = y - (Number(b.y) || 0);
+      const d2 = dx * dx + dy * dy;
+      if (d2 > (190 * 190)) continue;
+      const bulletStrength = 1;
+      const score = d2 / (bulletStrength * bulletStrength);
+      if (score < bestScore) {
+        bestScore = score;
+        best = { x: Number(b.vx) || dx, y: Number(b.vy) || dy, strength: bulletStrength };
+      }
+    }
+
+    for (const src of visuals.recentImpactSources) {
+      if (!src) continue;
+      const target = String(src.target || 'enemy');
+      if (targetIsPlayer && target === 'enemy') continue;
+      if (!targetIsPlayer && target === 'player') continue;
+      const sx = Number(src.x) || 0;
+      const sy = Number(src.y) || 0;
+      const dx = x - sx;
+      const dy = y - sy;
+      const d2 = dx * dx + dy * dy;
+      const r = Math.max(36, Number(src.radius) || 36);
+      if (d2 > (r * r)) continue;
+      const strength = Math.max(0.25, Math.min(3.2, Number(src.strength) || 1));
+      const score = d2 / (strength * strength);
+      const dirX = src.radial === false ? (Number(src.dirX) || dx) : dx;
+      const dirY = src.radial === false ? (Number(src.dirY) || dy) : dy;
+      if (Math.hypot(dirX, dirY) < 0.0001) continue;
+      if (score < bestScore) {
+        bestScore = score;
+        best = { x: dirX, y: dirY, strength };
+      }
+    }
+
+    if (!best) return { x: 0, y: 0, strength: 0 };
+    const len = Math.hypot(best.x, best.y) || 1;
+    return { x: best.x / len, y: best.y / len, strength: best.strength || 1 };
+  };
+
   const prevEnemyMap = visuals.enemyPrev;
   const nextEnemyMap = new Map();
 
@@ -418,8 +594,9 @@ function processStateFx(nextState) {
     const prev = prevEnemyMap.get(e.id);
     if (prev && e.hp < prev.hp) {
       const hitDamage = Math.max(1, prev.hp - e.hp);
-      spawnBlood(e.x, e.y, Math.max(2, Math.floor(hitDamage * 0.45)));
-      spawnGoreBurst(e.x, e.y, hitDamage);
+      const hitDir = resolveImpactDir(e.x, e.y, false);
+      spawnBlood(e.x, e.y, Math.max(2, Math.floor(hitDamage * 0.45)), hitDir.x, hitDir.y, 0.92 * (hitDir.strength || 1));
+      spawnGoreBurst(e.x, e.y, hitDamage, hitDir.x, hitDir.y, 0.78 * (hitDir.strength || 1));
       spawnHitFx(e.x, e.y, hitDamage, false);
     }
   }
@@ -429,8 +606,9 @@ function processStateFx(nextState) {
       if (prev.type === 'boss') {
         spawnBossDeathExplosion(prev.x, prev.y);
       } else {
-        spawnBlood(prev.x, prev.y, 18);
-        spawnGoreBurst(prev.x, prev.y, 18);
+        const hitDir = resolveImpactDir(prev.x, prev.y, false);
+        spawnBlood(prev.x, prev.y, 18, hitDir.x, hitDir.y, 0.96 * (hitDir.strength || 1));
+        spawnGoreBurst(prev.x, prev.y, 18, hitDir.x, hitDir.y, 0.82 * (hitDir.strength || 1));
         spawnBloodPuddle(prev.x, prev.y, 1);
         spawnHitFx(prev.x, prev.y, 14, false);
       }
@@ -457,14 +635,16 @@ function processStateFx(nextState) {
       const hitDamage = Math.max(1, prev.hp - p.hp);
       const meBonus = p.id === game.myId ? 1.45 : 1.2;
       const bloodCount = Math.max(7, Math.floor(hitDamage * 0.95 * meBonus));
-      spawnBlood(p.x, p.y, bloodCount);
-      if (game.extraBloodEnabled) spawnGoreBurst(p.x, p.y, Math.max(6, hitDamage * 0.9));
+      const hitDir = resolveImpactDir(p.x, p.y, true);
+      spawnBlood(p.x, p.y, bloodCount, hitDir.x, hitDir.y, 0.9 * (hitDir.strength || 1));
+      if (game.extraBloodEnabled) spawnGoreBurst(p.x, p.y, Math.max(6, hitDamage * 0.9), hitDir.x, hitDir.y, 0.76 * (hitDir.strength || 1));
       spawnHitFx(p.x, p.y, hitDamage * meBonus, true);
     }
     if (prev && prev.alive && !p.alive) {
-      spawnBlood(p.x, p.y, 24);
+      const hitDir = resolveImpactDir(p.x, p.y, true);
+      spawnBlood(p.x, p.y, 24, hitDir.x, hitDir.y, 0.96 * (hitDir.strength || 1));
       spawnBloodPuddle(p.x, p.y, 1.15);
-      spawnGoreBurst(p.x, p.y, 20);
+      spawnGoreBurst(p.x, p.y, 20, hitDir.x, hitDir.y, 0.82 * (hitDir.strength || 1));
       spawnHitFx(p.x, p.y, 18, true);
     }
 
@@ -506,8 +686,6 @@ function processStateFx(nextState) {
   }
   visuals.playerPrev = nextPlayerMap;
 
-  processSkillCastFx(nextState);
-
   const nextRocketMap = new Map();
   for (const bullet of nextState.bullets || []) {
     if (String(bullet.kind || '').toLowerCase() !== 'rocket') continue;
@@ -518,7 +696,18 @@ function processStateFx(nextState) {
     spawnRocketTrailFx(fxX, fxY, bullet.vx, bullet.vy, bullet.color || '#fb923c');
   }
   for (const [id, prev] of visuals.rocketPrev.entries()) {
-    if (!nextRocketMap.has(id)) spawnRocketExplosionFx(prev.x, prev.y);
+    if (!nextRocketMap.has(id)) {
+      registerImpactSource({
+        x: prev.x,
+        y: prev.y,
+        radius: 138,
+        strength: 1.62,
+        ttlMs: 280,
+        radial: true,
+        target: 'both',
+      });
+      spawnRocketExplosionFx(prev.x, prev.y);
+    }
   }
   visuals.rocketPrev = nextRocketMap;
 
@@ -548,6 +737,17 @@ function processStateFx(nextState) {
     }
   }
   visuals.bulletIds = ids;
+  const nextBulletsForImpact = new Map();
+  for (const b of nextState.bullets || []) {
+    nextBulletsForImpact.set(b.id, {
+      x: Number(b.x) || 0,
+      y: Number(b.y) || 0,
+      vx: Number(b.vx) || 0,
+      vy: Number(b.vy) || 0,
+      fromEnemy: Boolean(b.fromEnemy),
+    });
+  }
+  visuals.prevBulletsForImpact = nextBulletsForImpact;
 
   const maxM = getQ().maxMuzzle;
   if (visuals.muzzle.length > maxM) visuals.muzzle.splice(0, visuals.muzzle.length - maxM);
@@ -702,8 +902,3 @@ function updateFx(dt) {
     if (visuals.hitFx[i].life <= 0) visuals.hitFx.splice(i, 1);
   }
 }
-
-
-
-
-
