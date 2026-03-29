@@ -3080,6 +3080,7 @@ function captureReplayFrame(room, replay, now, options = {}) {
       Math.max(1, Math.floor(Number(p.xpToNext) || getXpToNextLevel(p.level || 1))),
       Math.max(1, Math.round(Number(p.maxHp) || PLAYER_HP_MAX)),
       Math.max(0, Math.floor(Number(p.bossKills) || 0)),
+      Math.max(0, Math.round((Number(p.dodgeInvulnUntil) || 0) - now)),
     ];
   });
   const companions = (room.companions || []).map((companion) => ([
