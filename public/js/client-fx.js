@@ -141,6 +141,60 @@ function spawnBossDeathExplosion(x, y) {
   if (visuals.bloodMist.length > 160) visuals.bloodMist.splice(0, visuals.bloodMist.length - 160);
 }
 
+function getHitScreenOverlayEl() {
+  if (visuals.hitScreenOverlayEl && document.body.contains(visuals.hitScreenOverlayEl)) {
+    return visuals.hitScreenOverlayEl;
+  }
+  visuals.hitScreenOverlayEl = document.getElementById('hit-screen-overlay');
+  return visuals.hitScreenOverlayEl;
+}
+
+function spawnHitScreenSplat(dirX = 0, dirY = 0, severity = 1) {
+  const overlay = getHitScreenOverlayEl();
+  if (!overlay) return;
+  const len = Math.hypot(Number(dirX) || 0, Number(dirY) || 0) || 1;
+  const nx = (Number(dirX) || 0) / len;
+  const ny = (Number(dirY) || 0) / len;
+  const dist = 90 + Math.random() * 220 + Math.min(140, severity * 8);
+  const sideJitter = (Math.random() - 0.5) * 120;
+  const px = -ny;
+  const py = nx;
+  const sx = nx * dist + px * sideJitter;
+  const sy = ny * dist + py * sideJitter;
+  const splat = document.createElement('div');
+  splat.className = 'hit-screen-splat';
+  splat.style.setProperty('--sx', `${Math.round(sx)}px`);
+  splat.style.setProperty('--sy', `${Math.round(sy)}px`);
+  splat.style.setProperty('--rot', `${Math.round(Math.random() * 360)}deg`);
+  splat.style.setProperty('--splat-size', `${Math.round(58 + Math.random() * 64 + Math.min(54, severity * 2.2))}px`);
+  splat.style.setProperty('--fade', `${Math.round(1100 + Math.random() * 900 + Math.min(900, severity * 12))}ms`);
+  overlay.appendChild(splat);
+  splat.addEventListener('animationend', () => {
+    if (splat.parentNode === overlay) overlay.removeChild(splat);
+  }, { once: true });
+  if (overlay.childElementCount > 36) {
+    while (overlay.childElementCount > 30) overlay.removeChild(overlay.firstChild);
+  }
+}
+
+function triggerHitScreenFx(severity = 1, dirX = 0, dirY = 0) {
+  const overlay = getHitScreenOverlayEl();
+  if (!overlay) return;
+  const menuOpen = getComputedStyle(document.getElementById('join-overlay')).display !== 'none';
+  if (menuOpen) return;
+  const boost = Math.max(0.06, Math.min(0.55, 0.11 + Number(severity || 0) * 0.012));
+  const current = Math.max(0, Math.min(1, Number(overlay.dataset.hitFlash || 0)));
+  const next = Math.max(current, Math.min(0.9, current + boost));
+  overlay.dataset.hitFlash = String(next);
+  overlay.style.setProperty('--hit-flash', next.toFixed(3));
+  const splats = Math.max(1, Math.min(5, Math.round(1 + Number(severity || 0) / 14)));
+  for (let i = 0; i < splats; i += 1) {
+    const jitterX = (Math.random() - 0.5) * 0.7;
+    const jitterY = (Math.random() - 0.5) * 0.7;
+    spawnHitScreenSplat(dirX + jitterX, dirY + jitterY, severity);
+  }
+}
+
 function spawnRocketTrailFx(x, y, vx, vy, color = '#fb923c') {
   const speed = Math.hypot(Number(vx) || 0, Number(vy) || 0) || 1;
   const dirX = (Number(vx) || 0) / speed;
@@ -639,6 +693,7 @@ function processStateFx(nextState) {
       spawnBlood(p.x, p.y, bloodCount, hitDir.x, hitDir.y, 0.9 * (hitDir.strength || 1));
       if (game.extraBloodEnabled) spawnGoreBurst(p.x, p.y, Math.max(6, hitDamage * 0.9), hitDir.x, hitDir.y, 0.76 * (hitDir.strength || 1));
       spawnHitFx(p.x, p.y, hitDamage * meBonus, true);
+      if (p.id === game.myId) triggerHitScreenFx(hitDamage * meBonus, hitDir.x, hitDir.y);
     }
     if (prev && prev.alive && !p.alive) {
       const hitDir = resolveImpactDir(p.x, p.y, true);
@@ -646,6 +701,7 @@ function processStateFx(nextState) {
       spawnBloodPuddle(p.x, p.y, 1.15);
       spawnGoreBurst(p.x, p.y, 20, hitDir.x, hitDir.y, 0.82 * (hitDir.strength || 1));
       spawnHitFx(p.x, p.y, 18, true);
+      if (p.id === game.myId) triggerHitScreenFx(22, hitDir.x, hitDir.y);
     }
 
     const prevDodgeUntil = Number(prev?.dodgeInvulnUntil) || 0;
@@ -754,6 +810,20 @@ function processStateFx(nextState) {
 }
 
 function updateFx(dt) {
+  const hitOverlay = getHitScreenOverlayEl();
+  if (hitOverlay) {
+    let flash = Math.max(0, Math.min(1, Number(hitOverlay.dataset.hitFlash || 0)));
+    flash = Math.max(0, flash - dt * 0.9);
+    hitOverlay.dataset.hitFlash = String(flash);
+    hitOverlay.style.setProperty('--hit-flash', flash.toFixed(3));
+    const menuOpen = getComputedStyle(document.getElementById('join-overlay')).display !== 'none';
+    if (menuOpen) {
+      hitOverlay.dataset.hitFlash = '0';
+      hitOverlay.style.setProperty('--hit-flash', '0');
+      if (hitOverlay.childElementCount > 0) hitOverlay.replaceChildren();
+    }
+  }
+
   for (let i = visuals.blood.length - 1; i >= 0; i -= 1) {
     const p = visuals.blood[i];
     p.life -= dt;

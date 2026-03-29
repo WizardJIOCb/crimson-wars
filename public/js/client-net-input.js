@@ -4785,8 +4785,8 @@ levelupOptionsEl?.addEventListener('click', handleSkillOptionInteract);
 
 
 
-const DEATH_OVERLAY_DELAY_MS = 3000;
-const DEATH_REWARDS_SHOW_DELAY_MS = 3000;
+const DEATH_OVERLAY_DELAY_MS = 500;
+const DEATH_REWARDS_SHOW_DELAY_MS = 500;
 let pendingDeathOverlayTimer = null;
 let pendingDeathResult = null;
 let pendingDeathRewardsTimer = null;
