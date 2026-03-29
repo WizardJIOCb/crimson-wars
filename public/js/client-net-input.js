@@ -2577,15 +2577,19 @@ function updateRecordsPager() {
   if (recordsNextBtn) recordsNextBtn.disabled = recordsUi.page >= recordsUi.totalPages;
 }
 
-function buildReplayShareUrl(recordId, startSec = 0) {
+function buildReplayShareUrl(recordId, startSec = 0, replayApiPath = '') {
   const id = Math.max(0, Number(recordId) || 0);
   const at = Math.max(0, Number(startSec) || 0);
+  const replayPath = String(replayApiPath || '').trim();
   const url = new URL(window.location.href);
   url.searchParams.delete('room');
   url.searchParams.delete('mode');
   url.searchParams.delete('routed');
   if (id > 0) url.searchParams.set('replay', String(id));
   else url.searchParams.delete('replay');
+  if (replayPath.startsWith('/api/')) url.searchParams.set('replayPath', replayPath);
+  else url.searchParams.delete('replayPath');
+  url.searchParams.delete('replayApiPath');
   if (at > 0) url.searchParams.set('replayAt', String(at));
   else url.searchParams.delete('replayAt');
   url.searchParams.delete('t');
@@ -3406,13 +3410,16 @@ function startReplayGameAt(payload, record, startSec = 0) {
 async function maybeStartReplayFromUrl() {
   const recordId = Math.max(0, Number(pendingReplayRecordId) || 0);
   const startSec = Math.max(0, Number(pendingReplayStartSec) || 0);
-  if (recordId <= 0) return;
+  const replayApiPath = String(pendingReplayApiPath || '').trim();
+  if (recordId <= 0 && !replayApiPath) return;
   pendingReplayRecordId = 0;
   pendingReplayStartSec = 0;
+  pendingReplayApiPath = '';
   try {
     statusEl.textContent = 'Loading replay...';
-    showReplayLoadOverlay(`Loading replay #${recordId}`, 'Preparing replay data...');
+    showReplayLoadOverlay(replayApiPath ? 'Loading shared replay...' : `Loading replay #${recordId}`, 'Preparing replay data...');
     const payload = await fetchReplayPayloadByRecordId(recordId, {
+      replayApiPath,
       onProgress(info) {
         const text = describeReplayLoadProgress(info);
         updateReplayLoadOverlay(info);
@@ -3420,12 +3427,13 @@ async function maybeStartReplayFromUrl() {
       },
     });
     const replay = payload?.replay || null;
-    const record = payload?.record || { id: recordId };
+    const record = payload?.record || { id: recordId, replayApiPath };
     if (!replay || !Array.isArray(replay.frames) || replay.frames.length <= 0) {
       throw new Error('Replay not found.');
     }
     startReplayGameAt(replay, record, startSec);
-    statusEl.textContent = `Replay loaded: ${record?.name || 'Record'} #${recordId}${startSec > 0 ? ` from ${startSec}s` : ''}`;
+    const replayName = record?.name || (recordId > 0 ? `Record #${recordId}` : 'Shared replay');
+    statusEl.textContent = `Replay loaded: ${replayName}${startSec > 0 ? ` from ${startSec}s` : ''}`;
   } catch (err) {
     joinOverlay.style.display = 'grid';
     joinOverlay.classList.remove('death-mode');
@@ -3699,9 +3707,9 @@ async function loadRecordReplay(recordId, options = {}) {
 
 async function fetchReplayPayloadByRecordId(recordId, options = {}) {
   const id = Math.max(0, Number(recordId) || 0);
-  if (id <= 0) return null;
   const onProgress = typeof options?.onProgress === 'function' ? options.onProgress : null;
   const replayApiPath = String(options?.replayApiPath || '').trim();
+  if (id <= 0 && !replayApiPath) return null;
   const replayUrl = replayApiPath || (`/api/records/${id}/replay`);
   const res = await fetch(replayUrl, { cache: 'no-store' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -3736,15 +3744,16 @@ async function fetchReplayPayloadByRecordId(recordId, options = {}) {
   return JSON.parse(text);
 }
 
-async function copyReplayLink(recordId) {
+async function copyReplayLink(recordId, options = {}) {
   const id = Math.max(0, Number(recordId) || 0);
-  if (id <= 0 || !navigator.clipboard?.writeText) {
+  const replayApiPath = String(options?.replayApiPath || '').trim();
+  if ((id <= 0 && !replayApiPath) || !navigator.clipboard?.writeText) {
     if (recordReplayMetaEl) recordReplayMetaEl.textContent = 'Replay link is unavailable.';
     return false;
   }
   const startSec = Math.max(0, Math.floor((Number(recordReplay.elapsedMs) || 0) / 1000));
   try {
-    await navigator.clipboard.writeText(buildReplayShareUrl(id, startSec));
+    await navigator.clipboard.writeText(buildReplayShareUrl(id, startSec, replayApiPath));
     if (recordReplayMetaEl) recordReplayMetaEl.textContent = `Replay link copied${startSec > 0 ? ` from ${startSec}s` : ''}.`;
     return true;
   } catch {
@@ -3828,9 +3837,8 @@ function openRecordDetailsModal(record, rankLabel) {
   resetRecordReplayUi(record?.id);
   recordReplay.record = record || null;
   if (recordReplayCopyLinkBtn) {
-    const isHistoryReplay = !!String(record?.replayApiPath || '').trim();
-    recordReplayCopyLinkBtn.disabled = isHistoryReplay;
-    recordReplayCopyLinkBtn.title = isHistoryReplay ? 'Share link is available only for Top records replays.' : '';
+    recordReplayCopyLinkBtn.disabled = false;
+    recordReplayCopyLinkBtn.title = '';
   }
   recordDetailsModalEl.classList.remove('hidden');
 }
@@ -3917,11 +3925,7 @@ recordReplayInGameBtn?.addEventListener('click', async () => {
   startReplayGame(recordReplay.payload, recordReplay.record);
 });
 recordReplayCopyLinkBtn?.addEventListener('click', async () => {
-  if (String(recordReplay.record?.replayApiPath || '').trim()) {
-    if (recordReplayMetaEl) recordReplayMetaEl.textContent = 'Share link is available only for Top records replays.';
-    return;
-  }
-  await copyReplayLink(recordReplay.recordId);
+  await copyReplayLink(recordReplay.recordId, { replayApiPath: recordReplay.record?.replayApiPath || '' });
 });
 recordReplayStageLoadBtn?.addEventListener('click', async () => {
   if (recordReplay.loading || recordReplay.loaded) return;
@@ -4142,6 +4146,7 @@ function updateEnemyInterpolation(dt) {
     r.vx = (nx - r.x) / Math.max(0.001, dt);
     r.vy = (ny - r.y) / Math.max(0.001, dt);
     if (typeof e.faceLeft === 'boolean') r.faceLeft = e.faceLeft;
+    else if (Math.abs(Number(r.vx) || 0) > 0.15) r.faceLeft = (Number(r.vx) || 0) < 0;
     r.x = nx;
     r.y = ny;
   }

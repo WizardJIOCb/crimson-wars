@@ -343,6 +343,7 @@ let pendingAutoJoin = false;
 let pendingAutoCreate = false;
 let pendingReplayRecordId = 0;
 let pendingReplayStartSec = 0;
+let pendingReplayApiPath = '';
 let routedIntent = null;
 const recordReplay = {
   recordId: 0,
@@ -787,6 +788,8 @@ function applyInitialRoomIntent() {
   const params = new URLSearchParams(window.location.search);
   const replay = Math.max(0, Number(params.get('replay')) || 0);
   const replayAt = Math.max(0, Number(params.get('replayAt')) || Number(params.get('t')) || 0);
+  const replayPathRaw = String(params.get('replayPath') || params.get('replayApiPath') || '').trim();
+  const replayPath = replayPathRaw.startsWith('/api/') ? replayPathRaw : '';
   const room = (params.get('room') || '').trim().toUpperCase();
   const mode = (params.get('mode') || '').trim().toLowerCase();
   const gameMode = normalizeGameMode(params.get('gameMode') || params.get('game_mode') || selectedGameMode);
@@ -794,6 +797,7 @@ function applyInitialRoomIntent() {
   const routed = params.get('routed') === '1';
   pendingReplayRecordId = replay;
   pendingReplayStartSec = replayAt;
+  pendingReplayApiPath = replayPath;
   if (roomCodeInput && room) roomCodeInput.value = room.slice(0, 10);
   if (mode === 'join' || (room && !mode)) {
     joinMode = 'join';
@@ -807,7 +811,7 @@ function applyInitialRoomIntent() {
   localStorage.setItem(GAME_MODE_STORAGE_KEY, selectedGameMode);
   localStorage.setItem(PVP_DURATION_STORAGE_KEY, String(selectedPvpDurationMin));
 
-  if (pendingReplayRecordId > 0) {
+  if (pendingReplayRecordId > 0 || pendingReplayApiPath) {
     pendingAutoJoin = false;
     pendingAutoCreate = false;
   }
@@ -2293,5 +2297,4 @@ function updateMobileControlsVisibility() {
   }
   setMobileControlsVisible(!overlayOpen);
 }
-
 

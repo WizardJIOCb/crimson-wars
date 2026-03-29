@@ -342,7 +342,10 @@ function drawEnemies(enemies, t) {
 
     if (sprites.enemy.complete && sprites.enemy.naturalWidth >= fw * 2) {
       const frame = Math.floor(t * (isBoss ? 9 : 12)) % frames;
-      const faceLeft = Boolean(re.faceLeft ?? e.faceLeft);
+      const hasFaceLeft = typeof re.faceLeft === 'boolean' || typeof e.faceLeft === 'boolean';
+      const faceLeft = hasFaceLeft
+        ? Boolean(re.faceLeft ?? e.faceLeft)
+        : ((Math.abs(Number(re.vx) || 0) > 0.15) ? ((Number(re.vx) || 0) < 0) : false);
 
       ctx.save();
       ctx.translate(x, y + (isBoss ? 6 : 2));
@@ -708,6 +711,46 @@ function drawFx() {
     const a = Math.max(0, s.life / s.ttl);
     const sx = s.x - camera.x;
     const sy = s.y - camera.y;
+    const style = String(s.style || 'default').toLowerCase();
+    if (style === 'psi_blast') {
+      const radius = Math.max(1, Number(s.r) || 1);
+      const trailRings = Math.max(2, Math.round(Number(s.trailRings) || 6));
+      const fillGrad = ctx.createRadialGradient(sx, sy, 0, sx, sy, radius);
+      fillGrad.addColorStop(0, `rgba(147, 234, 255, ${(a * 0.22).toFixed(3)})`);
+      fillGrad.addColorStop(0.38, `rgba(96, 165, 250, ${(a * 0.2).toFixed(3)})`);
+      fillGrad.addColorStop(1, 'rgba(31, 111, 235, 0)');
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = fillGrad;
+      ctx.beginPath();
+      ctx.arc(sx, sy, radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.globalAlpha = Math.min(1, a * 0.9);
+      ctx.strokeStyle = 'rgba(168, 240, 255, 0.95)';
+      ctx.lineWidth = 3.2;
+      ctx.beginPath();
+      ctx.arc(sx, sy, radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      for (let i = 0; i < trailRings; i += 1) {
+        const k = (i + 1) / (trailRings + 1);
+        const rr = radius * (1 - k * 0.88);
+        if (rr <= 1) continue;
+        const ringA = a * (0.34 - k * 0.26);
+        if (ringA <= 0) continue;
+        ctx.globalAlpha = Math.min(1, Math.max(0, ringA));
+        ctx.strokeStyle = 'rgba(147, 210, 255, 0.95)';
+        ctx.lineWidth = Math.max(0.9, 2.4 - k * 1.25);
+        ctx.beginPath();
+        ctx.arc(sx, sy, rr, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+      continue;
+    }
+
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = Math.min(1, a * 0.85);
@@ -1217,7 +1260,5 @@ startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 setInterval(sendNetStatsReport, 1500);
 scheduleNextFrame();
-
-
 
 

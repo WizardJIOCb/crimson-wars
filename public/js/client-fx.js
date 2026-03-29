@@ -198,17 +198,28 @@ function spawnSkillLabel(skillName, x, y) {
   if (visuals.skillLabels.length > 24) visuals.skillLabels.splice(0, visuals.skillLabels.length - 24);
 }
 
-function spawnSkillBurstFx(x, y, color = '#7dd3fc', radius = 100) {
+function spawnSkillBurstFx(x, y, color = '#7dd3fc', radius = 100, options = {}) {
   visuals.skillBursts.push({
     x,
     y,
     r: 18,
     maxR: radius,
     color,
+    style: String(options?.style || 'default').toLowerCase(),
+    growSpeed: Math.max(120, Number(options?.growSpeed) || 420),
+    trailRings: Math.max(0, Math.round(Number(options?.trailRings) || 0)),
     life: 0.5,
     ttl: 0.5,
   });
   if (visuals.skillBursts.length > 36) visuals.skillBursts.splice(0, visuals.skillBursts.length - 36);
+}
+
+function psiBlastFxRadius(skill) {
+  const def = game.skillCatalog?.psi_blast || {};
+  const lvl = Math.max(1, Number(skill?.level) || 1);
+  const base = Math.max(120, Number(def.radius) || 760);
+  const perLevel = Math.max(0, Number(def.radiusPerLevel) || 48);
+  return Math.max(220, base + perLevel * (lvl - 1));
 }
 
 function spawnDodgeWindFx(x, y, dirX = 1, dirY = 0, isMe = false) {
@@ -355,6 +366,15 @@ function spawnSkillCastFx(skillId, caster, nextState, skill) {
   if (sid === 'homing_missiles') {
     spawnSkillBurstFx(caster.x, caster.y, '#fb923c', 102);
     spawnSkillLabel(trFx('skill.homing_missiles.name', 'Homing Missiles'), caster.x, caster.y - 10);
+    return;
+  }
+  if (sid === 'psi_blast') {
+    spawnSkillBurstFx(caster.x, caster.y, '#60a5fa', psiBlastFxRadius(skill), {
+      style: 'psi_blast',
+      growSpeed: 3900,
+      trailRings: 6,
+    });
+    spawnSkillLabel(trFx('skill.psi_blast.name', 'Psi Blast'), caster.x, caster.y - 12);
     return;
   }
 
@@ -623,7 +643,8 @@ function updateFx(dt) {
     const s = visuals.skillBursts[i];
     s.life -= dt;
     const grow = Math.max(0, s.maxR - s.r);
-    s.r += Math.min(grow, 420 * dt);
+    const growSpeed = Math.max(120, Number(s.growSpeed) || 420);
+    s.r += Math.min(grow, growSpeed * dt);
     if (s.life <= 0 || s.r >= s.maxR - 1) visuals.skillBursts.splice(i, 1);
   }
 
@@ -681,7 +702,6 @@ function updateFx(dt) {
     if (visuals.hitFx[i].life <= 0) visuals.hitFx.splice(i, 1);
   }
 }
-
 
 
 
