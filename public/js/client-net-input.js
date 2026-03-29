@@ -3113,6 +3113,8 @@ function buildReplayState(payload, elapsedMs) {
       desc: '',
     }));
     const dodgeInvulnLeftMs = Math.max(0, Number(player[19]) || 0);
+    const frameNowMs = Number(payload?.startedAt || Date.now()) + Math.max(0, Number(current?.t) || 0);
+    const dodgeInvulnUntil = dodgeInvulnLeftMs > 0 ? (frameNowMs + dodgeInvulnLeftMs) : 0;
     playerList.push({
       id: player[0],
       name: player[0] === payload?.playerId ? (payload?.playerName || 'Replay') : `Player ${String(player[0]).slice(0, 4)}`,
@@ -3146,7 +3148,7 @@ function buildReplayState(payload, elapsedMs) {
       dodgeChargesMax: Math.max(1, Number(player[11]) || 1),
       dodgeRechargeMs: Math.max(0, Number(player[12]) || 0),
       dodgeRechargeTotalMs: Math.max(1, Number(player[13]) || 1200),
-      dodgeInvulnUntil: nowMs + dodgeInvulnLeftMs,
+      dodgeInvulnUntil,
       level,
       xp: Math.max(0, Math.floor(Number(player[15]) || 0)),
       xpToNext,
