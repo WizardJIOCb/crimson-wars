@@ -2466,6 +2466,7 @@ async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
     name,
     playerClass: selectedPlayerClass,
     roomCode,
+    integrationToken: pendingIntegrationToken || undefined,
     sync: joinSync || undefined,
     gameMode: mode === 'create' ? selectedGameMode : undefined,
     pvpDurationMin: mode === 'create' && selectedGameMode === 'pvp' ? normalizePvpDurationMin(selectedPvpDurationMin) : undefined,

@@ -318,6 +318,7 @@ const PVP_DURATION_STORAGE_KEY = 'cw:pvpDurationMin';
 let selectedPlayerClass = 'cyber';
 let selectedGameMode = normalizeGameMode(localStorage.getItem(GAME_MODE_STORAGE_KEY) || 'normal');
 let selectedPvpDurationMin = normalizePvpDurationMin(localStorage.getItem(PVP_DURATION_STORAGE_KEY) || '10');
+let pendingIntegrationToken = '';
 const storedInfoPanelHidden = localStorage.getItem('cw:infoPanelHidden');
 let infoPanelHidden = storedInfoPanelHidden === null ? true : storedInfoPanelHidden === '1';
 const storedStatsPanelOpen = localStorage.getItem('cw:statsPanelOpen');
@@ -795,6 +796,9 @@ function applyInitialRoomIntent() {
   const replayPath = replayPathRaw.startsWith('/api/') ? replayPathRaw : '';
   const room = (params.get('room') || '').trim().toUpperCase();
   const mode = (params.get('mode') || '').trim().toLowerCase();
+  const integrationToken = String(params.get('integrationToken') || params.get('integration_token') || '').trim();
+  const presetName = String(params.get('name') || '').trim();
+  const presetHeroId = String(params.get('heroId') || params.get('hero_id') || '').trim().toLowerCase();
   const gameMode = normalizeGameMode(params.get('gameMode') || params.get('game_mode') || selectedGameMode);
   const pvpDurationMin = normalizePvpDurationMin(params.get('pvpDurationMin') || params.get('pvp_duration_min') || selectedPvpDurationMin);
   const routed = params.get('routed') === '1';
@@ -809,8 +813,17 @@ function applyInitialRoomIntent() {
   }
   pendingAutoJoin = Boolean(room && joinMode === 'join');
   pendingAutoCreate = Boolean(!room && joinMode === 'create' && routed);
+  pendingIntegrationToken = integrationToken;
   selectedGameMode = gameMode;
   selectedPvpDurationMin = pvpDurationMin;
+  if (presetName && nameInput && !game.playerAuth?.player) {
+    nameInput.value = presetName.slice(0, 18);
+  }
+  if (presetHeroId) {
+    const knownHeroId = PLAYER_VARIANTS.some((variant) => variant.id === presetHeroId) ? presetHeroId : 'cyber';
+    selectedPlayerClass = knownHeroId;
+    localStorage.setItem(PLAYER_CLASS_STORAGE_KEY, selectedPlayerClass);
+  }
   localStorage.setItem(GAME_MODE_STORAGE_KEY, selectedGameMode);
   localStorage.setItem(PVP_DURATION_STORAGE_KEY, String(selectedPvpDurationMin));
 

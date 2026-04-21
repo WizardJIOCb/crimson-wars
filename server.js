@@ -34,6 +34,10 @@ const CHAT_WELCOME_LIMIT = 30;
 const CHAT_SPAM_WINDOW_MS = 8000;
 const CHAT_SPAM_MAX_MESSAGES = 4;
 const CHAT_SPAM_MUTE_MS = 15000;
+const PARTNER_RUNS_START_SECRET = (process.env.PARTNER_RUNS_START_SECRET || '').toString().trim();
+const PARTNER_RUNS_CALLBACK_BASE_URL = (process.env.PARTNER_RUNS_CALLBACK_BASE_URL || '').toString().trim().replace(/\/+$/, '');
+const PARTNER_RUNS_CALLBACK_SECRET = (process.env.PARTNER_RUNS_CALLBACK_SECRET || '').toString().trim();
+const PARTNER_RUNS_SESSION_TTL_MS = Math.max(60_000, Number(process.env.PARTNER_RUNS_SESSION_TTL_MS) || (30 * 60 * 1000));
 
 const {
   MAIN_LOOP_RATE,
@@ -157,11 +161,145 @@ const REPLAY_CHAT_LIMIT = 240;
 const XP_SURGE_DURATION_MS = 3200;
 const XP_SURGE_PULL_MIN_MUL = 0.22;
 const XP_SURGE_PULL_MAX_MUL = 3.9;
+const partnerRunSessions = new Map();
 
 function normalizeGameMode(rawMode) {
   const mode = String(rawMode || '').trim().toLowerCase();
   if (mode === 'hardcore' || mode === 'pvp') return mode;
   return 'normal';
+}
+
+function randomHex(size = 24) {
+  return crypto.randomBytes(Math.max(8, Math.floor(size))).toString('hex');
+}
+
+function buildUrlWithParams(baseUrl, params = {}) {
+  const raw = String(baseUrl || '').trim();
+  if (!raw) return '';
+  const url = new URL(raw);
+  for (const [key, value] of Object.entries(params || {})) {
+    if (value === undefined || value === null || value === '') continue;
+    url.searchParams.set(key, String(value));
+  }
+  return url.toString();
+}
+
+function sanitizePartnerCallbackPath(rawPath) {
+  const value = String(rawPath || '').trim();
+  if (!value || value.includes('://')) return '';
+  if (!value.startsWith('/')) return '';
+  return value;
+}
+
+function requirePartnerRunsSecret(req, res, next) {
+  if (!PARTNER_RUNS_START_SECRET) {
+    res.status(503).json({ ok: false, message: 'Partner integration start secret is not configured' });
+    return;
+  }
+  const headerSecret = String(req.headers['x-crimson-integration-secret'] || '').trim();
+  const bearer = String(req.headers.authorization || '').trim();
+  const bearerSecret = bearer.toLowerCase().startsWith('bearer ') ? bearer.slice(7).trim() : '';
+  const suppliedSecret = headerSecret || bearerSecret;
+  if (!suppliedSecret || suppliedSecret !== PARTNER_RUNS_START_SECRET) {
+    res.status(401).json({ ok: false, message: 'Invalid integration secret' });
+    return;
+  }
+  next();
+}
+
+function cleanupPartnerRunSessions(now = Date.now()) {
+  for (const [token, session] of partnerRunSessions.entries()) {
+    if (!session) {
+      partnerRunSessions.delete(token);
+      continue;
+    }
+    const expiresAt = Math.max(0, Number(session.expiresAt) || 0);
+    const completedAt = Math.max(0, Number(session.completedAt) || 0);
+    if ((expiresAt > 0 && expiresAt <= now) || completedAt > 0) {
+      partnerRunSessions.delete(token);
+    }
+  }
+}
+
+function createPartnerRunSession(payload) {
+  cleanupPartnerRunSessions();
+  const createdAt = Date.now();
+  const token = randomHex(18);
+  const session = {
+    token,
+    createdAt,
+    expiresAt: createdAt + PARTNER_RUNS_SESSION_TTL_MS,
+    claimedAt: 0,
+    completedAt: 0,
+    partnerRunId: String(payload.partnerRunId || '').trim(),
+    externalPlayerId: String(payload.externalPlayerId || '').trim(),
+    playerName: normalizeNickname(payload.playerName || 'Fighter') || 'Fighter',
+    heroId: String(payload.heroId || '').trim().toLowerCase() || ACCOUNT_BASE_HERO_ID,
+    roomCode: cleanRoomCode(payload.roomCode || ''),
+    gameMode: normalizeGameMode(payload.gameMode || 'normal'),
+    pvpDurationMin: normalizePvpDurationMin(payload.pvpDurationMin),
+    callbackPath: sanitizePartnerCallbackPath(payload.callbackPath || payload.rewardEndpointPath || ''),
+    metadata: payload.metadata && typeof payload.metadata === 'object' && !Array.isArray(payload.metadata)
+      ? payload.metadata
+      : {},
+    requestedBy: String(payload.requestedBy || '').trim(),
+  };
+  partnerRunSessions.set(token, session);
+  return session;
+}
+
+function consumePartnerRunSession(token, expectedRoomCode = '') {
+  cleanupPartnerRunSessions();
+  const cleanToken = String(token || '').trim();
+  if (!cleanToken) return null;
+  const session = partnerRunSessions.get(cleanToken);
+  if (!session) return null;
+  if (session.completedAt || session.claimedAt) return null;
+  const now = Date.now();
+  if (session.expiresAt && session.expiresAt <= now) {
+    partnerRunSessions.delete(cleanToken);
+    return null;
+  }
+  const expectedCode = cleanRoomCodeForLookup(expectedRoomCode || '');
+  if (expectedCode && expectedCode !== cleanRoomCodeForLookup(session.roomCode)) return null;
+  session.claimedAt = now;
+  return { ...session };
+}
+
+async function sendPartnerRunCompletion(target, payload) {
+  const context = target?.partnerRunContext || null;
+  if (!context || context.callbackSentAt) return;
+  if (!PARTNER_RUNS_CALLBACK_BASE_URL || !context.callbackPath) return;
+
+  const callbackUrl = new URL(context.callbackPath, PARTNER_RUNS_CALLBACK_BASE_URL).toString();
+  context.callbackAttemptedAt = Date.now();
+
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Crimson-Integration-Event': 'run.completed',
+  };
+  if (PARTNER_RUNS_CALLBACK_SECRET) {
+    headers['X-Crimson-Integration-Secret'] = PARTNER_RUNS_CALLBACK_SECRET;
+  }
+
+  try {
+    const response = await fetch(callbackUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+    context.callbackStatus = response.status;
+    context.callbackResponseOk = response.ok;
+    context.callbackSentAt = Date.now();
+  } catch (error) {
+    context.callbackError = error?.message || 'Failed to send callback';
+  } finally {
+    const stored = partnerRunSessions.get(context.integrationToken);
+    if (stored) {
+      stored.completedAt = Date.now();
+      partnerRunSessions.set(context.integrationToken, stored);
+    }
+  }
 }
 
 function normalizeRespawnMode(rawMode) {
@@ -713,6 +851,20 @@ function buildRoomRedirectUrl(baseUrl, roomCode, mode = 'join', gameMode = 'norm
   return url.toString();
 }
 
+function buildPartnerRunJoinUrl(session) {
+  return buildUrlWithParams(buildRoomRedirectUrl(
+    PUBLIC_BASE_URL,
+    session.roomCode,
+    'join',
+    session.gameMode,
+    session.pvpDurationMin,
+  ), {
+    integrationToken: session.token,
+    name: session.playerName,
+    heroId: session.heroId,
+  });
+}
+
 function readAdminSession(req) {
   const cookies = parseCookies(req);
   const token = cookies[ADMIN_SESSION_COOKIE] || '';
@@ -968,6 +1120,74 @@ app.get('/api/player/me', (req, res) => {
     providers: ['google', 'vk', 'mailru'],
     progressionCatalog: catalog,
     progression: accountProgressionStore.toPublicProgression(progression),
+  });
+});
+
+app.post('/api/integrations/partner-runs/start', requirePartnerRunsSecret, (req, res) => {
+  const partnerRunId = String(req.body?.partnerRunId || req.body?.runId || '').trim();
+  const externalPlayerId = String(req.body?.externalPlayerId || req.body?.playerId || '').trim();
+  const callbackPath = sanitizePartnerCallbackPath(req.body?.callbackPath || req.body?.rewardEndpointPath || '');
+  if (!partnerRunId) {
+    res.status(400).json({ ok: false, message: 'partnerRunId is required' });
+    return;
+  }
+  if (!externalPlayerId) {
+    res.status(400).json({ ok: false, message: 'externalPlayerId is required' });
+    return;
+  }
+  if (!callbackPath) {
+    res.status(400).json({ ok: false, message: 'callbackPath is required and must start with /' });
+    return;
+  }
+
+  const room = getOrCreateRoom(
+    req.body?.roomCode || '',
+    DEFAULT_ROOM_SYNC,
+    req.body?.gameMode || 'normal',
+    req.body?.pvpDurationMin,
+  );
+  const session = createPartnerRunSession({
+    partnerRunId,
+    externalPlayerId,
+    playerName: req.body?.playerName || req.body?.nickname || 'Fighter',
+    heroId: req.body?.heroId || req.body?.playerClass || ACCOUNT_BASE_HERO_ID,
+    roomCode: room.code,
+    gameMode: room.gameMode,
+    pvpDurationMin: room.pvpDurationMin,
+    callbackPath,
+    metadata: req.body?.metadata,
+    requestedBy: req.body?.requestedBy,
+  });
+
+  res.status(201).json({
+    ok: true,
+    integration: 'partner-runs',
+    session: {
+      integrationToken: session.token,
+      expiresAt: session.expiresAt,
+      roomCode: room.code,
+      gameMode: room.gameMode,
+      pvpDurationMin: room.pvpDurationMin,
+      playerName: session.playerName,
+      heroId: session.heroId,
+      partnerRunId: session.partnerRunId,
+      externalPlayerId: session.externalPlayerId,
+    },
+    launch: {
+      joinUrl: buildPartnerRunJoinUrl(session),
+      websocketJoinPayload: {
+        type: 'join',
+        roomCode: room.code,
+        name: session.playerName,
+        playerClass: session.heroId,
+        integrationToken: session.token,
+      },
+    },
+    callback: {
+      baseUrlConfigured: Boolean(PARTNER_RUNS_CALLBACK_BASE_URL),
+      baseUrl: PARTNER_RUNS_CALLBACK_BASE_URL || null,
+      path: session.callbackPath,
+    },
   });
 });
 
@@ -3590,6 +3810,7 @@ function downPlayer(room, target, now, options = {}) {
   const kills = isPvpMode ? pvpStats.kills : (room.kills.get(target.id) || 0);
   const score = isPvpMode ? pvpStats.score : (room.scores.get(target.id) || 0);
   const survivalSec = Math.max(1, Math.floor((now - (target.joinedAt || now)) / 1000));
+  let rewardResult = null;
   recordsStore.pushRecord({
     name: target.name,
     kills,
@@ -3602,7 +3823,7 @@ function downPlayer(room, target, now, options = {}) {
   });
 
   if (target.playerAccountId) {
-    const rewardResult = accountProgressionStore.grantRunRewards(target.playerAccountId, {
+    rewardResult = accountProgressionStore.grantRunRewards(target.playerAccountId, {
       score,
       kills,
       bossKills: isPvpMode ? 0 : target.bossKills,
@@ -3618,6 +3839,42 @@ function downPlayer(room, target, now, options = {}) {
         rewards: rewardResult.rewards,
       });
     }
+  }
+
+  if (target.partnerRunContext) {
+    const completionPayload = {
+      event: 'crimson-wars.run.completed',
+      sentAt: new Date().toISOString(),
+      partnerRunId: target.partnerRunContext.partnerRunId,
+      externalPlayerId: target.partnerRunContext.externalPlayerId,
+      integrationToken: target.partnerRunContext.integrationToken,
+      roomCode: room.code,
+      player: {
+        name: target.name,
+        accountId: target.playerAccountId || null,
+        heroId: target.playerClass || ACCOUNT_BASE_HERO_ID,
+      },
+      stats: {
+        gameMode: normalizeGameMode(room?.gameMode || 'normal'),
+        score,
+        kills,
+        bossKills: isPvpMode ? 0 : Math.max(0, Number(target.bossKills) || 0),
+        survivalSec: isPvpMode ? (pvpStats?.survivalSec || survivalSec) : survivalSec,
+        enemyKills: Math.max(0, Number(target.enemyKills) || 0),
+        pvpKills: Math.max(0, Number(target.pvpKills) || 0),
+        pvpDeaths: Math.max(0, Number(target.pvpDeaths) || 0),
+      },
+      rewards: rewardResult?.rewards || null,
+      progression: rewardResult?.progression || null,
+      run: {
+        startedAt: new Date(Math.max(0, Number(target.joinedAt) || now)).toISOString(),
+        finishedAt: new Date(now).toISOString(),
+        durationSec: survivalSec,
+        details: runDetails,
+      },
+      metadata: target.partnerRunContext.metadata || {},
+    };
+    void sendPartnerRunCompletion(target, completionPayload);
   }
 
   broadcastRoom(room, { type: 'system', message: `${target.name} was downed.` });
@@ -4021,7 +4278,14 @@ function joinRoom(ws, join) {
     return null;
   }
 
-  const identity = resolveJoinIdentity(ws, join?.name);
+  const requestedIntegrationToken = String(join?.integrationToken || '').trim();
+  const partnerRunSession = consumePartnerRunSession(requestedIntegrationToken, room.code);
+  if (requestedIntegrationToken && !partnerRunSession) {
+    sendTo(ws, { type: 'joinError', message: 'Integration session is invalid, expired, or already used.', code: 410 });
+    return null;
+  }
+  const requestedName = partnerRunSession?.playerName || join?.name;
+  const identity = resolveJoinIdentity(ws, requestedName);
   if (!identity.ok) {
     sendTo(ws, { type: 'joinError', message: identity.message, code: identity.code });
     return null;
@@ -4029,7 +4293,8 @@ function joinRoom(ws, join) {
 
   const id = Math.random().toString(36).slice(2, 10);
   const name = identity.name;
-  const joinHero = resolveJoinHeroForPlayer(identity.playerAccountId, join?.playerClass);
+  const requestedHeroId = partnerRunSession?.heroId || join?.playerClass;
+  const joinHero = resolveJoinHeroForPlayer(identity.playerAccountId, requestedHeroId);
   const playerClass = joinHero.heroId;
   const spawn = randomPlayerSpawn(room.gameMode);
 
@@ -4096,6 +4361,16 @@ function joinRoom(ws, join) {
     runReplay: null,
     accountProgression: joinHero.progression ? accountProgressionStore.toPublicProgression(joinHero.progression) : null,
     accountHeroBonuses: joinHero.progression ? accountProgressionStore.computeHeroBonuses(joinHero.progression, playerClass) : null,
+    partnerRunContext: partnerRunSession ? {
+      integrationToken: partnerRunSession.token,
+      partnerRunId: partnerRunSession.partnerRunId,
+      externalPlayerId: partnerRunSession.externalPlayerId,
+      callbackPath: partnerRunSession.callbackPath,
+      metadata: partnerRunSession.metadata,
+      requestedBy: partnerRunSession.requestedBy,
+      claimedAt: Date.now(),
+      callbackSentAt: 0,
+    } : null,
   };
 
   rebuildPlayerDerivedStats(player);
