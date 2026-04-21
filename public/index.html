@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <link rel="stylesheet" href="/landing.css?v=20260421c" />
+  <link rel="stylesheet" href="/landing.css?v=20260421d" />
 </head>
 <body>
   <div class="landing-shell">
@@ -145,6 +145,24 @@
         </div>
       </section>
 
+      <section id="ratings" class="landing-section reveal">
+        <div class="section-heading">
+          <p class="eyebrow">Рейтинги</p>
+          <h2>Смотри, кто уже продавил арену сильнее остальных.</h2>
+          <p>
+            Здесь живые топы из игрового рейтинга: лучшие забеги, профильный прогресс,
+            осколки, убийства и другие метрики, по которым сразу видно, кто в Crimson Wars уже закрепился наверху.
+          </p>
+        </div>
+        <div id="landing-ratings-grid" class="ratings-grid" aria-live="polite">
+          <article class="rating-card">
+            <span class="rating-card-meta">Загрузка</span>
+            <h3>Подтягиваем лидеров...</h3>
+            <p>Сейчас здесь появятся актуальные топы прямо из игрового рейтинга.</p>
+          </article>
+        </div>
+      </section>
+
       <section id="news" class="landing-section reveal">
         <div class="section-heading">
           <p class="eyebrow">Новости</p>
@@ -259,7 +277,7 @@
             <img src="/assets/characters/shadow.png" alt="Shadow battle pose" />
             <figcaption>
               <strong>Boss teleport in</strong>
-              <span>Когда портал босса открывается, у тебя остается только одно: встретить его лицом в лицо.</span>
+              <span>Когда портал босса открывается, у тебя остается только одно: встретить его лицом к лицу.</span>
             </figcaption>
           </figure>
           <figure class="shot-card">
@@ -357,6 +375,17 @@
     </main>
   </div>
 
-  <script src="/landing.js?v=20260421c"></script>
+  <div id="landing-profile-modal" class="landing-profile-modal hidden" aria-hidden="true">
+    <div class="landing-profile-backdrop" data-profile-close="true"></div>
+    <div class="landing-profile-dialog" role="dialog" aria-modal="true" aria-labelledby="landing-profile-title">
+      <div class="landing-profile-head">
+        <b id="landing-profile-title">Профиль игрока</b>
+        <button id="landing-profile-close" type="button" class="mini">Close</button>
+      </div>
+      <div id="landing-profile-body" class="landing-profile-body">Загрузка...</div>
+    </div>
+  </div>
+
+  <script src="/landing.js?v=20260421d"></script>
 </body>
 </html>
