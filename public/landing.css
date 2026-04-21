@@ -330,7 +330,7 @@ main {
   border-radius: 28px;
   border: 1px solid var(--line-strong);
   background: transparent;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .hero-stage::after {
@@ -388,34 +388,21 @@ main {
 
 .hero-figure {
   position: absolute;
-  bottom: 0;
   filter: drop-shadow(0 30px 40px rgba(0, 0, 0, 0.4));
   transform-origin: bottom center;
   z-index: 3;
 }
 
-.hero-cyber {
-  left: 50%;
-  width: min(74%, 560px);
-  transform: translateX(-50%);
+.hero-collage {
+  right: 0;
+  left: auto;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: right top;
   z-index: 4;
-  animation: float 6s ease-in-out infinite;
-}
-
-.hero-shadow {
-  left: -4%;
-  width: min(52%, 360px);
-  opacity: 0.82;
-  transform: rotate(-4deg);
-  z-index: 2;
-}
-
-.hero-scout {
-  right: -7%;
-  width: min(48%, 320px);
-  opacity: 0.84;
-  transform: rotate(5deg);
-  z-index: 2;
+  animation: none;
 }
 
 .floating-badge {
@@ -651,10 +638,21 @@ main {
   opacity: 0.18;
 }
 
+.video-screen-logo {
+  position: absolute;
+  left: 22px;
+  bottom: 22px;
+  width: min(140px, 32%);
+  height: auto;
+  z-index: 1;
+  opacity: 0.95;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.35));
+}
+
 .video-overlay-copy {
   position: absolute;
   inset: auto 22px 22px 22px;
-  z-index: 1;
+  z-index: 2;
   padding: 24px;
   border-radius: 22px;
   background: rgba(12, 5, 7, 0.76);
@@ -752,6 +750,15 @@ body.menu-open {
     min-height: 540px;
   }
 
+  .hero-collage {
+    right: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center top;
+  }
+
   .play-grid,
   .about-grid,
   .news-grid,
@@ -826,10 +833,11 @@ body.menu-open {
     min-height: 460px;
   }
 
-  .hero-shadow,
-  .hero-scout {
-    opacity: 0.45;
+  .hero-collage {
+    object-fit: cover;
+    object-position: center top;
   }
+
 }
 
 @media (max-width: 560px) {
