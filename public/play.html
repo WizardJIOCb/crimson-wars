@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Crimson Wars</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="stylesheet" href="/style.css?v=20260330logo1" />
+  <!-- Yandex.Metrika counter -->
+  <script type="text/javascript">
+    (function(m,e,t,r,i,k,a){
+      m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+      m[i].l=1*new Date();
+      for (var j = 0; j < document.scripts.length; j++) { if (document.scripts[j].src === r) { return; } }
+      k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a);
+    })(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js?id=107267514', 'ym');
+
+    ym(107267514, 'init', {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", referrer: document.referrer, url: location.href, accurateTrackBounce:true, trackLinks:true});
+  </script>
+  <!-- /Yandex.Metrika counter -->
+</head>
+<body>
+  <noscript><div><img src="https://mc.yandex.ru/watch/107267514" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+  <div id="hud">
+    <div class="panel" id="info-panel">
+      <div class="panel-head">
+        <h1>Crimson Wars</h1>
+        <button id="info-panel-close" class="panel-close" type="button" aria-label="Hide menu" title="Hide menu">&times;</button>
+      </div>
+      <p>WASD move, mouse aim, LMB fire</p>
+      <p>Press `Space` jump, `H` hide menu</p>
+      <p id="status">Connecting...</p>
+      <p id="instance-meta">Instance: --</p>
+      <p id="room-meta"></p>
+      <p id="weapon-meta"></p>
+      <p id="movement-meta"></p>
+      <p id="net-meta">NET: --</p>
+      <p>
+        Quality:
+        <select id="quality-select">
+          <option value="low">Low</option>
+          <option value="medium" selected>Medium</option>
+          <option value="high">High</option>
+        </select>
+      </p>
+      <div class="settings-toggles">
+        <p class="shadow-option">
+          <label>
+            <input id="shadow-toggle" type="checkbox" checked />
+            Shadows
+          </label>
+        </p>
+        <p class="shadow-option">
+          <label>
+            <input id="show-minimap-toggle" type="checkbox" checked />
+            Show minimap
+          </label>
+        </p>
+        <p class="shadow-option">
+          <label>
+            <input id="bullet-tracers-toggle" type="checkbox" checked />
+            Bullet tracers
+          </label>
+        </p>
+        <p class="shadow-option">
+          <label>
+            <input id="enemy-hp-toggle" type="checkbox" checked />
+            Enemy HP Bars
+          </label>
+        </p>
+        <p class="shadow-option">
+          <label>
+            <input id="extra-blood-toggle" type="checkbox" checked />
+            Extra blood
+          </label>
+        </p>
+        <p class="shadow-option">
+          <label>
+            <input id="hit-effects-toggle" type="checkbox" checked />
+            Hit effects
+          </label>
+        </p>
+        <p class="shadow-option">
+          <label>
+            <input id="auto-fire-toggle" type="checkbox" />
+            Auto fire
+          </label>
+        </p>
+        <p class="shadow-option">
+          <label>
+            <input id="dynamic-sticks-toggle" type="checkbox" />
+            Dynamic sticks
+          </label>
+        </p>
+        <p class="shadow-option">
+          <label>
+            <input id="show-aim-stick-toggle" type="checkbox" checked />
+            Show aim stick
+          </label>
+        </p>
+        <p class="shadow-option">
+          <label>
+            <input id="conn-indicator-toggle" type="checkbox" checked />
+            Connection indicator
+          </label>
+        </p>
+        <p class="shadow-option">
+          <label>
+            <input id="show-fps-toggle" type="checkbox" checked />
+            Show FPS
+          </label>
+        </p>
+        <p class="shadow-option">
+          <label>
+            <input id="show-chat-toggle" type="checkbox" checked />
+            Show chat
+          </label>
+        </p>
+        <p id="replay-player-toggle-wrap" class="shadow-option hidden">
+          <label for="replay-player-toggle">
+            <input id="replay-player-toggle" type="checkbox" checked />
+            <span id="replay-player-toggle-label">Show replay player</span>
+          </label>
+        </p>
+        <p class="shadow-option">
+          <label id="language-label" for="language-select">Language</label>
+          <select id="language-select"></select>
+        </p>
+      </div>
+      <button id="session-exit-btn" type="button" class="session-exit-btn" aria-label="End current run">Exit Run</button>
+    </div>
+    <button id="toggle-info" class="hud-toggle" type="button" aria-label="Menu">
+      <span class="menu-burger" aria-hidden="true">&#9776;</span>
+      <span class="menu-label">Menu</span>
+    </button>
+    <div class="panel" id="scoreboard"></div>
+    <div id="tab-scoreboard" class="tab-scoreboard hidden" aria-live="polite"></div>
+  </div>
+
+  <div id="fps-corner" class="hidden" aria-live="polite">FPS: --</div>
+  <div id="chat-wrap" class="hidden" aria-live="polite">
+    <div id="chat-messages" class="chat-messages"></div>
+    <form id="chat-form" class="chat-form" autocomplete="off">
+      <input id="chat-input" maxlength="180" placeholder="Enter to chat. /mute name" />
+      <button id="chat-send" type="submit" class="chat-send" aria-label="Send message" title="Send"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M21.75 2.88a1 1 0 0 0-1.04-.17L2.95 10.1a1 1 0 0 0 .08 1.87l7.03 2.35 2.35 7.03a1 1 0 0 0 .9.68h.04a1 1 0 0 0 .93-.61l7.39-17.76a1 1 0 0 0 .08-.78zM11.2 13.74l-5.17-1.73L18.12 6.9l-6.92 6.84zm1.06 1.1 6.84-6.92-5.11 12.09-1.73-5.17z"/></svg></button>
+    </form>
+  </div>
+  <div id="minimap-wrap" class="hidden" aria-hidden="true">
+    <canvas id="minimap" width="220" height="220"></canvas>
+  </div>
+  <div id="top-center-hud" aria-live="polite">
+    <div class="top-center-row">
+      <span id="match-timer">Time 00:00</span>
+      <span class="top-sep">|</span>
+      <span id="boss-progress">Boss in -- kills</span>
+      <span class="top-sep">|</span>
+      <span id="difficulty-meta">Threat Lv1</span>
+    </div>
+    <div id="boss-spawn-alert" class="boss-spawn-alert hidden">BOSS TELEPORT IN 0.0s</div>
+  </div>
+  <div id="replay-load-overlay" class="replay-load-overlay hidden" aria-live="polite">
+    <div id="replay-load-label" class="replay-load-label">Loading replay...</div>
+    <div class="replay-load-track">
+      <div id="replay-load-fill" class="replay-load-fill"></div>
+    </div>
+    <div id="replay-load-meta" class="replay-load-meta">Preparing replay data...</div>
+  </div>
+  <div id="replay-game-controls" class="hidden" aria-live="polite">
+    <div class="replay-game-row">
+      <button id="replay-game-exit" type="button" class="mini">Exit Replay</button>
+      <div id="replay-game-meta">Replay</div>
+      <div id="replay-game-speeds" class="record-replay-speeds">
+        <button type="button" class="mini active" data-replay-game-speed="1">x1</button>
+        <button type="button" class="mini" data-replay-game-speed="2">x2</button>
+        <button type="button" class="mini" data-replay-game-speed="3">x3</button>
+        <button type="button" class="mini" data-replay-game-speed="5">x5</button>
+        <button type="button" class="mini" data-replay-game-speed="10">x10</button>
+        <button type="button" class="mini" data-replay-game-speed="20">x20</button>
+      </div>
+    </div>
+    <div class="replay-game-row replay-game-row-bottom">
+      <div class="replay-game-nav">
+        <button id="replay-game-start" type="button" class="mini" title="To start">|<</button>
+        <button id="replay-game-back" type="button" class="mini" title="Back 5s"><<</button>
+        <button id="replay-game-toggle" type="button" class="mini" title="Pause or continue">Pause</button>
+        <button id="replay-game-forward" type="button" class="mini" title="Forward 5s">>></button>
+        <button id="replay-game-end" type="button" class="mini" title="To end">>|</button>
+      </div>
+      <input id="replay-game-progress" type="range" min="0" max="1000" value="0" step="1" />
+    </div>
+  </div>
+  <div id="bottom-hud" aria-live="polite">
+    <div id="skill-bar"></div>
+    <div id="xp-wrap">
+      <div id="xp-level">Lv1</div>
+      <div id="xp-bar"><div id="xp-fill"></div></div>
+      <div id="xp-text">0 / 0 XP</div>
+    </div>
+  </div>
+
+  <div id="levelup-overlay" class="hidden" aria-live="polite">
+    <div class="levelup-title">Level up! Choose 1 skill</div>
+    <div id="levelup-options" class="levelup-options"></div>
+  </div>
+
+  <canvas id="game" width="1280" height="720"></canvas>
+  <div id="hit-screen-overlay" aria-hidden="true"></div>
+
+  <div id="join-overlay">
+    <button id="join-toggle-info" class="hud-toggle" type="button" aria-label="Show menu" title="Show menu">
+      <span class="menu-burger" aria-hidden="true">&#9776;</span>
+      <span class="menu-label">Menu</span>
+    </button>
+    <div id="death-cinematic" class="death-cinematic" aria-hidden="true">
+      <div id="death-text" class="death-text">YOU DIE!!!</div>
+      <div class="death-impact"></div>
+      <div class="death-drips"></div>
+      <div id="death-screen-blood" class="death-screen-blood" aria-hidden="true"></div>
+      <div id="death-rewards-panel" class="death-rewards-panel" aria-live="polite">
+        <div class="death-rewards-title">Run Rewards</div>
+        <div id="death-rewards-body" class="death-rewards-body">Collecting rewards...</div>
+        <button id="death-rewards-menu" type="button" class="death-rewards-menu-btn">Back to menu</button>
+      </div>
+      <!--<button id="death-continue" type="button" class="death-continue">Show menu</button>-->
+    </div>
+    <div class="menu-logo-wrap" aria-hidden="true">
+      <img class="menu-logo-img" src="/assets/other/crimson wars title.png" alt="" />
+    </div>
+    <form id="join-form" autocomplete="off">
+      <details id="player-access-details" class="auth-card">
+        <summary class="auth-card-summary" data-label-open="Show" data-label-close="Hide">Player access</summary>
+        <div class="auth-card-body">
+          <div class="auth-head">
+            <div id="player-auth-summary" class="auth-summary">Guest mode. Registered nicknames require login.</div>
+            <button id="player-logout" type="button" class="mini ghost hidden">Log out</button>
+          </div>
+
+          <div class="auth-tabs" role="tablist" aria-label="Player access mode">
+            <button id="auth-tab-guest" type="button" class="auth-tab active" data-auth-tab="guest" aria-selected="true">Guest</button>
+            <button id="auth-tab-login" type="button" class="auth-tab" data-auth-tab="login" aria-selected="false">Login</button>
+            <button id="auth-tab-register" type="button" class="auth-tab" data-auth-tab="register" aria-selected="false">Register</button>
+          </div>
+
+          <div class="auth-panel active" data-auth-panel="guest">
+            <div class="auth-copy">Play immediately with any free nickname that is not registered.</div>
+          </div>
+
+          <div class="auth-panel" data-auth-panel="login">
+            <label for="auth-login-nickname">Registered nickname</label>
+            <input id="auth-login-nickname" maxlength="18" placeholder="Nickname" />
+            <label for="auth-login-password">Password</label>
+            <input id="auth-login-password" type="password" maxlength="72" placeholder="Password" />
+            <button id="player-login" type="button" class="auth-action">Log in</button>
+          </div>
+
+          <div class="auth-panel" data-auth-panel="register">
+            <label for="auth-register-nickname">New nickname</label>
+            <input id="auth-register-nickname" maxlength="18" placeholder="Nickname" />
+            <label for="auth-register-password">Password</label>
+            <input id="auth-register-password" type="password" maxlength="72" placeholder="Password" />
+            <button id="player-register" type="button" class="auth-action">Register nickname</button>
+          </div>
+
+          <div class="providers-card">
+            <div class="providers-title">External sign-in</div>
+            <div class="providers-grid">
+              <button type="button" class="provider-btn" disabled>Google coming soon</button>
+              <button type="button" class="provider-btn" disabled>VK ID coming soon</button>
+              <button type="button" class="provider-btn" disabled>Mail.ru coming soon</button>
+            </div>
+          </div>
+
+          <div id="player-auth-feedback" class="auth-feedback hidden" aria-live="polite"></div>
+        </div>
+      </details>
+
+      <label for="name">Nickname</label>
+      <input id="name" maxlength="18" value="Fighter" />
+      <div id="nickname-hint" class="field-hint">Guest mode: choose any free nickname.</div>
+
+      <div id="main-menu-tabs" class="main-menu-tabs" role="tablist" aria-label="Main menu">        
+        <button type="button" class="main-menu-tab active" data-menu-tab="play">Play</button>
+        <button type="button" class="main-menu-tab" data-menu-tab="characters">Characters</button>
+        <button type="button" class="main-menu-tab" data-menu-tab="skills">Skills</button>
+        <button type="button" class="main-menu-tab" data-menu-tab="profile">Profile</button>        
+        <button type="button" class="main-menu-tab" data-menu-tab="rating">Rating</button>
+        <button type="button" class="main-menu-tab" data-menu-tab="news">News</button>
+      </div>
+
+      <section id="menu-panel-play" class="menu-panel active" data-menu-panel="play">
+        <label id="room-code-label" for="room-code">Room code (optional)</label>
+        <input id="room-code" maxlength="10" placeholder="AUTO or e.g. ABC123" />
+
+        <details id="sync-settings" class="sync-settings">
+          <summary>Sync settings (Create room)</summary>
+          <label for="sync-preset">Preset</label>
+          <select id="sync-preset">
+            <option value="normal" selected>Normal (default)</option>
+            <option value="better">Better</option>
+            <option value="best">Best</option>
+            <option value="custom">Custom</option>
+          </select>
+          <div class="sync-grid">
+            <label for="sync-tickrate">Tickrate</label>
+            <input id="sync-tickrate" type="number" min="20" max="120" step="1" />
+
+            <label for="sync-state-rate">State send rate (Hz)</label>
+            <input id="sync-state-rate" type="number" min="10" max="120" step="1" />
+
+            <label for="sync-render-delay">Interp delay (ms)</label>
+            <input id="sync-render-delay" type="number" min="20" max="250" step="1" />
+
+            <label for="sync-max-extrapolation">Max extrapolation (ms)</label>
+            <input id="sync-max-extrapolation" type="number" min="20" max="250" step="1" />
+
+            <label for="sync-entity-interp">Entity interp rate</label>
+            <input id="sync-entity-interp" type="number" min="4" max="50" step="1" />
+
+            <label for="sync-bullet-correction">Bullet correction rate</label>
+            <input id="sync-bullet-correction" type="number" min="4" max="60" step="1" />
+
+            <label for="sync-input-rate">Input send rate (Hz)</label>
+            <input id="sync-input-rate" type="number" min="10" max="120" step="1" />
+          </div>
+        </details>
+
+        <div class="actions">
+          <button type="submit" data-mode="create">Create room</button>
+          <button type="submit" data-mode="join" class="secondary">Join code</button>
+        </div>
+        <div id="game-mode-panel" class="rooms-browser game-mode-browser">
+          <div class="rooms-head">
+            <span>Game mode</span>
+          </div>
+          <div class="game-mode-options">
+            <button type="button" class="game-mode-option active" data-game-mode="normal">
+              <b>Normal</b>
+              <span>Current game balance</span>
+            </button>
+            <button type="button" class="game-mode-option" data-game-mode="hardcore">
+              <b>Hardcore</b>
+              <span>x3 monsters, enemy HP x2</span>
+            </button>
+            <button type="button" class="game-mode-option" data-game-mode="pvp">
+              <b>PvP</b>
+              <span>Up to 16 players, low NPC pressure</span>
+            </button>
+          </div>
+          <div id="pvp-duration-wrap" class="field-row hidden">
+            <label for="pvp-duration-select">Match duration</label>
+            <select id="pvp-duration-select">
+              <option value="3">3 min</option>
+              <option value="5">5 min</option>
+              <option value="10" selected>10 min</option>
+              <option value="15">15 min</option>
+            </select>
+          </div>
+        </div>
+        <div id="join-feedback" class="join-feedback hidden" aria-live="polite"></div>
+        <div id="death-result" class="death-result">Last result: --</div>
+        <div id="rooms-browser" class="rooms-browser">
+          <div class="rooms-head">
+            <span>Active rooms</span>
+            <button type="button" id="refresh-rooms" class="mini">Refresh</button>
+          </div>
+          <div id="presence-meta" class="presence-meta">Online: -- | In game: -- | In menu: -- | Registered: --</div>
+          <div id="rooms-list" class="rooms-list">Loading...</div>
+        </div>
+      </section>
+
+      
+      <section id="menu-panel-characters" class="menu-panel" data-menu-panel="characters">
+        <div id="hero-gallery-v2" class="hero-gallery-v2" aria-live="polite"></div>
+      </section>
+
+      <section id="menu-panel-skills" class="menu-panel" data-menu-panel="skills">
+        <label id="character-label">Character</label>
+        <div id="account-progress-summary" class="account-progress-summary"></div>
+        <div id="character-select" class="character-select"></div>
+        <div id="hero-tree-panel" class="hero-tree-panel"></div>
+        <div id="hero-action-feedback" class="hero-action-feedback hidden" aria-live="polite"></div>
+      </section>
+
+      <section id="menu-panel-profile" class="menu-panel" data-menu-panel="profile">
+        <div id="profile-summary" class="profile-card">Profile loading...</div>
+        <div id="profile-achievements" class="profile-card">Achievements: soon</div>
+        <div id="profile-character-stats" class="profile-card">Character stats: soon</div>
+        <div id="profile-run-history" class="profile-card">Run history: loading...</div>
+      </section>
+
+      <section id="menu-panel-rating" class="menu-panel" data-menu-panel="rating">
+        <div id="rating-board" class="profile-card">Loading leaderboard...</div>
+      </section>
+
+      <section id="menu-panel-news" class="menu-panel" data-menu-panel="news">
+        <div id="news-feed" class="profile-card news-card">Loading news...</div>
+      </section>
+    </form>
+    <div id="record-details-modal" class="record-details-modal hidden" aria-live="polite">
+      <div class="record-details-card">
+        <div class="record-details-head">
+          <b id="record-details-title">Run details</b>
+          <button id="record-details-close" type="button" class="mini">Close</button>
+        </div>
+        <div id="record-details-body" class="record-details-body">No data.</div>
+        <div id="record-replay-panel" class="record-replay-panel hidden">
+          <div class="record-replay-toolbar">
+            <button id="record-replay-play" type="button" class="mini">Play Replay</button>
+            <button id="record-replay-ingame" type="button" class="mini">Show Replay In Game</button>
+            <button id="record-replay-copy-link" type="button" class="mini">Copy Replay Link</button>
+            <div id="record-replay-speeds" class="record-replay-speeds hidden">
+              <button type="button" class="mini active" data-replay-speed="1">x1</button>
+              <button type="button" class="mini" data-replay-speed="2">x2</button>
+              <button type="button" class="mini" data-replay-speed="3">x3</button>
+              <button type="button" class="mini" data-replay-speed="5">x5</button>
+              <button type="button" class="mini" data-replay-speed="10">x10</button>
+              <button type="button" class="mini" data-replay-speed="20">x20</button>
+            </div>
+          </div>
+          <div id="record-replay-controls" class="record-replay-controls hidden">
+            <div class="replay-game-nav">
+              <button id="record-replay-start" type="button" class="mini" title="To start">|<</button>
+              <button id="record-replay-back" type="button" class="mini" title="Back 5s"><<</button>
+              <button id="record-replay-toggle" type="button" class="mini" title="Pause or continue">Pause</button>
+              <button id="record-replay-forward" type="button" class="mini" title="Forward 5s">>></button>
+              <button id="record-replay-end" type="button" class="mini" title="To end">>|</button>
+            </div>
+            <input id="record-replay-progress" type="range" min="0" max="1000" value="0" step="1" />
+          </div>
+          <div id="record-replay-meta" class="record-replay-meta">Replay not loaded.</div>
+          <div class="record-replay-stage">
+            <canvas id="record-replay-canvas" class="record-replay-canvas" width="520" height="320"></canvas>
+            <button id="record-replay-stage-load" type="button" class="record-replay-stage-load mini">Load Replay</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <button id="menu-version-trigger" class="menu-version-trigger" type="button" aria-label="Open version history">v0.8.2</button>
+    <div id="game-version-modal" class="record-details-modal hidden" aria-live="polite">
+      <div class="record-details-card game-version-card">
+        <div class="record-details-head">
+          <b id="game-version-title">Version history</b>
+          <button id="game-version-close" type="button" class="mini">Close</button>
+        </div>
+        <div id="game-version-body" class="record-details-body">Loading...</div>
+      </div>
+    </div>
+  </div>
+
+  <button id="stats-toggle" type="button" aria-expanded="false">Stats</button>
+  <button id="dev-console-toggle" type="button" class="hidden" aria-label="Open console">>_</button>
+  <div id="stats-panel" class="hidden" aria-live="polite">
+    <div class="panel-head">
+      <div class="stats-title">Character stats</div>
+      <button id="stats-panel-close" class="panel-close panel-close-sm" type="button" aria-label="Close stats" title="Close stats">&times;</button>
+    </div>
+    <div id="stats-content">No data yet.</div>
+  </div>
+
+  <div id="mobile-controls" aria-hidden="true">
+    <div class="stick" id="move-stick">
+      <div class="stick-knob" id="move-knob"></div>
+      <span class="stick-label">MOVE</span>
+    </div>
+    <div class="stick" id="aim-stick">
+      <div class="stick-knob" id="aim-knob"></div>
+      <span class="stick-label">AIM</span>
+    </div>
+    <button id="jump-btn" type="button">JUMP</button>
+  </div>
+
+  <div id="dev-console" class="hidden" aria-live="polite">
+    <div class="dev-console-head">
+      <b>Dev Console</b>
+      <span class="dev-console-hint">~ toggle, Esc close</span>
+    </div>
+    <div id="dev-console-log"></div>
+    <form id="dev-console-form" autocomplete="off">
+      <input id="dev-console-input" maxlength="180" placeholder="type command..." />
+    </form>
+  </div>
+  <script src="/js/client-i18n.js?v=20260318i18n1"></script>
+  <script src="/js/client-core.js?v=20260318i18n1"></script>
+  <script src="/js/client-net-input.js?v=20260318i18n1"></script>
+  <script src="/js/client-fx.js?v=20260317t"></script>
+  <script src="/js/client-render.js?v=20260317t"></script>
+</body>
+</html>
+
+

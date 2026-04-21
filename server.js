@@ -144,7 +144,35 @@ app.use((req, res, next) => {
   res.setHeader('X-Crimson-Instance', INSTANCE_ID);
   next();
 });
-app.use(express.static(path.join(__dirname, 'public')));
+app.get('/', (req, res, next) => {
+  const compatibilityParams = [
+    'room',
+    'mode',
+    'tab',
+    'news',
+    'replay',
+    'replayAt',
+    'replayPath',
+    'replayApiPath',
+    't',
+    'integrationToken',
+    'integration_token',
+    'heroId',
+    'hero_id',
+    'name',
+  ];
+  const shouldRedirectToPlay = compatibilityParams.some((key) => Object.prototype.hasOwnProperty.call(req.query || {}, key));
+  if (shouldRedirectToPlay) {
+    const search = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+    res.redirect(302, `/play${search}`);
+    return;
+  }
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+app.get('/play', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'play.html'));
+});
+app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
