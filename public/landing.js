@@ -85,6 +85,14 @@ function formatDurationSec(value) {
   return `${Math.max(0, Number(value) || 0)}s`;
 }
 
+function formatRunGameModeLabel(run) {
+  const raw = String(run?.runDetails?.gameMode || '').trim().toLowerCase();
+  if (raw === 'hardcore') return 'Hardcore';
+  if (raw === 'normal') return 'Normal';
+  if (raw === 'pvp') return 'PvP';
+  return 'Unknown';
+}
+
 function formatRatingValue(item, categoryKey) {
   const value = Math.max(0, Number(item?.value) || 0);
   if (categoryKey === 'best_time_run') return `${value}s`;
@@ -127,14 +135,13 @@ window.addEventListener('keydown', (event) => {
 });
 
 function renderProfile(profile, runPayload) {
-  const summary = profile?.summary || {};
-  const publicHeroes = Array.isArray(profile?.heroes) ? profile.heroes : [];
-  const runs = Array.isArray(runPayload?.items) ? runPayload.items : [];
+  const publicHeroes = Array.isArray(profile?.heroStats) ? profile.heroStats : [];
+  const runs = Array.isArray(runPayload?.runs) ? runPayload.runs : [];
 
   const heroesHtml = publicHeroes.length > 0
     ? publicHeroes.map((hero) => `
         <div class="landing-profile-row">
-          <span>${escapeHtml(hero?.heroName || hero?.heroId || 'Hero')}</span>
+          <span>${escapeHtml(hero?.name || hero?.id || 'Hero')}</span>
           <span>Lv${Math.max(1, Number(hero?.level) || 1)}</span>
           <span>${Math.max(0, Number(hero?.runs) || 0)} runs | ${hero?.unlocked ? 'Unlocked' : 'Locked'}</span>
         </div>
@@ -146,13 +153,13 @@ function renderProfile(profile, runPayload) {
         <div class="landing-profile-run">
           <div class="landing-profile-run-head">
             <span>${escapeHtml(formatShortDateTime(run?.at))}</span>
-            <span>Room ${escapeHtml(run?.roomCode || '-')} | ${escapeHtml(run?.gameModeLabel || run?.gameMode || 'Mode')}</span>
+            <span>Room ${escapeHtml(run?.roomCode || '-')} | ${escapeHtml(formatRunGameModeLabel(run))}</span>
           </div>
           <div class="landing-profile-run-main">
             <span>${Math.max(0, Number(run?.kills) || 0)} kills</span>
             <span>${Math.max(0, Number(run?.score) || 0)} pts</span>
             <span>${escapeHtml(formatDurationSec(run?.durationSec))}</span>
-            <span class="landing-profile-run-xp">XP ${Math.max(0, Number(run?.accountXpGained) || 0)}</span>
+            <span class="landing-profile-run-xp">XP ${Math.max(0, Number(run?.runDetails?.xp) || 0)}</span>
           </div>
         </div>
       `).join('')
@@ -160,13 +167,13 @@ function renderProfile(profile, runPayload) {
 
   return `
     <div class="landing-profile-card">
-      <h3>Profile Lv${Math.max(1, Number(summary?.accountLevel) || 1)}</h3>
+      <h3>Profile Lv${Math.max(1, Number(profile?.accountLevel) || 1)}</h3>
       <div class="landing-profile-meta">
-        XP ${Math.max(0, Number(summary?.accountXp) || 0)}/${Math.max(0, Number(summary?.xpToNext) || 0)}
-        | Skill points: ${Math.max(0, Number(summary?.skillPoints) || 0)}
-        | Shards: ${Math.max(0, Number(summary?.shards) || 0)}
-        | Heroes: ${Math.max(0, Number(summary?.heroesUnlocked) || 0)}/${Math.max(0, Number(summary?.heroesTotal) || 0)}
-        | Runs: ${Math.max(0, Number(summary?.runsCount) || 0)}
+        XP ${Math.max(0, Number(profile?.accountXp) || 0)}/${Math.max(0, Number(profile?.accountXpToNext) || 0)}
+        | Skill points: ${Math.max(0, Number(profile?.accountSkillPoints) || 0)}
+        | Shards: ${Math.max(0, Number(profile?.shards) || 0)}
+        | Heroes: ${Math.max(0, Number(profile?.heroesUnlocked) || 0)}/${Math.max(0, Number(profile?.heroesTotal) || 0)}
+        | Runs: ${Math.max(0, Number(profile?.totalRuns) || 0)}
       </div>
     </div>
     <div class="landing-profile-card">
@@ -202,7 +209,13 @@ async function openPlayerProfile(playerId, fallbackName) {
       throw new Error(profilePayload?.message || `HTTP ${profileResponse.status}`);
     }
     profileTitle.textContent = `Profile: ${String(profilePayload.profile?.nickname || fallbackName || `ID ${id}`)}`;
-    profileBody.innerHTML = renderProfile(profilePayload.profile, runsPayload?.payload || runsPayload || {});
+    const runData = runsResponse.ok && runsPayload?.ok
+      ? {
+          runs: Array.isArray(runsPayload.runs) ? runsPayload.runs : [],
+          total: Math.max(0, Number(runsPayload.total) || 0),
+        }
+      : { runs: [], total: 0 };
+    profileBody.innerHTML = renderProfile(profilePayload.profile, runData);
   } catch (error) {
     profileBody.innerHTML = `<div class="landing-profile-card">Не удалось загрузить профиль: ${escapeHtml(error?.message || 'Unknown error')}</div>`;
   }
