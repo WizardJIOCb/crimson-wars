@@ -350,19 +350,33 @@ function spawnDodgeWindFx(x, y, dirX = 1, dirY = 0, isMe = false) {
 }
 
 function spawnBladeOrbitFx(x, y) {
-  for (let i = 0; i < 3; i += 1) {
+  const bladeCount = 5;
+  for (let i = 0; i < bladeCount; i += 1) {
+    const radius = 92 + Math.random() * 34;
+    const life = 0.62 + Math.random() * 0.12;
+    const orbitDir = Math.random() > 0.5 ? 1 : -1;
     visuals.skillArcs.push({
       x,
       y,
-      ang: (Math.PI * 2 * i) / 3,
-      spin: (4.5 + Math.random() * 2.4) * (Math.random() > 0.5 ? 1 : -1),
-      radius: 34 + Math.random() * 12,
-      life: 0.42 + Math.random() * 0.08,
-      ttl: 0.42 + Math.random() * 0.08,
-      color: '#fcd34d',
+      ang: (Math.PI * 2 * i) / bladeCount,
+      spin: (5.8 + Math.random() * 2.6) * orbitDir,
+      radius,
+      baseRadius: radius,
+      orbitDir,
+      bladeRot: Math.random() * Math.PI * 2,
+      bladeRotSpeed: (15 + Math.random() * 7) * orbitDir,
+      bladeLength: 26 + Math.random() * 8,
+      bladeWidth: 11 + Math.random() * 4,
+      trailSpan: 0.42 + Math.random() * 0.18,
+      pulseAmp: 10 + Math.random() * 7,
+      pulseSpeed: 7.5 + Math.random() * 2.5,
+      phase: Math.random() * Math.PI * 2,
+      life,
+      ttl: life,
+      color: Math.random() > 0.4 ? '#fde68a' : '#fca5a5',
     });
   }
-  if (visuals.skillArcs.length > 90) visuals.skillArcs.splice(0, visuals.skillArcs.length - 90);
+  if (visuals.skillArcs.length > 140) visuals.skillArcs.splice(0, visuals.skillArcs.length - 140);
 }
 
 function spawnChainLightningFx(caster, nextState) {
@@ -502,9 +516,9 @@ function spawnSkillCastFx(skillId, caster, nextState, skill) {
     registerImpactSource({
       x: caster.x,
       y: caster.y,
-      radius: 220,
-      strength: 1.18,
-      ttlMs: 300,
+      radius: 340,
+      strength: 1.34,
+      ttlMs: 340,
       radial: true,
       target: 'enemy',
     });
@@ -922,6 +936,8 @@ function updateFx(dt) {
     const a = visuals.skillArcs[i];
     a.life -= dt;
     a.ang += a.spin * dt;
+    a.bladeRot += a.bladeRotSpeed * dt;
+    a.radius = a.baseRadius + Math.sin((performance.now() / 1000) * a.pulseSpeed + a.phase) * a.pulseAmp;
     if (a.life <= 0) visuals.skillArcs.splice(i, 1);
   }
 

@@ -246,6 +246,10 @@ main {
     0 0 22px rgba(255, 109, 58, 0.32);
   mix-blend-mode: screen;
   animation: emberRise 8s linear infinite;
+  opacity: 0;
+  transform: translate3d(0, 0, 0) scale(0.72);
+  will-change: transform, opacity;
+  animation-fill-mode: backwards;
 }
 
 .hero-ash {

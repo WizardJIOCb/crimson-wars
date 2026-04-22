@@ -769,14 +769,61 @@ function drawFx() {
     const cy = a.y + Math.sin(a.ang) * a.radius;
     const sx = cx - camera.x;
     const sy = cy - camera.y;
+    const tangent = a.ang + Math.PI * 0.5 * (a.orbitDir || 1);
+    const bladeRot = tangent + (a.bladeRot || 0);
+    const bladeLength = Number(a.bladeLength) || 28;
+    const bladeWidth = Number(a.bladeWidth) || 12;
+    const trailSpan = Number(a.trailSpan) || 0.46;
+    const alpha = Math.min(1, t * 0.95);
+
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    ctx.fillStyle = `rgba(252,211,77,${(t * 0.85).toFixed(3)})`;
+    ctx.globalAlpha = alpha * 0.38;
+    ctx.strokeStyle = a.color || '#fde68a';
+    ctx.lineWidth = Math.max(4, bladeWidth * 0.42);
     ctx.beginPath();
-    ctx.moveTo(sx + 8, sy);
-    ctx.lineTo(sx - 6, sy - 4);
-    ctx.lineTo(sx - 2, sy + 7);
+    ctx.arc(a.x - camera.x, a.y - camera.y, a.radius, a.ang - trailSpan, a.ang + trailSpan);
+    ctx.stroke();
+
+    ctx.translate(sx, sy);
+    ctx.rotate(bladeRot);
+
+    const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, bladeLength * 1.3);
+    glow.addColorStop(0, `rgba(255,245,200,${(alpha * 0.95).toFixed(3)})`);
+    glow.addColorStop(0.5, `rgba(253,224,71,${(alpha * 0.34).toFixed(3)})`);
+    glow.addColorStop(1, 'rgba(253,224,71,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(0, 0, bladeLength * 1.15, 0, Math.PI * 2);
+    ctx.fill();
+
+    const bladeGradient = ctx.createLinearGradient(-bladeLength * 0.7, 0, bladeLength, 0);
+    bladeGradient.addColorStop(0, `rgba(255,255,255,${(alpha * 0.96).toFixed(3)})`);
+    bladeGradient.addColorStop(0.28, `rgba(254,240,138,${(alpha * 0.98).toFixed(3)})`);
+    bladeGradient.addColorStop(0.72, `rgba(251,191,36,${(alpha * 0.9).toFixed(3)})`);
+    bladeGradient.addColorStop(1, `rgba(248,113,113,${(alpha * 0.68).toFixed(3)})`);
+
+    ctx.fillStyle = bladeGradient;
+    ctx.beginPath();
+    ctx.moveTo(bladeLength, 0);
+    ctx.lineTo(-bladeLength * 0.12, -bladeWidth * 0.72);
+    ctx.lineTo(-bladeLength * 0.68, -bladeWidth * 0.34);
+    ctx.lineTo(-bladeLength * 0.45, 0);
+    ctx.lineTo(-bladeLength * 0.68, bladeWidth * 0.34);
+    ctx.lineTo(-bladeLength * 0.12, bladeWidth * 0.72);
     ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = `rgba(255,255,255,${(alpha * 0.75).toFixed(3)})`;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(-bladeLength * 0.48, 0);
+    ctx.lineTo(bladeLength * 0.84, 0);
+    ctx.stroke();
+
+    ctx.fillStyle = `rgba(120, 24, 28, ${(alpha * 0.7).toFixed(3)})`;
+    ctx.beginPath();
+    ctx.arc(-bladeLength * 0.42, 0, bladeWidth * 0.24, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -1260,5 +1307,4 @@ startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 setInterval(sendNetStatsReport, 1500);
 scheduleNextFrame();
-
 
