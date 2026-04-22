@@ -46,6 +46,7 @@ function toggleMenu(forceOpen) {
   nav.classList.toggle('is-open', nextState);
   document.body.classList.toggle('menu-open', nextState);
   mobileToggle.setAttribute('aria-expanded', String(nextState));
+  mobileToggle.classList.toggle('is-open', nextState);
 }
 
 mobileToggle?.addEventListener('click', () => {
@@ -210,6 +211,10 @@ profileModal?.addEventListener('click', (event) => {
 });
 
 window.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && nav?.classList.contains('is-open')) {
+    toggleMenu(false);
+    return;
+  }
   if (event.key === 'Escape' && profileModal && !profileModal.classList.contains('hidden')) {
     closeProfileModal();
   }
