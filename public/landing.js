@@ -7,6 +7,38 @@ const profileModal = document.getElementById('landing-profile-modal');
 const profileBody = document.getElementById('landing-profile-body');
 const profileTitle = document.getElementById('landing-profile-title');
 const profileCloseBtn = document.getElementById('landing-profile-close');
+const hubFrame = document.getElementById('battle-hub-frame');
+const hubLoading = document.getElementById('battle-hub-loading');
+const hubTabTitle = document.getElementById('hub-tab-title');
+const hubTabDescription = document.getElementById('hub-tab-description');
+const HUB_TABS = new Set(['play', 'characters', 'skills', 'profile', 'rating', 'news']);
+const hubTabMeta = {
+  play: {
+    title: 'Play',
+    description: 'Создай комнату, зайди по коду, выбери режим и стартуй без лишнего шага между лендингом и игрой.',
+  },
+  characters: {
+    title: 'Characters',
+    description: 'Смотри доступных героев, переключай стиль боя и собирай состав до того, как откроется арена.',
+  },
+  skills: {
+    title: 'Skills',
+    description: 'Прокачка и дерево героя теперь открываются внутри лендинга, а не в отдельном экране-ответвлении.',
+  },
+  profile: {
+    title: 'Profile',
+    description: 'Аккаунт, прогресс, история забегов и личная динамика теперь остаются прямо в основном flow страницы.',
+  },
+  rating: {
+    title: 'Rating',
+    description: 'Полный leaderboard живёт внутри общего battle hub, а блоки ниже на лендинге работают как preview.',
+  },
+  news: {
+    title: 'News',
+    description: 'Патчи, апдейты и обсуждение доступны без разрыва между витриной проекта и игровым меню.',
+  },
+};
+let activeHubTab = 'play';
 
 function toggleMenu(forceOpen) {
   if (!nav || !mobileToggle) return;
@@ -37,6 +69,55 @@ const revealObserver = new IntersectionObserver((entries) => {
 for (const node of revealNodes) {
   revealObserver.observe(node);
 }
+
+function getHubUrl(tabId) {
+  const nextTab = HUB_TABS.has(String(tabId || '').trim().toLowerCase()) ? String(tabId).trim().toLowerCase() : 'play';
+  return nextTab === 'play' ? '/play' : `/play?tab=${encodeURIComponent(nextTab)}`;
+}
+
+function scrollToBattleHub() {
+  const section = document.getElementById('play');
+  section?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function setActiveHubTab(tabId, { updateFrame = true, scrollIntoView = false } = {}) {
+  const nextTab = HUB_TABS.has(String(tabId || '').trim().toLowerCase()) ? String(tabId).trim().toLowerCase() : 'play';
+  activeHubTab = nextTab;
+  for (const button of Array.from(document.querySelectorAll('[data-hub-tab]'))) {
+    const isActive = String(button.getAttribute('data-hub-tab') || '').trim().toLowerCase() === nextTab;
+    if (button.tagName === 'BUTTON') button.classList.toggle('active', isActive);
+    button.setAttribute('aria-current', isActive ? 'true' : 'false');
+  }
+  if (hubTabTitle) hubTabTitle.textContent = hubTabMeta[nextTab]?.title || 'Play';
+  if (hubTabDescription) hubTabDescription.textContent = hubTabMeta[nextTab]?.description || '';
+  if (updateFrame && hubFrame) {
+    const nextUrl = getHubUrl(nextTab);
+    const currentUrl = String(hubFrame.getAttribute('src') || '').trim();
+    if (currentUrl !== nextUrl) {
+      hubLoading?.classList.remove('is-hidden');
+      hubFrame.setAttribute('src', nextUrl);
+    }
+  }
+  if (scrollIntoView) scrollToBattleHub();
+}
+
+document.addEventListener('click', (event) => {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const trigger = target.closest('[data-hub-tab]');
+  if (!(trigger instanceof Element)) return;
+  const nextTab = String(trigger.getAttribute('data-hub-tab') || '').trim().toLowerCase();
+  if (!HUB_TABS.has(nextTab)) return;
+  event.preventDefault();
+  toggleMenu(false);
+  setActiveHubTab(nextTab, { updateFrame: true, scrollIntoView: true });
+});
+
+hubFrame?.addEventListener('load', () => {
+  hubLoading?.classList.add('is-hidden');
+});
+
+setActiveHubTab('play', { updateFrame: false, scrollIntoView: false });
 
 function escapeHtml(value) {
   return String(value || '')
@@ -240,7 +321,7 @@ function renderNews(items) {
         <span class="news-meta">Пока тихо</span>
         <h3>Сводка еще не пролилась</h3>
         <p>Как только в игре появится свежий патч, этот блок первым поднимет боевую новость на поверхность.</p>
-        <a href="/play?tab=news">Открыть вкладку новостей</a>
+        <a href="#play" data-hub-tab="news">Открыть вкладку новостей</a>
       </article>
     `;
     return;
@@ -250,13 +331,12 @@ function renderNews(items) {
     const title = escapeHtml(item?.title || 'Crimson Wars update');
     const summary = escapeHtml(item?.summary || 'Свежая запись в журнале обновлений.');
     const date = escapeHtml(formatNewsDate(item?.publishedAt));
-    const link = `/play?tab=news&news=${encodeURIComponent(String(item?.id || ''))}`;
     return `
       <article class="news-card">
         <span class="news-meta">${date}</span>
         <h3>${title}</h3>
         <p>${summary}</p>
-        <a href="${link}">Открыть новость</a>
+        <a href="#play" data-hub-tab="news">Открыть новость</a>
       </article>
     `;
   }).join('');
@@ -270,7 +350,7 @@ function renderRatings(cards) {
         <span class="rating-card-meta">Пусто</span>
         <h3>Рейтинги еще не прогрузились</h3>
         <p>Можно открыть полную вкладку рейтинга в игре и посмотреть таблицы уже там.</p>
-        <a class="rating-card-link" href="/play?tab=rating">Открыть полный рейтинг</a>
+        <a class="rating-card-link" href="#play" data-hub-tab="rating">Открыть полный рейтинг</a>
       </article>
     `;
     return;
@@ -296,7 +376,7 @@ function renderRatings(cards) {
         <span class="rating-card-meta">${escapeHtml(card.source === 'account' ? 'Профиль' : 'Забеги')}</span>
         <h3>${escapeHtml(card.title || card.key)}</h3>
         <div class="rating-card-list">${rows}</div>
-        <a class="rating-card-link" href="/play?tab=rating">Открыть полный рейтинг</a>
+        <a class="rating-card-link" href="#play" data-hub-tab="rating">Открыть полный рейтинг</a>
       </article>
     `;
   }).join('');
@@ -316,7 +396,7 @@ async function loadNews() {
         <span class="news-meta">Ошибка</span>
         <h3>Сводка не загрузилась</h3>
         <p>Игра на месте. Если нужно, можешь сразу открыть новостную вкладку внутри боевого меню и проверить все там.</p>
-        <a href="/play?tab=news">Открыть новости в игре</a>
+        <a href="#play" data-hub-tab="news">Открыть новости в игре</a>
       </article>
     `;
   }
@@ -354,7 +434,7 @@ async function loadRatings() {
         <span class="rating-card-meta">Ошибка</span>
         <h3>Не удалось загрузить рейтинги</h3>
         <p>Полная таблица все равно доступна в игровом меню, если нужно посмотреть топы без лендинга.</p>
-        <a class="rating-card-link" href="/play?tab=rating">Открыть рейтинг в игре</a>
+        <a class="rating-card-link" href="#play" data-hub-tab="rating">Открыть рейтинг в игре</a>
       </article>
     `;
   }

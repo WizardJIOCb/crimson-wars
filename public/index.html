@@ -49,6 +49,10 @@
     </header>
 
     <main id="top">
+      <section class="hero-banner reveal" aria-label="Crimson Wars key art">
+        <img class="hero-banner-image" src="/assets/other/landing-image.jpg" alt="Crimson Wars key art" />
+      </section>
+
       <section class="hero-section section-frame">
         <div class="hero-copy reveal">
           <p class="eyebrow">Blood-soaked browser arena shooter</p>
@@ -62,7 +66,7 @@
             жгут активки в упор и держат экран, пока кровь, трассеры и боссы лезут со всех сторон.
           </p>
           <div class="hero-actions">
-            <a class="button button-primary" href="/play">Играть сейчас</a>
+            <a class="button button-primary" href="#play" data-hub-tab="play">Играть сейчас</a>
             <a class="button button-secondary" href="#about">Выбрать стиль боя</a>
           </div>
           <div class="hero-stats">
@@ -103,46 +107,76 @@
 
       <section id="play" class="landing-section reveal">
         <div class="section-heading">
-          <p class="eyebrow">Играть</p>
-          <h2>Нажимаешь Play и сразу падаешь туда, где экран держится на уроне и инстинктах.</h2>
+          <p class="eyebrow">Battle Hub</p>
+          <h2>Весь текущий /play теперь вшит в лендинг как живая точка входа, а не как отдельный мир.</h2>
           <p>
-            Выбирай героя, врубай режим, собирай комнату и стартуй без раскачки.
-            Здесь все сделано для одного: как можно быстрее запустить следующий забег.
+            Здесь тот же боевой хаб: комнаты, герои, навыки, профиль, рейтинг и новости.
+            Можно остаться на лендинге и пройти весь путь до старта ранa внутри одной секции.
           </p>
         </div>
 
-        <div class="play-grid">
-          <article class="play-card play-card-main">
+        <div class="hub-layout">
+          <div class="battle-hub-shell">
+            <div class="battle-hub-head">
+              <div>
+                <span class="mode-label">Embedded /play</span>
+                <h3>Текущий хаб работает прямо здесь</h3>
+              </div>
+              <div class="battle-hub-head-actions">
+                <a class="button button-secondary" href="/play">Full view</a>
+              </div>
+            </div>
+
+            <div class="battle-hub-frame-wrap">
+              <div class="battle-hub-loading" id="battle-hub-loading">Поднимаем боевой хаб...</div>
+              <iframe
+                id="battle-hub-frame"
+                class="battle-hub-frame"
+                title="Crimson Wars Battle Hub"
+                src="/play"
+                loading="eager"
+                referrerpolicy="same-origin"
+              ></iframe>
+            </div>
+          </div>
+
+          <article class="play-card play-card-main battle-hub-intro">
             <div class="play-card-copy">
-              <h3>Вход без раскачки</h3>
+              <h3>Одна точка входа вместо двух экранов</h3>
               <p>
-                Комната, инвайт, быстрый вход, выбор режима и герой под руку.
-                Никакого лишнего шума перед тем, как арена снова окрасится в красный.
+                Hero сверху цепляет атмосферой, а сразу под ним открывается настоящий боевой shell.
+                Не нужно выпадать на отдельную страницу, чтобы выбрать героя, почитать сводку или собрать комнату.
               </p>
             </div>
             <div class="play-card-actions">
-              <a class="button button-primary" href="/play">Влететь в бой</a>
-              <a class="button button-ghost" href="/play?tab=news">Смотреть сводку</a>
+              <a class="button button-primary" href="#play" data-hub-tab="play">Открыть Play</a>
+              <a class="button button-ghost" href="/play">Открыть отдельно</a>
             </div>
           </article>
 
-          <article class="mode-card">
-            <span class="mode-label">Normal</span>
-            <h3>Чистая бойня</h3>
-            <p>Идеальный режим, чтобы разогнать билд, пережить вал чудовищ и встретить босса не дрогнув.</p>
-          </article>
+          <div class="hub-rail">
+            <article class="mode-card hub-summary-card">
+              <span class="mode-label">Direct Flow</span>
+              <h3>Маркетинг перетекает в меню</h3>
+              <p>Секция не рекламирует меню, а реально показывает его внутри страницы. Переход из интереса в действие стал прямым.</p>
+            </article>
 
-          <article class="mode-card">
-            <span class="mode-label">Hardcore</span>
-            <h3>Перегрузка ада</h3>
-            <p>Толпы без пауз, давление без воздуха и ощущение, что сама карта хочет добить тебя раньше финала.</p>
-          </article>
+            <div class="hub-tab-grid" role="tablist" aria-label="Battle hub tabs">
+              <button type="button" class="hub-tab-button active" data-hub-tab="play">Play</button>
+              <button type="button" class="hub-tab-button" data-hub-tab="characters">Characters</button>
+              <button type="button" class="hub-tab-button" data-hub-tab="skills">Skills</button>
+              <button type="button" class="hub-tab-button" data-hub-tab="profile">Profile</button>
+              <button type="button" class="hub-tab-button" data-hub-tab="rating">Rating</button>
+              <button type="button" class="hub-tab-button" data-hub-tab="news">News</button>
+            </div>
 
-          <article class="mode-card">
-            <span class="mode-label">PvP</span>
-            <h3>Охота на живых</h3>
-            <p>До 16 игроков в одном матче, меньше шума от NPC и больше шансов закрыть чужой забег точным добиванием.</p>
-          </article>
+            <div class="hub-note-card">
+              <strong id="hub-tab-title">Play</strong>
+              <p id="hub-tab-description">
+                Создай комнату, зайди по коду, выбери режим и стартуй без лишнего шага между лендингом и игрой.
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -154,6 +188,9 @@
             Здесь живые топы из игрового рейтинга: лучшие забеги, профильный прогресс,
             осколки, убийства и другие метрики, по которым сразу видно, кто в Crimson Wars уже закрепился наверху.
           </p>
+        </div>
+        <div class="section-actions">
+          <a class="button button-secondary" href="#play" data-hub-tab="rating">Открыть рейтинг в Battle Hub</a>
         </div>
         <div id="landing-ratings-grid" class="ratings-grid" aria-live="polite">
           <article class="rating-card">
@@ -172,6 +209,9 @@
             Каждая запись ниже — это новая причина вернуться в арену, пересобрать билд
             и снова проверить, выдержишь ли ты следующий пик давления.
           </p>
+        </div>
+        <div class="section-actions">
+          <a class="button button-secondary" href="#play" data-hub-tab="news">Открыть новости в Battle Hub</a>
         </div>
         <div id="landing-news-grid" class="news-grid" aria-live="polite">
           <article class="news-card loading-card">
@@ -337,7 +377,7 @@
               <strong>Прямо сейчас</strong>
               <span>залететь в игру, собрать комнату, выбрать героя и устроить своей волне худший день в ее жизни</span>
             </div>
-            <a class="button button-secondary" href="/play">Открыть арену</a>
+            <a class="button button-secondary" href="#play" data-hub-tab="play">Открыть арену</a>
           </div>
         </div>
       </section>
@@ -357,7 +397,7 @@
             <span class="contact-label">Играть</span>
             <h3>/play</h3>
             <p>Нажимаешь и сразу открываешь все, что важно перед матчем: героев, комнаты, рейтинг, профиль и сводку обновлений.</p>
-            <a href="/play">Открыть бой</a>
+            <a href="#play" data-hub-tab="play">Открыть Battle Hub</a>
           </article>
           <article class="contact-card">
             <span class="contact-label">Сайт</span>
@@ -369,7 +409,7 @@
             <span class="contact-label">Новости</span>
             <h3>Live update feed</h3>
             <p>Держи руку на пульсе патчей, фиксов и новых фишек, чтобы входить в матч уже с пониманием, что изменилось.</p>
-            <a href="/play?tab=news">Читать сводку</a>
+            <a href="#play" data-hub-tab="news">Читать сводку</a>
           </article>
         </div>
       </section>
