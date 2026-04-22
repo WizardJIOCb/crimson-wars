@@ -1693,6 +1693,22 @@ app.get('/api/records', (req, res) => {
   });
 });
 
+app.get('/api/landing/latest-runs', (req, res) => {
+  const page = Number(req.query.page) || 1;
+  const pageSize = Math.max(1, Math.min(12, Number(req.query.page_size) || 6));
+  const payload = recordsStore.listLatestPlayerRuns(page, pageSize);
+
+  res.json({
+    ok: true,
+    runs: payload.items,
+    page: payload.page,
+    pageSize: payload.pageSize,
+    total: payload.total,
+    totalPages: payload.totalPages,
+    now: Date.now(),
+  });
+});
+
 app.get('/api/player/run-history', (req, res) => {
   if (!req.playerUser) {
     res.status(401).json({ ok: false, message: 'Authentication required' });

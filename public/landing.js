@@ -2,6 +2,8 @@ const nav = document.getElementById('site-nav');
 const mobileToggle = document.querySelector('.mobile-menu-toggle');
 const newsGrid = document.getElementById('landing-news-grid');
 const ratingsGrid = document.getElementById('landing-ratings-grid');
+const latestRunsGrid = document.getElementById('landing-latest-runs');
+const latestRunsPager = document.getElementById('landing-latest-runs-pager');
 const revealNodes = Array.from(document.querySelectorAll('.reveal'));
 const profileModal = document.getElementById('landing-profile-modal');
 const profileBody = document.getElementById('landing-profile-body');
@@ -39,6 +41,19 @@ const hubTabMeta = {
   },
 };
 let activeHubTab = 'play';
+let latestRunsSignature = '';
+let latestRunsPollTimer = 0;
+let latestRunsPage = 1;
+let latestRunsTotalPages = 1;
+const LATEST_RUNS_PAGE_SIZE = 3;
+const HERO_LABELS = {
+  cyber: 'Cyber',
+  scout: 'Scout',
+  shadow: 'Shadow',
+  medic: 'Medic',
+  medis: 'Medic',
+  raider: 'Raider',
+};
 
 function toggleMenu(forceOpen) {
   if (!nav || !mobileToggle) return;
@@ -169,10 +184,61 @@ function formatDurationSec(value) {
 
 function formatRunGameModeLabel(run) {
   const raw = String(run?.runDetails?.gameMode || '').trim().toLowerCase();
-  if (raw === 'hardcore') return 'Hardcore';
-  if (raw === 'normal') return 'Normal';
+  if (raw === 'hardcore') return '\u0425\u0430\u0440\u0434\u043a\u043e\u0440';
+  if (raw === 'normal') return '\u041e\u0431\u044b\u0447\u043d\u044b\u0439';
   if (raw === 'pvp') return 'PvP';
-  return 'Unknown';
+  return '\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u044b\u0439';
+}
+
+function formatRunHeroLabel(run) {
+  const raw = String(run?.runDetails?.heroId || run?.runDetails?.playerClass || '').trim().toLowerCase();
+  if (!raw) return '\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u044b\u0439 \u0433\u0435\u0440\u043e\u0439';
+  if (HERO_LABELS[raw]) return HERO_LABELS[raw];
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+function formatRunAgo(value) {
+  const stamp = Number(value) || 0;
+  if (!stamp) return '\u0442\u043e\u043b\u044c\u043a\u043e \u0447\u0442\u043e';
+  const diffSec = Math.max(0, Math.round((Date.now() - stamp) / 1000));
+  if (diffSec < 60) return `${diffSec || 1} \u0441\u0435\u043a. \u043d\u0430\u0437\u0430\u0434`;
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)} \u043c\u0438\u043d. \u043d\u0430\u0437\u0430\u0434`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} \u0447. \u043d\u0430\u0437\u0430\u0434`;
+  return `${Math.floor(diffSec / 86400)} \u0434. \u043d\u0430\u0437\u0430\u0434`;
+}
+
+function buildReplayUrl(run) {
+  const id = Math.max(0, Number(run?.id) || 0);
+  const url = new URL('/play', window.location.origin);
+  if (id > 0) {
+    url.searchParams.set('replay', String(id));
+    url.searchParams.set('replayPath', `/api/leaderboard/runs/${id}/replay`);
+  }
+  return url.toString();
+}
+
+function buildLatestRunsSignature(runs) {
+  return (Array.isArray(runs) ? runs : [])
+    .slice(0, 10)
+    .map((run) => `${Math.max(0, Number(run?.id) || 0)}:${Math.max(0, Number(run?.at) || 0)}`)
+    .join('|');
+}
+
+function renderLatestRunsPager() {
+  if (!latestRunsPager) return;
+  if (latestRunsTotalPages <= 1) {
+    latestRunsPager.innerHTML = '';
+    return;
+  }
+  latestRunsPager.innerHTML = `
+    <button class="raid-pager-btn" type="button" data-runs-page-action="prev" ${latestRunsPage <= 1 ? 'disabled' : ''}>
+      \u041d\u0430\u0437\u0430\u0434
+    </button>
+    <span class="raid-pager-status">\u0421\u0442\u0440\u0430\u043d\u0438\u0446\u0430 ${latestRunsPage} \u0438\u0437 ${latestRunsTotalPages}</span>
+    <button class="raid-pager-btn" type="button" data-runs-page-action="next" ${latestRunsPage >= latestRunsTotalPages ? 'disabled' : ''}>
+      \u0412\u043f\u0435\u0440\u0451\u0434
+    </button>
+  `;
 }
 
 function formatRatingValue(item, categoryKey) {
@@ -388,6 +454,85 @@ function renderRatings(cards) {
   bindRatingProfileButtons();
 }
 
+function renderLatestRuns(runs) {
+  if (!latestRunsGrid) return;
+  if (!Array.isArray(runs) || runs.length === 0) {
+    latestRunsGrid.innerHTML = `
+      <article class="raid-card raid-card-featured">
+        <span class="raid-card-topline">\u0422\u0438\u0445\u043e</span>
+        <h3>\u041f\u043e\u043a\u0430 \u043d\u0435\u0442 \u0441\u0432\u0435\u0436\u0438\u0445 \u0432\u044b\u043b\u0430\u0437\u043e\u043a</h3>
+        <p>\u041a\u0430\u043a \u0442\u043e\u043b\u044c\u043a\u043e \u0437\u0430\u043a\u043e\u043d\u0447\u0438\u0442\u0441\u044f \u043d\u043e\u0432\u044b\u0439 \u0437\u0430\u0431\u0435\u0433, \u043e\u043d \u0441\u0440\u0430\u0437\u0443 \u043f\u043e\u044f\u0432\u0438\u0442\u0441\u044f \u0437\u0434\u0435\u0441\u044c.</p>
+      </article>
+    `;
+    renderLatestRunsPager();
+    return;
+  }
+
+  latestRunsGrid.innerHTML = runs.map((run, index) => {
+    const kills = Math.max(0, Number(run?.kills) || 0);
+    const score = Math.max(0, Number(run?.score) || 0);
+    const duration = escapeHtml(formatDurationSec(run?.durationSec));
+    const playedAt = escapeHtml(formatShortDateTime(run?.at));
+    const ago = escapeHtml(formatRunAgo(run?.at));
+    const hero = escapeHtml(formatRunHeroLabel(run));
+    const mode = escapeHtml(formatRunGameModeLabel(run));
+    const xp = Math.max(0, Number(run?.runDetails?.xp) || 0);
+    const bossKills = Math.max(0, Number(run?.runDetails?.bossKills) || 0);
+    const name = escapeHtml(run?.name || '\u0411\u0435\u0437 \u0438\u043c\u0435\u043d\u0438');
+    const room = escapeHtml(run?.roomCode || '-');
+    const replayUrl = escapeHtml(buildReplayUrl(run));
+    const badge = latestRunsPage === 1 && index === 0
+      ? '\u0421\u0430\u043c\u0430\u044f \u0441\u0432\u0435\u0436\u0430\u044f'
+      : '\u0412\u044b\u043b\u0430\u0437\u043a\u0430';
+    const summary = latestRunsPage === 1 && index === 0
+      ? `${name}: ${kills} \u0443\u0431\u0438\u0439\u0441\u0442\u0432, ${score} \u043e\u0447\u043a\u043e\u0432, ${duration} \u0447\u0438\u0441\u0442\u043e\u0433\u043e \u0434\u0430\u0432\u043b\u0435\u043d\u0438\u044f.`
+      : `${name} \u0437\u0430\u043a\u043e\u043d\u0447\u0438\u043b \u0437\u0430\u0431\u0435\u0433 \u0441 ${kills} \u0443\u0431\u0438\u0439\u0441\u0442\u0432\u0430\u043c\u0438 \u0438 ${score} \u043e\u0447\u043a\u0430\u043c\u0438 \u0437\u0430 ${duration}.`;
+
+    return `
+      <article class="raid-card${latestRunsPage === 1 && index === 0 ? ' raid-card-featured' : ''}">
+        <div class="raid-card-head">
+          <div class="raid-card-name">
+            <span class="raid-card-topline">${escapeHtml(badge)}</span>
+            <strong>${name}</strong>
+            <span class="raid-card-subtitle">${hero} | \u041a\u043e\u043c\u043d\u0430\u0442\u0430 ${room} | ${playedAt}</span>
+          </div>
+          <span class="raid-card-badge">${ago}</span>
+        </div>
+        <h3>${summary}</h3>
+        <div class="raid-card-stats">
+          <div class="raid-stat">
+            <span>\u0423\u0431\u0438\u0439\u0441\u0442\u0432\u0430</span>
+            <strong>${kills}</strong>
+          </div>
+          <div class="raid-stat">
+            <span>\u041e\u0447\u043a\u0438</span>
+            <strong>${score}</strong>
+          </div>
+          <div class="raid-stat">
+            <span>\u0412\u0440\u0435\u043c\u044f</span>
+            <strong>${duration}</strong>
+          </div>
+          <div class="raid-stat">
+            <span>XP \u0433\u0435\u0440\u043e\u044f</span>
+            <strong>${xp}</strong>
+          </div>
+        </div>
+        <div class="raid-card-footer">
+          <div class="raid-card-meta">
+            <span>\u0420\u0435\u0436\u0438\u043c: ${mode}</span>
+            <span>\u0411\u043e\u0441\u0441\u043e\u0432: ${bossKills}</span>
+            <span>\u041a\u043e\u043c\u043d\u0430\u0442\u0430: ${room}</span>
+          </div>
+          <div class="raid-card-actions">
+            <a class="raid-replay-link" href="${replayUrl}" target="_blank" rel="noopener noreferrer">\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u0437\u0430\u0431\u0435\u0433</a>
+          </div>
+        </div>
+      </article>
+    `;
+  }).join('');
+  renderLatestRunsPager();
+}
+
 async function loadNews() {
   if (!newsGrid) return;
   try {
@@ -445,5 +590,64 @@ async function loadRatings() {
   }
 }
 
+async function loadLatestRuns() {
+  if (!latestRunsGrid) return;
+  try {
+    const response = await fetch(`/api/landing/latest-runs?page=${latestRunsPage}&page_size=${LATEST_RUNS_PAGE_SIZE}`, { cache: 'no-store' });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.ok) throw new Error(`HTTP ${response.status}`);
+    const runs = Array.isArray(payload?.runs) ? payload.runs : [];
+    latestRunsPage = Math.max(1, Number(payload?.page) || latestRunsPage);
+    latestRunsTotalPages = Math.max(1, Number(payload?.totalPages) || 1);
+    const nextSignature = buildLatestRunsSignature(runs);
+    if (nextSignature !== latestRunsSignature) {
+      latestRunsSignature = nextSignature;
+      renderLatestRuns(runs);
+    } else {
+      renderLatestRunsPager();
+    }
+  } catch (_error) {
+    if (!latestRunsSignature) {
+      latestRunsGrid.innerHTML = `
+        <article class="raid-card raid-card-featured">
+          <span class="raid-card-topline">\u041e\u0448\u0438\u0431\u043a\u0430</span>
+          <h3>\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0432\u044b\u043b\u0430\u0437\u043a\u0438</h3>
+          <p>\u041b\u0435\u043d\u0442\u0430 \u0432\u0440\u0435\u043c\u0435\u043d\u043d\u043e \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430, \u043d\u043e \u043f\u043e\u043f\u044b\u0442\u043a\u0430 \u043f\u043e\u0432\u0442\u043e\u0440\u0438\u0442\u0441\u044f \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438.</p>
+        </article>
+      `;
+    }
+    renderLatestRunsPager();
+  }
+}
+
+function goToLatestRunsPage(nextPage) {
+  const page = Math.max(1, Number(nextPage) || 1);
+  if (page === latestRunsPage) return;
+  latestRunsPage = page;
+  latestRunsSignature = '';
+  latestRunsGrid?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  void loadLatestRuns();
+}
+
+latestRunsPager?.addEventListener('click', (event) => {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const button = target.closest('[data-runs-page-action]');
+  if (!(button instanceof HTMLButtonElement) || button.disabled) return;
+  const action = String(button.getAttribute('data-runs-page-action') || '').trim().toLowerCase();
+  if (action === 'prev' && latestRunsPage > 1) goToLatestRunsPage(latestRunsPage - 1);
+  if (action === 'next' && latestRunsPage < latestRunsTotalPages) goToLatestRunsPage(latestRunsPage + 1);
+});
+
+function startLatestRunsPolling() {
+  if (!latestRunsGrid || latestRunsPollTimer) return;
+  latestRunsPollTimer = window.setInterval(() => {
+    if (document.hidden) return;
+    void loadLatestRuns();
+  }, 15000);
+}
+
 void loadNews();
 void loadRatings();
+void loadLatestRuns();
+startLatestRunsPolling();

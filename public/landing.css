@@ -885,7 +885,8 @@ main {
 .news-card,
 .rating-card,
 .shot-card,
-.video-panel,
+.raid-feed-shell,
+.raid-card,
 .arsenal-panel {
   position: relative;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -1232,96 +1233,189 @@ button.rating-name:hover {
   backdrop-filter: blur(12px);
 }
 
-.video-panel {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
-  gap: 18px;
-  padding: 18px;
-}
-
-.video-screen {
-  position: relative;
-  min-height: 460px;
-  border-radius: 26px;
-  overflow: hidden;
+.raid-card-topline,
+.raid-card-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background:
-    radial-gradient(circle at center, rgba(255, 72, 72, 0.2), transparent 30%),
-    linear-gradient(180deg, rgba(9, 4, 6, 0.2), rgba(9, 4, 6, 0.9)),
-    url("/assets/characters/shadow.png") center top / cover no-repeat;
+  color: var(--text-muted);
+  font-size: 12px;
+  letter-spacing: 0.16em;
 }
 
-.video-noise {
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(transparent 0 94%, rgba(255, 255, 255, 0.08) 94% 100%),
-    linear-gradient(90deg, transparent 0 97%, rgba(255, 255, 255, 0.04) 97% 100%);
-  background-size: 100% 5px, 4px 100%;
-  mix-blend-mode: screen;
-  opacity: 0.18;
+.raid-card h3 {
+  margin: 0;
+  font-size: 1.02rem;
+  line-height: 1.28;
+  font-weight: 600;
 }
 
-.video-screen-logo {
-  position: absolute;
-  left: 22px;
-  bottom: 22px;
-  width: min(140px, 32%);
-  height: auto;
-  z-index: 1;
-  opacity: 0.95;
-  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.35));
+.raid-card p,
+.raid-card-footer {
+  margin: 0;
+  color: var(--text-muted);
 }
 
-.video-overlay-copy {
-  position: absolute;
-  inset: auto 22px 22px 22px;
-  z-index: 2;
-  padding: 24px;
-  border-radius: 22px;
-  background: rgba(12, 5, 7, 0.76);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+.raid-feed-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.play-ring {
-  width: 88px;
-  height: 88px;
-  margin-top: 18px;
-  border-radius: 50%;
+.raid-card {
   display: grid;
-  place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: radial-gradient(circle, rgba(255, 110, 83, 0.45), rgba(255, 110, 83, 0.1));
-  box-shadow: 0 0 0 14px rgba(255, 110, 83, 0.06);
-  animation: pulse 2.8s ease-in-out infinite;
+  gap: 12px;
+  padding: 16px 18px;
+  background:
+    radial-gradient(circle at top right, rgba(255, 126, 90, 0.08), transparent 30%),
+    linear-gradient(180deg, rgba(18, 7, 10, 0.96), rgba(10, 4, 6, 0.98));
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
 }
 
-.play-triangle {
-  width: 0;
-  height: 0;
-  margin-left: 6px;
-  border-top: 12px solid transparent;
-  border-bottom: 12px solid transparent;
-  border-left: 20px solid #fff8f5;
+.raid-card-featured {
+  min-height: 0;
 }
 
-.video-side {
+.raid-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 14px;
+}
+
+.raid-card-name {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.raid-card-name strong {
+  font-size: 1.08rem;
+  line-height: 1.2;
+  font-weight: 700;
+}
+
+.raid-card-subtitle {
+  color: var(--text-muted);
+  font-size: 0.92rem;
+}
+
+.raid-card-stats {
   display: grid;
-  gap: 14px;
-  align-content: center;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
 }
 
-.video-bullet {
-  padding: 18px;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.04);
+.raid-stat {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.video-bullet strong {
+.raid-stat span {
   display: block;
-  margin-bottom: 8px;
-  font-size: 18px;
+  margin-bottom: 6px;
+  color: var(--text-muted);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.raid-stat strong {
+  display: block;
+  font-size: 1rem;
+}
+
+.raid-card-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding-top: 2px;
+}
+
+.raid-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.raid-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.raid-replay-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 186, 159, 0.22);
+  background:
+    linear-gradient(180deg, rgba(255, 132, 97, 0.16), rgba(255, 255, 255, 0.02)),
+    rgba(24, 8, 11, 0.82);
+  color: var(--text-main);
+  font-weight: 600;
+  text-decoration: none;
+  transition: border-color 180ms ease, transform 180ms ease, background 180ms ease;
+}
+
+.raid-replay-link:hover,
+.raid-replay-link:focus-visible {
+  border-color: rgba(255, 186, 159, 0.42);
+  background:
+    linear-gradient(180deg, rgba(255, 144, 102, 0.24), rgba(255, 255, 255, 0.04)),
+    rgba(30, 10, 14, 0.9);
+  transform: translateY(-1px);
+}
+
+.raid-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.raid-pager-status {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.raid-pager-btn {
+  min-width: 120px;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-main);
+  cursor: pointer;
+  transition: border-color 180ms ease, background 180ms ease, opacity 180ms ease;
+}
+
+.raid-pager-btn:hover,
+.raid-pager-btn:focus-visible {
+  border-color: rgba(255, 186, 159, 0.32);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.raid-pager-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .contacts-grid {
@@ -1529,7 +1623,6 @@ body.menu-open {
 
 @media (max-width: 1180px) {
   .hero-section,
-  .video-panel,
   .arsenal-panel,
   .hub-layout {
     grid-template-columns: 1fr;
@@ -1820,8 +1913,17 @@ body.menu-open {
     bottom: 72px;
   }
 
-  .video-screen {
-    min-height: 360px;
+  .raid-card {
+    padding: 18px;
+  }
+
+  .raid-card-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .raid-card-footer {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .battle-hub-frame,

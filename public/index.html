@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <link rel="stylesheet" href="/landing.css?v=20260421d" />
+  <link rel="stylesheet" href="/landing.css?v=20260423d" />
 </head>
 <body>
   <div class="landing-shell">
@@ -39,11 +39,11 @@
 
       <nav id="site-nav" class="site-nav" aria-label="Главное меню">
         <a href="#play">Играть</a>
+        <a href="#video">Повторы</a>
         <a href="#ratings">Рейтинг</a>
         <a href="#news">Новости</a>
         <a href="#about">Об игре</a>
         <a href="#screenshots">Скриншоты</a>
-        <a href="#video">Видео</a>
         <a href="#contacts">Контакты</a>
       </nav>
     </header>
@@ -163,6 +163,24 @@
           </div>
 
         </div>
+      </section>
+
+      <section id="video" class="landing-section reveal">
+        <div class="section-heading">
+          <p class="eyebrow">Последние вылазки</p>
+          <h2>Свежие боевые сводки прямо из арены.</h2>
+          <p>
+            Новые забеги появляются здесь автоматически: ник, киллы, очки, время, герой и повтор каждого забега.
+          </p>
+        </div>
+        <div id="landing-latest-runs" class="raid-feed-grid" aria-live="polite">
+          <article class="raid-card raid-card-featured">
+            <span class="raid-card-topline">Загрузка</span>
+            <h3>Подтягиваем последние забеги...</h3>
+            <p>Как только фид ответит, здесь появятся свежие записи.</p>
+          </article>
+        </div>
+        <div id="landing-latest-runs-pager" class="raid-pager" aria-label="Latest runs pagination"></div>
       </section>
 
       <section id="ratings" class="landing-section reveal">
@@ -337,7 +355,7 @@
         </div>
       </section>
 
-      <section id="video" class="landing-section reveal">
+      <section id="video-legacy" class="landing-section reveal" hidden>
         <div class="section-heading">
           <p class="eyebrow">Видео</p>
           <h2>Это тот самый вдох перед рывком в матч.</h2>
@@ -412,6 +430,6 @@
     </div>
   </div>
 
-  <script src="/landing.js?v=20260421d"></script>
+  <script src="/landing.js?v=20260423d"></script>
 </body>
 </html>

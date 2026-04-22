@@ -83,7 +83,9 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
   let stmtReplayById = null;
   let stmtInsertPlayerRun = null;
   let stmtListPlayerRuns = null;
+  let stmtListLatestPlayerRuns = null;
   let stmtCountPlayerRuns = null;
+  let stmtCountLatestPlayerRuns = null;
   let stmtPrunePlayerRuns = null;
   let stmtPlayerRunReplayById = null;
   let stmtPlayerRunReplayPublicById = null;
@@ -152,6 +154,7 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
         '  run_replay TEXT NULL',
         ');',
         'CREATE INDEX IF NOT EXISTS idx_player_runs_name_at ON player_runs (name_key, at DESC);',
+        'CREATE INDEX IF NOT EXISTS idx_player_runs_at ON player_runs (at DESC);',
       ].join('\n'));
 
       const columns = recordsDb.prepare('PRAGMA table_info(records)').all();
@@ -241,7 +244,23 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
         'LIMIT ? OFFSET ?',
       ].join('\n'));
 
+      stmtListLatestPlayerRuns = recordsDb.prepare([
+        'SELECT',
+        '  id,',
+        '  name,',
+        '  kills,',
+        '  score,',
+        '  room_code AS roomCode,',
+        '  duration_sec AS durationSec,',
+        '  at,',
+        '  run_details AS runDetails',
+        'FROM player_runs',
+        'ORDER BY at DESC',
+        'LIMIT ? OFFSET ?',
+      ].join('\n'));
+
       stmtCountPlayerRuns = recordsDb.prepare('SELECT COUNT(1) AS total FROM player_runs WHERE name_key = ?');
+      stmtCountLatestPlayerRuns = recordsDb.prepare('SELECT COUNT(1) AS total FROM player_runs');
       stmtPrunePlayerRuns = recordsDb.prepare([
         'DELETE FROM player_runs',
         'WHERE id NOT IN (',
@@ -291,7 +310,9 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
       stmtReplayById = null;
       stmtInsertPlayerRun = null;
       stmtListPlayerRuns = null;
+      stmtListLatestPlayerRuns = null;
       stmtCountPlayerRuns = null;
+      stmtCountLatestPlayerRuns = null;
       stmtPrunePlayerRuns = null;
       stmtPlayerRunReplayById = null;
       stmtPlayerRunReplayPublicById = null;
@@ -417,6 +438,41 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
     };
   }
 
+  function listLatestPlayerRuns(page = 1, pageSize = PLAYER_RUN_HISTORY_PAGE_SIZE) {
+    const size = Math.max(1, Math.min(50, Math.floor(pageSize) || PLAYER_RUN_HISTORY_PAGE_SIZE));
+
+    if (recordsDb && stmtListLatestPlayerRuns && stmtCountLatestPlayerRuns) {
+      try {
+        const total = Math.max(0, Number(stmtCountLatestPlayerRuns.get()?.total) || 0);
+        const totalPages = Math.max(1, Math.ceil(total / size));
+        const currentPage = Math.max(1, Math.min(totalPages, Math.floor(page) || 1));
+        const offset = (currentPage - 1) * size;
+        const rows = stmtListLatestPlayerRuns.all(size, offset);
+        return {
+          page: currentPage,
+          pageSize: size,
+          total,
+          totalPages,
+          items: rows.map((row) => publicRecordEntry(row)),
+        };
+      } catch (err) {
+        console.error('Records DB latest player runs read failed:', err.message);
+      }
+    }
+
+    const total = runHistory.length;
+    const totalPages = Math.max(1, Math.ceil(total / size));
+    const currentPage = Math.max(1, Math.min(totalPages, Math.floor(page) || 1));
+    const start = (currentPage - 1) * size;
+    return {
+      page: currentPage,
+      pageSize: size,
+      total,
+      totalPages,
+      items: runHistory.slice(start, start + size).map((entry) => publicRecordEntry(entry)),
+    };
+  }
+
   function getPlayerRunReplayByNameAndId(name, runId) {
     const id = Math.max(0, Number(runId) || 0);
     const nameKey = recordNameKey(name);
@@ -521,6 +577,7 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
   return {
     listRecordsForLobby,
     listPlayerRunsByName,
+    listLatestPlayerRuns,
     pushRecord,
     getRecordReplay,
     getPlayerRunReplayById,
