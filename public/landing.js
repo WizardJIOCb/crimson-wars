@@ -80,8 +80,8 @@ let landingLiveRuntimeTimer = 0;
 let landingLiveData = null;
 let landingLiveSelectedRoomCode = '';
 let landingLiveIframeRoomCode = '';
-let landingLivePaused = false;
-let landingLivePauseReason = '';
+let landingLivePaused = true;
+let landingLivePauseReason = 'initial';
 let landingLiveCenterToggle = null;
 let landingLiveControlToggle = null;
 let landingLiveTimeline = null;
@@ -389,6 +389,7 @@ hubFrame?.addEventListener('load', () => {
 
 setActiveHubTab('play', { updateFrame: false, scrollIntoView: false });
 composeLandingLiveLayout();
+setLandingLivePaused(true, 'initial');
 
 function getLandingCommentaryVoice() {
   if (!landingCommentarySpeech.supported) return null;
@@ -1592,10 +1593,17 @@ function setLandingLivePaused(paused, reason = 'manual') {
 
   if (nextPaused) {
     clearLivePreview();
-    setLandingLiveFallbackArt(true);
+    setLandingLiveFallbackArt(true, 'stopped');
     setLiveStatusPill('waiting', 'paused');
-    if (liveKicker) liveKicker.textContent = landingLivePauseReason === 'auto-play' ? 'Live paused while you play' : 'Live preview paused';
-    if (liveFootline) liveFootline.textContent = 'Live Run Feed paused';
+    if (liveEmpty) {
+      liveEmpty.classList.remove('is-hidden');
+      const emptyTitle = liveEmpty.querySelector('strong');
+      const emptyText = liveEmpty.querySelector('span');
+      if (emptyTitle) emptyTitle.textContent = 'Live Run Feed on standby';
+      if (emptyText) emptyText.textContent = 'Press Play to wake the arena stream.';
+    }
+    if (liveKicker) liveKicker.textContent = landingLivePauseReason === 'auto-play' ? 'Live paused while you play' : 'Live preview stopped';
+    if (liveFootline) liveFootline.textContent = 'Press Play to start Live Run Feed';
     try {
       window.speechSynthesis?.cancel?.();
     } catch {
@@ -1634,9 +1642,10 @@ function clearLivePreview() {
   ctx.fillRect(0, 0, liveCanvas.width, liveCanvas.height);
 }
 
-function setLandingLiveFallbackArt(enabled) {
+function setLandingLiveFallbackArt(enabled, variant = 'idle') {
   if (landingLiveCanvasWrap instanceof HTMLElement) {
     landingLiveCanvasWrap.classList.toggle('has-fallback-art', Boolean(enabled));
+    landingLiveCanvasWrap.classList.toggle('has-not-started-art', Boolean(enabled) && variant === 'stopped');
   }
   if (liveCanvas instanceof HTMLCanvasElement) {
     liveCanvas.classList.toggle('is-hidden', Boolean(enabled));
@@ -2099,7 +2108,13 @@ function renderLandingLive(payload) {
 
   clearLivePreview();
   setLandingLiveFallbackArt(true);
-  if (liveEmpty) liveEmpty.classList.remove('is-hidden');
+  if (liveEmpty) {
+    liveEmpty.classList.remove('is-hidden');
+    const emptyTitle = liveEmpty.querySelector('strong');
+    const emptyText = liveEmpty.querySelector('span');
+    if (emptyTitle) emptyTitle.textContent = 'No local live preview yet';
+    if (emptyText) emptyText.textContent = 'When an active room appears here, this block will wake up automatically.';
+  }
 
   const fallbackRun = payload?.fallbackRun || null;
   const activeRuns = Math.max(0, Number(payload?.activeRuns) || 0);

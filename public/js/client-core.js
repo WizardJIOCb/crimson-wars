@@ -2155,6 +2155,7 @@ window.cwSetGameSfxVolume = setGameSfxVolume;
 window.cwApplyLiveSfxState = (volume, muted = false, unlock = false) => {
   const normalizedVolume = Math.max(0, Math.min(1, Number(volume) || 0));
   const effectiveVolume = muted ? 0 : normalizedVolume;
+  game.liveAudioEnabled = effectiveVolume > 0;
   applyGameSfxVolume(Math.round(effectiveVolume * 100), { persist: false });
   applyGameSfxEnabled(effectiveVolume > 0, { persist: false, unlock: Boolean(unlock) });
   if (unlock && effectiveVolume > 0) unlockGameAudio();
@@ -2271,7 +2272,7 @@ const SFX_ASSET_VARIANTS = {
     rocket: ['weapon-rocket-launch'],
     default: ['weapon-pistol-shot'],
   },
-  enemyShot: ['boss-attack'],
+  enemyShot: ['enemy-ranged-shot', 'boss-attack'],
   enemyDeath: {
     charger: ['enemy-charger-death', 'enemy-death-1', 'enemy-death-2'],
     ranged: ['enemy-ranged-death', 'enemy-death-2', 'enemy-death-3'],
@@ -2389,7 +2390,7 @@ function tryPlaySfxAsset(name, options, volume) {
 }
 
 function playGameSfx(name, options = {}) {
-  if (!game.sfxEnabled || game.embedMode || replayGame.active) return;
+  if (!game.sfxEnabled || (game.embedMode && !game.liveAudioEnabled) || replayGame.active) return;
   const key = String(options.key || name || 'sfx');
   const nowMs = performance.now();
   const minGap = Math.max(0, Number(options.minGapMs) || 0);
