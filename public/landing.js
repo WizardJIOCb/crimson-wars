@@ -1593,7 +1593,7 @@ function setLandingLivePaused(paused, reason = 'manual') {
 
   if (nextPaused) {
     clearLivePreview();
-    setLandingLiveFallbackArt(true, 'stopped');
+    setLandingLiveFallbackArt(true);
     setLiveStatusPill('waiting', 'paused');
     if (liveEmpty) {
       liveEmpty.classList.remove('is-hidden');
@@ -1642,10 +1642,9 @@ function clearLivePreview() {
   ctx.fillRect(0, 0, liveCanvas.width, liveCanvas.height);
 }
 
-function setLandingLiveFallbackArt(enabled, variant = 'idle') {
+function setLandingLiveFallbackArt(enabled) {
   if (landingLiveCanvasWrap instanceof HTMLElement) {
     landingLiveCanvasWrap.classList.toggle('has-fallback-art', Boolean(enabled));
-    landingLiveCanvasWrap.classList.toggle('has-not-started-art', Boolean(enabled) && variant === 'stopped');
   }
   if (liveCanvas instanceof HTMLCanvasElement) {
     liveCanvas.classList.toggle('is-hidden', Boolean(enabled));
