@@ -1270,13 +1270,14 @@ main {
 
 .live-player-center-toggle {
   position: absolute;
-  inset: 0;
-  margin: auto;
-  min-width: 132px;
-  min-height: 132px;
+  top: 50%;
+  left: 50%;
+  width: 132px;
+  height: 132px;
   border-radius: 999px;
   font-size: 17px;
   backdrop-filter: blur(14px);
+  transform: translate(-50%, -50%);
 }
 
 .live-player-center-toggle:hover,
@@ -1285,6 +1286,10 @@ main {
 .live-player-fullscreen-toggle:hover {
   border-color: rgba(255, 196, 154, 0.48);
   transform: translateY(-1px);
+}
+
+.live-player-center-toggle:hover {
+  transform: translate(-50%, calc(-50% - 1px));
 }
 
 .live-player-controlbar {
@@ -2460,9 +2465,14 @@ body.menu-open {
   }
 
   .live-player-center-toggle {
-    min-width: 96px;
-    min-height: 96px;
+    width: 96px;
+    height: 96px;
     font-size: 14px;
+  }
+
+  .live-player-fullscreen-toggle {
+    top: 12px;
+    right: 12px;
   }
 
   .live-player-controlbar {
