@@ -2260,7 +2260,7 @@ const SFX_ASSET_VARIANTS = {
   uiError: ['ui-error'],
   uiSuccess: ['ui-success'],
 };
-const SFX_ASSET_EXTS = ['ogg', 'wav', 'mp3'];
+const SFX_ASSET_EXTS = ['ogg', 'wav', 'mp3', 'm4a', 'aac'];
 
 function chooseSfxAssetBase(name, options = {}) {
   const entry = SFX_ASSET_VARIANTS[name];

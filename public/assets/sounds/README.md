@@ -1,9 +1,9 @@
 # Crimson Wars Sounds
 
-Drop real `.wav`, `.ogg`, or `.mp3` files in this folder using these base names.
+Drop real `.ogg`, `.wav`, `.mp3`, `.m4a`, or `.aac` files in this folder using these base names.
 The game auto-detects files by base name and falls back to WebAudio synthesis when a file is missing.
 
-Recommended format: short `.ogg` or `.wav`, normalized around `-6dB`, trimmed tightly.
+Recommended format: short `.ogg` or `.wav`, normalized around `-6dB`, trimmed tightly. `.m4a` is usually safer than raw `.aac` in browsers, but both are checked.
 
 ## Current Starter Pack
 The included `.ogg` files are from Kenney asset packs, licensed Creative Commons CC0:
