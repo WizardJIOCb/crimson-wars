@@ -2266,6 +2266,9 @@ const SFX_ASSET_VARIANTS = {
   uiSuccess: ['ui-success'],
 };
 const SFX_ASSET_EXTS = ['ogg', 'wav', 'mp3', 'm4a', 'aac'];
+const SFX_ASSET_EXTS_BY_BASE = {
+  'weapon-reload': ['aac', 'ogg', 'wav', 'mp3', 'm4a'],
+};
 
 function chooseSfxAssetBase(name, options = {}) {
   const entry = SFX_ASSET_VARIANTS[name];
@@ -2293,12 +2296,13 @@ function resolveSfxAssetUrl(base) {
   if (!base) return Promise.resolve('');
   if (gameAudio.assetCache.has(base)) return Promise.resolve(gameAudio.assetCache.get(base) || '');
   if (gameAudio.missingAssets.has(base)) return Promise.resolve('');
+  const exts = SFX_ASSET_EXTS_BY_BASE[base] || SFX_ASSET_EXTS;
   const tryExt = (index) => {
-    if (index >= SFX_ASSET_EXTS.length) {
+    if (index >= exts.length) {
       gameAudio.missingAssets.add(base);
       return Promise.resolve('');
     }
-    const url = `/assets/sounds/${base}.${SFX_ASSET_EXTS[index]}`;
+    const url = `/assets/sounds/${base}.${exts[index]}`;
     return fetch(url, { method: 'HEAD', cache: 'force-cache' })
       .then((res) => {
         if (res.ok) {

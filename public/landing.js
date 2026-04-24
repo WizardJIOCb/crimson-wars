@@ -82,7 +82,6 @@ let landingLiveSelectedRoomCode = '';
 let landingLiveIframeRoomCode = '';
 let landingLivePaused = false;
 let landingLivePauseReason = '';
-let landingLivePauseToggle = null;
 let landingLiveCenterToggle = null;
 let landingLiveControlToggle = null;
 let landingLiveTimeline = null;
@@ -203,19 +202,6 @@ function composeLandingLiveLayout() {
   livePlayerPanel.classList.add('live-run-player-wide');
   liveCopyPanel.remove();
   liveLayout.dataset.composed = '1';
-
-  if (playerHead instanceof HTMLElement && !playerHead.querySelector('.live-run-pause-btn')) {
-    const pauseBtn = document.createElement('button');
-    pauseBtn.type = 'button';
-    pauseBtn.className = 'live-run-pause-btn';
-    pauseBtn.addEventListener('click', () => {
-      setLandingLivePaused(!landingLivePaused, 'manual');
-    });
-    playerHead.insertBefore(pauseBtn, liveStatusPill || null);
-    landingLivePauseToggle = pauseBtn;
-  } else {
-    landingLivePauseToggle = livePlayerPanel.querySelector('.live-run-pause-btn');
-  }
 
   if (commentary instanceof HTMLElement && !commentary.querySelector('.live-run-commentary-tools')) {
     if (!commentary.querySelector('.live-run-commentary-avatar')) {
@@ -1586,11 +1572,6 @@ function jumpLandingLiveToLiveEdge() {
 function updateLandingLivePauseUi() {
   if (liveLayout instanceof HTMLElement) {
     liveLayout.classList.toggle('is-live-paused', landingLivePaused);
-  }
-  if (landingLivePauseToggle instanceof HTMLButtonElement) {
-    landingLivePauseToggle.textContent = landingLivePaused ? 'Resume Live' : 'Pause Live';
-    landingLivePauseToggle.setAttribute('aria-pressed', landingLivePaused ? 'true' : 'false');
-    landingLivePauseToggle.title = landingLivePaused ? 'Resume Live Run Feed' : 'Pause Live Run Feed';
   }
   updateLandingLiveControlsUi();
   updateLandingLiveTimelineUi(false);
