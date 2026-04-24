@@ -1091,6 +1091,12 @@ main {
     linear-gradient(180deg, rgba(14, 5, 7, 0.98), rgba(6, 2, 3, 1));
 }
 
+.live-run-canvas-wrap.has-no-live-art {
+  background:
+    url("/assets/stream/stream-not-started.jpg") center / cover no-repeat,
+    linear-gradient(180deg, rgba(14, 5, 7, 0.98), rgba(6, 2, 3, 1));
+}
+
 .live-run-canvas-wrap::after {
   content: "";
   position: absolute;

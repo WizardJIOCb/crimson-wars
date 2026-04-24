@@ -1642,9 +1642,10 @@ function clearLivePreview() {
   ctx.fillRect(0, 0, liveCanvas.width, liveCanvas.height);
 }
 
-function setLandingLiveFallbackArt(enabled) {
+function setLandingLiveFallbackArt(enabled, variant = 'default') {
   if (landingLiveCanvasWrap instanceof HTMLElement) {
     landingLiveCanvasWrap.classList.toggle('has-fallback-art', Boolean(enabled));
+    landingLiveCanvasWrap.classList.toggle('has-no-live-art', Boolean(enabled) && variant === 'no-live');
   }
   if (liveCanvas instanceof HTMLCanvasElement) {
     liveCanvas.classList.toggle('is-hidden', Boolean(enabled));
@@ -2106,7 +2107,7 @@ function renderLandingLive(payload) {
   }
 
   clearLivePreview();
-  setLandingLiveFallbackArt(true);
+  setLandingLiveFallbackArt(true, 'no-live');
   if (liveEmpty) {
     liveEmpty.classList.remove('is-hidden');
     const emptyTitle = liveEmpty.querySelector('strong');
@@ -2174,7 +2175,7 @@ async function loadLandingLive() {
   } catch (_error) {
     landingLiveData = null;
     clearLivePreview();
-    setLandingLiveFallbackArt(true);
+    setLandingLiveFallbackArt(true, 'no-live');
     if (liveEmpty) liveEmpty.classList.remove('is-hidden');
     if (liveKicker) liveKicker.textContent = 'Signal lost';
     if (liveTitle) liveTitle.textContent = 'Не удалось подтянуть live-сводку.';
