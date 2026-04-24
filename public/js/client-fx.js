@@ -890,14 +890,25 @@ function processStateFx(nextState) {
   for (const b of nextState.bullets) {
     ids.add(b.id);
     if (!visuals.bulletIds.has(b.id)) {
-      const owner = playersById.get(b.ownerId) || playersById.get(b.ownerPlayerId);
+      let owner = playersById.get(b.ownerId) || playersById.get(b.ownerPlayerId);
+      const bulletShooterType = String(b.shooterType || '').toLowerCase();
+      if (!owner && bulletShooterType === 'companion') {
+        owner = {
+          id: b.ownerId || `companion:${b.ownerPlayerId || 'unknown'}`,
+          ownerId: b.ownerPlayerId || '',
+          x: Number(b.x) || 0,
+          y: Number(b.y) || 0,
+          weaponKey: b.weaponKey || 'pistol',
+          isCompanion: true,
+        };
+      }
       if (owner) {
         const bvx = Number(b.vx) || 0;
         const bvy = Number(b.vy) || 0;
         const dx = Math.abs(bvx) + Math.abs(bvy) > 0.001 ? bvx : ((Number(b.x) || owner.x) - owner.x);
         const dy = Math.abs(bvx) + Math.abs(bvy) > 0.001 ? bvy : ((Number(b.y) || owner.y) - owner.y);
         const a = Math.atan2(dy, dx || 1);
-        const isCompanionShot = Boolean(owner.isCompanion) || String(b.shooterType || '').toLowerCase() === 'companion';
+        const isCompanionShot = Boolean(owner.isCompanion) || bulletShooterType === 'companion';
         const weaponKey = String(b.weaponKey || owner.weaponKey || '').toLowerCase();
         if (game.bulletTracersEnabled) {
           visuals.muzzle.push({ x: owner.x + Math.cos(a) * 20, y: owner.y + Math.sin(a) * 20, a, c: b.color || '#ffd166', life: 0.05, ttl: 0.05 });
