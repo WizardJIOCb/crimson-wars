@@ -1191,8 +1191,7 @@ main {
 }
 
 .live-run-canvas-wrap:hover .live-player-controls,
-.live-run-canvas-wrap:focus-within .live-player-controls,
-.live-run-layout.is-live-paused .live-player-controls {
+.live-run-canvas-wrap:focus-within .live-player-controls {
   opacity: 1;
 }
 
