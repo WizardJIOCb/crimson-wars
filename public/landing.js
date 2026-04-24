@@ -82,6 +82,7 @@ let landingLiveSelectedRoomCode = '';
 let landingLiveIframeRoomCode = '';
 let landingLivePaused = true;
 let landingLivePauseReason = 'initial';
+let landingLiveFullscreenToggle = null;
 let landingLiveCenterToggle = null;
 let landingLiveControlToggle = null;
 let landingLiveTimeline = null;
@@ -250,6 +251,7 @@ function composeLandingLiveLayout() {
     const controls = document.createElement('div');
     controls.className = 'live-player-controls';
     controls.innerHTML = `
+      <button class="live-player-fullscreen-toggle" type="button" aria-label="Open live fullscreen">[]</button>
       <button class="live-player-center-toggle" type="button" aria-label="Pause Live">Pause</button>
       <div class="live-player-controlbar">
         <button class="live-player-play-toggle" type="button" aria-label="Pause Live">Pause</button>
@@ -262,12 +264,14 @@ function composeLandingLiveLayout() {
       </div>
     `;
     canvasWrap.appendChild(controls);
+    landingLiveFullscreenToggle = controls.querySelector('.live-player-fullscreen-toggle');
     landingLiveCenterToggle = controls.querySelector('.live-player-center-toggle');
     landingLiveControlToggle = controls.querySelector('.live-player-play-toggle');
     landingLiveTimeline = controls.querySelector('.live-player-timeline');
     landingLiveTimelineLabel = controls.querySelector('.live-player-time');
     landingLiveMuteToggle = controls.querySelector('.live-player-mute-toggle');
     landingLiveVolumeSlider = controls.querySelector('.live-player-volume-slider');
+    landingLiveFullscreenToggle?.addEventListener('click', openLandingLiveFullscreen);
     landingLiveCenterToggle?.addEventListener('click', () => {
       unlockLandingLiveAudio();
       setLandingLivePaused(!landingLivePaused, 'manual');
@@ -297,6 +301,7 @@ function composeLandingLiveLayout() {
       jumpLandingLiveToLiveEdge();
     });
   } else if (canvasWrap instanceof HTMLElement) {
+    landingLiveFullscreenToggle = canvasWrap.querySelector('.live-player-fullscreen-toggle');
     landingLiveCenterToggle = canvasWrap.querySelector('.live-player-center-toggle');
     landingLiveControlToggle = canvasWrap.querySelector('.live-player-play-toggle');
     landingLiveTimeline = canvasWrap.querySelector('.live-player-timeline');
@@ -628,6 +633,18 @@ function openLandingLiveFullscreen(event) {
     return;
   }
   void landingLiveCanvasWrap.requestFullscreen?.();
+}
+
+function updateLandingFullscreenButtonLabel() {
+  const isFullscreen = document.fullscreenElement === landingLiveCanvasWrap;
+  if (liveSecondaryLink instanceof HTMLElement) {
+    liveSecondaryLink.textContent = isFullscreen ? 'Exit Fullscreen' : 'Fullscreen';
+  }
+  if (landingLiveFullscreenToggle instanceof HTMLButtonElement) {
+    landingLiveFullscreenToggle.textContent = isFullscreen ? 'X' : '[]';
+    landingLiveFullscreenToggle.setAttribute('aria-label', isFullscreen ? 'Exit live fullscreen' : 'Open live fullscreen');
+    landingLiveFullscreenToggle.title = isFullscreen ? 'Exit fullscreen' : 'Fullscreen';
+  }
 }
 
 liveSecondaryLink?.addEventListener('click', openLandingLiveFullscreen);
