@@ -721,7 +721,7 @@ function renderCommentatorVoiceUi() {
   if (typeof window.syncCommentatorVoiceSettingToggle === 'function') {
     window.syncCommentatorVoiceSettingToggle(
       commentatorSpeech.supported && commentatorSpeech.enabled,
-      !commentatorSpeech.supported || !game.showCommentatorEnabled,
+      !commentatorSpeech.supported,
     );
   }
   if (commentatorVoiceStatusEl) {
@@ -732,7 +732,7 @@ function renderCommentatorVoiceUi() {
 }
 
 function setCommentatorVoiceEnabled(enabled) {
-  commentatorSpeech.enabled = Boolean(enabled) && commentatorSpeech.supported && Boolean(game.showCommentatorEnabled);
+  commentatorSpeech.enabled = Boolean(enabled) && commentatorSpeech.supported;
   try {
     localStorage.setItem(COMMENTATOR_TTS_STORAGE_KEY, commentatorSpeech.enabled ? '1' : '0');
   } catch {
@@ -772,7 +772,7 @@ function isCommentaryUrgent(key, spokenText) {
 }
 
 function flushCommentarySpeechQueue() {
-  if (!commentatorSpeech.supported || !commentatorSpeech.enabled || !game.showCommentatorEnabled || game.embedMode || document.hidden) return;
+  if (!commentatorSpeech.supported || !commentatorSpeech.enabled || game.embedMode || document.hidden) return;
   if (commentatorSpeech.pendingTimer) return;
   if (commentatorSpeech.activeText) return;
   if (!commentatorSpeech.queue.length) return;
@@ -832,7 +832,7 @@ function flushCommentarySpeechQueue() {
 }
 
 function maybeSpeakCommentary(title, text, eventKey) {
-  if (!commentatorSpeech.supported || !commentatorSpeech.enabled || !game.showCommentatorEnabled || game.embedMode || document.hidden) return;
+  if (!commentatorSpeech.supported || !commentatorSpeech.enabled || game.embedMode || document.hidden) return;
   const spokenText = expandCommentarySpeechText(`${String(title || '').trim()}. ${String(text || '').trim()}`.trim());
   if (!spokenText) return;
   const key = [
@@ -1503,7 +1503,6 @@ function updateInGameCommentatorFromState(state) {
 }
 
 commentatorVoiceToggleEl?.addEventListener('click', () => {
-  if (!game.showCommentatorEnabled) return;
   setCommentatorVoiceEnabled(!commentatorSpeech.enabled);
 });
 if (commentatorSpeech.supported) {
@@ -1516,7 +1515,7 @@ if (commentatorSpeech.supported) {
 renderCommentatorVoiceUi();
 
 window.setInterval(() => {
-  if (!commentatorSpeech.supported || !commentatorSpeech.enabled || !game.showCommentatorEnabled || game.embedMode) return;
+  if (!commentatorSpeech.supported || !commentatorSpeech.enabled || game.embedMode) return;
   const activeForMs = Date.now() - Math.max(0, commentatorSpeech.activeSinceAt || 0);
   const speechBusy = Boolean(window.speechSynthesis.speaking || window.speechSynthesis.pending);
   if (commentatorSpeech.activeText && !speechBusy && activeForMs > 1200) {
