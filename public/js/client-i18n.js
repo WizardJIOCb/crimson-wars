@@ -16,6 +16,7 @@
       'ui.settings.show_fps': 'Show FPS',
       'ui.settings.show_chat': 'Show chat',
       'ui.settings.show_commentator': 'Arena commentator',
+      'ui.settings.commentator_voice': 'Voice commentator',
       'ui.settings.replay_player': 'Show replay player',
       'ui.settings.shadows': 'Shadows',
       'ui.settings.show_minimap': 'Show minimap',

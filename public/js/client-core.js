@@ -13,6 +13,7 @@ const gameSfxToggleEl = document.getElementById('game-sfx-toggle');
 const gameSfxVolumeEl = document.getElementById('game-sfx-volume');
 const gameSfxVolumeValueEl = document.getElementById('game-sfx-volume-value');
 const showCommentatorToggleEl = document.getElementById('show-commentator-toggle');
+const commentatorVoiceSettingToggleEl = document.getElementById('commentator-voice-setting-toggle');
 const replayPlayerToggleEl = document.getElementById('replay-player-toggle');
 const replayPlayerToggleWrapEl = document.getElementById('replay-player-toggle-wrap');
 const fpsCornerEl = document.getElementById('fps-corner');
@@ -263,7 +264,7 @@ const game = {
   showChatEnabled: getToggleDefaultOn('cw:showChatEnabled'),
   sfxEnabled: getToggleDefaultOn('cw:sfxEnabled'),
   sfxVolume: getStoredPercent('cw:sfxVolume', 70) / 100,
-  showCommentatorEnabled: getToggleDefaultOff('cw:showCommentatorEnabled'),
+  showCommentatorEnabled: getToggleDefaultOn('cw:showCommentatorEnabled'),
   showReplayPlayerEnabled: getToggleDefaultOn('cw:showReplayPlayerEnabled'),
   showMinimapEnabled: getToggleDefaultOn('cw:showMinimapEnabled'),
   showAimStickEnabled: getToggleDefaultOn('cw:showAimStickEnabled'),
@@ -2503,14 +2504,13 @@ function setShowCommentatorEnabled(enabled) {
   localStorage.setItem('cw:showCommentatorEnabled', game.showCommentatorEnabled ? '1' : '0');
   if (!game.showCommentatorEnabled) {
     try {
-      localStorage.setItem('cw:commentatorTtsEnabled', '0');
       window.speechSynthesis?.cancel?.();
     } catch {
       // ignore browser speech/storage failures
     }
-    if (typeof window.setCommentatorVoiceEnabled === 'function') {
-      window.setCommentatorVoiceEnabled(false);
-    }
+  }
+  if (typeof window.renderCommentatorVoiceUi === 'function') {
+    window.renderCommentatorVoiceUi();
   }
   updateHudVisibility(getComputedStyle(joinOverlay).display !== 'none');
 }
@@ -2519,6 +2519,20 @@ showCommentatorToggleEl?.addEventListener('change', () => {
   setShowCommentatorEnabled(showCommentatorToggleEl.checked);
 });
 setShowCommentatorEnabled(game.showCommentatorEnabled);
+
+function syncCommentatorVoiceSettingToggle(enabled, disabled = false) {
+  if (!(commentatorVoiceSettingToggleEl instanceof HTMLInputElement)) return;
+  commentatorVoiceSettingToggleEl.checked = Boolean(enabled);
+  commentatorVoiceSettingToggleEl.disabled = Boolean(disabled);
+}
+
+window.syncCommentatorVoiceSettingToggle = syncCommentatorVoiceSettingToggle;
+
+commentatorVoiceSettingToggleEl?.addEventListener('change', () => {
+  if (typeof window.setCommentatorVoiceEnabled === 'function') {
+    window.setCommentatorVoiceEnabled(commentatorVoiceSettingToggleEl.checked);
+  }
+});
 
 function updateReplayPlayerToggleVisibility() {
   if (!replayPlayerToggleWrapEl) return;

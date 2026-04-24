@@ -567,9 +567,10 @@ const commentatorSpeech = {
 let pendingFinalDeathCommentary = null;
 
 try {
-  commentatorSpeech.enabled = localStorage.getItem(COMMENTATOR_TTS_STORAGE_KEY) === '1';
+  const storedCommentatorTts = localStorage.getItem(COMMENTATOR_TTS_STORAGE_KEY);
+  commentatorSpeech.enabled = storedCommentatorTts === null ? true : storedCommentatorTts === '1';
 } catch {
-  commentatorSpeech.enabled = false;
+  commentatorSpeech.enabled = true;
 }
 
 function setCommentatorLine(title, text, eventKey = 'generic', cooldownMs = 6000) {
@@ -717,6 +718,12 @@ function renderCommentatorVoiceUi() {
     commentatorVoiceToggleEl.classList.toggle('is-active', commentatorSpeech.supported && commentatorSpeech.enabled);
     commentatorVoiceToggleEl.textContent = commentatorSpeech.supported && commentatorSpeech.enabled ? 'Озвучка: вкл' : 'Озвучка: выкл';
   }
+  if (typeof window.syncCommentatorVoiceSettingToggle === 'function') {
+    window.syncCommentatorVoiceSettingToggle(
+      commentatorSpeech.supported && commentatorSpeech.enabled,
+      !commentatorSpeech.supported || !game.showCommentatorEnabled,
+    );
+  }
   if (commentatorVoiceStatusEl) {
     commentatorVoiceStatusEl.textContent = !commentatorSpeech.supported
       ? 'Браузер не дал speech synthesis для озвучки.'
@@ -747,6 +754,7 @@ function setCommentatorVoiceEnabled(enabled) {
   renderCommentatorVoiceUi();
 }
 window.setCommentatorVoiceEnabled = setCommentatorVoiceEnabled;
+window.renderCommentatorVoiceUi = renderCommentatorVoiceUi;
 
 function normalizeCommentarySpeechKeyPart(value) {
   return String(value || '')
