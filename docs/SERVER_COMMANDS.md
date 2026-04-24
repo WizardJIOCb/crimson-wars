@@ -7,7 +7,7 @@ ssh root@82.146.42.213
 
 ## Project directory
 ```bash
-cd /var/www/crimson.rodion.pro
+cd /var/www/crimsonwars.ru
 ```
 
 ## Deploy latest main
@@ -27,12 +27,12 @@ journalctl -u crimson-wars -n 120 --no-pager
 
 ## Records DB location
 ```bash
-/var/www/crimson.rodion.pro/data/records.db
+/var/www/crimsonwars.ru/data/records.db
 ```
 
 ## Open SQLite shell
 ```bash
-sqlite3 /var/www/crimson.rodion.pro/data/records.db
+sqlite3 /var/www/crimsonwars.ru/data/records.db
 ```
 
 ## List tables

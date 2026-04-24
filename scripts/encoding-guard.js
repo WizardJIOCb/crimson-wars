@@ -35,7 +35,18 @@ function isUtf8(buffer) {
 
 function hasMojibake(text) {
   if (text.includes('\uFFFD')) return 'contains replacement char U+FFFD';
-  if (/вЂ|РІвЂ|РЋ|СЏ|С‚|РџР|РЎР|Ð|Ñ/.test(text)) return 'contains common mojibake markers';
+  const commonMojibake = new RegExp([
+    '\u0432\u0402',
+    '\u0420\u0406\u0432\u0402',
+    '\u0420\u040b',
+    '\u0421\u040f',
+    '\u0421\u201a',
+    '\u0420\u045f\u0420',
+    '\u0420\u040e\u0420',
+    '\u00d0',
+    '\u00d1',
+  ].join('|'));
+  if (commonMojibake.test(text)) return 'contains common mojibake markers';
   if (/[\u0400\u0402-\u040F\u0450\u0452-\u045F]/u.test(text)) return 'contains uncommon Cyrillic letters typical for mojibake';
   return '';
 }

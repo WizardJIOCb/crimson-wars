@@ -15,6 +15,7 @@
       'ui.hide': 'Hide',
       'ui.settings.show_fps': 'Show FPS',
       'ui.settings.show_chat': 'Show chat',
+      'ui.settings.show_commentator': 'Arena commentator',
       'ui.settings.replay_player': 'Show replay player',
       'ui.settings.shadows': 'Shadows',
       'ui.settings.show_minimap': 'Show minimap',
@@ -353,6 +354,7 @@
       'ui.hide': 'Скрыть',
       'ui.settings.show_fps': 'Показывать FPS',
       'ui.settings.show_chat': 'Показывать чат',
+      'ui.settings.show_commentator': 'Комментатор арены',
       'ui.settings.replay_player': 'Показать/скрыть плеер реплея',
       'ui.settings.shadows': 'Тени',
       'ui.settings.show_minimap': 'Показывать миникарту',
@@ -1016,6 +1018,7 @@
     setText('#record-replay-ingame', 'ui.record.show_replay_ingame');
     setText('#record-replay-copy-link', 'ui.record.copy_replay_link');
     setText('#replay-player-toggle-label', 'ui.settings.replay_player');
+    setText('#show-commentator-toggle-label', 'ui.settings.show_commentator');
     setText('#language-label', 'settings.language');
     const langSelect = document.getElementById('language-select');
     if (langSelect) {

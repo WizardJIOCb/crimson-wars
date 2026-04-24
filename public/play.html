@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Crimson Wars</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <link rel="stylesheet" href="/style.css?v=20260330logo1" />
+  <link rel="stylesheet" href="/style.css?v=20260424live7" />
   <!-- Yandex.Metrika counter -->
   <script type="text/javascript">
     (function(m,e,t,r,i,k,a){
@@ -116,6 +116,12 @@
             Show chat
           </label>
         </p>
+        <p class="shadow-option">
+          <label>
+            <input id="show-commentator-toggle" type="checkbox" />
+            <span id="show-commentator-toggle-label">Arena commentator</span>
+          </label>
+        </p>
         <p id="replay-player-toggle-wrap" class="shadow-option hidden">
           <label for="replay-player-toggle">
             <input id="replay-player-toggle" type="checkbox" checked />
@@ -157,6 +163,15 @@
       <span id="difficulty-meta">Threat Lv1</span>
     </div>
     <div id="boss-spawn-alert" class="boss-spawn-alert hidden">BOSS TELEPORT IN 0.0s</div>
+  </div>
+  <div id="commentator-panel" class="hidden" aria-live="polite">
+    <span class="commentator-kicker">Arena Commentator</span>
+    <div class="commentator-tools">
+      <button id="commentator-voice-toggle" type="button" class="commentator-voice-btn" title="Включить озвучку комментатора">Озвучка: выкл</button>
+      <span id="commentator-voice-status" class="commentator-voice-status">Нажми, чтобы комментатор начал говорить вслух.</span>
+    </div>
+    <strong id="commentator-title">Матч загружается. Сарказм прогревается.</strong>
+    <p id="commentator-text">Как только на карте начнётся хоть какая-то драма, я сразу это отмечу.</p>
   </div>
   <div id="replay-load-overlay" class="replay-load-overlay hidden" aria-live="polite">
     <div id="replay-load-label" class="replay-load-label">Loading replay...</div>
@@ -479,11 +494,11 @@
       <input id="dev-console-input" maxlength="180" placeholder="type command..." />
     </form>
   </div>
-  <script src="/js/client-i18n.js?v=20260318i18n1"></script>
-  <script src="/js/client-core.js?v=20260318i18n1"></script>
-  <script src="/js/client-net-input.js?v=20260318i18n1"></script>
-  <script src="/js/client-fx.js?v=20260317t"></script>
-  <script src="/js/client-render.js?v=20260317t"></script>
+  <script src="/js/client-i18n.js?v=20260424live2"></script>
+  <script src="/js/client-core.js?v=20260424live8"></script>
+  <script src="/js/client-net-input.js?v=20260424live22"></script>
+  <script src="/js/client-fx.js?v=20260424live1"></script>
+  <script src="/js/client-render.js?v=20260424live1"></script>
 </body>
 </html>
 

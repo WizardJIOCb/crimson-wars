@@ -144,35 +144,7 @@ app.use((req, res, next) => {
   res.setHeader('X-Crimson-Instance', INSTANCE_ID);
   next();
 });
-app.get('/', (req, res, next) => {
-  const compatibilityParams = [
-    'room',
-    'mode',
-    'tab',
-    'news',
-    'replay',
-    'replayAt',
-    'replayPath',
-    'replayApiPath',
-    't',
-    'integrationToken',
-    'integration_token',
-    'heroId',
-    'hero_id',
-    'name',
-  ];
-  const shouldRedirectToPlay = compatibilityParams.some((key) => Object.prototype.hasOwnProperty.call(req.query || {}, key));
-  if (shouldRedirectToPlay) {
-    const search = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
-    res.redirect(302, `/play${search}`);
-    return;
-  }
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-app.get('/play', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'play.html'));
-});
-app.use(express.static(path.join(__dirname, 'public'), { index: false }));
+app.use(express.static(path.join(__dirname, 'public')));
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
@@ -1693,56 +1665,6 @@ app.get('/api/records', (req, res) => {
   });
 });
 
-app.get('/api/landing/latest-runs', (req, res) => {
-  const page = Number(req.query.page) || 1;
-  const pageSize = Math.max(1, Math.min(12, Number(req.query.page_size) || 6));
-  const payload = recordsStore.listLatestPlayerRuns(page, pageSize);
-
-  res.json({
-    ok: true,
-    runs: payload.items,
-    page: payload.page,
-    pageSize: payload.pageSize,
-    total: payload.total,
-    totalPages: payload.totalPages,
-    now: Date.now(),
-  });
-});
-
-app.get('/api/landing/live-run', (req, res) => {
-  const requestedRoomCode = cleanRoomCodeForLookup(req.query.roomCode || req.query.room || '');
-  const localActiveRooms = sortLandingLiveRooms(listLocalActiveRooms());
-  const allActiveRooms = listRoomsForLobby().filter((room) => Math.max(0, Number(room?.players) || 0) > 0);
-  const featuredRoom = getFeaturedLandingLiveRoom(requestedRoomCode);
-  const fallbackRun = recordsStore.listLatestPlayerRuns(1, 1)?.items?.[0] || null;
-  const fallbackReplayId = Math.max(0, Number(fallbackRun?.id) || 0);
-  const roomSummaries = localActiveRooms.map(buildLandingLiveRoomSummary).filter(Boolean);
-  const selectedRoomCode = featuredRoom ? cleanRoomCodeForLookup(featuredRoom.code) : '';
-
-  res.json({
-    ok: true,
-    live: Boolean(featuredRoom),
-    featuredRun: buildLandingLiveRoomPayload(featuredRoom),
-    liveRuns: roomSummaries,
-    selectedRoomCode,
-    activeRuns: allActiveRooms.length,
-    localActiveRuns: localActiveRooms.length,
-    presence: getPresenceStats(),
-    fallbackRun: fallbackRun ? {
-      id: fallbackReplayId,
-      name: fallbackRun.name,
-      at: Math.max(0, Number(fallbackRun.at) || 0),
-      kills: Math.max(0, Number(fallbackRun.kills) || 0),
-      score: Math.max(0, Number(fallbackRun.score) || 0),
-      durationSec: Math.max(0, Number(fallbackRun.durationSec) || 0),
-      roomCode: fallbackRun.roomCode || '',
-      runDetails: fallbackRun.runDetails || {},
-      replayUrl: fallbackReplayId > 0 ? `/play?replay=${fallbackReplayId}&replayPath=${encodeURIComponent(`/api/leaderboard/runs/${fallbackReplayId}/replay`)}` : '/play',
-    } : null,
-    now: Date.now(),
-  });
-});
-
 app.get('/api/player/run-history', (req, res) => {
   if (!req.playerUser) {
     res.status(401).json({ ok: false, message: 'Authentication required' });
@@ -2111,7 +2033,6 @@ function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode, reques
       stateAccumulatorMs: 0,
       accumulatorMs: 0,
       players: new Map(),
-      spectators: new Map(),
       companions: [],
       bullets: [],
       enemies: [],
@@ -2155,11 +2076,6 @@ function broadcastRoom(room, payload) {
   for (const p of room.players.values()) {
     if (p.ws.readyState === WebSocket.OPEN) {
       p.ws.send(raw);
-    }
-  }
-  for (const spectator of room.spectators.values()) {
-    if (spectator.ws.readyState === WebSocket.OPEN) {
-      spectator.ws.send(raw);
     }
   }
 }
@@ -2899,86 +2815,6 @@ function serializeRoom(room) {
     decor: {
       trees: room.trees,
     },
-  };
-}
-
-function listLocalActiveRooms() {
-  return Array.from(rooms.values()).filter((room) => room && room.players instanceof Map && room.players.size > 0);
-}
-
-function sortLandingLiveRooms(activeRooms) {
-  return (Array.isArray(activeRooms) ? activeRooms.slice() : []).sort((a, b) =>
-    (Number(a.startedAt) || 0) - (Number(b.startedAt) || 0)
-    || (b.players.size - a.players.size)
-    || String(a.code || '').localeCompare(String(b.code || '')));
-}
-
-function getFeaturedLandingLiveRoom(preferredCode = '') {
-  const activeRooms = sortLandingLiveRooms(listLocalActiveRooms());
-  if (activeRooms.length <= 0) return null;
-  const normalizedPreferredCode = cleanRoomCodeForLookup(preferredCode);
-  if (normalizedPreferredCode) {
-    const picked = activeRooms.find((room) => cleanRoomCodeForLookup(room?.code) === normalizedPreferredCode);
-    if (picked) return picked;
-  }
-  return activeRooms[0] || null;
-}
-
-function buildLandingLiveRoomPayload(room) {
-  if (!room) return null;
-  const serialized = serializeRoom(room);
-  const players = Array.isArray(serialized.players)
-    ? serialized.players.filter((player) => !player?.isCompanion)
-    : [];
-
-  return {
-    code: room.code,
-    startedAt: Math.max(0, Number(room.startedAt) || 0),
-    liveForSec: Math.max(1, Math.floor((Date.now() - (Number(room.startedAt) || Date.now())) / 1000)),
-    players: Math.max(0, room.players.size),
-    spectators: Math.max(0, Number(room.spectators?.size) || 0),
-    maxPlayers: Math.max(1, Number(room.maxPlayers) || getRoomMaxPlayers(room.gameMode)),
-    gameMode: normalizeGameMode(room.gameMode || 'normal'),
-    joinUrl: buildRoomRedirectUrl(PUBLIC_BASE_URL, room.code, 'join'),
-    totalEnemyKills: Math.max(0, Number(room.totalEnemyKills) || 0),
-    totalBossKills: Math.max(0, Number(room.totalBossKills) || 0),
-    bossAlive: Boolean(serialized.bossAlive),
-    roomDifficulty: serialized.roomDifficulty,
-    preview: {
-      now: serialized.now,
-      roomCode: serialized.roomCode,
-      world: serialized.world,
-      roomStartedAt: serialized.roomStartedAt,
-      gameMode: serialized.gameMode,
-      totalEnemyKills: serialized.totalEnemyKills,
-      nextBossAtKills: serialized.nextBossAtKills,
-      bossAlive: serialized.bossAlive,
-      nextBossSpawnAt: serialized.nextBossSpawnAt,
-      roomDifficulty: serialized.roomDifficulty,
-      decor: {
-        trees: Array.isArray(serialized.decor?.trees) ? serialized.decor.trees.slice(0, 80) : [],
-      },
-      players: players.slice(0, 24),
-      enemies: Array.isArray(serialized.enemies) ? serialized.enemies.slice(0, 120) : [],
-      bullets: Array.isArray(serialized.bullets) ? serialized.bullets.slice(0, 140) : [],
-      xpOrbs: Array.isArray(serialized.xpOrbs) ? serialized.xpOrbs.slice(0, 120) : [],
-      bossPortals: Array.isArray(serialized.bossPortals) ? serialized.bossPortals.slice(0, 6) : [],
-      drops: Array.isArray(serialized.drops) ? serialized.drops.slice(0, 40) : [],
-      skillOrbs: Array.isArray(serialized.skillOrbs) ? serialized.skillOrbs.slice(0, 32) : [],
-    },
-  };
-}
-
-function buildLandingLiveRoomSummary(room) {
-  if (!room) return null;
-  return {
-    code: room.code,
-    startedAt: Math.max(0, Number(room.startedAt) || 0),
-    liveForSec: Math.max(1, Math.floor((Date.now() - (Number(room.startedAt) || Date.now())) / 1000)),
-    players: Math.max(0, room.players.size),
-    spectators: Math.max(0, Number(room.spectators?.size) || 0),
-    maxPlayers: Math.max(1, Number(room.maxPlayers) || getRoomMaxPlayers(room.gameMode)),
-    gameMode: normalizeGameMode(room.gameMode || 'normal'),
   };
 }
 
@@ -4434,49 +4270,6 @@ function joinRoom(ws, join) {
       return null;
     }
   }
-  const spectating = Boolean(join?.spectate || join?.spectator || join?.watch);
-  if (spectating) {
-    const room = requestedCode ? rooms.get(requestedCode) : null;
-    if (!room) {
-      sendTo(ws, {
-        type: 'joinError',
-        message: requestedCode ? `Live room ${requestedCode} is no longer active.` : 'Spectate mode needs an active room code.',
-        code: 404,
-        roomCode: requestedCode,
-      });
-      return null;
-    }
-    const roomMaxPlayers = Math.max(1, Number(room.maxPlayers) || getRoomMaxPlayers(room.gameMode));
-    const spectatorId = `spec_${Math.random().toString(36).slice(2, 10)}`;
-    const spectator = {
-      id: spectatorId,
-      ws,
-      roomCode: room.code,
-      kind: 'spectator',
-      joinedAt: Date.now(),
-    };
-    room.spectators.set(spectatorId, spectator);
-    publishRuntimeRegistry();
-    sendTo(ws, {
-      type: 'welcome',
-      id: null,
-      roomCode: room.code,
-      instanceId: room.instanceId || INSTANCE_ID,
-      tickRate: room.sync.tickRate,
-      sync: room.sync,
-      maxPlayers: roomMaxPlayers,
-      gameMode: normalizeGameMode(room.gameMode || 'normal'),
-      spectator: true,
-      skillCatalog: skillsStore.getList(),
-      chatHistory: Array.isArray(room.chatHistory) ? room.chatHistory.slice(-CHAT_WELCOME_LIMIT) : [],
-    });
-    sendTo(ws, { type: 'state', payload: serializeRoom(room) });
-    sendTo(ws, {
-      type: 'system',
-      message: `Spectating room ${room.code} (${room.players.size}/${roomMaxPlayers})`,
-    });
-    return spectator;
-  }
   const room = getOrCreateRoom(join?.roomCode, join?.sync, join?.gameMode, join?.pvpDurationMin);
   const roomMaxPlayers = Math.max(1, Number(room.maxPlayers) || getRoomMaxPlayers(room.gameMode));
 
@@ -4616,28 +4409,18 @@ function joinRoom(ws, join) {
   return player;
 }
 
-function removeRoomClient(client) {
-  if (!client) return;
-  const room = rooms.get(client.roomCode);
+function removePlayer(player) {
+  const room = rooms.get(player.roomCode);
   if (!room) return;
-  if (client.kind === 'spectator') {
-    room.spectators.delete(client.id);
-    if (room.players.size === 0 && room.spectators.size === 0) {
-      rooms.delete(room.code);
-    }
-    publishRuntimeRegistry();
-    return;
-  }
+  room.players.delete(player.id);
+  clearSkillOffersForOwner(room, player.id);
+  room.companions = (room.companions || []).filter((companion) => companion.ownerId !== player.id);
+  room.scores.delete(player.id);
+  room.kills.delete(player.id);
 
-  room.players.delete(client.id);
-  clearSkillOffersForOwner(room, client.id);
-  room.companions = (room.companions || []).filter((companion) => companion.ownerId !== client.id);
-  room.scores.delete(client.id);
-  room.kills.delete(client.id);
+  broadcastRoom(room, { type: 'system', message: `${player.name} left room ${room.code}.` });
 
-  broadcastRoom(room, { type: 'system', message: `${client.name} left room ${room.code}.` });
-
-  if (room.players.size === 0 && room.spectators.size === 0) {
+  if (room.players.size === 0) {
     rooms.delete(room.code);
   }
   publishRuntimeRegistry();
@@ -4733,7 +4516,7 @@ wss.on('connection', (ws, req) => {
   publishRuntimeRegistry();
   ws.adminSession = readAdminSession(req);
   ws.playerSession = readPlayerSession(req);
-  let client = null;
+  let player = null;
 
   ws.on('message', (msgRaw) => {
     let msg;
@@ -4747,27 +4530,20 @@ wss.on('connection', (ws, req) => {
       return;
     }
 
-    if (msg.type === 'join' && !client) {
-      client = joinRoom(ws, msg);
+    if (msg.type === 'join' && !player) {
+      player = joinRoom(ws, msg);
       return;
     }
 
-    if (msg.type === 'devCheat' && !client) {
+    if (msg.type === 'devCheat' && !player) {
       applyGlobalDevCommand(ws, msg.command);
       return;
     }
 
-    if (!client) return;
-    if (client.kind === 'spectator') {
-      if (msg.type === 'leave') {
-        removeRoomClient(client);
-        client = null;
-      }
-      return;
-    }
-    const room = rooms.get(client.roomCode);
+    if (!player) return;
+    const room = rooms.get(player.roomCode);
     if (!room) return;
-    const current = room.players.get(client.id);
+    const current = room.players.get(player.id);
     if (!current) return;
 
     if (msg.type === 'netStats') {
@@ -4807,16 +4583,16 @@ wss.on('connection', (ws, req) => {
     }
 
     if (msg.type === 'leave') {
-      removeRoomClient(current);
-      client = null;
+      removePlayer(current);
+      player = null;
     }
   });
 
   ws.on('close', () => {
     activeSockets.delete(ws);
     publishRuntimeRegistry();
-    if (!client) return;
-    removeRoomClient(client);
+    if (!player) return;
+    removePlayer(player);
   });
 });
 

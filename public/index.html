@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <link rel="stylesheet" href="/landing.css?v=20260423d" />
+  <link rel="stylesheet" href="/landing.css?v=20260424live17" />
 </head>
 <body>
   <div class="landing-shell">
@@ -39,6 +39,7 @@
 
       <nav id="site-nav" class="site-nav" aria-label="Главное меню">
         <a href="#play">Играть</a>
+        <a href="#live-run">Live</a>
         <a href="#video">Повторы</a>
         <a href="#ratings">Рейтинг</a>
         <a href="#news">Новости</a>
@@ -125,6 +126,115 @@
             <div class="floating-badge badge-danger">Bloodstorm active</div>
             <div class="floating-badge badge-lightning">Chain lightning armed</div>
           </div>
+        </div>
+      </section>
+
+      <section id="live-run" class="landing-section reveal">
+        <div class="section-heading">
+          <p class="eyebrow">Live Run Feed</p>
+          <h2>Смотри текущий онлайн-забег прямо с главной, без лишнего входа в матч.</h2>
+          <p>
+            Если онлайн-комнат несколько, в блок автоматически поднимается самая длинная текущая катка.
+            Превью обновляется само и показывает живую арену: игроков, волну, босса и общий темп онлайна.
+          </p>
+        </div>
+
+        <div class="live-run-layout">
+          <article class="live-run-copy">
+            <span id="landing-live-kicker" class="live-run-kicker">Ищем активный забег</span>
+            <h3 id="landing-live-title">Поднимаем текущую комнату из онлайна...</h3>
+            <p id="landing-live-description" class="live-run-description">
+              Как только сервер найдёт подходящий матч, здесь появится живой превью-плеер и сводка по самой длинной активной игре.
+            </p>
+
+            <div class="live-run-stats">
+              <div class="live-run-stat">
+                <span>Онлайн-забегов</span>
+                <strong id="landing-live-active-runs">0</strong>
+              </div>
+              <div class="live-run-stat">
+                <span>Игроков в игре</span>
+                <strong id="landing-live-in-game">0</strong>
+              </div>
+              <div class="live-run-stat">
+                <span>Комната</span>
+                <strong id="landing-live-room-code">--</strong>
+              </div>
+              <div class="live-run-stat">
+                <span>Длительность</span>
+                <strong id="landing-live-duration">00:00</strong>
+              </div>
+            </div>
+
+            <div class="live-run-flags">
+              <span id="landing-live-mode" class="live-run-flag">Режим: --</span>
+              <span id="landing-live-players" class="live-run-flag">Игроки: --</span>
+              <span id="landing-live-threat" class="live-run-flag">Угроза: --</span>
+              <span id="landing-live-boss" class="live-run-flag">Босс: --</span>
+            </div>
+
+            <div class="live-run-actions">
+              <a id="landing-live-primary-link" class="button button-primary" href="/play">Открыть игру</a>
+              <a id="landing-live-secondary-link" class="button button-secondary" href="#video">Смотреть повторы</a>
+            </div>
+
+            <div class="live-run-switcher">
+              <button id="landing-live-prev" class="live-run-switch-btn" type="button">Назад</button>
+              <span id="landing-live-switch-status" class="live-run-switch-status">Эфир 1 из 1</span>
+              <button id="landing-live-next" class="live-run-switch-btn" type="button">Вперёд</button>
+            </div>
+          </article>
+
+          <article class="live-run-player">
+            <div class="live-run-player-head">
+              <div>
+                <span class="live-run-player-label">Arena Preview</span>
+                <h3>Живая витрина матча</h3>
+              </div>
+              <span id="landing-live-status-pill" class="live-status-pill is-waiting">offline</span>
+            </div>
+
+            <div class="live-run-canvas-wrap">
+              <iframe
+                id="landing-live-iframe"
+                class="live-run-iframe is-hidden"
+                title="Live run spectator"
+                loading="eager"
+                referrerpolicy="same-origin"
+                allow="autoplay"
+              ></iframe>
+              <canvas id="landing-live-canvas" class="live-run-canvas" width="960" height="540" aria-label="Live run preview"></canvas>
+              <div id="landing-live-empty" class="live-run-empty">
+                <strong>Пока нет локального live-превью</strong>
+                <span>Когда появится активная комната, этот блок автоматически оживёт.</span>
+              </div>
+            </div>
+
+            <div class="live-run-player-foot">
+              <div class="live-run-foot-card">
+                <span>Фид</span>
+                <strong id="landing-live-footline">Ожидаем свежий онлайн-сигнал</strong>
+              </div>
+              <div class="live-run-foot-card">
+                <span>Смотрят</span>
+                <strong id="landing-live-viewers">0 зрителей</strong>
+              </div>
+              <div class="live-run-foot-card">
+                <span>Волна</span>
+                <strong id="landing-live-kills">0 киллов</strong>
+              </div>
+              <div class="live-run-foot-card">
+                <span>Обновление</span>
+                <strong id="landing-live-updated">только что</strong>
+              </div>
+            </div>
+
+            <div class="live-run-commentary">
+              <span class="live-run-commentary-label">Комментатор арены</span>
+              <strong id="landing-live-commentator-title">Пока молчит и нюхает порох.</strong>
+              <p id="landing-live-commentator-text">Как только матч оживёт, начнёт язвительно комментировать происходящее по ходу забега.</p>
+            </div>
+          </article>
         </div>
       </section>
 
@@ -430,6 +540,6 @@
     </div>
   </div>
 
-  <script src="/landing.js?v=20260423d"></script>
+  <script src="/landing.js?v=20260424live28"></script>
 </body>
 </html>

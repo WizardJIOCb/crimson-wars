@@ -9,7 +9,6 @@ const movementMetaEl = document.getElementById('movement-meta');
 const netMetaEl = document.getElementById('net-meta');
 const showFpsToggleEl = document.getElementById('show-fps-toggle');
 const showChatToggleEl = document.getElementById('show-chat-toggle');
-const showCommentatorToggleEl = document.getElementById('show-commentator-toggle');
 const replayPlayerToggleEl = document.getElementById('replay-player-toggle');
 const replayPlayerToggleWrapEl = document.getElementById('replay-player-toggle-wrap');
 const fpsCornerEl = document.getElementById('fps-corner');
@@ -120,11 +119,6 @@ const matchTimerEl = document.getElementById('match-timer');
 const bossProgressEl = document.getElementById('boss-progress');
 const difficultyMetaEl = document.getElementById('difficulty-meta');
 const bossSpawnAlertEl = document.getElementById('boss-spawn-alert');
-const commentatorPanelEl = document.getElementById('commentator-panel');
-const commentatorTitleEl = document.getElementById('commentator-title');
-const commentatorTextEl = document.getElementById('commentator-text');
-const commentatorVoiceToggleEl = document.getElementById('commentator-voice-toggle');
-const commentatorVoiceStatusEl = document.getElementById('commentator-voice-status');
 const replayLoadOverlayEl = document.getElementById('replay-load-overlay');
 const replayLoadLabelEl = document.getElementById('replay-load-label');
 const replayLoadFillEl = document.getElementById('replay-load-fill');
@@ -231,8 +225,6 @@ function getToggleDefaultOff(key) {
 
 const game = {
   myId: null,
-  spectating: false,
-  embedMode: false,
   roomCode: null,
   connected: false,
   world: { width: 2400, height: 1400 },
@@ -248,7 +240,6 @@ const game = {
   connectionIndicatorEnabled: getToggleDefaultOn('cw:connectionIndicatorEnabled'),
   showFpsEnabled: getToggleDefaultOn('cw:showFpsEnabled'),
   showChatEnabled: getToggleDefaultOn('cw:showChatEnabled'),
-  showCommentatorEnabled: getToggleDefaultOff('cw:showCommentatorEnabled'),
   showReplayPlayerEnabled: getToggleDefaultOn('cw:showReplayPlayerEnabled'),
   showMinimapEnabled: getToggleDefaultOn('cw:showMinimapEnabled'),
   showAimStickEnabled: getToggleDefaultOn('cw:showAimStickEnabled'),
@@ -354,7 +345,6 @@ let nicknameCheckTimer = null;
 let restartReloadTimer = null;
 let pendingAutoJoin = false;
 let pendingAutoCreate = false;
-let pendingAutoSpectate = false;
 let pendingReplayRecordId = 0;
 let pendingReplayStartSec = 0;
 let pendingReplayApiPath = '';
@@ -427,7 +417,6 @@ window.cwTrackMetrikaGoal = trackMetrikaGoal;
 window.cwTrackMetrikaGoalOnce = trackMetrikaGoalOnce;
 window.cwSetPendingJoinAnalytics = setPendingJoinAnalytics;
 window.cwClearPendingJoinAnalytics = clearPendingJoinAnalytics;
-window.cwGame = game;
 
 function loadDevConsoleHistory() {
   try {
@@ -807,8 +796,6 @@ function applyInitialRoomIntent() {
   const replayPath = replayPathRaw.startsWith('/api/') ? replayPathRaw : '';
   const room = (params.get('room') || '').trim().toUpperCase();
   const mode = (params.get('mode') || '').trim().toLowerCase();
-  const spectate = mode === 'spectate' || mode === 'watch' || mode === 'observer';
-  const embed = params.get('embed') === '1' || params.get('view') === 'embed';
   const integrationToken = String(params.get('integrationToken') || params.get('integration_token') || '').trim();
   const presetName = String(params.get('name') || '').trim();
   const presetHeroId = String(params.get('heroId') || params.get('hero_id') || '').trim().toLowerCase();
@@ -819,18 +806,13 @@ function applyInitialRoomIntent() {
   pendingReplayStartSec = replayAt;
   pendingReplayApiPath = replayPath;
   if (roomCodeInput && room) roomCodeInput.value = room.slice(0, 10);
-  if (spectate) {
-    joinMode = 'join';
-  } else if (mode === 'join' || (room && !mode)) {
+  if (mode === 'join' || (room && !mode)) {
     joinMode = 'join';
   } else if (mode === 'create') {
     joinMode = 'create';
   }
-  pendingAutoJoin = Boolean(room && joinMode === 'join' && !spectate);
-  pendingAutoSpectate = Boolean(room && spectate);
+  pendingAutoJoin = Boolean(room && joinMode === 'join');
   pendingAutoCreate = Boolean(!room && joinMode === 'create' && routed);
-  game.embedMode = embed;
-  document.body.classList.toggle('live-embed', game.embedMode);
   pendingIntegrationToken = integrationToken;
   selectedGameMode = gameMode;
   selectedPvpDurationMin = pvpDurationMin;
@@ -847,7 +829,6 @@ function applyInitialRoomIntent() {
 
   if (pendingReplayRecordId > 0 || pendingReplayApiPath) {
     pendingAutoJoin = false;
-    pendingAutoSpectate = false;
     pendingAutoCreate = false;
   }
   routedIntent = routed ? { mode: joinMode, room } : null;
@@ -2083,29 +2064,6 @@ showChatToggleEl?.addEventListener('change', () => {
 });
 setShowChatEnabled(game.showChatEnabled);
 
-function setShowCommentatorEnabled(enabled) {
-  game.showCommentatorEnabled = Boolean(enabled);
-  if (showCommentatorToggleEl) showCommentatorToggleEl.checked = game.showCommentatorEnabled;
-  localStorage.setItem('cw:showCommentatorEnabled', game.showCommentatorEnabled ? '1' : '0');
-  if (!game.showCommentatorEnabled) {
-    try {
-      localStorage.setItem('cw:commentatorTtsEnabled', '0');
-      window.speechSynthesis?.cancel?.();
-    } catch {
-      // ignore browser speech/storage failures
-    }
-    if (typeof window.setCommentatorVoiceEnabled === 'function') {
-      window.setCommentatorVoiceEnabled(false);
-    }
-  }
-  updateHudVisibility(getComputedStyle(joinOverlay).display !== 'none');
-}
-
-showCommentatorToggleEl?.addEventListener('change', () => {
-  setShowCommentatorEnabled(showCommentatorToggleEl.checked);
-});
-setShowCommentatorEnabled(game.showCommentatorEnabled);
-
 function updateReplayPlayerToggleVisibility() {
   if (!replayPlayerToggleWrapEl) return;
   replayPlayerToggleWrapEl.classList.toggle('hidden', !replayGame.active);
@@ -2289,34 +2247,32 @@ function onDevConsoleServerMessage(msg) {
 function updateFpsCornerVisibility(overlayOpen = null) {
   if (!fpsCornerEl) return;
   const menuOpen = overlayOpen === null ? (getComputedStyle(joinOverlay).display !== 'none') : Boolean(overlayOpen);
-  fpsCornerEl.classList.toggle('hidden', menuOpen || game.embedMode || !game.showFpsEnabled);
+  fpsCornerEl.classList.toggle('hidden', menuOpen || !game.showFpsEnabled);
 }
 
 function updateMinimapVisibility(overlayOpen = null) {
   if (!minimapWrapEl) return;
   const menuOpen = overlayOpen === null ? (getComputedStyle(joinOverlay).display !== 'none') : Boolean(overlayOpen);
   const minimapDisabled = !game.showMinimapEnabled;
-  minimapWrapEl.classList.toggle('hidden', menuOpen || game.embedMode || minimapDisabled);
+  minimapWrapEl.classList.toggle('hidden', menuOpen || minimapDisabled);
   if (toggleInfoBtn) toggleInfoBtn.classList.toggle('minimap-hidden', minimapDisabled);
 }
 
 function updateHudVisibility(overlayOpen) {
   const menuOpen = Boolean(overlayOpen);
   const showHudPanel = !menuOpen || !infoPanelHidden;
-  const embedMode = Boolean(game.embedMode);
   canvas.classList.toggle('hidden', menuOpen);
-  if (hudEl) hudEl.classList.toggle('menu-hidden', !showHudPanel || embedMode);
-  if (toggleInfoBtn) toggleInfoBtn.classList.toggle('hidden', embedMode || !infoPanelHidden || menuOpen);
+  if (hudEl) hudEl.classList.toggle('menu-hidden', !showHudPanel);
+  if (toggleInfoBtn) toggleInfoBtn.classList.toggle('hidden', !infoPanelHidden || menuOpen);
   const joinToggleInfoBtn = document.getElementById('join-toggle-info');
-  if (joinToggleInfoBtn) joinToggleInfoBtn.classList.toggle('hidden', embedMode || !menuOpen || !infoPanelHidden);
-  if (scoreboardEl) scoreboardEl.classList.toggle('hidden', menuOpen || embedMode);
+  if (joinToggleInfoBtn) joinToggleInfoBtn.classList.toggle('hidden', !menuOpen || !infoPanelHidden);
+  if (scoreboardEl) scoreboardEl.classList.toggle('hidden', menuOpen);
   if (topCenterHudEl) topCenterHudEl.classList.toggle('hidden', menuOpen);
-  if (commentatorPanelEl) commentatorPanelEl.classList.toggle('hidden', menuOpen || embedMode || !game.showCommentatorEnabled);
-  if (bottomHudEl) bottomHudEl.classList.toggle('hidden', menuOpen || embedMode);
-  if (statsToggleBtn) statsToggleBtn.classList.toggle('hidden', menuOpen || embedMode);
-  if (chatWrapEl) chatWrapEl.classList.toggle('hidden', menuOpen || embedMode || !game.showChatEnabled);
+  if (bottomHudEl) bottomHudEl.classList.toggle('hidden', menuOpen);
+  if (statsToggleBtn) statsToggleBtn.classList.toggle('hidden', menuOpen);
+  if (chatWrapEl) chatWrapEl.classList.toggle('hidden', menuOpen || !game.showChatEnabled);
   if (menuOpen && chatInputEl && document.activeElement === chatInputEl) chatInputEl.blur();
-  if (replayGameControlsEl) replayGameControlsEl.classList.toggle('hidden', menuOpen || embedMode || !replayGame.active || !game.showReplayPlayerEnabled);
+  if (replayGameControlsEl) replayGameControlsEl.classList.toggle('hidden', menuOpen || !replayGame.active || !game.showReplayPlayerEnabled);
   updateReplayPlayerToggleVisibility();
   if (menuOpen) {
     if (statsPanelEl) statsPanelEl.classList.add('hidden');

@@ -78,7 +78,7 @@ start-dev.bat
 
 ### 1) DNS
 A-запись:
-- `crimsonwars.ru` -> `82.146.42.213`
+- `crimson.rodion.pro` -> `82.146.42.213`
 
 ### 2) Установка окружения (Ubuntu)
 ```bash
@@ -90,14 +90,14 @@ sudo apt install -y nginx nodejs npm certbot python3-certbot-nginx
 ```bash
 sudo mkdir -p /var/www
 sudo chown -R $USER:$USER /var/www
-git clone <YOUR_REPO_URL> /var/www/crimsonwars.ru
-cd /var/www/crimsonwars.ru
+git clone <YOUR_REPO_URL> /var/www/crimson-wars
+cd /var/www/crimson-wars
 npm install --omit=dev
 ```
 
 ### 4) systemd
 ```bash
-sudo cp /var/www/crimsonwars.ru/deploy/crimson-wars.service /etc/systemd/system/crimson-wars.service
+sudo cp /var/www/crimson-wars/deploy/crimson-wars.service /etc/systemd/system/crimson-wars.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now crimson-wars
 sudo systemctl status crimson-wars
@@ -147,15 +147,15 @@ sudo systemctl restart crimson-wars crimson-wars-2 crimson-wars-3 crimson-wars-4
 
 ### 5) nginx
 ```bash
-sudo cp /var/www/crimsonwars.ru/deploy/nginx.crimsonwars.ru.conf /etc/nginx/sites-available/crimsonwars.ru
-sudo ln -sf /etc/nginx/sites-available/crimsonwars.ru /etc/nginx/sites-enabled/crimsonwars.ru
+sudo cp /var/www/crimson-wars/deploy/nginx.crimson.rodion.pro.conf /etc/nginx/sites-available/crimson.rodion.pro
+sudo ln -sf /etc/nginx/sites-available/crimson.rodion.pro /etc/nginx/sites-enabled/crimson.rodion.pro
 sudo nginx -t
 sudo systemctl reload nginx
 ```
 
 ### 6) HTTPS
 ```bash
-sudo certbot --nginx -d crimsonwars.ru
+sudo certbot --nginx -d crimson.rodion.pro
 ```
 
 ## Ассеты (открытые источники)
@@ -176,7 +176,7 @@ sudo certbot --nginx -d crimsonwars.ru
 
 ## Полезно для продакшена
 - SSH: `ssh root@82.146.42.213`
-- Директория проекта: `cd /var/www/crimsonwars.ru`
+- Директория проекта: `cd /var/www/crimson.rodion.pro`
 - Обновить код на проде:
   ```bash
   git fetch origin main
@@ -206,19 +206,19 @@ sudo certbot --nginx -d crimsonwars.ru
 База рекордов находится в:
 
 ```bash
-/var/www/crimsonwars.ru/data/records.db
+/var/www/crimson.rodion.pro/data/records.db
 ```
 
 Очистить все записи рейтинга:
 
 ```bash
-sqlite3 /var/www/crimsonwars.ru/data/records.db "DELETE FROM records; DELETE FROM sqlite_sequence WHERE name = 'records';"
+sqlite3 /var/www/crimson.rodion.pro/data/records.db "DELETE FROM records; DELETE FROM sqlite_sequence WHERE name = 'records';"
 ```
 
 Проверить, что таблица пуста:
 
 ```bash
-sqlite3 /var/www/crimsonwars.ru/data/records.db "SELECT COUNT(*) FROM records;"
+sqlite3 /var/www/crimson.rodion.pro/data/records.db "SELECT COUNT(*) FROM records;"
 ```
 
 ## ????????? (?????)

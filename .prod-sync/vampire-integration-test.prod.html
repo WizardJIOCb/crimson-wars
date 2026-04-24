@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Crimson Wars - Vampire Integration Test</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #081019;
+      --panel: rgba(18, 31, 46, 0.94);
+      --panel-2: rgba(11, 21, 32, 0.95);
+      --line: rgba(125, 162, 190, 0.28);
+      --text: #edf4fb;
+      --muted: #8da7be;
+      --accent: #ff8666;
+      --accent-2: #ffd166;
+      --ok: #67e5a1;
+      --err: #ff7f96;
+      --mono: "Cascadia Code", Consolas, monospace;
+      --ui: "Segoe UI", Tahoma, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--ui);
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(255, 134, 102, 0.16), transparent 26%),
+        radial-gradient(circle at top right, rgba(255, 209, 102, 0.12), transparent 24%),
+        linear-gradient(180deg, #060b12 0%, #0a111a 100%);
+      min-height: 100vh;
+    }
+
+    .app {
+      width: min(1160px, calc(100% - 32px));
+      margin: 28px auto 40px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .hero, .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.28);
+    }
+
+    .hero {
+      padding: 26px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -10% -40% auto;
+      width: 320px;
+      height: 320px;
+      background: radial-gradient(circle, rgba(255, 134, 102, 0.2), transparent 68%);
+      pointer-events: none;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(255, 209, 102, 0.12);
+      color: var(--accent-2);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1, h2 {
+      margin: 0 0 10px;
+      line-height: 1.05;
+    }
+
+    h1 { font-size: clamp(30px, 5vw, 48px); }
+    h2 { font-size: 22px; }
+    p { margin: 0; color: var(--muted); }
+
+    .hero-grid, .grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .hero-grid {
+      grid-template-columns: 1.1fr 0.9fr;
+      align-items: start;
+      margin-top: 18px;
+    }
+
+    .panel { padding: 18px; }
+    .grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+    }
+
+    .field.full { grid-column: 1 / -1; }
+
+    label {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    input, textarea, select {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      color: var(--text);
+      border-radius: 14px;
+      padding: 12px 13px;
+      font: inherit;
+    }
+
+    textarea {
+      min-height: 120px;
+      resize: vertical;
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    button, .link-btn {
+      border: 1px solid transparent;
+      border-radius: 999px;
+      padding: 11px 16px;
+      font: inherit;
+      cursor: pointer;
+      text-decoration: none;
+      transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+    }
+
+    button:hover, .link-btn:hover { transform: translateY(-1px); }
+    .primary {
+      background: linear-gradient(135deg, var(--accent), #ff5e7d);
+      color: #120c0c;
+      font-weight: 700;
+    }
+
+    .secondary {
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text);
+      border-color: var(--line);
+    }
+
+    .status {
+      min-height: 20px;
+      margin-top: 10px;
+      color: var(--muted);
+    }
+
+    .status.ok { color: var(--ok); }
+    .status.err { color: var(--err); }
+
+    .mono {
+      font-family: var(--mono);
+      word-break: break-all;
+    }
+
+    .cards {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .note {
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(255, 209, 102, 0.08);
+      border: 1px solid rgba(255, 209, 102, 0.18);
+      color: #ffe5a5;
+      font-size: 14px;
+    }
+
+    a { color: #9bd4ff; }
+
+    @media (max-width: 900px) {
+      .hero-grid, .cards, .grid {
+        grid-template-columns: 1fr;
+      }
+      .app { width: min(100% - 20px, 1160px); }
+      .hero, .panel { border-radius: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <section class="hero">
+      <span class="eyebrow">Production Test Page</span>
+      <h1>Vampire Partner Integration</h1>
+      <p>Эта страница помогает руками проверить production start end-point, получить `joinUrl` и увидеть точный JSON-ответ от `Crimson Wars`.</p>
+      <div class="hero-grid">
+        <div class="note">
+          Production URL: <span class="mono">https://crimson.rodion.pro/api/integrations/partner-runs/start</span><br />
+          Секрет не захардкожен в страницу специально. Вставляйте его вручную или используйте через ваш backend.
+        </div>
+        <div class="note">
+          Документация: <a href="https://github.com/WizardJIOCb/crimson-wars/blob/main/docs/vamipre.integration.md" target="_blank" rel="noreferrer">docs/vamipre.integration.md</a><br />
+          После успешного ответа можно сразу открыть `joinUrl` и проверить запуск забега.
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Start Request</h2>
+      <div class="grid">
+        <div class="field">
+          <label for="secret">Integration Secret</label>
+          <input id="secret" placeholder="Вставьте X-Crimson-Integration-Secret" />
+        </div>
+        <div class="field">
+          <label for="partnerRunId">partnerRunId</label>
+          <input id="partnerRunId" value="vampire-test-run-001" />
+        </div>
+        <div class="field">
+          <label for="externalPlayerId">externalPlayerId</label>
+          <input id="externalPlayerId" value="partner-player-001" />
+        </div>
+        <div class="field">
+          <label for="playerName">playerName</label>
+          <input id="playerName" value="VampireTester" />
+        </div>
+        <div class="field">
+          <label for="heroId">heroId</label>
+          <select id="heroId">
+            <option value="cyber">cyber</option>
+            <option value="scout">scout</option>
+            <option value="shadow">shadow</option>
+            <option value="medic">medic</option>
+            <option value="raider">raider</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="gameMode">gameMode</label>
+          <select id="gameMode">
+            <option value="normal">normal</option>
+            <option value="hardcore">hardcore</option>
+            <option value="pvp">pvp</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="pvpDurationMin">pvpDurationMin</label>
+          <select id="pvpDurationMin">
+            <option value="3">3</option>
+            <option value="5">5</option>
+            <option value="10" selected>10</option>
+            <option value="15">15</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="roomCode">roomCode</label>
+          <input id="roomCode" placeholder="Например VAMP42" />
+        </div>
+        <div class="field full">
+          <label for="callbackPath">callbackPath</label>
+          <input id="callbackPath" value="/api/integrations/crimson-wars/run-complete" />
+        </div>
+        <div class="field full">
+          <label for="metadata">metadata JSON</label>
+          <textarea id="metadata">{
+  "seasonId": "s3",
+  "rewardPackId": "zombie_pack_alpha"
+}</textarea>
+        </div>
+      </div>
+      <div class="actions">
+        <button id="sendBtn" class="primary" type="button">Send Start Request</button>
+        <button id="curlBtn" class="secondary" type="button">Generate curl</button>
+        <button id="copyJoinBtn" class="secondary" type="button">Copy joinUrl</button>
+        <a id="openJoinBtn" class="link-btn secondary" href="#" target="_blank" rel="noreferrer">Open joinUrl</a>
+      </div>
+      <div id="status" class="status">Ready.</div>
+    </section>
+
+    <section class="cards">
+      <div class="panel">
+        <h2>Request Preview</h2>
+        <textarea id="requestPreview" readonly></textarea>
+      </div>
+      <div class="panel">
+        <h2>curl Preview</h2>
+        <textarea id="curlPreview" readonly></textarea>
+      </div>
+      <div class="panel">
+        <h2>joinUrl</h2>
+        <textarea id="joinUrl" readonly></textarea>
+      </div>
+      <div class="panel">
+        <h2>Response JSON</h2>
+        <textarea id="responsePreview" readonly></textarea>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const ENDPOINT = '/api/integrations/partner-runs/start';
+    const $ = (id) => document.getElementById(id);
+
+    const dom = {
+      secret: $('secret'),
+      partnerRunId: $('partnerRunId'),
+      externalPlayerId: $('externalPlayerId'),
+      playerName: $('playerName'),
+      heroId: $('heroId'),
+      gameMode: $('gameMode'),
+      pvpDurationMin: $('pvpDurationMin'),
+      roomCode: $('roomCode'),
+      callbackPath: $('callbackPath'),
+      metadata: $('metadata'),
+      sendBtn: $('sendBtn'),
+      curlBtn: $('curlBtn'),
+      copyJoinBtn: $('copyJoinBtn'),
+      openJoinBtn: $('openJoinBtn'),
+      status: $('status'),
+      requestPreview: $('requestPreview'),
+      curlPreview: $('curlPreview'),
+      joinUrl: $('joinUrl'),
+      responsePreview: $('responsePreview'),
+    };
+
+    let lastJoinUrl = '';
+
+    function setStatus(text, kind = '') {
+      dom.status.textContent = String(text || '');
+      dom.status.className = kind ? `status ${kind}` : 'status';
+    }
+
+    function parseMetadata() {
+      const raw = String(dom.metadata.value || '').trim();
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('metadata must be a JSON object');
+      }
+      return parsed;
+    }
+
+    function buildPayload() {
+      const payload = {
+        partnerRunId: dom.partnerRunId.value.trim(),
+        externalPlayerId: dom.externalPlayerId.value.trim(),
+        playerName: dom.playerName.value.trim(),
+        heroId: dom.heroId.value,
+        gameMode: dom.gameMode.value,
+        callbackPath: dom.callbackPath.value.trim(),
+        metadata: parseMetadata(),
+      };
+      const roomCode = dom.roomCode.value.trim().toUpperCase();
+      if (roomCode) payload.roomCode = roomCode;
+      if (payload.gameMode === 'pvp') payload.pvpDurationMin = Number(dom.pvpDurationMin.value || 10);
+      return payload;
+    }
+
+    function buildCurl(secret, payload) {
+      const safeJson = JSON.stringify(payload, null, 2).replace(/'/g, "'\"'\"'");
+      return [
+        `curl -X POST "${location.origin}${ENDPOINT}" \\`,
+        `  -H "Content-Type: application/json" \\`,
+        `  -H "X-Crimson-Integration-Secret: ${secret || '<SECRET>'}" \\`,
+        `  -d '${safeJson}'`
+      ].join('\n');
+    }
+
+    function refreshPreview() {
+      try {
+        const payload = buildPayload();
+        dom.requestPreview.value = JSON.stringify(payload, null, 2);
+        dom.curlPreview.value = buildCurl(dom.secret.value.trim(), payload);
+        setStatus('Ready.', '');
+      } catch (error) {
+        dom.requestPreview.value = '';
+        dom.curlPreview.value = '';
+        setStatus(error.message || 'Invalid form data', 'err');
+      }
+    }
+
+    async function sendRequest() {
+      const secret = dom.secret.value.trim();
+      if (!secret) {
+        setStatus('Введите Integration Secret.', 'err');
+        return;
+      }
+
+      let payload;
+      try {
+        payload = buildPayload();
+      } catch (error) {
+        setStatus(error.message || 'Invalid payload', 'err');
+        return;
+      }
+
+      dom.sendBtn.disabled = true;
+      setStatus('Sending request...', '');
+      try {
+        const response = await fetch(ENDPOINT, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Crimson-Integration-Secret': secret,
+          },
+          body: JSON.stringify(payload),
+        });
+        const text = await response.text();
+        let data = null;
+        try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+        if (!response.ok) {
+          dom.responsePreview.value = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+          dom.joinUrl.value = '';
+          dom.openJoinBtn.href = '#';
+          lastJoinUrl = '';
+          throw new Error((data && data.message) || `HTTP ${response.status}`);
+        }
+        dom.responsePreview.value = JSON.stringify(data, null, 2);
+        lastJoinUrl = String(data?.launch?.joinUrl || '').trim();
+        dom.joinUrl.value = lastJoinUrl;
+        dom.openJoinBtn.href = lastJoinUrl || '#';
+        setStatus(`Success: HTTP ${response.status}`, 'ok');
+      } catch (error) {
+        setStatus(error.message || 'Request failed', 'err');
+      } finally {
+        dom.sendBtn.disabled = false;
+      }
+    }
+
+    async function copyJoinUrl() {
+      if (!lastJoinUrl) {
+        setStatus('Сначала получите успешный ответ с joinUrl.', 'err');
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(lastJoinUrl);
+        setStatus('joinUrl copied.', 'ok');
+      } catch {
+        setStatus('Clipboard unavailable.', 'err');
+      }
+    }
+
+    async function copyCurl() {
+      if (!dom.curlPreview.value.trim()) {
+        refreshPreview();
+      }
+      try {
+        await navigator.clipboard.writeText(dom.curlPreview.value);
+        setStatus('curl copied.', 'ok');
+      } catch {
+        setStatus('Clipboard unavailable.', 'err');
+      }
+    }
+
+    [
+      dom.partnerRunId,
+      dom.externalPlayerId,
+      dom.playerName,
+      dom.heroId,
+      dom.gameMode,
+      dom.pvpDurationMin,
+      dom.roomCode,
+      dom.callbackPath,
+      dom.metadata,
+      dom.secret,
+    ].forEach((el) => {
+      el.addEventListener('input', refreshPreview);
+      el.addEventListener('change', refreshPreview);
+    });
+
+    dom.sendBtn.addEventListener('click', sendRequest);
+    dom.copyJoinBtn.addEventListener('click', copyJoinUrl);
+    dom.curlBtn.addEventListener('click', copyCurl);
+
+    refreshPreview();
+  </script>
+</body>
+</html>

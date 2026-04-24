@@ -530,1007 +530,6 @@ function applyChatHistory(history) {
   }
 }
 
-const commentatorState = {
-  lastEventAt: new Map(),
-  lastKillsRemarkAt: 0,
-  lastLowHpAt: 0,
-  lastRecoveryAt: 0,
-  lastTitle: '',
-  lastText: '',
-  lastPlayerCount: 0,
-  lastThreatLevel: 1,
-  lastBossAlive: false,
-  lastBossPortalAt: 0,
-  lastBossCountdownBucket: 0,
-  lastBossKills: 0,
-  lastPvpLeaderId: '',
-  lastKillMilestone: 0,
-  lastMatchPulseBucket: 0,
-  lastSkillRanks: new Map(),
-  wasLowHp: false,
-};
-const COMMENTATOR_TTS_STORAGE_KEY = 'cw:commentatorTtsEnabled';
-const commentatorSpeech = {
-  supported: typeof window !== 'undefined' && 'speechSynthesis' in window && typeof window.SpeechSynthesisUtterance === 'function',
-  enabled: false,
-  lastSpokenAt: 0,
-  activeSinceAt: 0,
-  lastKey: '',
-  lastQueuedText: '',
-  activeKey: '',
-  activeText: '',
-  pendingTimer: 0,
-  seq: 0,
-  recentKeys: new Map(),
-  queue: [],
-};
-let pendingFinalDeathCommentary = null;
-
-try {
-  commentatorSpeech.enabled = localStorage.getItem(COMMENTATOR_TTS_STORAGE_KEY) === '1';
-} catch {
-  commentatorSpeech.enabled = false;
-}
-
-function setCommentatorLine(title, text, eventKey = 'generic', cooldownMs = 6000) {
-  if (!commentatorTitleEl || !commentatorTextEl) return false;
-  const now = Date.now();
-  const key = String(eventKey || 'generic');
-  const lastAt = Math.max(0, Number(commentatorState.lastEventAt.get(key)) || 0);
-  if (cooldownMs > 0 && now - lastAt < cooldownMs) return false;
-  const directVariant = key.toLowerCase().includes('skill_pick')
-    ? null
-    : pickCommentaryVariant(getExtraCommentaryVariants(key), null);
-  const nextTitle = String(directVariant?.title || title || '').trim();
-  const nextText = String(directVariant?.text || text || '').trim();
-  if (!nextTitle || !nextText) return false;
-  if (commentatorState.lastTitle === nextTitle && commentatorState.lastText === nextText && now - lastAt < Math.max(cooldownMs, 12000)) {
-    return false;
-  }
-  commentatorState.lastEventAt.set(key, now);
-  commentatorState.lastTitle = nextTitle;
-  commentatorState.lastText = nextText;
-  commentatorTitleEl.textContent = nextTitle;
-  commentatorTextEl.textContent = nextText;
-  if (game.embedMode && game.spectating) {
-    window.parent?.postMessage({
-      type: 'cw-live-spectator',
-      status: 'commentary',
-      roomCode: String(game.roomCode || game.state?.roomCode || ''),
-      title: nextTitle,
-      text: nextText,
-    }, window.location.origin);
-  }
-  maybeSpeakCommentary(nextTitle, nextText, key);
-  return true;
-}
-
-function pickCommentaryVariant(options, fallback) {
-  const list = Array.isArray(options) ? options.filter(Boolean) : [];
-  if (list.length <= 0) return fallback;
-  const index = Math.floor(Math.random() * list.length);
-  return list[index] || fallback;
-}
-
-function pluralizeRussianSeconds(value) {
-  const n = Math.max(0, Math.abs(Number(value) || 0));
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return 'секунда';
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'секунды';
-  return 'секунд';
-}
-
-function expandCommentarySpeechText(value) {
-  return String(value || '')
-    .replace(/(\d+)\s*с\b/gi, (_, raw) => `${raw} ${pluralizeRussianSeconds(raw)}`)
-    .replace(/(\d+)\s*sec\b/gi, (_, raw) => `${raw} ${pluralizeRussianSeconds(raw)}`)
-    .replace(/Lv\s*(\d+)/gi, 'уровень $1');
-}
-
-function buildSkillPickCommentaryVariants(skillLabel) {
-  const name = String(skillLabel || 'Навык').trim() || 'Навык';
-  return [
-    { title: `Взяли навык: ${name}.`, text: 'Отлично. Билд только что стал либо сильнее, либо гораздо смешнее. Скоро увидим, какой именно вариант выпал.' },
-    { title: `${name} добавлен в арсенал.`, text: 'Очень люблю этот момент: игрок делает серьёзное лицо и выбирает себе новый способ превращать арену в проблему для окружающих.' },
-    { title: `${name} официально в билде.`, text: 'Стратегия становится всё умнее на бумаге и всё безумнее в реальном эфире. Именно так и рождаются красивые катастрофы.' },
-    { title: `Прокачка ушла в сторону: ${name}.`, text: 'Герой снова сделал выбор между осторожностью и шоу. Судя по атмосфере, шоу победило без особой борьбы.' },
-    { title: `${name} выбрали без права на отмену.`, text: 'Комментатор уважает смелость. Психотерапевт этой комнаты, наверное, уважает её чуть меньше.' },
-    { title: `Новый трюк в кармане: ${name}.`, text: 'Теперь можно ошибаться ещё техничнее, эффектнее и с гораздо более уверенным выражением лица.' },
-    { title: `${name} включён в программу насилия.`, text: 'Билд набирает форму как стендап после третьего эспрессо: громко, резко и с лёгкой угрозой для мебели.' },
-    { title: `Скилл-пик зафиксирован: ${name}.`, text: 'Публика делает вид, что это был взвешенный выбор. Мы с вами знаем правду: хотелось просто сделать ещё мощнее и ещё веселее.' },
-  ];
-}
-
-function pluralizeRussianSeconds(value) {
-  const n = Math.max(0, Math.abs(Number(value) || 0));
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return '\u0441\u0435\u043a\u0443\u043d\u0434\u0430';
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return '\u0441\u0435\u043a\u0443\u043d\u0434\u044b';
-  return '\u0441\u0435\u043a\u0443\u043d\u0434';
-}
-
-function expandCommentarySpeechText(value) {
-  return String(value || '')
-    .replace(/(\d+)\s*[сc](?=[\s.,!?;:)]|$)/giu, (_, raw) => `${raw} ${pluralizeRussianSeconds(raw)}`)
-    .replace(/(\d+)\s*sec\b/gi, (_, raw) => `${raw} ${pluralizeRussianSeconds(raw)}`)
-    .replace(/Lv\s*(\d+)/gi, '\u0443\u0440\u043e\u0432\u0435\u043d\u044c $1');
-}
-
-function buildSkillPickCommentaryVariants(skillLabel) {
-  const name = String(skillLabel || '\u043d\u0430\u0432\u044b\u043a').trim() || '\u043d\u0430\u0432\u044b\u043a';
-  return [
-    { title: `Взяли навык: ${name}.`, text: 'Отлично. Билд только что стал либо сильнее, либо гораздо смешнее. Скоро увидим, какой именно вариант выпал.' },
-    { title: `${name} добавлен в арсенал.`, text: 'Игрок делает серьёзное лицо и выбирает себе новый способ превращать арену в проблему для окружающих.' },
-    { title: `${name} официально в билде.`, text: 'Стратегия становится умнее на бумаге и безумнее в прямом эфире. Красивые катастрофы так и рождаются.' },
-    { title: `Прокачка ушла в сторону: ${name}.`, text: 'Герой снова выбирал между осторожностью и шоу. Судя по атмосфере, шоу победило без особой борьбы.' },
-    { title: `${name} выбрали без права на отмену.`, text: 'Комментатор уважает смелость. Психотерапевт этой комнаты, наверное, уважает её чуть меньше.' },
-    { title: `Новый трюк в кармане: ${name}.`, text: 'Теперь можно ошибаться техничнее, эффектнее и с гораздо более уверенным выражением лица.' },
-    { title: `${name} включён в программу хаоса.`, text: 'Билд набирает форму как стендап после третьего эспрессо: громко, резко и с лёгкой угрозой для мебели.' },
-    { title: `Скилл-пик зафиксирован: ${name}.`, text: 'Публика делает вид, что это был взвешенный выбор. Мы с вами знаем правду: хотелось ещё мощнее и ещё веселее.' },
-    { title: `Навык ${name} заехал в билд.`, text: 'Теперь у героя есть ещё один повод говорить, что всё было рассчитано. Особенно если через пять секунд начнётся импровизация.' },
-    { title: `${name} выбран с лицом профессора хаоса.`, text: 'Серьёзный выбор, серьёзные последствия и абсолютно несерьёзная надежда, что дальше станет спокойнее.' },
-    { title: `Берём ${name}.`, text: 'План прост: добавить мощности, сделать вид, что это стратегия, и не смотреть слишком долго на полоску здоровья.' },
-    { title: `${name} теперь часть характера.`, text: 'Билд становится похож на резюме человека, который умеет решать проблемы, но предпочитает сначала создать пару новых.' },
-    { title: `Плюс один трюк: ${name}.`, text: 'Арена просила осторожности, игрок выбрал спецэффекты. Очень честный диалог поколений.' },
-    { title: `${name} принят в команду.`, text: 'Если навык сработает, это гений. Если нет, назовём это экспериментом и быстро сменим тему.' },
-    { title: `В меню прокачки победил ${name}.`, text: 'Другие варианты смотрят вслед и делают вид, что не обиделись. Комментатор, конечно, всё видел.' },
-    { title: `${name} добавлен в личную коллекцию плохих идей.`, text: 'Плохих в хорошем смысле: громких, полезных и способных устроить на экране маленький пожар.' },
-  ];
-}
-
-function buildSpectatorSkillPickCommentaryVariants(playerName, skillLabel, level) {
-  const who = String(playerName || 'Игрок').trim() || 'Игрок';
-  const name = String(skillLabel || 'навык').trim() || 'навык';
-  const lvl = Math.max(1, Number(level) || 1);
-  return [
-    { title: `${who} берёт ${name}.`, text: `Уровень ${lvl}. Билд делает шаг вперёд, а здравый смысл аккуратно отходит к стеночке.` },
-    { title: `${who} прокачал ${name}.`, text: `Теперь хаос будет не просто хаосом, а хаосом с подписью и уровнем ${lvl}.` },
-    { title: `${name} у ${who} усиливается.`, text: `Уровень ${lvl}. Арена делает вид, что не нервничает, но мы-то слышим этот скрип половиц.` },
-    { title: `${who} выбирает ${name}.`, text: 'Классический момент: игрок нажимает кнопку, а комментатор уже представляет, как это красиво выйдет из-под контроля.' },
-    { title: `Навык ${name} ушёл к ${who}.`, text: `Уровень ${lvl}. Если это был план, то он стал острее. Если это была импровизация, то она стала дороже.` },
-    { title: `${who} добавляет ${name} в рецепт.`, text: 'Получается блюдо под названием “выживание с перцем”. Подавать горячим, желательно не лицом в пол.' },
-    { title: `${name} теперь работает на ${who}.`, text: 'Контракт подписан опытом, нервами и лёгкой паникой в глазах ближайших врагов.' },
-    { title: `${who} усилил билд через ${name}.`, text: 'Люблю прокачку: пять секунд тишины в меню, и вот уже вся арена звучит как плохая идея с хорошим бюджетом.' },
-    { title: `${name} выбран, ${who} доволен.`, text: 'По крайней мере, сейчас доволен. Следующие входящие удары могут внести правки в настроение.' },
-    { title: `${who} нажал на ${name}.`, text: `Уровень ${lvl}. Звучит как техническое решение, выглядит как приглашение к шоу.` },
-  ];
-}
-
-function getCommentatorVoice() {
-  if (!commentatorSpeech.supported) return null;
-  const voices = Array.isArray(window.speechSynthesis?.getVoices?.()) ? window.speechSynthesis.getVoices() : [];
-  if (!voices.length) return null;
-  const maleNamePattern = /(pavel|aleks|alex|dmit|denis|ivan|nikol|maks|maxim|serg|mikhail|mihail|yuri|юр|иван|павел|дмит|алекс|серг|миха)/i;
-  return voices.find((voice) => /^ru(-|_|$)/i.test(String(voice.lang || '')) && maleNamePattern.test(String(voice.name || '')))
-    || voices.find((voice) => /russian/i.test(String(voice.name || '')) && maleNamePattern.test(String(voice.name || '')))
-    || voices.find((voice) => /^ru(-|_|$)/i.test(String(voice.lang || '')))
-    || voices.find((voice) => /russian/i.test(String(voice.name || '')))
-    || voices[0]
-    || null;
-}
-
-function renderCommentatorVoiceUi() {
-  if (commentatorVoiceToggleEl) {
-    commentatorVoiceToggleEl.disabled = !commentatorSpeech.supported;
-    commentatorVoiceToggleEl.classList.toggle('is-active', commentatorSpeech.supported && commentatorSpeech.enabled);
-    commentatorVoiceToggleEl.textContent = commentatorSpeech.supported && commentatorSpeech.enabled ? 'Озвучка: вкл' : 'Озвучка: выкл';
-  }
-  if (commentatorVoiceStatusEl) {
-    commentatorVoiceStatusEl.textContent = !commentatorSpeech.supported
-      ? 'Браузер не дал speech synthesis для озвучки.'
-      : (commentatorSpeech.enabled ? 'Комментатор теперь говорит вслух.' : 'Нажми, чтобы комментатор начал говорить вслух.');
-  }
-}
-
-function setCommentatorVoiceEnabled(enabled) {
-  commentatorSpeech.enabled = Boolean(enabled) && commentatorSpeech.supported && Boolean(game.showCommentatorEnabled);
-  try {
-    localStorage.setItem(COMMENTATOR_TTS_STORAGE_KEY, commentatorSpeech.enabled ? '1' : '0');
-  } catch {
-    // ignore storage failures
-  }
-  if (commentatorSpeech.pendingTimer) {
-    window.clearTimeout(commentatorSpeech.pendingTimer);
-    commentatorSpeech.pendingTimer = 0;
-  }
-  if (!commentatorSpeech.enabled && commentatorSpeech.supported) {
-    commentatorSpeech.seq += 1;
-    commentatorSpeech.activeSinceAt = 0;
-    commentatorSpeech.lastQueuedText = '';
-    commentatorSpeech.activeKey = '';
-    commentatorSpeech.activeText = '';
-    commentatorSpeech.queue = [];
-    window.speechSynthesis.cancel();
-  }
-  renderCommentatorVoiceUi();
-}
-window.setCommentatorVoiceEnabled = setCommentatorVoiceEnabled;
-
-function normalizeCommentarySpeechKeyPart(value) {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/\b[a-z0-9]{5,8}\b/g, '#room')
-    .replace(/\b\d{1,2}:\d{2}\b/g, '#time')
-    .replace(/\b\d+(?:[.,]\d+)?\b/g, '#')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function isCommentaryUrgent(key, spokenText) {
-  const sample = `${String(key || '')} ${String(spokenText || '')}`.toLowerCase();
-  return /final_death|player_final_death|death|boss|downed|respawn_wait|respawn|critical|low hp|нокаут|нокдаун|умер|смерт|босс/.test(sample);
-}
-
-function flushCommentarySpeechQueue() {
-  if (!commentatorSpeech.supported || !commentatorSpeech.enabled || !game.showCommentatorEnabled || game.embedMode || document.hidden) return;
-  if (commentatorSpeech.pendingTimer) return;
-  if (commentatorSpeech.activeText) return;
-  if (!commentatorSpeech.queue.length) return;
-  if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
-    commentatorSpeech.pendingTimer = window.setTimeout(() => {
-      commentatorSpeech.pendingTimer = 0;
-      flushCommentarySpeechQueue();
-    }, 80);
-    return;
-  }
-  const nextItem = commentatorSpeech.queue.shift();
-  if (!nextItem?.text) return;
-  const { key, text: queuedText } = nextItem;
-  const spokenText = expandCommentarySpeechText(queuedText);
-  const speakSeq = ++commentatorSpeech.seq;
-  commentatorSpeech.activeSinceAt = Date.now();
-  commentatorSpeech.activeKey = key || '';
-  commentatorSpeech.activeText = spokenText;
-  const voice = getCommentatorVoice();
-  const utterance = new SpeechSynthesisUtterance(spokenText);
-  if (voice) {
-    utterance.voice = voice;
-    utterance.lang = voice.lang || 'ru-RU';
-  } else {
-    utterance.lang = 'ru-RU';
-  }
-  utterance.rate = 2.8;
-  utterance.pitch = 0.92;
-  utterance.volume = 0.92;
-  utterance.onstart = () => {
-    if (speakSeq !== commentatorSpeech.seq) return;
-    commentatorSpeech.lastSpokenAt = Date.now();
-  };
-  utterance.onend = () => {
-    if (speakSeq !== commentatorSpeech.seq) return;
-    commentatorSpeech.activeSinceAt = 0;
-    commentatorSpeech.activeKey = '';
-    commentatorSpeech.activeText = '';
-    window.setTimeout(flushCommentarySpeechQueue, 40);
-  };
-  utterance.onerror = () => {
-    if (speakSeq !== commentatorSpeech.seq) return;
-    commentatorSpeech.activeSinceAt = 0;
-    commentatorSpeech.activeKey = '';
-    commentatorSpeech.activeText = '';
-    window.setTimeout(flushCommentarySpeechQueue, 40);
-  };
-  try {
-    if (window.speechSynthesis.paused) window.speechSynthesis.resume();
-    window.speechSynthesis.speak(utterance);
-  } catch {
-    commentatorSpeech.activeSinceAt = 0;
-    commentatorSpeech.activeKey = '';
-    commentatorSpeech.activeText = '';
-    return;
-  }
-}
-
-function maybeSpeakCommentary(title, text, eventKey) {
-  if (!commentatorSpeech.supported || !commentatorSpeech.enabled || !game.showCommentatorEnabled || game.embedMode || document.hidden) return;
-  const spokenText = expandCommentarySpeechText(`${String(title || '').trim()}. ${String(text || '').trim()}`.trim());
-  if (!spokenText) return;
-  const key = [
-    String(eventKey || 'generic').trim().toLowerCase(),
-    normalizeCommentarySpeechKeyPart(title),
-    normalizeCommentarySpeechKeyPart(text),
-  ].join('|');
-  const now = Date.now();
-  const recentAt = Math.max(0, Number(commentatorSpeech.recentKeys.get(key)) || 0);
-  if (recentAt && (now - recentAt) < 12000) return;
-  if (commentatorSpeech.activeKey === key) return;
-  if (commentatorSpeech.queue.some((item) => item?.key === key)) return;
-  const urgent = isCommentaryUrgent(key, spokenText);
-  commentatorSpeech.lastKey = key;
-  commentatorSpeech.lastQueuedText = spokenText;
-  commentatorSpeech.recentKeys.set(key, now);
-  for (const [recentKey, stamp] of commentatorSpeech.recentKeys.entries()) {
-    if ((now - Math.max(0, Number(stamp) || 0)) > 40000) commentatorSpeech.recentKeys.delete(recentKey);
-  }
-  if (commentatorSpeech.recentKeys.size > 36) {
-    const oldestKey = commentatorSpeech.recentKeys.keys().next().value;
-    if (oldestKey) commentatorSpeech.recentKeys.delete(oldestKey);
-  }
-  if (urgent) {
-    commentatorSpeech.queue = [{ key, text: spokenText }];
-    if (commentatorSpeech.activeText) {
-      try {
-        window.speechSynthesis.cancel();
-      } catch {
-        // ignore cancel failures
-      }
-      commentatorSpeech.activeSinceAt = 0;
-      commentatorSpeech.activeKey = '';
-      commentatorSpeech.activeText = '';
-    }
-  } else if (commentatorSpeech.activeText) {
-    commentatorSpeech.queue = [{ key, text: spokenText }];
-  } else {
-    commentatorSpeech.queue.push({ key, text: spokenText });
-    if (commentatorSpeech.queue.length > 2) {
-      commentatorSpeech.queue.splice(0, commentatorSpeech.queue.length - 2);
-    }
-  }
-  if (commentatorSpeech.pendingTimer) {
-    window.clearTimeout(commentatorSpeech.pendingTimer);
-    commentatorSpeech.pendingTimer = 0;
-  }
-  commentatorSpeech.pendingTimer = window.setTimeout(() => {
-    commentatorSpeech.pendingTimer = 0;
-    flushCommentarySpeechQueue();
-  }, urgent ? 10 : 25);
-}
-
-function getExtraCommentaryVariants(eventKey = 'generic') {
-  const key = String(eventKey || 'generic').toLowerCase();
-  if (key.includes('weapon_pick')) {
-    const weaponName = key.replace(/^.*weapon_pick_/, '').replace(/[_-]+/g, ' ').trim() || 'оружие';
-    const isSmg = /\bsmg\b|пп|пистолет.?пулем/.test(weaponName);
-    const isShotgun = /shotgun|дроб/.test(weaponName);
-    const isSniper = /sniper|снайпер/.test(weaponName);
-    const isPistol = /pistol|пистолет/.test(weaponName);
-    if (isSmg) return [
-      { title: 'SMG пошёл в руки.', text: 'Теперь точность становится философским вопросом, зато темп звучит как спор на повышенных оборотах.' },
-      { title: 'Пистолет-пулемёт в эфире.', text: 'Герой выбрал режим “много маленьких аргументов подряд”. Монстрам рекомендуется не перебивать.' },
-      { title: 'SMG включил скороговорку.', text: 'Ствол говорит быстро, герой двигается быстрее, здравый смысл просит субтитры.' },
-      { title: 'Скорострельность прибыла.', text: 'Если не попадём первым выстрелом, у нас есть ещё двадцать попыток объяснить позицию.' },
-      { title: 'SMG делает атмосферу нервнее.', text: 'Очень деловой инструмент для тех, кто хочет промахиваться статистически убедительно.' },
-      { title: 'Пулемётный режим открыт.', text: 'Арена получает аудиодорожку из паники, металла и маленьких быстрых решений.' },
-      { title: 'SMG взял микрофон.', text: 'Теперь комментатору придётся говорить быстрее, чтобы не отставать от количества выстрелов.' },
-      { title: 'Скорость важнее пафоса.', text: 'SMG напоминает: иногда стиль это просто очень много пуль за короткий срок.' },
-      { title: 'Герой нашёл кнопку “часто”.', text: 'Нажимать её будет приятно. Контролировать последствия будет уже отдельным жанром.' },
-      { title: 'SMG в деле.', text: 'Монстры ещё не поняли, что началось, но уже получили первые тезисы доклада.' },
-    ];
-    if (isShotgun) return [
-      { title: 'Дробовик вышел на близкий разговор.', text: 'Это оружие не спорит издалека. Оно подходит и говорит всё сразу, крупным шрифтом.' },
-      { title: 'Shotgun принят в семью.', text: 'Теперь каждый промах будет громким, а каждое попадание будет звучать как закрытая дверь.' },
-      { title: 'Дробовик любит личные границы.', text: 'Точнее, любит их нарушать. Очень громко и с убедительным разлётом аргументов.' },
-      { title: 'Ближний бой стал громче.', text: 'Монстрам лучше держать дистанцию. Они, конечно, не будут, поэтому будет красиво.' },
-      { title: 'Герой нашёл дробовик.', text: 'Это тот редкий момент, когда “подойти поближе” звучит как угроза и план одновременно.' },
-      { title: 'Shotgun заряжен настроением.', text: 'Настроение у него простое: все вопросы решать одним широким жестом.' },
-      { title: 'Дробь пошла в эфир.', text: 'Комментатор слышит уверенность, арена слышит шум, враги слышат плохие новости.' },
-      { title: 'Дробовик добавил драму.', text: 'Теперь каждый коридор выглядит как приглашение к неприятному диалогу.' },
-      { title: 'Большой хлопок в маленьком радиусе.', text: 'Идеально для ситуаций, где тактика закончилась, а эмоции только начались.' },
-      { title: 'Shotgun говорит коротко.', text: 'Но так громко, что даже статистика делает шаг назад.' },
-    ];
-    if (isSniper) return [
-      { title: 'Снайперка в руках.', text: 'Теперь можно решать проблемы с такого расстояния, где совесть уже плохо добивает.' },
-      { title: 'Sniper добавлен в эфир.', text: 'Герой выбрал стиль “одно мнение, но очень убедительное”.' },
-      { title: 'Дальняя дистанция открыта.', text: 'Монстры ещё идут, а у них уже есть неприятное предчувствие в районе головы.' },
-      { title: 'Снайперский аргумент найден.', text: 'Редкий случай, когда пауза перед выстрелом звучит страшнее самой стрельбы.' },
-      { title: 'Sniper просит тишины.', text: 'Арена, конечно, не даст. Но самоуверенность красивая.' },
-      { title: 'Один выстрел, много смысла.', text: 'Снайперка напоминает: иногда минимализм тоже может быть грубым.' },
-      { title: 'Герой взял длинную мысль.', text: 'Она летит далеко, бьёт больно и плохо воспринимает критику.' },
-      { title: 'Снайперский режим активен.', text: 'Теперь промахи будут редкими, заметными и эмоционально дорогими.' },
-      { title: 'Sniper смотрит вдаль.', text: 'И даль, если честно, уже немного нервничает.' },
-      { title: 'Точность получила микрофон.', text: 'Если попадёт, будет красиво. Если нет, сделаем вид, что это был предупредительный.' },
-    ];
-    if (isPistol) return [
-      { title: 'Пистолет снова в кадре.', text: 'Скромно, честно, без лишнего пафоса. Как бутерброд в мире боевой кулинарии.' },
-      { title: 'Pistol держит базу.', text: 'Не самый громкий инструмент, зато всегда рядом, когда дорогие игрушки заканчивают патроны.' },
-      { title: 'Пистолет выбран.', text: 'Классика жанра: маленький ствол, большие надежды, средняя тревожность.' },
-      { title: 'Базовый аргумент готов.', text: 'Пистолет не обещает чудес. Он просто приходит на работу и делает “пиф”.' },
-      { title: 'Pistol без лишнего шоу.', text: 'Иногда выживание начинается с простого: нажимать, отходить, не спорить с толпой лицом.' },
-      { title: 'Пистолет звучит спокойно.', text: 'Это спокойствие, правда, держится ровно до первого окружения.' },
-      { title: 'Герой вернулся к классике.', text: 'Когда всё сложное закончилось, остаётся честная маленькая машинка для проблем.' },
-      { title: 'Pistol показывает характер.', text: 'С виду скромный, но в хороших руках способен испортить день очень многим.' },
-      { title: 'Пистолет в деле.', text: 'Не роскошь, не фейерверк, зато понятный язык для разговора с ближайшими неприятностями.' },
-      { title: 'Базовый набор выживания активен.', text: 'Пистолет, ноги и надежда. Комплект сомнительный, но исторически рабочий.' },
-    ];
-    return [
-      { title: 'Новое оружие в руках.', text: 'Арена выдала инструмент, герой выдал уверенность, последствия уже оформляют заявку.' },
-      { title: 'Ствол найден.', text: 'Это всегда приятно: ещё одна железка, которая может превратить план в шум.' },
-      { title: 'Оружие вступает в эфир.', text: 'Публика ждёт тест, враги ждут плохо, комментатор ждёт материал для сарказма.' },
-      { title: 'Лут дал новый аргумент.', text: 'Главное теперь не перепутать аргумент с самоуверенностью. Хотя кто нас остановит.' },
-      { title: 'Герой обновил комплект боли.', text: 'Старые ошибки теперь можно совершать новым способом. Прогресс, как ни крути.' },
-      { title: 'Новая железка принята.', text: 'Она пока блестит и молчит. Скоро будет блестеть, шуметь и делать вид, что так надо.' },
-      { title: 'Оружейный слот оживился.', text: 'Надежда стала тяжелее, громче и потенциально опаснее для всех рядом.' },
-      { title: 'Арсенал стал интереснее.', text: 'Интереснее не значит безопаснее. Но мы же тут не за безопасностью.' },
-    ];
-  }
-  if (key.startsWith('boss_countdown')) return [
-    { title: 'Босс уже почти на пороге.', text: 'Последние секунды спокойствия. Можно собраться, можно драматично моргнуть в камеру.' },
-    { title: 'Начальство скоро выйдет в зал.', text: 'Если у кого-то был план, сейчас самое время вспомнить хотя бы его название.' },
-    { title: 'Отсчёт пахнет проблемами.', text: 'Арена аккуратно подаёт сигнал: дальше будет не фарм, а собеседование на выживание.' },
-    { title: 'До босса осталось совсем немного.', text: 'Комментатор рекомендует глубокий вдох. Арена рекомендует не рассчитывать на рекомендации.' },
-    { title: 'Большая встреча уже рядом.', text: 'Все делают вид, что готовы. Особенно те, кто не готов вообще.' },
-  ];
-  if (key.includes('skill_pick')) return [
-    { title: 'Навык подобран, самооценка выросла.', text: 'Теперь билд выглядит умнее, чем пять секунд назад. Правда, враги это тоже заметили и уже пишут жалобу.' },
-    { title: 'Герой нашёл новую кнопку надежды.', text: 'Очень полезно: нажимаешь, становится веселее, опаснее и почему-то громче.' },
-    { title: 'Прокачка зашла в организм.', text: 'Арена сделала вид, что не испугалась, но где-то в коде у врагов дрогнуло колено.' },
-    { title: 'Новый навык в кармане.', text: 'Карман теперь важничает, герой строит планы, баланс нервно проверяет страховку.' },
-    { title: 'Билд получил свежий соус.', text: 'Было остро, стало ещё острее. Где-то рядом враг уже пожалел, что умеет ходить.' },
-    { title: 'Герой апгрейднулся без лишней скромности.', text: 'Правильный настрой: если уж выживать, то с эффектами и ощущением незаконного преимущества.' },
-    { title: 'Меню умений снова принесло характер.', text: 'Игрок выбрал кнопку, а судьба уже открыла блокнот для замечаний.' },
-    { title: 'Прокачка делает шоу толще.', text: 'Теперь у забега больше механик, больше надежды и больше способов красиво ошибиться.' },
-    { title: 'Навык принят без лишних вопросов.', text: 'Вопросы появятся позже, когда вся эта красота начнёт работать рядом с лицом героя.' },
-    { title: 'Билд получил новую специю.', text: 'Если станет вкусно, скажем “так и планировали”. Если остро, тоже скажем “так и планировали”.' },
-    { title: 'Выбор умения засчитан.', text: 'Это тот момент, когда стратегия надевает солнечные очки и делает вид, что контролирует хаос.' },
-  ];
-  if (key.includes('kill_milestone') || key.startsWith('kills_')) return [
-    { title: 'Счётчик врагов бодро разгоняется.', text: 'На арене снова минус пачка проблем и плюс пачка самоуверенности.' },
-    { title: 'Убийства идут плотным графиком.', text: 'Если бы у хаоса был бухгалтер, он бы сейчас нервно обновлял таблицу.' },
-    { title: 'Темп мясорубки приличный.', text: 'Герой не просто выживает, он ещё и делает это с производственным планом.' },
-    { title: 'Враги исчезают с подозрительной регулярностью.', text: 'Очень бодрый забег. Очень плохой день для всего, что решило подойти ближе.' },
-    { title: 'Арена считает потери и делает вид, что всё нормально.', text: 'Мы тоже делаем вид. Получается примерно одинаково убедительно.' },
-  ];
-  if (key.includes('match_pulse')) return [
-    { title: 'Матч продолжает делать вид, что всё под контролем.', text: 'Контроль, правда, бегает где-то за кадром, тяжело дышит и просит аптечку.' },
-    { title: 'Темп забега держится бодро.', text: 'Это уже не прогулка, это кардио с юридически сомнительной мотивацией.' },
-    { title: 'Арена не отпускает зрителей.', text: 'Кажется, этот забег подписал контракт на драму и мелким шрифтом добавил “ещё немного боли”.' },
-    { title: 'Эфир живее некоторых планов игроков.', text: 'Планы, конечно, были красивые. Потом пришли враги и провели редактуру.' },
-    { title: 'Забег набирает характер.', text: 'Характер нервный, шумный и явно воспитанный в плохом районе.' },
-    { title: 'Матч затянулся и обрёл характер.', text: 'Это уже не просто забег, это спор с ареной на повышенных тонах.' },
-    { title: 'Эфир держится бодро.', text: 'Где-то между паникой и мастерством родился стиль. Неровный, зато свой.' },
-    { title: 'Забег всё ещё жив.', text: 'Комментатор проверил пульс: у матча он есть, у здравого смысла данные противоречивые.' },
-    { title: 'Время идёт, проблемы не заканчиваются.', text: 'Редкая стабильность в мире, где всё остальное пытается укусить героя за расписание.' },
-    { title: 'Упрямство вышло на первый план.', text: 'Игроки уже достаточно долго в эфире, чтобы арена начала воспринимать это лично.' },
-  ];
-  if (key.includes('threat_up')) return [
-    { title: 'Угроза снова подкрутила ручку.', text: 'Кто-то на арене посмотрел на хаос и сказал: “А можно погромче?”. Можно. Уже сделали.' },
-    { title: 'Сложность выросла без спроса.', text: 'Очень по-взрослому: никаких предупреждений, только новые проблемы и старый оптимизм.' },
-    { title: 'Арена добавила перца.', text: 'Теперь каждый манёвр пахнет героизмом, паникой и слегка подгоревшей уверенностью.' },
-    { title: 'Давление поднимается как плохие новости.', text: 'Медленно, неизбежно и с таким выражением, будто это ещё только разминка.' },
-    { title: 'Уровень угрозы полез вверх.', text: 'Игрокам пора делать вид, что именно этого они и хотели от вечера.' },
-    { title: 'Угроза поднялась и не извинилась.', text: 'Враги стали злее, воздух гуще, а права на расслабление опять отозвали.' },
-    { title: 'Сложность прибавила газу.', text: 'Теперь каждая ошибка стоит дороже, зато выглядит значительно кинематографичнее.' },
-    { title: 'Арена повысила температуру.', text: 'Все, кто хотел спокойный фарм, могут написать жалобу прямо на входящий урон.' },
-    { title: 'Давление растёт.', text: 'Матч решил, что участникам слишком комфортно. Смелое заявление, конечно.' },
-    { title: 'Уровень угрозы снова полез вверх.', text: 'Герои держатся, но арена явно пытается выиграть спор аргументами потяжелее.' },
-  ];
-  if (key.includes('low_hp')) return [
-    { title: 'HP стало декоративным.', text: 'Полоска здоровья ещё есть, но уже скорее для атмосферы, чем для уверенности.' },
-    { title: 'Герой играет на тоненького.', text: 'Настолько тоненького, что комментатор боится дышать в сторону монитора.' },
-    { title: 'Здоровье ушло в режим экономии.', text: 'Каждый пиксель HP сейчас работает за троих и просит премию.' },
-    { title: 'Красная зона машет рукой.', text: 'Не дружелюбно. Скорее как человек, который уже забронировал место в некрологе.' },
-    { title: 'Полоска HP стала философской.', text: 'Она задаёт вечный вопрос: “А точно надо было заходить именно сюда?”.' },
-    { title: 'Здоровье выглядит как тонкая шутка.', text: 'Полоска HP стала такой скромной, что её уже хочется поддержать морально.' },
-    { title: 'Герой живёт на честном слове.', text: 'Честное слово, правда, немного дрожит и просит аптечку.' },
-    { title: 'HP ушло в минимализм.', text: 'Красиво, тревожно и совершенно не то направление, куда хотелось бы развивать билд.' },
-    { title: 'На экране запахло осторожностью.', text: 'Редкое чувство для этой арены. Надеюсь, игрок хотя бы узнает его в лицо.' },
-    { title: 'Полоска здоровья проводит забастовку.', text: 'Она ещё есть, но уже явно недовольна условиями труда.' },
-  ];
-  if (key.includes('boss_down')) return [
-    { title: 'Босс сложился как плохой план.', text: 'Шёл уверенно, шумел дорого, а закончил как баг-репорт: резко, грустно и с пометкой “не воспроизводится”.' },
-    { title: 'Начальник арены получил увольнительную.', text: 'Причина простая: слишком много пафоса, слишком мало уклонения от входящего свинца.' },
-    { title: 'Босс упал и сделал вид, что так задумано.', text: 'Классическая тактика большого злодея: сначала давить авторитетом, потом лежать и переосмысливать карьеру.' },
-    { title: 'Крупная туша покинула чат.', text: 'Игроки подписали заявление на победу всем, что было в инвентаре, включая нервы и сомнительные решения.' },
-    { title: 'Босс проиграл спор с реальностью.', text: 'Реальность пришла в виде урона, критов и команды, которая внезапно вспомнила, где кнопка “стрелять”.' },
-    { title: 'Минус один ходячий кризис.', text: 'Арена на секунду выдохнула. Потом вспомнила, что это Crimson Wars, и снова начала готовить гадости.' },
-    { title: 'Боссу выдали финальные титры.', text: 'Без оваций, зато с лутом. В этом жанре это примерно одно и то же.' },
-    { title: 'Большой страшный аргумент закончился.', text: 'Оказалось, если достаточно долго объяснять босса дробью, он начинает соглашаться.' },
-    { title: 'Начальство больше не отвечает.', text: 'Вероятно, занято горизонтальным менеджментом и пересмотром политики личного пространства.' },
-    { title: 'Босс пал, зрители делают вид, что верили с самого начала.', text: 'Комментатор тоже верил. Просто очень тихо, чтобы не сглазить и не получить по лицу.' },
-    { title: 'Босс получил объяснение.', text: 'Короткое, громкое и, судя по результату, довольно убедительное.' },
-    { title: 'Начальство снято с должности.', text: 'Редкий случай, когда совещание закончилось хорошо для команды и плохо для босса.' },
-    { title: 'Большая проблема легла.', text: 'Комментатор фиксирует: иногда насилие всё-таки решает организационные вопросы.' },
-    { title: 'Босс больше не спорит.', text: 'Возможно, потому что аргументы игроков оказались слишком громкими.' },
-    { title: 'Главный пункт повестки закрыт.', text: 'Босс пришёл с амбициями, ушёл с выводами. Выводы, правда, уже не озвучит.' },
-    { title: 'Крупная цель официально отменена.', text: 'Команда подписала протокол победы пулями, навыками и нервной координацией.' },
-    { title: 'Боссу объяснили правила эфира.', text: 'Правила простые: пришёл красиво, упал громко, оставил лут и неприятные воспоминания.' },
-  ];
-  if (key.includes('join_room') || key.includes('players_up')) return [
-    { title: 'На арену зашёл новый оптимист.', text: 'Всегда приятно видеть человека, который пока ещё верит в аккуратный забег.' },
-    { title: 'Состав стал плотнее.', text: 'Больше игроков, больше планов и больше людей, которые будут говорить “я прикрывал”.' },
-    { title: 'В эфир добавили свежую пару рук.', text: 'Арена уже улыбается так, будто приготовила для них отдельную форму отчёта о боли.' },
-    { title: 'Подкрепление прибыло.', text: 'Теперь у хаоса появилась командная версия, с синхронными ошибками и общим энтузиазмом.' },
-    { title: 'Комната стала люднее.', text: 'Это повышает шансы на спасение и на коллективное “а кто это сделал?”.' },
-    { title: 'Новый игрок в кадре.', text: 'Пока выглядит уверенно. Подождём первый плотный контакт с реальностью.' },
-    { title: 'В мясорубку вошёл ещё один доброволец.', text: 'Юридически это смелость, эмоционально это очень интересный выбор.' },
-    { title: 'Аудитория получила нового героя.', text: 'Герой пока не знает, насколько буквально арена воспринимает слово “испытание”.' },
-  ];
-  if (key.includes('leave_room') || key.includes('players_down')) return [
-    { title: 'Состав поредел.', text: 'Кто-то решил, что жизнь вне арены тоже имеет неплохой геймплей.' },
-    { title: 'Один участник покинул шоу.', text: 'Комментатор не осуждает. Комментатор просто делает паузу ровно такой длины, чтобы всё было понятно.' },
-    { title: 'Комната стала тише.', text: 'Не безопаснее, конечно. Просто тише. Это разные жанры самообмана.' },
-    { title: 'Минус один голос в общем плане.', text: 'План от этого не стал хуже. Он и до этого был, скажем мягко, гибким.' },
-    { title: 'Игрок ушёл из эфира.', text: 'Редкий случай, когда горизонтальное положение удалось предотвратить заранее.' },
-    { title: 'Добровольная эвакуация зафиксирована.', text: 'Арена слегка обиделась, но быстро найдёт, на ком выместить чувства.' },
-    { title: 'Один билет наружу использован.', text: 'Остальные продолжают аттракцион под названием “зато опыт капает”.' },
-  ];
-  if (key.includes('boss_portal')) return [
-    { title: 'Портал босса открылся и сразу пожалел всех.', text: 'Это тот самый дверной звонок, после которого дом делает вид, что его нет дома.' },
-    { title: 'На карте появилась дырка в спокойствии.', text: 'Из неё, по традиции жанра, выйдет не доставка пиццы, а корпоративная претензия с полоской здоровья.' },
-    { title: 'Портал мигает как предупреждение от судьбы.', text: 'Судьба обычно не мигает просто так. Она мигает, когда уже принесла босса и ищет розетку.' },
-    { title: 'Арене стало мало обычных проблем.', text: 'Открыт портал для проблемы премиум-класса: больше рост, хуже характер, громче шаги.' },
-    { title: 'Боссу включили навигатор.', text: 'Маршрут построен: через панику, мимо аптечек, прямо в центр коллективного “ой”.' },
-    { title: 'Портал светится как плохая идея.', text: 'Но очень красивая плохая идея. Игроки, конечно, сейчас попробуют её потрогать лицом.' },
-    { title: 'Вход для большого гостя готов.', text: 'Ковровой дорожки нет, зато есть пули, страх и несколько героев с завышенной самооценкой.' },
-    { title: 'Портал открылся с выражением “ну всё”.', text: 'Редкий случай, когда геометрия на карте выглядит более угрожающе, чем налоговая проверка.' },
-    { title: 'Портал босса открылся.', text: 'Это не декорация. Это дверь, за которой у баланса начинается тяжёлый характер.' },
-    { title: 'Большая проблема уже на подходе.', text: 'Игроки ещё могут сделать вид, что это часть плана. Очень короткое окно, но могут.' },
-    { title: 'Арена открыла служебный вход для босса.', text: 'Сервис, конечно, сомнительный, но пунктуальность пугающе хорошая.' },
-    { title: 'Портал светится недобрыми намерениями.', text: 'В такие моменты даже лут лежит как-то напряжённо.' },
-    { title: 'Босс получил приглашение.', text: 'К сожалению, RSVP у него всегда “иду и порчу вечер”.' },
-    { title: 'Открылась дверь в крупные неприятности.', text: 'Теперь фарм выглядит не как подготовка, а как последняя попытка не паниковать.' },
-    { title: 'На карте включился портал.', text: 'Это арена вежливо сообщает, что разминка закончилась без согласования с игроками.' },
-  ];
-  if (key.includes('boss_spawn') || key.includes('boss_arrived')) return [
-    { title: 'Босс материализовался с претензией.', text: 'Вид у него такой, будто он пришёл не драться, а закрывать квартальный план по унижению игроков.' },
-    { title: 'Главная проблема вечера вышла на смену.', text: 'Большая, злая и явно без уважения к личному пространству, графику сна и медицинской страховке.' },
-    { title: 'Босс в кадре, всем пристегнуть эмоции.', text: 'Сейчас начнётся часть забега, где даже уверенные игроки вспоминают слово “мама”.' },
-    { title: 'На арену зашёл владелец плохого настроения.', text: 'Он не представился, но полоска здоровья намекает: знакомство будет долгим и громким.' },
-    { title: 'Появился босс, атмосфера резко стала дороже.', text: 'Бюджет на спецэффекты вырос, бюджет на спокойствие игроков был украден ещё на входе.' },
-    { title: 'Начальство прибыло без записи.', text: 'Очень невежливо, очень опасно и, чего уж там, довольно эффектно для прямого эфира.' },
-    { title: 'Босс вышел как финальный аргумент.', text: 'Теперь у игроков два варианта: красиво победить или очень познавательно бегать кругами.' },
-    { title: 'Крупная неприятность вступила в переговоры.', text: 'Переговоры, судя по позе, будут вестись ударами, рывками и полным отсутствием дипломатии.' },
-    { title: 'Вот и он, ходячий дедлайн.', text: 'Только вместо писем от менеджера у него лапы, ярость и неприлично длинная полоска здоровья.' },
-    { title: 'Босс пришёл проверить, кто тут слишком хорошо живёт.', text: 'Спойлер: по мнению босса, слишком хорошо живут вообще все, кто ещё вертикален.' },
-    { title: 'Босс вышел в эфир.', text: 'Зал просит зрелища, игроки просят дистанцию, босс не принимает заявки.' },
-    { title: 'Главный гость вечера прибыл.', text: 'Очень уверенная походка для того, кто ещё не видел весь список навыков игроков.' },
-    { title: 'На сцене крупная неприятность.', text: 'Сейчас станет ясно, кто качался, а кто просто коллекционировал красивые кнопки.' },
-    { title: 'Босс на карте.', text: 'Всем сохранять спокойствие. Особенно тем, кто уже начал бегать кругами.' },
-    { title: 'Начальство пришло лично.', text: 'Сразу видно управленческий стиль: мало слов, много входящего урона.' },
-    { title: 'Большой силуэт в кадре.', text: 'Комментатор проверил регламент: да, сейчас разрешено нервничать.' },
-    { title: 'Босс прибыл без опоздания.', text: 'Пунктуальность отличная, характер отвратительный, драматургия великолепная.' },
-    { title: 'Арена выпустила тяжёлую артиллерию.', text: 'Если до этого был хаос, то теперь у хаоса появился менеджер.' },
-  ];
-  if (key.includes('pvp_elimination')) return [
-    { title: 'PvP сказало своё резкое слово.', text: 'Слово было коротким, громким и почему-то сразу отправило одного участника подумать о жизни.' },
-    { title: 'На арене минус один спорщик.', text: 'Дискуссия закончилась аргументом, который летел быстрее, чем сожаление.' },
-    { title: 'Фраг оформлен с характером.', text: 'Не то чтобы аккуратно, зато убедительно. В этой игре это почти комплимент.' },
-    { title: 'Кто-то получил экспресс-перерыв.', text: 'Быстрый, болезненный и с образовательной программой “не стой там больше”.' },
-    { title: 'PvP снова напомнило про дистанцию.', text: 'Дистанция была важна. Особенно та, которую игрок уже не успел создать.' },
-    { title: 'Фраг оформлен.', text: 'Кто-то проиграл короткую дискуссию с чужим уроном и теперь ждёт следующую попытку.' },
-    { title: 'PvP снова объяснило правила.', text: 'Правило первое: если стоишь красиво, это ещё не значит, что стоишь долго.' },
-    { title: 'Минус один участник вертикального движения.', text: 'Респавн скоро, самооценка чуть позже.' },
-    { title: 'На арене случился аргумент посильнее.', text: 'Очень убедительно, очень быстро и почти без места для возражений.' },
-    { title: 'Фраг ушёл в статистику.', text: 'Статистика довольна. Игрок, которого туда записали, вероятно, меньше.' },
-    { title: 'Кто-то отправлен на паузу.', text: 'Не трагедия, а образовательный момент с таймером возвращения.' },
-    { title: 'PvP-линия стала острее.', text: 'Один точный момент, и чья-то стратегия превратилась в ожидание респавна.' },
-  ];
-  if (key.includes('player_count')) return [
-    { title: 'Состав матча изменился.', text: 'Арена любит динамику: кто-то приходит за славой, кто-то уходит за спокойствием.' },
-    { title: 'Команда снова пересобирается.', text: 'Тактика слегка дрожит, зато шоу получает новые вводные.' },
-    { title: 'Количество участников поменялось.', text: 'Это всегда добавляет интриги и немного портит все предыдущие планы.' },
-    { title: 'В комнате переставили людей.', text: 'Не мебель, конечно, но эффект для хаоса примерно такой же.' },
-    { title: 'Состав арены обновился.', text: 'Каждый новый расклад звучит как шанс. Или как предупреждение, если быть честнее.' },
-  ];
-  if (key.includes('hp_recovered')) return [
-    { title: 'Здоровье вернулось из командировки.', text: 'Пришло не всё, но достаточно, чтобы герой снова начал принимать сомнительные решения.' },
-    { title: 'HP снова выглядит как аргумент.', text: 'Не железобетонный, конечно, но уже не бумажная салфетка под дождём.' },
-    { title: 'Полоска здоровья подросла.', text: 'Комментатор рад, некролог временно закрыт без сохранения.' },
-    { title: 'Герой отлип от края пропасти.', text: 'Не ушёл далеко, просто сделал шаг назад и сказал: “Я всё контролирую”.' },
-    { title: 'Лечение сработало, самооценка тоже.', text: 'Самое опасное сочетание: чуть больше HP и сразу планы как у бессмертного.' },
-    { title: 'Здоровье вернулось к разговору.', text: 'Полоска HP снова похожа на ресурс, а не на тонкую красную подпись к трагедии.' },
-    { title: 'Герой выбрался из красной зоны.', text: 'Драма отложена, но не отменена. Арена такие заявки хранит бережно.' },
-    { title: 'HP снова выглядит прилично.', text: 'Комментатор почти поверил в стабильность. Почти. Мы же взрослые люди.' },
-    { title: 'Состояние стабилизировалось.', text: 'Ещё минуту назад пахло катастрофой, теперь пахнет самоуверенностью. Прогресс.' },
-    { title: 'Полоска здоровья ожила.', text: 'Редкий приятный момент: герой восстановился раньше, чем комментатор успел написать некролог.' },
-    { title: 'Красная зона отпустила.', text: 'Ненадолго или надолго, узнаем по следующему неудачному манёвру.' },
-  ];
-  if (key.includes('pvp_leader')) return [
-    { title: 'В PvP появился лидер.', text: 'Остальным пора либо догонять, либо готовить убедительную лекцию про “я играл на макро”.' },
-    { title: 'Кто-то вырвался вперёд.', text: 'Таблица уважает цифры, а проигрывающие обычно уважают оправдания.' },
-    { title: 'Лидерство сменило владельца.', text: 'PvP любит такие моменты: секунду назад был хаос, теперь хаос с табличкой “первое место”.' },
-    { title: 'На табло появился фаворит.', text: 'Это не корона, конечно, но попасть по ней теперь захотят все.' },
-    { title: 'Один игрок забрал темп.', text: 'Остальные получили бесплатный курс “как срочно перестать отставать”.' },
-  ];
-  if (key.includes('solo_survivor')) return [
-    { title: 'Остался один герой и много вопросов.', text: 'Главный вопрос: это стратегия, трагедия или просто командная работа закончилась раньше времени?' },
-    { title: 'Соло-режим включился без предупреждения.', text: 'Теперь всё внимание, весь урон и все плохие решения принадлежат одному человеку.' },
-    { title: 'На арене одинокий финалист.', text: 'Звучит гордо, пока не смотришь на количество врагов и выражение лица судьбы.' },
-    { title: 'Команда стала компактной.', text: 'Настолько компактной, что помещается в одного очень занятого героя.' },
-    { title: 'Один против всех.', text: 'Классика жанра: красиво на постере, заметно хуже в бухгалтерии здоровья.' },
-    { title: 'На сцене остался один.', text: 'Весь лут, весь страх и вся ответственность теперь смотрят на него одновременно.' },
-    { title: 'Соло-режим включился сам.', text: 'Командная работа закончилась. Началась личная переписка с судьбой.' },
-    { title: 'Один герой против расписания боли.', text: 'Красиво звучит, пока не вспоминаешь, что расписание обычно пунктуальное.' },
-    { title: 'Финальный одиночный номер.', text: 'Публика любит такие моменты. Игроки обычно любят их уже после победы.' },
-    { title: 'Остался один доброволец.', text: 'Теперь каждое решение звучит громче, потому что обвинить больше некого.' },
-  ];
-  if (key.includes('respawn_wait') || key.includes('downed')) return [
-    { title: 'Герой временно изучает пол.', text: 'Пол, кстати, выполнен качественно. Жаль, обзор слишком близкий и по неприятной причине.' },
-    { title: 'Пауза на горизонтальное мышление.', text: 'Иногда стратегия требует лечь. Иногда стратегия просто не успела увернуться.' },
-    { title: 'Игрок ушёл в режим ожидания.', text: 'Сейчас главное не паниковать. Паниковать можно будет красиво после респавна.' },
-    { title: 'Небольшая техническая смерть.', text: 'Не финал, а рекламная пауза для самолюбия и проверка терпения команды.' },
-    { title: 'Герой прилёг не по плану.', text: 'Но с таким выражением, будто это часть сложной тактики, которую никто не просил.' },
-    { title: 'Нокдаун в прямом эфире.', text: 'Герой временно изучает пол и пересматривает отношения с входящим уроном.' },
-    { title: 'Вертикальность отменена.', text: 'Ненадолго, но достаточно, чтобы комментатор успел сделать неприятно точный вывод.' },
-    { title: 'Игрок прилёг без романтики.', text: 'Респавн скоро, а пока можно насладиться образовательной паузой.' },
-    { title: 'На арене минус один стоящий аргумент.', text: 'Лежачий аргумент тоже аргумент, просто менее мобильный.' },
-    { title: 'Нокдаун засчитан.', text: 'Очень честная обратная связь от игры: “так делать было больно”.' },
-    { title: 'Герой временно в режиме ковра.', text: 'Не самый гордый режим, зато даёт пару секунд подумать о выборе маршрута.' },
-  ];
-  if (key.includes('final_death') || key.includes('player_final_death') || key.includes('death')) return [
-    { title: 'Герой закончил забег с драматичным шлепком.', text: 'Арена благодарит за участие, нервы, патроны и уверенность, которая держалась дольше HP.' },
-    { title: 'Финальная смерть пришла без стука.', text: 'Очень грубо, очень эффектно и совершенно не по расписанию героя.' },
-    { title: 'Игрок выбыл, но оставил легенду.', text: 'Легенда короткая: “я почти вывез”. В этой игре это уже литературный жанр.' },
-    { title: 'Забег для героя закончился.', text: 'Комментатор снимает шляпу, потом надевает обратно, потому что вокруг всё ещё летают проблемы.' },
-    { title: 'Герой пал, арена сделала вид, что ей не грустно.', text: 'Мы ей не верим. Но и спорить с ареной сейчас как-то не хочется.' },
-    { title: 'Последний HP ушёл в закат.', text: 'Красиво, трагично и с лёгким ароматом “надо было брать другой навык”.' },
-    { title: 'Финальный экран почти слышно.', text: 'Он тихо говорит: “Ну что, ещё разок?”. И это, конечно, ловушка.' },
-    { title: 'Герой отправился в зал славы ошибок.', text: 'Там уютно, многолюдно и все начинают рассказ со слов “да я просто не заметил”.' },
-    { title: 'Забег подписал заявление на финал.', text: 'Герой держался достойно, но арена сегодня была бухгалтером: всё посчитала и списала.' },
-    { title: 'Финальная точка поставлена.', text: 'Публика выдохнула, монстры довольны, комментатор делает вид, что не привязался.' },
-    { title: 'Герой вышел из чата жизни.', text: 'Красиво боролся, шумно падал, оставил после себя опыт и лёгкую неловкость.' },
-    { title: 'Арена забрала своё.', text: 'Сурово, без лишней лирики и с отвратительно хорошим таймингом.' },
-    { title: 'Это был последний аргумент героя.', text: 'Дальше говорят только статистика, экран смерти и тихое “ну ещё один забег”.' },
-    { title: 'Финальный поклон состоялся.', text: 'Не совсем добровольный, зато очень убедительный с точки зрения физики.' },
-    { title: 'Герой закончил смену.', text: 'Рабочий день был насыщенный: бег, стрельба, паника и внезапный отпуск в меню.' },
-    { title: 'Забег завершён с характером.', text: 'Не победа, но и не скучно. А это, будем честны, уже половина шоу.' },
-  ];
-  return [];
-}
-
-function setCommentaryVariant(variants, eventKey = 'generic', cooldownMs = 6000) {
-  const selected = pickCommentaryVariant([...(Array.isArray(variants) ? variants : []), ...getExtraCommentaryVariants(eventKey)], null);
-  if (!selected) return false;
-  return setCommentatorLine(selected.title, selected.text, eventKey, cooldownMs);
-}
-
-function maybeCommentateSystemMessage(message) {
-  const text = String(message || '').trim();
-  if (!text) return;
-  const pickedWeaponMatchNew = text.match(/\bPicked\s+(.+?)(?:[.!]|$)/i);
-  if (pickedWeaponMatchNew) {
-    const weaponLabel = String(pickedWeaponMatchNew[1] || 'оружие').trim();
-    setCommentaryVariant([
-      { title: `Найдено: ${weaponLabel}.`, text: 'Лут найден, здравый смысл временно отложен. Самое время проверить, насколько эта железка дружит с точностью.' },
-      { title: `${weaponLabel} у героя в руках.`, text: 'Отлично. Теперь можно ошибаться быстрее, громче и значительно дороже для местной фауны.' },
-      { title: `${weaponLabel} пошёл в работу.`, text: 'Арена только что выдала новый аргумент в споре с фауной. У аргумента подозрительно хороший урон и плохой характер.' },
-      { title: `Свежий ствол: ${weaponLabel}.`, text: 'Люблю этот звук. Это звук надежды, которая ещё не знает, как быстро её сейчас проверят на прочность.' },
-      { title: `${weaponLabel} найден и немедленно усыновлён.`, text: 'Герой снова доказал, что может привязаться к оружию быстрее, чем к здравому смыслу.' },
-      { title: `${weaponLabel} вступает в эфир.`, text: 'Публика ждёт тест-драйв, монстры ждут худшего, а комментатор уже морально готовит сарказм на последствия.' },
-    ], `weapon_pick_${weaponLabel.toLowerCase()}`, 3500);
-    return;
-  }
-  if (/activated XP Surge/i.test(text)) {
-    setCommentaryVariant([
-      { title: 'XP полетела сама.', text: 'Лень официально признана тактикой: кристаллы сами бегут к герою, как неоплаченные долги.' },
-      { title: 'XP Surge активирован.', text: 'Очень удобно. Даже опыт устал ждать и решил сам прийти в руки.' },
-      { title: 'Опыт сам пошёл навстречу.', text: 'Красота. Даже прокачка поняла, что герой слишком занят выживанием, чтобы бегать за ней ногами.' },
-      { title: 'Ленивый фарм включён официально.', text: 'Кристаллы стягиваются сами. Это не магия, это мечта человека, который устал собирать их вручную.' },
-      { title: 'XP Surge врубается без стыда.', text: 'Очень зрелое решение: пусть опыт сам приходит, пока герой делает вид, что полностью контролирует происходящее.' },
-    ], 'xp_surge', 4000);
-    return;
-  }
-  if (/joined room/i.test(text)) {
-    setCommentaryVariant([
-      { title: 'Свежая кровь на арене.', text: 'Ещё один игрок залетел в мясорубку. Теперь ошибаться можно немного коллективнее.' },
-      { title: 'В комнате прибавилось уверенности.', text: 'Новый боец в эфире. Арена уже готовит для него персональный набор неприятных сюрпризов.' },
-      { title: 'На арену зашёл ещё один оптимист.', text: 'Всегда приятно видеть человека, который пока ещё верит, что всё это закончится хорошо.' },
-      { title: 'Подкрепление прибыло красиво и без гарантий.', text: 'Команда расширяется. Количество хаоса растёт даже быстрее, чем потенциальная координация.' },
-    ], 'join_room', 5000);
-    return;
-  }
-  if (/left room/i.test(text)) {
-    setCommentaryVariant([
-      { title: 'Кто-то решил жить подольше.', text: 'Игрок вышел из комнаты. Осуждать не будем. Слегка усмехнёмся и продолжим.' },
-      { title: 'Один билет в здравый смысл использован.', text: 'Кто-то покинул эфир раньше, чем арена успела объяснить ему свою позицию до конца.' },
-      { title: 'Состав слегка поредел по доброй воле.', text: 'Редкий жанр на этой арене: человек ушёл сам, а не в виде драматической горизонтали.' },
-    ], 'leave_room', 5000);
-    return;
-  }
-  if (/boss is approaching|portal opened/i.test(text)) {
-    setCommentaryVariant([
-      { title: 'Портал на босса уже открыт.', text: 'Поздравляю, игра официально перестала шутить и начала готовить проблемы покрупнее.' },
-      { title: 'Открылась дверь в отдел крупных неприятностей.', text: 'С этого момента фарм уже считается не подготовкой, а нервным тиком перед начальством.' },
-      { title: 'Портал босса активен.', text: 'Арена как бы намекает: разминка закончилась, теперь пойдут вопросы без вариантов ответа.' },
-    ], 'boss_portal_system', 9000);
-    return;
-  }
-  if (/BOSS arrived/i.test(text)) {
-    setCommentaryVariant([
-      { title: 'Босс прибыл лично.', text: 'Вот и начальство. Сейчас начнутся те самые движения, за которые потом стыдно, но красиво.' },
-      { title: 'В эфир зашёл самый неприятный гость вечера.', text: 'Босс на карте. Сейчас быстро выясним, кто тут герой, а кто просто талантливо убегал кругами.' },
-      { title: 'Главная проблема матча прибыла без опозданий.', text: 'Очень деловой визит: минимум слов, максимум давления и полное неуважение к личным границам игроков.' },
-    ], 'boss_arrived_system', 9000);
-    return;
-  }
-  if (/was eliminated/i.test(text)) {
-    setCommentaryVariant([
-      { title: 'Минус один, но не навсегда.', text: 'На арене случилось насильственное перераспределение инициативы. Кому-то пора ждать респавн.' },
-      { title: 'Фраг оформлен без лишней дипломатии.', text: 'Кто-то только что проиграл спор с уроном и теперь временно пересматривает жизненные решения.' },
-      { title: 'В PvP снова победила грубая убедительность.', text: 'Один игрок отправлен подумать о жизни. Желательно до следующего респавна.' },
-    ], 'pvp_elimination', 5000);
-    return;
-  }
-  const pickedWeaponMatch = text.match(/\bPicked\s+(.+?)(?:[.!]|$)/i);
-  if (pickedWeaponMatch) {
-    const weaponLabel = String(pickedWeaponMatch[1] || 'оружие').trim();
-    setCommentaryVariant([
-      { title: `Найдено: ${weaponLabel}.`, text: 'Лут найден, здравый смысл временно отложен. Самое время проверить, насколько эта железка дружит с точностью.' },
-      { title: `${weaponLabel} у героя в руках.`, text: 'Отлично. Теперь можно ошибаться быстрее, громче и значительно дороже для местной фауны.' },
-    ], `weapon_pick_${weaponLabel.toLowerCase()}`, 3500);
-    return;
-  }
-  if (/activated XP Surge/i.test(text)) {
-    setCommentaryVariant([
-      { title: 'XP полетела сама.', text: 'Лень официально признана тактикой: кристаллы сами бегут к герою, как неоплаченные долги.' },
-      { title: 'XP Surge активирован.', text: 'Очень удобно. Даже опыт устал ждать и решил сам прийти в руки.' },
-    ], 'xp_surge', 4000);
-    return;
-  }
-  if (/joined room/i.test(text)) {
-    setCommentatorLine('Свежая кровь на арене.', 'Ещё один игрок залетел в мясорубку. Теперь ошибаться можно немного коллективнее.', 'join_room', 5000);
-    return;
-  }
-  if (/left room/i.test(text)) {
-    setCommentatorLine('Кто-то решил жить подольше.', 'Игрок вышел из комнаты. Осуждать не будем. Слегка усмехнёмся и продолжим.', 'leave_room', 5000);
-    return;
-  }
-  if (/boss is approaching|portal opened/i.test(text)) {
-    setCommentatorLine('Портал на босса уже открыт.', 'Поздравляю, игра официально перестала шутить и начала готовить проблемы покрупнее.', 'boss_portal_system', 9000);
-    return;
-  }
-  if (/BOSS arrived/i.test(text)) {
-    setCommentatorLine('Босс прибыл лично.', 'Вот и начальство. Сейчас начнутся те самые движения, за которые потом стыдно, но красиво.', 'boss_arrived_system', 9000);
-    return;
-  }
-  if (/was eliminated/i.test(text)) {
-    setCommentatorLine('Минус один, но не навсегда.', 'На арене случилось насильственное перераспределение инициативы. Кому-то пора ждать респавн.', 'pvp_elimination', 5000);
-  }
-}
-
-function getPlayerSkillRankMap(player) {
-  const out = new Map();
-  const skills = Array.isArray(player?.skills) ? player.skills : [];
-  for (const skill of skills) {
-    const id = String(skill?.id || '').trim().toLowerCase();
-    if (!id) continue;
-    out.set(id, Math.max(1, Number(skill?.level) || 1));
-  }
-  return out;
-}
-
-function seedSpectatorSkillRanks(players) {
-  commentatorState.lastSkillRanks.clear();
-  for (const player of Array.isArray(players) ? players : []) {
-    const playerId = String(player?.id || '').trim();
-    if (!playerId) continue;
-    for (const [skillId, level] of getPlayerSkillRankMap(player).entries()) {
-      commentatorState.lastSkillRanks.set(`${playerId}:${skillId}`, level);
-    }
-  }
-}
-
-function maybeCommentateSpectatorSkillPicks(players) {
-  if (!game.spectating) return false;
-  if (commentatorState.lastSkillRanks.size <= 0) {
-    seedSpectatorSkillRanks(players);
-    return false;
-  }
-  for (const player of Array.isArray(players) ? players : []) {
-    const playerId = String(player?.id || '').trim();
-    if (!playerId) continue;
-    const skillRanks = getPlayerSkillRankMap(player);
-    for (const [skillId, level] of skillRanks.entries()) {
-      const key = `${playerId}:${skillId}`;
-      const previousLevel = Math.max(0, Number(commentatorState.lastSkillRanks.get(key)) || 0);
-      commentatorState.lastSkillRanks.set(key, level);
-      if (previousLevel <= 0 || level <= previousLevel) continue;
-      const skillLabel = trSkillName(skillId, player.skills?.find((skill) => String(skill?.id || '').toLowerCase() === skillId)?.name || skillId);
-      const playerName = String(player?.name || 'Игрок').trim() || 'Игрок';
-      return setCommentaryVariant(
-        buildSpectatorSkillPickCommentaryVariants(playerName, skillLabel, level),
-        `spectator_skill_pick_${playerId}_${skillId}_${level}`,
-        1200,
-      );
-    }
-  }
-  return false;
-}
-
-function updateInGameCommentatorFromState(state) {
-  if (!state || !Array.isArray(state.players)) return;
-  const players = state.players.filter((player) => player && !player.isCompanion);
-  const me = players.find((player) => player.id === game.myId) || null;
-  const playerCount = players.length;
-  const threatLevel = Math.max(1, Number(state.roomDifficulty?.level) || 1);
-  const bossAlive = Boolean(state.bossAlive);
-  const bossPortalAt = Math.max(0, Number(state.nextBossSpawnAt) || 0);
-  const totalEnemyKills = Math.max(0, Number(state.totalEnemyKills) || 0);
-  const totalBossKills = players.reduce((acc, player) => acc + Math.max(0, Number(player?.bossKills) || 0), 0);
-  const matchNow = Math.max(0, Number(state.now) || Date.now());
-  const roomStartedAt = Math.max(0, Number(state.roomStartedAt) || matchNow);
-  const matchSec = Math.max(0, Math.floor((matchNow - roomStartedAt) / 1000));
-  const killMilestone = Math.floor(totalEnemyKills / 15);
-
-  if (maybeCommentateSpectatorSkillPicks(players)) return;
-
-  if (!bossAlive && bossPortalAt > matchNow) {
-    const bossEtaSec = Math.max(0, Math.ceil((bossPortalAt - matchNow) / 1000));
-    const bossCountdownBucket = bossEtaSec <= 3 ? 3 : bossEtaSec <= 7 ? 7 : bossEtaSec <= 12 ? 12 : 0;
-    if (bossCountdownBucket > 0 && bossCountdownBucket !== commentatorState.lastBossCountdownBucket) {
-      setCommentaryVariant([
-        { title: `До босса около ${bossEtaSec}с.`, text: 'Можно собраться, можно запаниковать. История подсказывает, что многие попробуют оба варианта сразу.' },
-        { title: `Босс почти у двери: ${bossEtaSec}с.`, text: 'Если кто-то ещё хотел спокойно пофармить, момент слегка упущен.' },
-      ], `boss_countdown_${bossCountdownBucket}`, 3200);
-    }
-    commentatorState.lastBossCountdownBucket = bossCountdownBucket;
-  } else {
-    commentatorState.lastBossCountdownBucket = 0;
-  }
-
-  if (killMilestone > 0 && killMilestone !== commentatorState.lastKillMilestone && Date.now() - commentatorState.lastKillsRemarkAt > 9000) {
-    commentatorState.lastKillsRemarkAt = Date.now();
-    commentatorState.lastKillMilestone = killMilestone;
-    setCommentaryVariant([
-      { title: `${totalEnemyKills} киллов уже в копилке.`, text: 'Арена постепенно превращается в отчёт о переработке чудовищ. Цифры хорошие, шансы на спокойствие плохие.' },
-      { title: `Счётчик монстров уже на ${totalEnemyKills}.`, text: 'Темп бодрый. Экологи, правда, вряд ли оценят такой подход к фауне.' },
-      { title: `${totalEnemyKills} врагов убрано с повестки.`, text: 'Команда работает так, будто ей платят за скорость, а не за выживание.' },
-    ], 'kill_milestone_extra', 9000);
-  }
-
-  const matchPulseBucket = Math.floor(matchSec / 30);
-  if (matchPulseBucket > 0 && matchPulseBucket !== commentatorState.lastMatchPulseBucket) {
-    commentatorState.lastMatchPulseBucket = matchPulseBucket;
-    setCommentaryVariant([
-      { title: `Матч держится уже ${matchSec}с.`, text: 'Для этой арены это уже серьёзные отношения: много напряжения, мало доверия и ни капли стабильности.' },
-      { title: `${matchSec} секунд чистого упрямства.`, text: 'Катка затянулась достаточно, чтобы игра начала воспринимать это как личный вызов.' },
-    ], `match_pulse_${matchPulseBucket}`, 6000);
-  }
-
-  if (playerCount !== commentatorState.lastPlayerCount && commentatorState.lastPlayerCount > 0) {
-    const morePlayers = playerCount > commentatorState.lastPlayerCount;
-    setCommentatorLine(
-      morePlayers ? 'Комната становится люднее.' : 'Состав поредел.',
-      morePlayers
-        ? `Теперь в матче ${playerCount} игрока. Отлично, ошибок станет больше, а зрелище богаче.`
-        : `Игроков осталось ${playerCount}. Арена снова напоминает собеседование на выживание.`,
-      'player_count',
-      5000,
-    );
-  }
-
-  if (threatLevel > commentatorState.lastThreatLevel) {
-    setCommentatorLine(
-      `Угроза выросла до ${threatLevel}.`,
-      pickCommentaryVariant([
-        `Мобы официально злее, а право на расслабление снова отменено.`,
-        `Игра подкрутила давление. Кто не в тонусе, тот уже почти в титрах.`,
-        `Сложность поднялась. Самое время делать вид, что именно этого вы и хотели.`,
-      ], 'Сложность растёт, а жалобы всё ещё не считаются тактикой.'),
-      'threat_up',
-      7000,
-    );
-  }
-
-  if (!commentatorState.lastBossAlive && bossPortalAt > 0 && !bossAlive) {
-    setCommentatorLine(
-      'На карте открылся портал босса.',
-      'Секундомер тикает, нервы плавятся. До большого начальника осталось совсем немного позора и героизма.',
-      'boss_portal',
-      9000,
-    );
-  }
-
-  if (!commentatorState.lastBossAlive && bossAlive) {
-    setCommentatorLine(
-      'Босс уже на карте.',
-      'Вот и встреча, ради которой все якобы качались. Сейчас выясним, кто тут герой, а кто просто удачно бегал кругами.',
-      'boss_spawn',
-      10000,
-    );
-  }
-
-  if (commentatorState.lastBossAlive && !bossAlive && totalBossKills > commentatorState.lastBossKills) {
-    setCommentatorLine(
-      'Босс уложен.',
-      'Редкий случай: коллектив действительно справился с проблемой, а не просто красиво от неё умер.',
-      'boss_down',
-      10000,
-    );
-  }
-
-  if (totalEnemyKills >= 20 && totalEnemyKills % 25 < 3 && Date.now() - commentatorState.lastKillsRemarkAt > 12000) {
-    commentatorState.lastKillsRemarkAt = Date.now();
-    setCommentatorLine(
-      `${totalEnemyKills} киллов уже в копилке.`,
-      'Арена постепенно превращается в отчёт о переработке чудовищ. Цифры хорошие, шансы на спокойствие плохие.',
-      'kill_milestone',
-      12000,
-    );
-  }
-
-  if (me && me.alive) {
-    const hpRatio = Math.max(0, Math.min(1, (Number(me.hp) || 0) / Math.max(1, Number(me.maxHp) || 1)));
-    if (hpRatio <= 0.35 && Date.now() - commentatorState.lastLowHpAt > 15000) {
-      commentatorState.lastLowHpAt = Date.now();
-      commentatorState.wasLowHp = true;
-      setCommentatorLine(
-        'Здоровье выглядит тревожно.',
-        'У героя осталось маловато хп и слишком много самоуверенности. Может, всё-таки начать уважать входящий урон.',
-        'low_hp',
-        15000,
-      );
-    } else if (commentatorState.wasLowHp && hpRatio >= 0.72 && Date.now() - commentatorState.lastRecoveryAt > 12000) {
-      commentatorState.wasLowHp = false;
-      commentatorState.lastRecoveryAt = Date.now();
-      setCommentaryVariant([
-        { title: 'Хп снова похоже на хп.', text: 'Герой каким-то чудом вылез из красной зоны. Значит, драму пока откладываем.' },
-        { title: 'Стабилизировались.', text: 'Ещё минуту назад пахло катастрофой, а теперь снова пахнет самоуверенностью. Красота.' },
-      ], 'hp_recovered', 9000);
-    }
-  }
-
-  if (String(game.gameMode || '') === 'pvp' && players.length > 1) {
-    const leader = players.slice().sort((a, b) =>
-      (Math.max(0, Number(b.pvpKills) || 0) - Math.max(0, Number(a.pvpKills) || 0))
-      || (Math.max(0, Number(b.score) || 0) - Math.max(0, Number(a.score) || 0))
-      || String(a.name || '').localeCompare(String(b.name || '')))[0] || null;
-    const leaderId = String(leader?.id || '');
-    const leaderKills = Math.max(0, Number(leader?.pvpKills) || 0);
-    if (leaderId && leaderKills > 0 && leaderId !== commentatorState.lastPvpLeaderId) {
-      commentatorState.lastPvpLeaderId = leaderId;
-      setCommentatorLine(
-        `${String(leader?.name || 'Кто-то')} вышел вперёд.`,
-        `В PvP появился лидер с ${leaderKills} фрагами. Остальным пора либо догонять, либо придумывать достойные оправдания.`,
-        'pvp_leader',
-        8000,
-      );
-    }
-  }
-
-  if (playerCount === 1 && commentatorState.lastPlayerCount > 1) {
-    setCommentaryVariant([
-      { title: 'На сцене остался один человек.', text: 'Вся ответственность, весь лут и весь ужас матча теперь аккуратно легли на одного героя.' },
-      { title: 'Соло-режим включился сам.', text: 'Командная работа закончилась. Началась личная переписка с судьбой и уклонениями.' },
-    ], 'solo_survivor', 7000);
-  }
-
-  commentatorState.lastPlayerCount = playerCount;
-  commentatorState.lastThreatLevel = threatLevel;
-  commentatorState.lastBossAlive = bossAlive;
-  commentatorState.lastBossPortalAt = bossPortalAt;
-  commentatorState.lastBossKills = totalBossKills;
-}
-
-commentatorVoiceToggleEl?.addEventListener('click', () => {
-  if (!game.showCommentatorEnabled) return;
-  setCommentatorVoiceEnabled(!commentatorSpeech.enabled);
-});
-if (commentatorSpeech.supported) {
-  if (typeof window.speechSynthesis?.addEventListener === 'function') {
-    window.speechSynthesis.addEventListener('voiceschanged', renderCommentatorVoiceUi);
-  } else {
-    window.speechSynthesis.onvoiceschanged = renderCommentatorVoiceUi;
-  }
-}
-renderCommentatorVoiceUi();
-
-window.setInterval(() => {
-  if (!commentatorSpeech.supported || !commentatorSpeech.enabled || !game.showCommentatorEnabled || game.embedMode) return;
-  const activeForMs = Date.now() - Math.max(0, commentatorSpeech.activeSinceAt || 0);
-  const speechBusy = Boolean(window.speechSynthesis.speaking || window.speechSynthesis.pending);
-  if (commentatorSpeech.activeText && !speechBusy && activeForMs > 1200) {
-    commentatorSpeech.activeSinceAt = 0;
-    commentatorSpeech.activeKey = '';
-    commentatorSpeech.activeText = '';
-    flushCommentarySpeechQueue();
-    return;
-  }
-  if (commentatorSpeech.activeText && speechBusy && activeForMs > 25000) {
-    try {
-      window.speechSynthesis.cancel();
-    } catch {
-      // ignore cancel failures
-    }
-    commentatorSpeech.activeSinceAt = 0;
-    commentatorSpeech.activeKey = '';
-    commentatorSpeech.activeText = '';
-    window.setTimeout(flushCommentarySpeechQueue, 60);
-  }
-}, 1200);
-
 function handleLocalChatCommand(rawText) {
   const src = String(rawText || '').trim();
   if (!src.startsWith('/')) return false;
@@ -3471,51 +2470,6 @@ async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
     sync: joinSync || undefined,
     gameMode: mode === 'create' ? selectedGameMode : undefined,
     pvpDurationMin: mode === 'create' && selectedGameMode === 'pvp' ? normalizePvpDurationMin(selectedPvpDurationMin) : undefined,
-  });
-  closeGameVersionModal();
-  joinOverlay.style.display = 'none';
-  joinOverlay.classList.remove('death-mode');
-  setDeathCinematicActive(false);
-  updateMobileControlsVisibility();
-}
-
-async function sendSpectateRequest(roomCode, options = {}) {
-  const normalizedRoomCode = String(roomCode || '').trim().toUpperCase();
-  const skipRouting = options?.skipRouting === true;
-  if (!normalizedRoomCode) {
-    const message = 'Spectate mode needs a room code.';
-    statusEl.textContent = message;
-    setJoinFeedback(message);
-    return;
-  }
-  clearJoinFeedback();
-  if (!skipRouting) {
-    try {
-      const route = await resolveRoomRoute('join', normalizedRoomCode, { gameMode: selectedGameMode, pvpDurationMin: selectedPvpDurationMin });
-      const workerOrigin = normalizeOrigin(route?.target?.publicBaseUrl || APP_ORIGIN);
-      await connectGameSocket(workerOrigin);
-    } catch (err) {
-      statusEl.textContent = err.message || 'Failed to resolve live room route.';
-      setJoinFeedback(err.message || 'Failed to resolve live room route.');
-      return;
-    }
-  } else {
-    try {
-      await connectGameSocket(currentWorkerOrigin || APP_ORIGIN);
-    } catch (err) {
-      statusEl.textContent = err.message || 'Failed to connect to live room.';
-      setJoinFeedback(err.message || 'Failed to connect to live room.');
-      return;
-    }
-  }
-  if (ws.readyState !== WebSocket.OPEN) return;
-  waitingForFirstState = true;
-  resetNetStats();
-  waitingForFirstStateSince = performance.now();
-  sendJson({
-    type: 'join',
-    roomCode: normalizedRoomCode,
-    spectate: true,
   });
   closeGameVersionModal();
   joinOverlay.style.display = 'none';
@@ -5821,17 +4775,9 @@ function handleSkillOptionInteract(e) {
   const sid = card.dataset.skillId;
   if (!sid || ws.readyState !== WebSocket.OPEN || !game.myId) return;
   if (typeof e.preventDefault === 'function') e.preventDefault();
-  const skillLabel = trSkillName(sid, sid);
   if (typeof window.cwTrackMetrikaGoal === 'function') {
     window.cwTrackMetrikaGoal('skill_pick', { skill_id: sid });
   }
-  setCommentaryVariant(buildSkillPickCommentaryVariants(skillLabel), `skill_pick_${String(sid).toLowerCase()}`, 2200);
-  sendJson({ type: 'skillPick', skillId: sid });
-  return;
-  setCommentaryVariant([
-    { title: `Взяли навык: ${skillLabel}.`, text: 'Отлично, билд только что стал либо сильнее, либо гораздо смешнее. Скоро увидим какой именно вариант выпал.' },
-    { title: `${skillLabel} добавлен в арсенал.`, text: 'Очень люблю этот момент: игрок делает серьёзное лицо и выбирает себе новые способы создавать хаос.' },
-  ], `skill_pick_${String(sid).toLowerCase()}`, 2500);
   sendJson({ type: 'skillPick', skillId: sid });
 }
 
@@ -6078,40 +5024,7 @@ function clearLocalSessionState() {
   clearDeathCameraLock();
   localDeathStateLocked = false;
   pendingManualExitRequested = false;
-  commentatorState.lastEventAt.clear();
-  commentatorState.lastKillsRemarkAt = 0;
-  commentatorState.lastLowHpAt = 0;
-  commentatorState.lastRecoveryAt = 0;
-  commentatorState.lastTitle = '';
-  commentatorState.lastText = '';
-  commentatorState.lastPlayerCount = 0;
-  commentatorState.lastThreatLevel = 1;
-  commentatorState.lastBossAlive = false;
-  commentatorState.lastBossPortalAt = 0;
-  commentatorState.lastBossCountdownBucket = 0;
-  commentatorState.lastBossKills = 0;
-  commentatorState.lastPvpLeaderId = '';
-  commentatorState.lastKillMilestone = 0;
-  commentatorState.lastMatchPulseBucket = 0;
-  commentatorState.lastSkillRanks.clear();
-  commentatorState.wasLowHp = false;
-  if (commentatorSpeech.pendingTimer) {
-    window.clearTimeout(commentatorSpeech.pendingTimer);
-    commentatorSpeech.pendingTimer = 0;
-  }
-  commentatorSpeech.lastKey = '';
-  commentatorSpeech.activeSinceAt = 0;
-  commentatorSpeech.lastQueuedText = '';
-  commentatorSpeech.activeKey = '';
-  commentatorSpeech.activeText = '';
-  commentatorSpeech.queue = [];
-  commentatorSpeech.recentKeys.clear();
-  commentatorSpeech.seq += 1;
-  if (commentatorSpeech.supported) window.speechSynthesis.cancel();
-  if (commentatorTitleEl) commentatorTitleEl.textContent = 'Матч загружается. Сарказм прогревается.';
-  if (commentatorTextEl) commentatorTextEl.textContent = 'Как только на карте начнётся хоть какая-то драма, я сразу это отмечу.';
   game.myId = null;
-  game.spectating = false;
   game.roomCode = null;
   game.state = null;
   game.netSnapshots = [];
@@ -6172,7 +5085,7 @@ function clearLocalSessionState() {
 }
 
 function leaveActiveRoom() {
-  if (ws.readyState === WebSocket.OPEN && (game.myId || game.spectating)) {
+  if (ws.readyState === WebSocket.OPEN && game.myId) {
     sendJson({ type: 'leave' });
   }
   clearLocalSessionState();
@@ -6226,14 +5139,6 @@ function openDeathOverlay(result) {
     });
   }
   leaveActiveRoom();
-  if (pendingFinalDeathCommentary?.title && pendingFinalDeathCommentary?.text) {
-    maybeSpeakCommentary(
-      pendingFinalDeathCommentary.title,
-      pendingFinalDeathCommentary.text,
-      'player_final_death_overlay',
-    );
-    pendingFinalDeathCommentary = null;
-  }
   joinOverlay.style.display = 'grid';
   joinOverlay.classList.add('death-mode');
   spawnDeathScreenBloodFx();
@@ -6275,7 +5180,7 @@ recordsNextBtn?.addEventListener('click', () => {
 });
 
 setInterval(() => {
-  if (!game.myId && !game.spectating && game.connected) {
+  if (!game.myId && game.connected) {
     requestRoomsList();
     requestRecordsList(recordsUi.page);
   }
@@ -6283,20 +5188,14 @@ setInterval(() => {
 registerSocketHandlers({
 open: () => {
   game.connected = true;
-  statusEl.textContent = game.embedMode ? 'Connecting live view...' : 'Connected. Create room or join code.';
+  statusEl.textContent = 'Connected. Create room or join code.';
   game.runtimeInstance.publicBaseUrl = currentWorkerOrigin || APP_ORIGIN;
   renderInstanceMeta();
   void refreshPlayerAuthSession({ silent: true });
-  if (!game.embedMode) {
-    requestRoomsList();
-    requestRecordsList(1);
-  }
+  requestRoomsList();
+  requestRecordsList(1);
   sendNetPing();
-  if (pendingAutoSpectate && roomCodeInput?.value) {
-    pendingAutoSpectate = false;
-    joinMode = 'join';
-    void sendSpectateRequest(roomCodeInput.value.trim(), { skipRouting: true });
-  } else if (pendingAutoJoin && roomCodeInput?.value) {
+  if (pendingAutoJoin && roomCodeInput?.value) {
     pendingAutoJoin = false;
     joinMode = 'join';
     void sendJoinRequest(roomCodeInput.value.trim(), null, { skipRouting: true });
@@ -6358,8 +5257,7 @@ message: (ev) => {
 
   if (msg.type === 'welcome') {
     clearJoinFeedback();
-    game.spectating = Boolean(msg.spectator);
-    game.myId = msg.id || null;
+    game.myId = msg.id;
     game.runtimeInstance.instanceId = String(msg.instanceId || '');
     game.runtimeInstance.publicBaseUrl = currentWorkerOrigin || APP_ORIGIN;
     renderInstanceMeta();
@@ -6406,12 +5304,10 @@ message: (ev) => {
     visuals.skillOfferPrev = new Map();
     visuals.rocketPrev = new Map();
     roomMetaEl.textContent = `Room: ${msg.roomCode}`;
-    if (!game.spectating) copyRoomCodeToClipboard(msg.roomCode, { silent: true });
-    statusEl.textContent = game.spectating
-      ? `Spectating room ${msg.roomCode} | tick ${roomSync.tickRate}`
-      : `Online as ${msg.id} | tick ${roomSync.tickRate}`;
+    copyRoomCodeToClipboard(msg.roomCode, { silent: true });
+    statusEl.textContent = `Online as ${msg.id} | tick ${roomSync.tickRate}`;
     const pendingJoin = game.analytics?.pendingJoin || null;
-    if (!game.spectating && typeof window.cwTrackMetrikaGoal === 'function') {
+    if (typeof window.cwTrackMetrikaGoal === 'function') {
       const mode = pendingJoin?.mode || (joinMode === 'create' ? 'create' : 'join');
       const source = pendingJoin?.source || 'unknown';
       window.cwTrackMetrikaGoal('room_connected', {
@@ -6442,25 +5338,6 @@ message: (ev) => {
     if (msg.progressionCatalog) game.playerAuth.progressionCatalog = msg.progressionCatalog;
     if (msg.progression) game.playerAuth.progression = msg.progression;
     applyChatHistory(msg.chatHistory);
-    setCommentatorLine(
-      game.spectating ? 'Арена уже в эфире.' : 'Матч начался. Самоуверенность тоже.',
-      game.spectating
-        ? `Подглядываем за комнатой ${msg.roomCode} без права вмешаться. Смотреть безопаснее, чем участвовать.`
-        : `Комната ${msg.roomCode} загружена. Посмотрим, насколько быстро арена объяснит всем правила через боль.`,
-      game.spectating ? 'spectate_welcome' : 'welcome',
-      0,
-    );
-    joinOverlay.style.display = 'none';
-    joinOverlay.classList.remove('death-mode');
-    setDeathCinematicActive(false);
-    updateMobileControlsVisibility();
-    if (game.embedMode && game.spectating) {
-      window.parent?.postMessage({
-        type: 'cw-live-spectator',
-        status: 'welcome',
-        roomCode: String(msg.roomCode || ''),
-      }, window.location.origin);
-    }
     if (msg.me?.activeHero) {
       selectedPlayerClass = sanitizePlayerClass(msg.me.activeHero);
       localStorage.setItem(PLAYER_CLASS_STORAGE_KEY, selectedPlayerClass);
@@ -6481,14 +5358,6 @@ message: (ev) => {
     waitingForFirstStateSince = 0;
     statusEl.textContent = msg.message;
     setJoinFeedback(msg.message);
-    if (game.embedMode) {
-      window.parent?.postMessage({
-        type: 'cw-live-spectator',
-        status: 'error',
-        roomCode: String(msg.roomCode || roomCodeInput?.value || ''),
-        message: String(msg.message || ''),
-      }, window.location.origin);
-    }
     if (typeof window.cwTrackMetrikaGoal === 'function') {
       const pendingJoin = game.analytics?.pendingJoin || null;
       window.cwTrackMetrikaGoal('room_join_error', {
@@ -6505,11 +5374,7 @@ message: (ev) => {
       try {
         const redirectedOrigin = normalizeOrigin(msg.redirectUrl);
         currentWorkerOrigin = redirectedOrigin;
-        if (pendingAutoSpectate || game.spectating || game.embedMode) {
-          void sendSpectateRequest(msg.roomCode || roomCodeInput?.value || '', { skipRouting: true });
-        } else {
-          void sendJoinRequest(msg.roomCode || roomCodeInput?.value || '', null, { skipRouting: true });
-        }
+        void sendJoinRequest(msg.roomCode || roomCodeInput?.value || '', null, { skipRouting: true });
       } catch {
         statusEl.textContent = msg.message || 'Failed to switch game server.';
         setJoinFeedback(msg.message || 'Failed to switch game server.');
@@ -6529,22 +5394,15 @@ message: (ev) => {
   }
 
   if (msg.type === 'system') statusEl.textContent = msg.message;
-  if (msg.type === 'system') maybeCommentateSystemMessage(msg.message);
 
   if (msg.type === 'state') {
     waitingForFirstState = false;
     waitingForFirstStateSince = 0;
     const s = msg.payload;
-    if (game.embedMode && game.spectating) {
-      window.parent?.postMessage({
-        type: 'cw-live-spectator',
-        status: 'ready',
-        roomCode: String(s?.roomCode || game.roomCode || ''),
-        players: Array.isArray(s?.players) ? s.players.filter((p) => p && !p.isCompanion).length : 0,
-        enemies: Array.isArray(s?.enemies) ? s.enemies.length : 0,
-      }, window.location.origin);
-    }
     onStateNetSample(s.now);
+    pushNetSnapshot(s);
+    syncBulletsFromState(s);
+    processStateFx(s);
     game.state = s;
     game.world = s.world;
     game.roomCode = s.roomCode;
@@ -6554,23 +5412,15 @@ message: (ev) => {
     game.nextBossAtKills = Number(s.nextBossAtKills) || game.nextBossAtKills || 50;
     game.nextBossSpawnAt = Number(s.nextBossSpawnAt) || 0;
     game.bossAlive = Boolean(s.bossAlive);
-    game.roomDifficulty = s.roomDifficulty || game.roomDifficulty;
-    pushNetSnapshot(s);
-    syncBulletsFromState(s);
-    try {
-      processStateFx(s);
-    } catch (error) {
-      console.error('processStateFx failed', error);
-    }
     if (game.bossAlive && typeof window.cwTrackMetrikaGoalOnce === 'function') {
       window.cwTrackMetrikaGoalOnce(`boss_encounter:${s.roomCode}`, 'boss_encounter', {
         room_code: s.roomCode,
         total_enemy_kills: Number(s.totalEnemyKills) || 0,
       });
     }
+    game.roomDifficulty = s.roomDifficulty || game.roomDifficulty;
     if (s.sync) applyRoomSync(s.sync);
     roomMetaEl.textContent = `Room: ${s.roomCode}`;
-    updateInGameCommentatorFromState(s);
 
     game.sortedTrees = (s.decor?.trees || []).slice().sort((a, b) => a.y - b.y);
     updateScoreboard(s.players);
@@ -6645,36 +5495,6 @@ message: (ev) => {
         };
         const finalDeath = Boolean(me.isOut) || !Boolean(me.canRespawn);
         if (finalDeath) {
-          setCommentaryVariant([
-            {
-              title: 'Герой закончился раньше матча.',
-              text: 'Классика жанра: амбиции были огромные, полоска хп оказалась короче.',
-            },
-            {
-              title: 'Финал получился короткий, но выразительный.',
-              text: 'Арена приняла смелость к сведению и тут же оформила увольнение без выходного пособия.',
-            },
-            {
-              title: 'На этом забег официально превратился в статистику.',
-              text: 'Публика аплодирует, монстры доедают уверенность, а комментатор делает пометку: жить хотелось, но не срослось.',
-            },
-            {
-              title: 'Героизм встретился с бухгалтерией урона.',
-              text: 'Сошлись цифры, и выяснилось неприятное: входящего было больше, чем хотелось бы для дальнейшей жизни.',
-            },
-            {
-              title: 'Катка закончилась в лучших традициях арены.',
-              text: 'Шума было много, планов ещё больше, а вот запас прочности снова подвёл коллектив мечты.',
-            },
-            {
-              title: 'Очень смелое решение умереть именно здесь.',
-              text: 'Зрелищно, внезапно и с тем самым послевкусием, когда хочется винить всё, кроме собственного позиционирования.',
-            },
-          ], 'player_final_death', 6000);
-          pendingFinalDeathCommentary = {
-            title: commentatorState.lastTitle,
-            text: commentatorState.lastText,
-          };
           lockCameraForDeathSequence();
           spawnPlayerDeathBloodFx(deathResult);
           if (pendingManualExitRequested) {
@@ -6692,23 +5512,13 @@ message: (ev) => {
         const tokensLeft = Math.max(0, Number(me.reviveTokens) || 0);
         const extra = livesLeft > 0 ? (` | Lives left: ${livesLeft}`) : (tokensLeft > 0 ? (` | Tokens left: ${tokensLeft}`) : '');
         statusEl.textContent = `Downed. Respawn in ${leftSec}s${extra}`;
-        setCommentatorLine('Нокдаун без права на драматическую паузу.', `Респавн через ${leftSec}с. Отличный момент пересмотреть свои отношения с входящим уроном.`, 'player_respawn_wait', 5000);
       }
       prevMyAlive = Boolean(me.alive);
     } else {
-      if (game.spectating) {
-        const featuredPlayer = s.players.find((p) => !p.isCompanion) || null;
-        updateStatsPanel(featuredPlayer);
-        weaponMetaEl.textContent = featuredPlayer
-          ? `${featuredPlayer.name} | ${featuredPlayer.weaponLabel} | HP ${Math.max(0, Math.round(Number(featuredPlayer.hp) || 0))}/${Math.max(1, Math.round(Number(featuredPlayer.maxHp) || 1))}`
-          : 'Spectator mode';
-        if (movementMetaEl) movementMetaEl.textContent = 'Spectator mode';
-      } else {
-        updateStatsPanel(null);
-        if (movementMetaEl) movementMetaEl.textContent = '';
-      }
+      updateStatsPanel(null);
       updateJumpButtonUi(null);
       prevMyAlive = null;
+      if (movementMetaEl) movementMetaEl.textContent = '';
     }
   }
 },

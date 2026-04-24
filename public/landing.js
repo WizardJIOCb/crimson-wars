@@ -4,6 +4,35 @@ const newsGrid = document.getElementById('landing-news-grid');
 const ratingsGrid = document.getElementById('landing-ratings-grid');
 const latestRunsGrid = document.getElementById('landing-latest-runs');
 const latestRunsPager = document.getElementById('landing-latest-runs-pager');
+const liveIframe = document.getElementById('landing-live-iframe');
+const liveCanvas = document.getElementById('landing-live-canvas');
+const liveEmpty = document.getElementById('landing-live-empty');
+const liveLayout = document.querySelector('.live-run-layout');
+const liveCopyPanel = document.querySelector('.live-run-copy');
+const livePlayerPanel = document.querySelector('.live-run-player');
+const liveKicker = document.getElementById('landing-live-kicker');
+const liveTitle = document.getElementById('landing-live-title');
+const liveDescription = document.getElementById('landing-live-description');
+const liveActiveRuns = document.getElementById('landing-live-active-runs');
+const liveInGame = document.getElementById('landing-live-in-game');
+const liveRoomCode = document.getElementById('landing-live-room-code');
+const liveDuration = document.getElementById('landing-live-duration');
+const liveMode = document.getElementById('landing-live-mode');
+const livePlayers = document.getElementById('landing-live-players');
+const liveThreat = document.getElementById('landing-live-threat');
+const liveBoss = document.getElementById('landing-live-boss');
+const livePrimaryLink = document.getElementById('landing-live-primary-link');
+const liveSecondaryLink = document.getElementById('landing-live-secondary-link');
+const livePrevBtn = document.getElementById('landing-live-prev');
+const liveNextBtn = document.getElementById('landing-live-next');
+const liveSwitchStatus = document.getElementById('landing-live-switch-status');
+const liveStatusPill = document.getElementById('landing-live-status-pill');
+const liveFootline = document.getElementById('landing-live-footline');
+const liveViewers = document.getElementById('landing-live-viewers');
+const liveKills = document.getElementById('landing-live-kills');
+const liveUpdated = document.getElementById('landing-live-updated');
+const liveCommentatorTitle = document.getElementById('landing-live-commentator-title');
+const liveCommentatorText = document.getElementById('landing-live-commentator-text');
 const revealNodes = Array.from(document.querySelectorAll('.reveal'));
 const profileModal = document.getElementById('landing-profile-modal');
 const profileBody = document.getElementById('landing-profile-body');
@@ -46,6 +75,37 @@ let latestRunsPollTimer = 0;
 let latestRunsPage = 1;
 let latestRunsTotalPages = 1;
 const LATEST_RUNS_PAGE_SIZE = 3;
+let landingLivePollTimer = 0;
+let landingLiveRuntimeTimer = 0;
+let landingLiveData = null;
+let landingLiveSelectedRoomCode = '';
+let landingLiveIframeRoomCode = '';
+let landingLiveIframeWatchdog = 0;
+let landingLiveIframeReady = false;
+let landingLiveIframeProbeTimer = 0;
+let landingLiveIframeProbeStopper = 0;
+let landingLiveCanvasWrap = null;
+let landingLiveSpectatorCommentary = {
+  roomCode: '',
+  title: '',
+  text: '',
+  at: 0,
+};
+let landingCommentaryVoiceToggle = null;
+let landingCommentaryVoiceStatus = null;
+const landingCommentaryState = {
+  roomCode: '',
+  lastEventAt: new Map(),
+  lastPlayers: 0,
+  lastKills: 0,
+  lastThreatLevel: 1,
+  lastBossAlive: false,
+  lastBossCountdownBucket: 0,
+  lastLowHpCount: 0,
+  lastDownedCount: 0,
+  lastKillMilestone: 0,
+  lastPulseBucket: 0,
+};
 const HERO_LABELS = {
   cyber: 'Cyber',
   scout: 'Scout',
@@ -54,6 +114,116 @@ const HERO_LABELS = {
   medis: 'Medic',
   raider: 'Raider',
 };
+const LANDING_COMMENTARY_TTS_KEY = 'cw:landingCommentatorTtsEnabled';
+const landingCommentarySpeech = {
+  supported: typeof window !== 'undefined' && 'speechSynthesis' in window && typeof window.SpeechSynthesisUtterance === 'function',
+  enabled: false,
+  lastSpokenAt: 0,
+  activeSinceAt: 0,
+  lastKey: '',
+  lastQueuedText: '',
+  activeKey: '',
+  activeText: '',
+  pendingTimer: 0,
+  seq: 0,
+  recentKeys: new Map(),
+  queue: [],
+};
+
+try {
+  landingCommentarySpeech.enabled = localStorage.getItem(LANDING_COMMENTARY_TTS_KEY) === '1';
+} catch {
+  landingCommentarySpeech.enabled = false;
+}
+
+function composeLandingLiveLayout() {
+  if (!(liveLayout instanceof HTMLElement) || !(liveCopyPanel instanceof HTMLElement) || !(livePlayerPanel instanceof HTMLElement)) return;
+  if (liveLayout.dataset.composed === '1') return;
+
+  const canvasWrap = livePlayerPanel.querySelector('.live-run-canvas-wrap');
+  const playerFoot = livePlayerPanel.querySelector('.live-run-player-foot');
+  const commentary = livePlayerPanel.querySelector('.live-run-commentary');
+  const stats = liveCopyPanel.querySelector('.live-run-stats');
+  const flags = liveCopyPanel.querySelector('.live-run-flags');
+  const actions = liveCopyPanel.querySelector('.live-run-actions');
+  const switcher = liveCopyPanel.querySelector('.live-run-switcher');
+
+  const overview = document.createElement('div');
+  overview.className = 'live-run-overview';
+  const overviewCopy = document.createElement('div');
+  overviewCopy.className = 'live-run-overview-copy';
+  const overviewActions = document.createElement('div');
+  overviewActions.className = 'live-run-overview-actions';
+
+  const copyNodes = [liveKicker, liveTitle, liveDescription].filter((node) => node instanceof HTMLElement);
+  for (const node of copyNodes) overviewCopy.appendChild(node);
+  if (actions instanceof HTMLElement) overviewActions.appendChild(actions);
+  if (switcher instanceof HTMLElement) overviewActions.appendChild(switcher);
+  overview.appendChild(overviewCopy);
+  overview.appendChild(overviewActions);
+
+  if (canvasWrap instanceof HTMLElement) {
+    landingLiveCanvasWrap = canvasWrap;
+    if (commentary instanceof HTMLElement) {
+      canvasWrap.insertAdjacentElement('afterend', commentary);
+      commentary.insertAdjacentElement('afterend', overview);
+    } else {
+      canvasWrap.insertAdjacentElement('afterend', overview);
+    }
+  } else {
+    livePlayerPanel.appendChild(overview);
+  }
+  if (stats instanceof HTMLElement) livePlayerPanel.insertBefore(stats, playerFoot || commentary || null);
+  if (flags instanceof HTMLElement) livePlayerPanel.insertBefore(flags, playerFoot || commentary || null);
+
+  livePlayerPanel.classList.add('live-run-player-wide');
+  liveCopyPanel.remove();
+  liveLayout.dataset.composed = '1';
+
+  if (commentary instanceof HTMLElement && !commentary.querySelector('.live-run-commentary-tools')) {
+    if (!commentary.querySelector('.live-run-commentary-avatar')) {
+      const avatar = document.createElement('div');
+      avatar.className = 'live-run-commentary-avatar';
+      const portrait = document.createElement('img');
+      portrait.src = '/assets/stream/commentator-old.jpg';
+      portrait.alt = 'Комментатор арены';
+      portrait.loading = 'lazy';
+      const body = document.createElement('div');
+      body.className = 'live-run-commentary-body';
+
+      avatar.appendChild(portrait);
+
+      while (commentary.firstChild) {
+        body.appendChild(commentary.firstChild);
+      }
+      commentary.appendChild(avatar);
+      commentary.appendChild(body);
+    }
+
+    const tools = document.createElement('div');
+    tools.className = 'live-run-commentary-tools';
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'live-run-commentary-voice-btn';
+    toggle.title = 'Включить озвучку комментатора на главной';
+    const status = document.createElement('span');
+    status.className = 'live-run-commentary-voice-status';
+    tools.appendChild(toggle);
+    tools.appendChild(status);
+    const avatar = commentary.querySelector('.live-run-commentary-avatar');
+    if (avatar) avatar.appendChild(tools);
+    else {
+      const label = commentary.querySelector('.live-run-commentary-label');
+      if (label) label.insertAdjacentElement('afterend', tools);
+      else commentary.prepend(tools);
+    }
+    landingCommentaryVoiceToggle = toggle;
+    landingCommentaryVoiceStatus = status;
+  } else {
+    landingCommentaryVoiceToggle = commentary?.querySelector('.live-run-commentary-voice-btn') || null;
+    landingCommentaryVoiceStatus = commentary?.querySelector('.live-run-commentary-voice-status') || null;
+  }
+}
 
 function toggleMenu(forceOpen) {
   if (!nav || !mobileToggle) return;
@@ -134,6 +304,285 @@ hubFrame?.addEventListener('load', () => {
 });
 
 setActiveHubTab('play', { updateFrame: false, scrollIntoView: false });
+composeLandingLiveLayout();
+
+function getLandingCommentaryVoice() {
+  if (!landingCommentarySpeech.supported) return null;
+  const voices = Array.isArray(window.speechSynthesis?.getVoices?.()) ? window.speechSynthesis.getVoices() : [];
+  if (!voices.length) return null;
+  const maleNamePattern = /(pavel|aleks|alex|dmit|denis|ivan|nikol|maks|maxim|serg|mikhail|mihail|yuri|юр|иван|павел|дмит|алекс|серг|миха)/i;
+  return voices.find((voice) => /^ru(-|_|$)/i.test(String(voice.lang || '')) && maleNamePattern.test(String(voice.name || '')))
+    || voices.find((voice) => /russian/i.test(String(voice.name || '')) && maleNamePattern.test(String(voice.name || '')))
+    || voices.find((voice) => /^ru(-|_|$)/i.test(String(voice.lang || '')))
+    || voices.find((voice) => /russian/i.test(String(voice.name || '')))
+    || voices[0]
+    || null;
+}
+
+function renderLandingCommentaryVoiceUi() {
+  if (landingCommentaryVoiceToggle) {
+    landingCommentaryVoiceToggle.disabled = !landingCommentarySpeech.supported;
+    landingCommentaryVoiceToggle.classList.toggle('is-active', landingCommentarySpeech.supported && landingCommentarySpeech.enabled);
+    landingCommentaryVoiceToggle.textContent = landingCommentarySpeech.supported && landingCommentarySpeech.enabled ? 'Озвучка: вкл' : 'Озвучка: выкл';
+  }
+  if (landingCommentaryVoiceStatus) {
+    landingCommentaryVoiceStatus.textContent = !landingCommentarySpeech.supported
+      ? 'Браузер не дал speech synthesis для озвучки.'
+      : (landingCommentarySpeech.enabled ? 'Комментатор на главной говорит вслух.' : 'Нажми, чтобы включить озвучку комментатора на главной.');
+  }
+}
+
+function setLandingCommentaryVoiceEnabled(enabled) {
+  landingCommentarySpeech.enabled = Boolean(enabled) && landingCommentarySpeech.supported;
+  try {
+    localStorage.setItem(LANDING_COMMENTARY_TTS_KEY, landingCommentarySpeech.enabled ? '1' : '0');
+  } catch {
+    // ignore storage failures
+  }
+  if (landingCommentarySpeech.pendingTimer) {
+    window.clearTimeout(landingCommentarySpeech.pendingTimer);
+    landingCommentarySpeech.pendingTimer = 0;
+  }
+  if (!landingCommentarySpeech.enabled && landingCommentarySpeech.supported) {
+    landingCommentarySpeech.seq += 1;
+    landingCommentarySpeech.activeSinceAt = 0;
+    landingCommentarySpeech.lastQueuedText = '';
+    landingCommentarySpeech.activeKey = '';
+    landingCommentarySpeech.activeText = '';
+    landingCommentarySpeech.queue = [];
+    window.speechSynthesis.cancel();
+  }
+  renderLandingCommentaryVoiceUi();
+}
+
+function normalizeLandingSpeechKeyPart(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\b[a-z0-9]{5,8}\b/g, '#room')
+    .replace(/\b\d{1,2}:\d{2}\b/g, '#time')
+    .replace(/\b\d+(?:[.,]\d+)?\b/g, '#')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function pluralizeLandingSeconds(value) {
+  const n = Math.max(0, Math.abs(Number(value) || 0));
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'секунда';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'секунды';
+  return 'секунд';
+}
+
+function expandLandingSpeechText(value) {
+  return String(value || '')
+    .replace(/(\d+)\s*с\b/gi, (_, raw) => `${raw} ${pluralizeLandingSeconds(raw)}`)
+    .replace(/(\d+)\s*sec\b/gi, (_, raw) => `${raw} ${pluralizeLandingSeconds(raw)}`)
+    .replace(/Lv\s*(\d+)/gi, 'уровень $1');
+}
+
+function pluralizeLandingSeconds(value) {
+  const n = Math.max(0, Math.abs(Number(value) || 0));
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return '\u0441\u0435\u043a\u0443\u043d\u0434\u0430';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return '\u0441\u0435\u043a\u0443\u043d\u0434\u044b';
+  return '\u0441\u0435\u043a\u0443\u043d\u0434';
+}
+
+function expandLandingSpeechText(value) {
+  return String(value || '')
+    .replace(/(\d+)\s*[сc](?=[\s.,!?;:)]|$)/giu, (_, raw) => `${raw} ${pluralizeLandingSeconds(raw)}`)
+    .replace(/(\d+)\s*sec\b/gi, (_, raw) => `${raw} ${pluralizeLandingSeconds(raw)}`)
+    .replace(/Lv\s*(\d+)/gi, '\u0443\u0440\u043e\u0432\u0435\u043d\u044c $1');
+}
+
+function isLandingCommentaryUrgent(key, spokenText) {
+  const sample = `${String(key || '')} ${String(spokenText || '')}`.toLowerCase();
+  return /final_death|death|boss|downed|respawn|critical|low hp|нокаут|нокдаун|умер|смерт|босс/.test(sample);
+}
+
+function flushLandingCommentarySpeechQueue() {
+  if (!landingCommentarySpeech.supported || !landingCommentarySpeech.enabled || document.hidden) return;
+  if (landingCommentarySpeech.pendingTimer) return;
+  if (landingCommentarySpeech.activeText) return;
+  if (!landingCommentarySpeech.queue.length) return;
+  if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+    landingCommentarySpeech.pendingTimer = window.setTimeout(() => {
+      landingCommentarySpeech.pendingTimer = 0;
+      flushLandingCommentarySpeechQueue();
+    }, 80);
+    return;
+  }
+  const nextItem = landingCommentarySpeech.queue.shift();
+  if (!nextItem?.text) return;
+  const { key, text: queuedText } = nextItem;
+  const spokenText = expandLandingSpeechText(queuedText);
+  const speakSeq = ++landingCommentarySpeech.seq;
+  landingCommentarySpeech.activeSinceAt = Date.now();
+  landingCommentarySpeech.activeKey = key || '';
+  landingCommentarySpeech.activeText = spokenText;
+  const voice = getLandingCommentaryVoice();
+  const utterance = new SpeechSynthesisUtterance(spokenText);
+  if (voice) {
+    utterance.voice = voice;
+    utterance.lang = voice.lang || 'ru-RU';
+  } else {
+    utterance.lang = 'ru-RU';
+  }
+  utterance.rate = 2.36;
+  utterance.pitch = 0.94;
+  utterance.volume = 0.9;
+  utterance.onstart = () => {
+    if (speakSeq !== landingCommentarySpeech.seq) return;
+    landingCommentarySpeech.lastSpokenAt = Date.now();
+  };
+  utterance.onend = () => {
+    if (speakSeq !== landingCommentarySpeech.seq) return;
+    landingCommentarySpeech.activeSinceAt = 0;
+    landingCommentarySpeech.activeKey = '';
+    landingCommentarySpeech.activeText = '';
+    window.setTimeout(flushLandingCommentarySpeechQueue, 40);
+  };
+  utterance.onerror = () => {
+    if (speakSeq !== landingCommentarySpeech.seq) return;
+    landingCommentarySpeech.activeSinceAt = 0;
+    landingCommentarySpeech.activeKey = '';
+    landingCommentarySpeech.activeText = '';
+    window.setTimeout(flushLandingCommentarySpeechQueue, 40);
+  };
+  try {
+    if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+    window.speechSynthesis.speak(utterance);
+  } catch {
+    landingCommentarySpeech.activeSinceAt = 0;
+    landingCommentarySpeech.activeKey = '';
+    landingCommentarySpeech.activeText = '';
+    return;
+  }
+}
+
+function maybeSpeakLandingCommentary(title, text, roomCode = '') {
+  if (!landingCommentarySpeech.supported || !landingCommentarySpeech.enabled || document.hidden) return;
+  const spokenText = expandLandingSpeechText(`${String(title || '').trim()}. ${String(text || '').trim()}`.trim());
+  if (!spokenText) return;
+  const silentFallbackPattern = /сейчас в эфире тишина|эфир есть, камеры рядом нет|arena took a smoke break|signal lost/i;
+  if (silentFallbackPattern.test(spokenText)) return;
+  const key = [
+    String(roomCode || '').trim().toUpperCase(),
+    normalizeLandingSpeechKeyPart(title),
+    normalizeLandingSpeechKeyPart(text),
+  ].join('|');
+  const now = Date.now();
+  const recentAt = Math.max(0, Number(landingCommentarySpeech.recentKeys.get(key)) || 0);
+  if (recentAt && (now - recentAt) < 14000) return;
+  if (landingCommentarySpeech.activeKey === key) return;
+  if (landingCommentarySpeech.queue.some((item) => item?.key === key)) return;
+  const urgent = isLandingCommentaryUrgent(key, spokenText);
+  landingCommentarySpeech.lastKey = key;
+  landingCommentarySpeech.lastQueuedText = spokenText;
+  landingCommentarySpeech.recentKeys.set(key, now);
+  for (const [recentKey, stamp] of landingCommentarySpeech.recentKeys.entries()) {
+    if ((now - Math.max(0, Number(stamp) || 0)) > 45000) landingCommentarySpeech.recentKeys.delete(recentKey);
+  }
+  if (landingCommentarySpeech.recentKeys.size > 32) {
+    const oldestKey = landingCommentarySpeech.recentKeys.keys().next().value;
+    if (oldestKey) landingCommentarySpeech.recentKeys.delete(oldestKey);
+  }
+  if (urgent) {
+    landingCommentarySpeech.queue = [{ key, text: spokenText }];
+    if (landingCommentarySpeech.activeText) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {
+        // ignore cancel failures
+      }
+      landingCommentarySpeech.activeSinceAt = 0;
+      landingCommentarySpeech.activeKey = '';
+      landingCommentarySpeech.activeText = '';
+    }
+  } else if (landingCommentarySpeech.activeText) {
+    landingCommentarySpeech.queue = [{ key, text: spokenText }];
+  } else {
+    landingCommentarySpeech.queue.push({ key, text: spokenText });
+    if (landingCommentarySpeech.queue.length > 2) {
+      landingCommentarySpeech.queue.splice(0, landingCommentarySpeech.queue.length - 2);
+    }
+  }
+  if (landingCommentarySpeech.pendingTimer) {
+    window.clearTimeout(landingCommentarySpeech.pendingTimer);
+    landingCommentarySpeech.pendingTimer = 0;
+  }
+  landingCommentarySpeech.pendingTimer = window.setTimeout(() => {
+    landingCommentarySpeech.pendingTimer = 0;
+    flushLandingCommentarySpeechQueue();
+  }, urgent ? 10 : 25);
+}
+
+function buildLiveSpectatorUrl(roomCode) {
+  const normalizedRoomCode = String(roomCode || '').trim().toUpperCase();
+  const url = new URL('/play', window.location.origin);
+  if (normalizedRoomCode) {
+    url.searchParams.set('room', normalizedRoomCode);
+    url.searchParams.set('mode', 'spectate');
+  }
+  return url.toString();
+}
+
+function updateLandingFullscreenButtonLabel() {
+  if (!(liveSecondaryLink instanceof HTMLElement)) return;
+  const isFullscreen = document.fullscreenElement === landingLiveCanvasWrap;
+  liveSecondaryLink.textContent = isFullscreen ? 'Свернуть экран' : 'На весь экран';
+}
+
+function openLandingLiveFullscreen(event) {
+  if (event) event.preventDefault();
+  if (!(landingLiveCanvasWrap instanceof HTMLElement)) return;
+  if (document.fullscreenElement === landingLiveCanvasWrap) {
+    void document.exitFullscreen?.();
+    return;
+  }
+  void landingLiveCanvasWrap.requestFullscreen?.();
+}
+
+liveSecondaryLink?.addEventListener('click', openLandingLiveFullscreen);
+document.addEventListener('fullscreenchange', updateLandingFullscreenButtonLabel);
+updateLandingFullscreenButtonLabel();
+landingCommentaryVoiceToggle?.addEventListener('click', () => {
+  setLandingCommentaryVoiceEnabled(!landingCommentarySpeech.enabled);
+});
+if (landingCommentarySpeech.supported) {
+  if (typeof window.speechSynthesis?.addEventListener === 'function') {
+    window.speechSynthesis.addEventListener('voiceschanged', renderLandingCommentaryVoiceUi);
+  } else {
+    window.speechSynthesis.onvoiceschanged = renderLandingCommentaryVoiceUi;
+  }
+}
+renderLandingCommentaryVoiceUi();
+
+window.setInterval(() => {
+  if (!landingCommentarySpeech.supported || !landingCommentarySpeech.enabled) return;
+  const activeForMs = Date.now() - Math.max(0, landingCommentarySpeech.activeSinceAt || 0);
+  const speechBusy = Boolean(window.speechSynthesis.speaking || window.speechSynthesis.pending);
+  if (landingCommentarySpeech.activeText && !speechBusy && activeForMs > 1200) {
+    landingCommentarySpeech.activeSinceAt = 0;
+    landingCommentarySpeech.activeKey = '';
+    landingCommentarySpeech.activeText = '';
+    flushLandingCommentarySpeechQueue();
+    return;
+  }
+  if (landingCommentarySpeech.activeText && speechBusy && activeForMs > 25000) {
+    try {
+      window.speechSynthesis.cancel();
+    } catch {
+      // ignore cancel failures
+    }
+    landingCommentarySpeech.activeSinceAt = 0;
+    landingCommentarySpeech.activeKey = '';
+    landingCommentarySpeech.activeText = '';
+    window.setTimeout(flushLandingCommentarySpeechQueue, 60);
+  }
+}, 1200);
 
 function escapeHtml(value) {
   return String(value || '')
@@ -142,6 +591,88 @@ function escapeHtml(value) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+}
+
+function setLandingCommentaryRuntime(title, text, eventKey = 'generic', cooldownMs = 5000) {
+  const now = Date.now();
+  const key = String(eventKey || 'generic').trim().toLowerCase();
+  const lastAt = Math.max(0, Number(landingCommentaryState.lastEventAt.get(key)) || 0);
+  if (cooldownMs > 0 && now - lastAt < cooldownMs) return null;
+  const nextTitle = String(title || '').trim();
+  const nextText = String(text || '').trim();
+  if (!nextTitle || !nextText) return null;
+  landingCommentaryState.lastEventAt.set(key, now);
+  return { title: nextTitle, text: nextText };
+}
+
+function getExtraLandingCommentaryVariants(eventKey = 'generic') {
+  const key = String(eventKey || 'generic').toLowerCase();
+  if (key.includes('boss_countdown')) return [
+    { title: 'Босс уже почти в эфире.', text: 'Последние секунды перед большим разговором. Игроки делают вид, что это просто ещё один рабочий момент.' },
+    { title: 'Отсчёт звучит неприятно бодро.', text: 'Арена заранее предупреждает, чтобы паника успела красиво уложиться в кадр.' },
+    { title: 'До начальства рукой подать.', text: 'Если у кого-то есть план, ему пора перестать быть абстрактным понятием.' },
+    { title: 'Портал готовит крупную неприятность.', text: 'Зрители устраиваются удобнее, игроки мысленно ищут выход, но выход сегодня занят.' },
+  ];
+  if (key.includes('kills_') || key.includes('kill_milestone')) return [
+    { title: 'Счётчик врагов растёт бодро.', text: 'Матч производит опыт, шум и уверенность, которая может закончиться в любой неудобный момент.' },
+    { title: 'Темп убийств держится спортивный.', text: 'Арена выглядит как отчёт о переработке проблем, только с более громкими спецэффектами.' },
+    { title: 'Враги уходят пачками.', text: 'Комментатор сохраняет профессионализм, но внутри уже хлопает в ладоши.' },
+    { title: 'На табло снова красивые цифры.', text: 'Цифры красивые, ситуация спорная, зрелище отличное. Всё как мы любим.' },
+  ];
+  if (key.includes('low_hp')) return [
+    { title: 'HP просело до драматургии.', text: 'Полоска здоровья сейчас такая тонкая, что её можно использовать как сюжетный поворот.' },
+    { title: 'Кто-то живёт на вдохе.', text: 'Очень хрупкий момент: один неверный шаг, и комментатору придётся доставать траурный сарказм.' },
+    { title: 'Здоровье ушло в режим экономии.', text: 'Аптечки в такие моменты выглядят не предметом, а религиозной надеждой.' },
+  ];
+  if (key.includes('threat_up')) return [
+    { title: 'Угроза снова полезла вверх.', text: 'Матч решил, что зрителям слишком спокойно. Смелая позиция, неприятная реализация.' },
+    { title: 'Арена добавила давления.', text: 'Теперь всё то же самое, только быстрее, злее и с меньшим уважением к личному пространству.' },
+    { title: 'Сложность прибавила характер.', text: 'Игроки держатся, но арена явно хочет перейти на разговор повышенным уроном.' },
+  ];
+  if (key.includes('pulse')) return [
+    { title: 'Эфир всё ещё живой.', text: 'Матч держится на упрямстве, реакции и небольшом количестве решений, которые лучше не разбирать после игры.' },
+    { title: 'Забег набрал стаж.', text: 'Это уже не короткий бой, это отношения с ареной: громкие, нервные и почему-то продолжаются.' },
+    { title: 'Время идёт, шоу не сдаётся.', text: 'Комментатор уважает такую стойкость. Арена, судя по всему, воспринимает её как личный вызов.' },
+  ];
+  return [];
+}
+
+function pickLandingCommentaryVariant(options, eventKey = 'generic', cooldownMs = 5000) {
+  const list = [...(Array.isArray(options) ? options.filter(Boolean) : []), ...getExtraLandingCommentaryVariants(eventKey)];
+  if (!list.length) return null;
+  const selected = list[Math.floor(Math.random() * list.length)] || null;
+  if (!selected) return null;
+  return setLandingCommentaryRuntime(selected.title, selected.text, eventKey, cooldownMs);
+}
+
+function getLandingCommentaryPlayerLabel(featuredRun) {
+  const previewPlayers = Array.isArray(featuredRun?.preview?.players) ? featuredRun.preview.players : [];
+  const namedPlayers = previewPlayers
+    .map((player) => String(player?.name || '').trim())
+    .filter(Boolean);
+  if (namedPlayers.length > 0) {
+    const selected = namedPlayers[Math.floor(Math.random() * namedPlayers.length)] || namedPlayers[0];
+    return `Игрок ${selected}`;
+  }
+  return 'Один из бойцов';
+}
+
+function personalizeLandingCommentary(commentary, featuredRun) {
+  if (!commentary || !featuredRun) return commentary;
+  const roomCode = String(featuredRun?.code || '').trim();
+  if (!roomCode) return commentary;
+  const playerLabel = getLandingCommentaryPlayerLabel(featuredRun);
+  const replaceRoomMentions = (value) => String(value || '')
+    .replaceAll(`PvP-комната ${roomCode}`, playerLabel)
+    .replaceAll(`PvP-\u0420\u0454\u0420\u0455\u0420\u0458\u0420\u0405\u0420\u00b0\u0421\u201a\u0420\u00b0 ${roomCode}`, playerLabel)
+    .replaceAll(`Комната ${roomCode}`, playerLabel)
+    .replaceAll(`\u0420\u0459\u0420\u0455\u0420\u0458\u0420\u0405\u0420\u00b0\u0421\u201a\u0420\u00b0 ${roomCode}`, playerLabel)
+    .replaceAll(roomCode, playerLabel);
+  return {
+    ...commentary,
+    title: replaceRoomMentions(commentary.title),
+    text: replaceRoomMentions(commentary.text),
+  };
 }
 
 function formatNewsDate(value) {
@@ -205,6 +736,297 @@ function formatRunAgo(value) {
   if (diffSec < 3600) return `${Math.floor(diffSec / 60)} \u043c\u0438\u043d. \u043d\u0430\u0437\u0430\u0434`;
   if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} \u0447. \u043d\u0430\u0437\u0430\u0434`;
   return `${Math.floor(diffSec / 86400)} \u0434. \u043d\u0430\u0437\u0430\u0434`;
+}
+
+function formatLiveDuration(value) {
+  const totalSec = Math.max(0, Math.floor(Number(value) || 0));
+  const hours = Math.floor(totalSec / 3600);
+  const minutes = Math.floor((totalSec % 3600) / 60);
+  const seconds = totalSec % 60;
+  if (hours > 0) return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function formatLiveUpdatedLabel(value) {
+  const stamp = Math.max(0, Number(value) || 0);
+  if (!stamp) return '\u0442\u043e\u043b\u044c\u043a\u043e \u0447\u0442\u043e';
+  const diffSec = Math.max(0, Math.round((Date.now() - stamp) / 1000));
+  if (diffSec < 4) return '\u0442\u043e\u043b\u044c\u043a\u043e \u0447\u0442\u043e';
+  if (diffSec < 60) return `${diffSec} \u0441\u0435\u043a. \u043d\u0430\u0437\u0430\u0434`;
+  return `${Math.floor(diffSec / 60)} \u043c\u0438\u043d. \u043d\u0430\u0437\u0430\u0434`;
+}
+
+function pickLandingCommentary(featuredRun, payload) {
+  if (!featuredRun?.preview) {
+    if (Math.max(0, Number(payload?.activeRuns) || 0) > 0) {
+      return {
+        title: 'Эфир есть, камеры рядом нет.',
+        text: 'Матчи уже идут, просто этот сервер сегодня играет в скромность. Пока можно посмотреть свежий реплей и сделать вид, что так и задумано.',
+      };
+    }
+    return {
+      title: 'Арена взяла перекур.',
+      text: 'Сейчас в эфире тишина. Подозрительно, но временно. Первый же смельчак разбудит этот блок.',
+    };
+  }
+
+  const players = Math.max(0, Number(featuredRun.players) || 0);
+  const kills = Math.max(0, Number(featuredRun.totalEnemyKills) || 0);
+  const difficulty = Math.max(1, Number(featuredRun.roomDifficulty?.level) || 1);
+  const bossAlive = Boolean(featuredRun.bossAlive);
+  const mode = String(featuredRun.gameMode || '').toLowerCase();
+
+  if (bossAlive) {
+    return {
+      title: 'На арене босс. Всем сделать страшные лица.',
+      text: `Комната ${featuredRun.code} уже дожила до босса, а значит у игроков закончилась спокойная жизнь и началась настоящая работа по выживанию.`,
+    };
+  }
+  if (mode === 'pvp' && players >= 4) {
+    return {
+      title: 'Люди снова решили, что друг другу они главные монстры.',
+      text: `PvP-комната ${featuredRun.code} уже собрала ${players} игроков. Вежливость отменена, сарказм и хэдшоты включены.`,
+    };
+  }
+  if (difficulty >= 7) {
+    return {
+      title: 'Угроза уже выросла, а здравый смысл нет.',
+      text: `Текущая катка держится достаточно долго, чтобы игра начала душить красиво: уровень угрозы уже ${difficulty}, а мобам всё ещё мало.`,
+    };
+  }
+  if (kills >= 40) {
+    return {
+      title: 'Карта уже завалена трофеями и плохими решениями.',
+      text: `В этой комнате набили уже ${kills} киллов. До босса рукой подать, если руку не откусит следующая волна.`,
+    };
+  }
+  if (players >= 3) {
+    return {
+      title: 'Пати жива. Сомнительно, но пока жива.',
+      text: `В эфире ${players} игрока, и они всё ещё не развалились. Для Crimson Wars это уже звучит как дисциплина и маленькое чудо.`,
+    };
+  }
+  return {
+    title: 'Один герой, толпа чудовищ и ноль уважения к рискам.',
+    text: `Комната ${featuredRun.code} пока выглядит как классический забег на упрямстве: одинокий темп, растущая угроза и явное нежелание уходить живым пораньше.`,
+  };
+}
+
+function pickLandingCommentaryLive(featuredRun, payload) {
+  if (!featuredRun?.preview) {
+    landingCommentaryState.roomCode = '';
+    landingCommentaryState.lastEventAt.clear();
+    landingCommentaryState.lastPlayers = 0;
+    landingCommentaryState.lastKills = 0;
+    landingCommentaryState.lastThreatLevel = 1;
+    landingCommentaryState.lastBossAlive = false;
+    landingCommentaryState.lastBossCountdownBucket = 0;
+    landingCommentaryState.lastLowHpCount = 0;
+    landingCommentaryState.lastDownedCount = 0;
+    landingCommentaryState.lastKillMilestone = 0;
+    landingCommentaryState.lastPulseBucket = 0;
+    return pickLandingCommentary(featuredRun, payload);
+  }
+
+  const players = Math.max(0, Number(featuredRun.players) || 0);
+  const kills = Math.max(0, Number(featuredRun.totalEnemyKills) || 0);
+  const difficulty = Math.max(1, Number(featuredRun.roomDifficulty?.level) || 1);
+  const bossAlive = Boolean(featuredRun.bossAlive);
+  const mode = String(featuredRun.gameMode || '').toLowerCase();
+  const preview = featuredRun.preview || {};
+  const previewPlayers = Array.isArray(preview.players) ? preview.players : [];
+  const now = Math.max(0, Number(preview.now) || Number(payload?.now) || Date.now());
+  const startedAt = Math.max(0, Number(featuredRun.startedAt) || now);
+  const matchSec = Math.max(0, Math.floor((now - startedAt) / 1000));
+  const lowHpCount = previewPlayers.filter((player) => {
+    const hp = Math.max(0, Number(player?.hp) || 0);
+    const maxHp = Math.max(1, Number(player?.maxHp) || 1);
+    return hp > 0 && (hp / maxHp) <= 0.35;
+  }).length;
+  const downedCount = previewPlayers.filter((player) => Math.max(0, Number(player?.hp) || 0) <= 0).length;
+  const bossEtaMs = Math.max(0, Number(preview.nextBossSpawnAt) || 0) - now;
+  const bossEtaSec = bossAlive ? 0 : Math.max(0, Math.ceil(bossEtaMs / 1000));
+  const bossCountdownBucket = bossAlive ? 0 : (bossEtaSec <= 4 ? 4 : bossEtaSec <= 8 ? 8 : bossEtaSec <= 14 ? 14 : 0);
+  const killMilestone = Math.floor(kills / 10);
+  const pulseBucket = Math.floor(matchSec / 18);
+  const roomCode = String(featuredRun.code || '').trim().toUpperCase();
+
+  if (landingCommentaryState.roomCode !== roomCode) {
+    landingCommentaryState.roomCode = roomCode;
+    landingCommentaryState.lastEventAt.clear();
+    landingCommentaryState.lastPlayers = players;
+    landingCommentaryState.lastKills = kills;
+    landingCommentaryState.lastThreatLevel = difficulty;
+    landingCommentaryState.lastBossAlive = bossAlive;
+    landingCommentaryState.lastBossCountdownBucket = bossCountdownBucket;
+    landingCommentaryState.lastLowHpCount = lowHpCount;
+    landingCommentaryState.lastDownedCount = downedCount;
+    landingCommentaryState.lastKillMilestone = killMilestone;
+    landingCommentaryState.lastPulseBucket = pulseBucket;
+  }
+
+  if (!landingCommentaryState.lastBossAlive && bossAlive) {
+    landingCommentaryState.lastBossAlive = bossAlive;
+    return pickLandingCommentaryVariant([
+      {
+        title: 'Босс уже на сцене. Всем сделать страшные лица.',
+        text: `Комната ${featuredRun.code} дошла до той части шоу, где игра перестаёт шутить и начинает проверять, кто тут герой, а кто просто удачно бегал кругами.`,
+      },
+      {
+        title: 'На арену вышло начальство.',
+        text: `Босс уже в эфире, а значит у игроков закончилась спокойная жизнь и началась полноценная работа по выживанию под давлением.`,
+      },
+    ], 'boss_spawn', 9000) || pickLandingCommentary(featuredRun, payload);
+  }
+
+  if (bossCountdownBucket > 0 && bossCountdownBucket !== landingCommentaryState.lastBossCountdownBucket) {
+    landingCommentaryState.lastBossCountdownBucket = bossCountdownBucket;
+    const eventCommentary = pickLandingCommentaryVariant([
+      {
+        title: `До босса около ${bossEtaSec} секунд.`,
+        text: 'Паника пока ещё добровольная, но матч уже уверенно подталкивает игроков к очень нервным решениям.',
+      },
+      {
+        title: `Босс почти у двери: ${bossEtaSec}с.`,
+        text: 'Тем, кто хотел ещё немного спокойно пофармить, пора признать очевидное: спокойствие здесь было временной ошибкой.',
+      },
+    ], `boss_countdown_${bossCountdownBucket}`, 3200);
+    if (eventCommentary) return eventCommentary;
+  } else if (!bossAlive) {
+    landingCommentaryState.lastBossCountdownBucket = bossCountdownBucket;
+  }
+
+  if (downedCount > landingCommentaryState.lastDownedCount) {
+    landingCommentaryState.lastDownedCount = downedCount;
+    const eventCommentary = pickLandingCommentaryVariant([
+      {
+        title: 'На арене пошли падения без лишней скромности.',
+        text: `Сейчас лежат уже ${downedCount}. Команда тестирует старый принцип: сначала рискуем, потом героически разгребаем последствия.`,
+      },
+      {
+        title: 'Кто-то прилёг прямо в прямом эфире.',
+        text: `Минус вертикальное положение у ${downedCount} бойцов. Красиво, тревожно и очень по-кримсоновски.`,
+      },
+    ], 'downed_players', 4200);
+    if (eventCommentary) return eventCommentary;
+  } else {
+    landingCommentaryState.lastDownedCount = downedCount;
+  }
+
+  if (lowHpCount > landingCommentaryState.lastLowHpCount) {
+    landingCommentaryState.lastLowHpCount = lowHpCount;
+    const eventCommentary = pickLandingCommentaryVariant([
+      {
+        title: 'HP просел, улыбки тоже.',
+        text: `На грани уже ${lowHpCount} игроков. Полоска здоровья снова напоминает, что она здесь не для декора, а для драм.`,
+      },
+      {
+        title: 'Пошёл режим “живём на честном слове”.',
+        text: `С низким HP сейчас ${lowHpCount} бойцов. Аптечки снова выглядят как политическое обещание: хочется верить, но гарантий никаких.`,
+      },
+    ], 'low_hp_spike', 4000);
+    if (eventCommentary) return eventCommentary;
+  } else {
+    landingCommentaryState.lastLowHpCount = lowHpCount;
+  }
+
+  if (players !== landingCommentaryState.lastPlayers && landingCommentaryState.lastPlayers > 0) {
+    const morePlayers = players > landingCommentaryState.lastPlayers;
+    landingCommentaryState.lastPlayers = players;
+    const eventCommentary = morePlayers
+      ? pickLandingCommentaryVariant([
+          {
+            title: 'В эфир влетели новые лица.',
+            text: `Теперь в комнате ${players} игроков. Отлично: шансов на координацию чуть больше, а на хаос всё ещё значительно больше.`,
+          },
+          {
+            title: 'Комната стала многолюднее и подозрительнее.',
+            text: `Состав вырос до ${players} человек. У арены появился свежий материал для ошибок, спасений и зрительских вздохов.`,
+          },
+        ], 'players_up', 5000)
+      : pickLandingCommentaryVariant([
+          {
+            title: 'Состав проредило без благодарственной речи.',
+            text: `Игроков осталось ${players}. Комната стала тише, но безопаснее от этого, как обычно, не стала.`,
+          },
+          {
+            title: 'Нас стало меньше, нервов тоже.',
+            text: `Сейчас в эфире ${players} игроков. Арена методично сокращает штат добровольцев на эту мясорубку.`,
+          },
+        ], 'players_down', 5000);
+    if (eventCommentary) return eventCommentary;
+  }
+
+  if (difficulty > landingCommentaryState.lastThreatLevel) {
+    landingCommentaryState.lastThreatLevel = difficulty;
+    const eventCommentary = pickLandingCommentaryVariant([
+      {
+        title: `Угроза выросла до ${difficulty}.`,
+        text: 'Матч решил, что участникам жилось слишком спокойно. Теперь враги злее, темп гуще, а права на расслабление больше не существует.',
+      },
+      {
+        title: `Арена подкрутила давление до Lv${difficulty}.`,
+        text: 'Игра снова инвестирует в стресс. Монстры получили повод верить в себя, а игроки получили ещё один повод сомневаться.',
+      },
+    ], 'threat_up', 6000);
+    if (eventCommentary) return eventCommentary;
+  }
+
+  if (killMilestone > landingCommentaryState.lastKillMilestone && kills >= 10) {
+    landingCommentaryState.lastKillMilestone = killMilestone;
+    const eventCommentary = pickLandingCommentaryVariant([
+      {
+        title: `${kills} киллов уже в эфире.`,
+        text: 'Счётчик монстров бодро растёт, а у арены всё ещё хватает наглости делать вид, что это только разминка.',
+      },
+      {
+        title: `Комната уже насобирала ${kills} убийств.`,
+        text: 'Темп хороший, манеры спорные, результат зрелищный. Именно ради этого люди и включают живые забеги.',
+      },
+      {
+        title: `${kills} врагов убрано с повестки.`,
+        text: 'Карта постепенно заполняется опытом, лутом и последствиями решений, принятых на повышенном адреналине.',
+      },
+    ], `kills_${killMilestone}`, 5200);
+    if (eventCommentary) return eventCommentary;
+  }
+
+  if (pulseBucket > landingCommentaryState.lastPulseBucket) {
+    landingCommentaryState.lastPulseBucket = pulseBucket;
+    const eventCommentary = pickLandingCommentaryVariant([
+      {
+        title: `Матч держится уже ${matchSec} секунд.`,
+        text: 'Для этой арены это уже полноценные отношения: много напряжения, мало доверия и ни капли стабильности.',
+      },
+      {
+        title: `${matchSec} секунд чистого упрямства.`,
+        text: `Комната ${featuredRun.code} пока не развалилась, и это уже звучит как серьёзное достижение с лёгким привкусом безрассудства.`,
+      },
+      {
+        title: 'Эфир продолжает исправно поставлять драму.',
+        text: `Забег живёт уже ${matchSec} секунд и всё ещё уверенно производит монстров, панику и крайне сомнительные, но эффектные решения.`,
+      },
+    ], `pulse_${pulseBucket}`, 6500);
+    if (eventCommentary) return eventCommentary;
+  }
+
+  landingCommentaryState.lastPlayers = players;
+  landingCommentaryState.lastKills = kills;
+  landingCommentaryState.lastThreatLevel = difficulty;
+  landingCommentaryState.lastBossAlive = bossAlive;
+  landingCommentaryState.lastLowHpCount = lowHpCount;
+  landingCommentaryState.lastDownedCount = downedCount;
+  landingCommentaryState.lastKillMilestone = killMilestone;
+  landingCommentaryState.lastPulseBucket = pulseBucket;
+
+  if (mode === 'pvp' && players >= 4) {
+    return {
+      title: 'Люди снова решили, что главный монстр здесь кто-то из них.',
+      text: `PvP-комната ${featuredRun.code} уже собрала ${players} игроков. Вежливость отключена, сарказм и хэдшоты включены.`,
+    };
+  }
+
+  return pickLandingCommentary(featuredRun, payload);
 }
 
 function buildReplayUrl(run) {
@@ -533,6 +1355,572 @@ function renderLatestRuns(runs) {
   renderLatestRunsPager();
 }
 
+function getLivePlayerColor(playerClass) {
+  const key = String(playerClass || '').trim().toLowerCase();
+  if (key === 'scout') return '#57d3ff';
+  if (key === 'shadow') return '#c18cff';
+  if (key === 'medic' || key === 'medis') return '#7dffb2';
+  if (key === 'raider') return '#ffbf5f';
+  return '#ff6f61';
+}
+
+function setLiveStatusPill(state, label) {
+  if (!liveStatusPill) return;
+  liveStatusPill.classList.remove('is-live', 'is-waiting');
+  liveStatusPill.classList.add(state === 'live' ? 'is-live' : 'is-waiting');
+  liveStatusPill.textContent = label;
+}
+
+function clearLivePreview() {
+  if (liveIframe instanceof HTMLIFrameElement) {
+    liveIframe.classList.add('is-hidden');
+    if (landingLiveIframeRoomCode) {
+      liveIframe.removeAttribute('src');
+      landingLiveIframeRoomCode = '';
+    }
+    landingLiveIframeReady = false;
+  }
+  if (landingLiveIframeProbeTimer) {
+    window.clearInterval(landingLiveIframeProbeTimer);
+    landingLiveIframeProbeTimer = 0;
+  }
+  if (landingLiveIframeProbeStopper) {
+    window.clearTimeout(landingLiveIframeProbeStopper);
+    landingLiveIframeProbeStopper = 0;
+  }
+  if (liveCanvas instanceof HTMLCanvasElement) liveCanvas.classList.remove('is-hidden');
+  if (!(liveCanvas instanceof HTMLCanvasElement)) return;
+  const ctx = liveCanvas.getContext('2d');
+  if (!ctx) return;
+  ctx.clearRect(0, 0, liveCanvas.width, liveCanvas.height);
+  ctx.fillStyle = '#0a0507';
+  ctx.fillRect(0, 0, liveCanvas.width, liveCanvas.height);
+}
+
+function setLandingLiveFallbackArt(enabled) {
+  if (landingLiveCanvasWrap instanceof HTMLElement) {
+    landingLiveCanvasWrap.classList.toggle('has-fallback-art', Boolean(enabled));
+  }
+  if (liveCanvas instanceof HTMLCanvasElement) {
+    liveCanvas.classList.toggle('is-hidden', Boolean(enabled));
+  }
+}
+
+function getLiveIframeSpectatorState() {
+  if (!(liveIframe instanceof HTMLIFrameElement)) return null;
+  try {
+    const frameWindow = liveIframe.contentWindow || null;
+    const frameDocument = liveIframe.contentDocument || frameWindow?.document || null;
+    const spectatorGame = frameWindow?.cwGame || null;
+    const stateRoomCode = String(spectatorGame?.state?.roomCode || spectatorGame?.roomCode || '').trim().toUpperCase();
+    const overlayEl = frameDocument?.getElementById?.('join-overlay') || null;
+    const gameCanvasEl = frameDocument?.getElementById?.('game') || null;
+    const hasState = Boolean(spectatorGame?.state);
+    return {
+      frameWindow,
+      frameDocument,
+      spectatorGame,
+      stateRoomCode,
+      overlayEl,
+      gameCanvasEl,
+      hasState,
+      matchesRoom: Boolean(stateRoomCode && stateRoomCode === landingLiveIframeRoomCode),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function forceLiveIframeReady(frameState) {
+  const state = frameState || getLiveIframeSpectatorState();
+  if (!state || !state.hasState || !state.matchesRoom) return false;
+  try {
+    if (state.overlayEl instanceof HTMLElement) state.overlayEl.style.display = 'none';
+    if (state.gameCanvasEl instanceof HTMLElement) state.gameCanvasEl.classList.remove('hidden');
+    if (typeof state.frameWindow?.updateHudVisibility === 'function') {
+      state.frameWindow.updateHudVisibility(false);
+    }
+    state.frameWindow?.dispatchEvent?.(new Event('resize'));
+  } catch {
+    // Best effort: even if forcing UI visibility fails, we can still show the iframe.
+  }
+  landingLiveIframeReady = true;
+  if (liveIframe instanceof HTMLIFrameElement) liveIframe.classList.remove('is-hidden');
+  if (liveCanvas instanceof HTMLCanvasElement) liveCanvas.classList.add('is-hidden');
+  if (landingLiveIframeProbeTimer) {
+    window.clearInterval(landingLiveIframeProbeTimer);
+    landingLiveIframeProbeTimer = 0;
+  }
+  if (landingLiveIframeProbeStopper) {
+    window.clearTimeout(landingLiveIframeProbeStopper);
+    landingLiveIframeProbeStopper = 0;
+  }
+  if (landingLiveIframeWatchdog) {
+    window.clearTimeout(landingLiveIframeWatchdog);
+    landingLiveIframeWatchdog = 0;
+  }
+  return true;
+}
+
+function updateLiveIframe(roomCode) {
+  if (!(liveIframe instanceof HTMLIFrameElement)) return false;
+  const normalizedRoomCode = String(roomCode || '').trim().toUpperCase();
+  if (!normalizedRoomCode) {
+    liveIframe.classList.add('is-hidden');
+    liveIframe.removeAttribute('src');
+    landingLiveIframeRoomCode = '';
+    landingLiveSpectatorCommentary = { roomCode: '', title: '', text: '', at: 0 };
+    if (liveCanvas instanceof HTMLCanvasElement) liveCanvas.classList.remove('is-hidden');
+    return false;
+  }
+  if (landingLiveIframeRoomCode !== normalizedRoomCode) {
+    const url = new URL('/play', window.location.origin);
+    url.searchParams.set('room', normalizedRoomCode);
+    url.searchParams.set('mode', 'spectate');
+    url.searchParams.set('embed', '1');
+    url.searchParams.set('liveEmbedBuild', '20260424live1');
+    liveIframe.src = url.toString();
+    landingLiveIframeRoomCode = normalizedRoomCode;
+    landingLiveSpectatorCommentary = { roomCode: normalizedRoomCode, title: '', text: '', at: 0 };
+    landingLiveIframeReady = false;
+    liveIframe.classList.add('is-hidden');
+    if (liveCanvas instanceof HTMLCanvasElement) liveCanvas.classList.remove('is-hidden');
+    if (landingLiveIframeProbeTimer) {
+      window.clearInterval(landingLiveIframeProbeTimer);
+      landingLiveIframeProbeTimer = 0;
+    }
+    if (landingLiveIframeProbeStopper) {
+      window.clearTimeout(landingLiveIframeProbeStopper);
+      landingLiveIframeProbeStopper = 0;
+    }
+    landingLiveIframeProbeTimer = window.setInterval(() => {
+      const frameState = getLiveIframeSpectatorState();
+      if (!frameState || !frameState.matchesRoom) return;
+      if (frameState.hasState) forceLiveIframeReady(frameState);
+    }, 300);
+    if (landingLiveIframeWatchdog) window.clearTimeout(landingLiveIframeWatchdog);
+    landingLiveIframeWatchdog = window.setTimeout(() => {
+      if (!landingLiveIframeReady) {
+        liveIframe.classList.add('is-hidden');
+        if (liveCanvas instanceof HTMLCanvasElement) liveCanvas.classList.remove('is-hidden');
+      }
+    }, 2200);
+    landingLiveIframeProbeStopper = window.setTimeout(() => {
+      if (landingLiveIframeProbeTimer) {
+        window.clearInterval(landingLiveIframeProbeTimer);
+        landingLiveIframeProbeTimer = 0;
+      }
+      landingLiveIframeProbeStopper = 0;
+    }, 15000);
+  }
+  if (landingLiveIframeReady) {
+    liveIframe.classList.remove('is-hidden');
+    if (liveCanvas instanceof HTMLCanvasElement) liveCanvas.classList.add('is-hidden');
+    return true;
+  }
+  liveIframe.classList.add('is-hidden');
+  if (liveCanvas instanceof HTMLCanvasElement) liveCanvas.classList.remove('is-hidden');
+  return false;
+}
+
+window.addEventListener('message', (event) => {
+  if (event.origin !== window.location.origin) return;
+  const payload = event.data;
+  if (!payload || payload.type !== 'cw-live-spectator') return;
+  const roomCode = String(payload.roomCode || '').trim().toUpperCase();
+  if (!roomCode || roomCode !== landingLiveIframeRoomCode) return;
+  if (payload.status === 'commentary') {
+    landingLiveSpectatorCommentary = {
+      roomCode,
+      title: String(payload.title || '').trim(),
+      text: String(payload.text || '').trim(),
+      at: Date.now(),
+    };
+    return;
+  }
+  if (payload.status === 'ready') {
+    forceLiveIframeReady();
+    return;
+  }
+  if (payload.status === 'error') {
+    landingLiveIframeReady = false;
+    if (liveIframe instanceof HTMLIFrameElement) liveIframe.classList.add('is-hidden');
+    if (liveCanvas instanceof HTMLCanvasElement) liveCanvas.classList.remove('is-hidden');
+  }
+});
+
+function drawLivePreview(preview) {
+  if (!(liveCanvas instanceof HTMLCanvasElement)) return;
+  const ctx = liveCanvas.getContext('2d');
+  if (!ctx || !preview?.world) return;
+  const width = liveCanvas.width;
+  const height = liveCanvas.height;
+  const worldW = Math.max(1, Number(preview.world?.width) || 2400);
+  const worldH = Math.max(1, Number(preview.world?.height) || 1400);
+  const scale = Math.min(width / worldW, height / worldH);
+  const offsetX = (width - worldW * scale) * 0.5;
+  const offsetY = (height - worldH * scale) * 0.5;
+  const project = (x, y) => [
+    offsetX + (Number(x || 0) * scale),
+    offsetY + (Number(y || 0) * scale),
+  ];
+  const players = Array.isArray(preview.players) ? preview.players : [];
+  const enemies = Array.isArray(preview.enemies) ? preview.enemies : [];
+  const bullets = Array.isArray(preview.bullets) ? preview.bullets : [];
+  const xpOrbs = Array.isArray(preview.xpOrbs) ? preview.xpOrbs : [];
+  const drops = Array.isArray(preview.drops) ? preview.drops : [];
+  const bossPortals = Array.isArray(preview.bossPortals) ? preview.bossPortals : [];
+  const trees = Array.isArray(preview.decor?.trees) ? preview.decor.trees : [];
+
+  ctx.clearRect(0, 0, width, height);
+  const bg = ctx.createLinearGradient(0, 0, 0, height);
+  bg.addColorStop(0, '#111b26');
+  bg.addColorStop(0.52, '#0b121a');
+  bg.addColorStop(1, '#070b10');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, width, height);
+
+  ctx.fillStyle = 'rgba(4, 9, 14, 0.76)';
+  ctx.fillRect(offsetX, offsetY, worldW * scale, worldH * scale);
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(148, 163, 184, 0.16)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= worldW; x += 240) {
+    const sx = offsetX + (x * scale);
+    ctx.beginPath();
+    ctx.moveTo(sx, offsetY);
+    ctx.lineTo(sx, offsetY + worldH * scale);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= worldH; y += 240) {
+    const sy = offsetY + (y * scale);
+    ctx.beginPath();
+    ctx.moveTo(offsetX, sy);
+    ctx.lineTo(offsetX + worldW * scale, sy);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  for (const tree of trees) {
+    const [x, y] = project(tree?.x, tree?.y);
+    const radius = Math.max(4, (Number(tree?.s) || 12) * scale * 0.34);
+    ctx.fillStyle = 'rgba(47, 79, 61, 0.32)';
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  for (const portal of bossPortals) {
+    const [x, y] = project(portal?.x, portal?.y);
+    ctx.fillStyle = 'rgba(251, 191, 36, 0.12)';
+    ctx.beginPath();
+    ctx.arc(x, y, 16, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(251, 191, 36, 0.5)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  for (const orb of xpOrbs) {
+    const [x, y] = project(orb?.x, orb?.y);
+    ctx.fillStyle = '#60a5fa';
+    ctx.beginPath();
+    ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  for (const drop of drops) {
+    const [x, y] = project(drop?.x, drop?.y);
+    ctx.fillStyle = drop?.kind === 'xp_vacuum' ? '#22d3ee' : '#f59e0b';
+    ctx.fillRect(x - 4, y - 4, 8, 8);
+  }
+
+  for (const bullet of bullets) {
+    const [x, y] = project(bullet?.x, bullet?.y);
+    ctx.fillStyle = bullet?.fromEnemy ? '#fb7185' : (bullet?.kind === 'rocket' ? '#f59e0b' : '#f8fafc');
+    ctx.beginPath();
+    ctx.arc(x, y, bullet?.kind === 'rocket' ? 4 : 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  for (const enemy of enemies) {
+    const [x, y] = project(enemy?.x, enemy?.y);
+    const type = String(enemy?.type || '').toLowerCase();
+    const isBoss = type === 'boss';
+    const radius = isBoss ? 14 : (type === 'charger' ? 9 : 7);
+    ctx.fillStyle = isBoss ? '#dc2626' : (type === 'ranged' ? '#fb7185' : (type === 'charger' ? '#f97316' : '#ef4444'));
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    if (isBoss) {
+      ctx.strokeStyle = 'rgba(254, 226, 226, 0.92)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  }
+
+  for (const player of players) {
+    const [x, y] = project(player?.x, player?.y);
+    const color = getLivePlayerColor(player?.playerClass);
+    const hp = Math.max(0, Number(player?.hp) || 0);
+    const maxHp = Math.max(1, Number(player?.maxHp) || 1);
+    const hpRatio = Math.max(0, Math.min(1, hp / maxHp));
+    const isDowned = hp <= 0;
+
+    ctx.fillStyle = 'rgba(34, 211, 238, 0.12)';
+    ctx.beginPath();
+    ctx.arc(x, y, 16, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, 8, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(226, 232, 240, 0.92)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, 11, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * hpRatio);
+    ctx.stroke();
+
+    if (isDowned) {
+      ctx.strokeStyle = 'rgba(248, 113, 113, 0.95)';
+      ctx.beginPath();
+      ctx.moveTo(x - 7, y - 7);
+      ctx.lineTo(x + 7, y + 7);
+      ctx.moveTo(x + 7, y - 7);
+      ctx.lineTo(x - 7, y + 7);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = 'rgba(226, 232, 240, 0.96)';
+    ctx.font = '600 12px "IBM Plex Sans", sans-serif';
+    ctx.fillText(String(player?.name || 'Player').slice(0, 12), x + 14, y - 10);
+  }
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(7, 11, 16, 0.82)';
+  ctx.fillRect(12, 12, 270, 58);
+  ctx.strokeStyle = 'rgba(148, 163, 184, 0.22)';
+  ctx.strokeRect(12.5, 12.5, 269, 57);
+  ctx.fillStyle = '#e2e8f0';
+  ctx.font = '700 13px "IBM Plex Sans", sans-serif';
+  ctx.fillText(`LIVE ROOM ${String(preview.roomCode || '--')}`, 24, 34);
+  ctx.font = '500 12px "IBM Plex Sans", sans-serif';
+  ctx.fillStyle = '#94a3b8';
+  ctx.fillText(`Players ${players.length} | Kills ${Math.max(0, Number(preview.totalEnemyKills) || 0)} | Threat Lv${Math.max(1, Number(preview.roomDifficulty?.level) || 1)}`, 24, 54);
+
+  if (preview.bossAlive) {
+    ctx.fillStyle = 'rgba(127, 29, 29, 0.92)';
+    ctx.fillRect(width - 162, 12, 150, 34);
+    ctx.fillStyle = '#fee2e2';
+    ctx.font = '700 13px "IBM Plex Sans", sans-serif';
+    ctx.fillText('BOSS ACTIVE', width - 144, 34);
+  }
+  ctx.restore();
+}
+
+function refreshLandingLiveRuntime() {
+  if (!landingLiveData?.featuredRun) return;
+  const run = landingLiveData.featuredRun;
+  if (liveDuration) {
+    liveDuration.textContent = formatLiveDuration(Math.max(0, Math.floor((Date.now() - (Number(run.startedAt) || Date.now())) / 1000)));
+  }
+  if (liveUpdated) {
+    liveUpdated.textContent = formatLiveUpdatedLabel(run.preview?.now || landingLiveData.now || Date.now());
+  }
+}
+
+function renderLandingLiveSwitcher(payload, featuredRun) {
+  if (!liveSwitchStatus) return;
+  const runs = Array.isArray(payload?.liveRuns) ? payload.liveRuns : [];
+  const selectedCode = String(payload?.selectedRoomCode || featuredRun?.code || landingLiveSelectedRoomCode || '').trim().toUpperCase();
+  const currentIndex = runs.findIndex((run) => String(run?.code || '').trim().toUpperCase() === selectedCode);
+  const total = runs.length;
+
+  if (total <= 0) {
+    liveSwitchStatus.textContent = 'Эфир недоступен';
+    if (livePrevBtn) livePrevBtn.disabled = true;
+    if (liveNextBtn) liveNextBtn.disabled = true;
+    return;
+  }
+
+  const safeIndex = currentIndex >= 0 ? currentIndex : 0;
+  const current = runs[safeIndex] || null;
+  liveSwitchStatus.textContent = `Эфир ${safeIndex + 1} из ${total}${current?.code ? ` • ${current.code}` : ''}`;
+  if (livePrevBtn) livePrevBtn.disabled = total <= 1;
+  if (liveNextBtn) liveNextBtn.disabled = total <= 1;
+}
+
+function cycleLandingLive(direction) {
+  const runs = Array.isArray(landingLiveData?.liveRuns) ? landingLiveData.liveRuns : [];
+  if (runs.length <= 1) return;
+  const selectedCode = String(landingLiveSelectedRoomCode || landingLiveData?.selectedRoomCode || runs[0]?.code || '').trim().toUpperCase();
+  const currentIndex = Math.max(0, runs.findIndex((run) => String(run?.code || '').trim().toUpperCase() === selectedCode));
+  const nextIndex = (currentIndex + (direction > 0 ? 1 : -1) + runs.length) % runs.length;
+  const nextRun = runs[nextIndex];
+  const nextCode = String(nextRun?.code || '').trim().toUpperCase();
+  if (!nextCode) return;
+  landingLiveSelectedRoomCode = nextCode;
+  void loadLandingLive();
+}
+
+function renderLandingLive(payload) {
+  if (!liveTitle) return;
+  const featuredRun = payload?.live ? payload?.featuredRun : null;
+  const liveRuns = Array.isArray(payload?.liveRuns) ? payload.liveRuns : [];
+  const selectedRoomCode = String(payload?.selectedRoomCode || featuredRun?.code || '').trim().toUpperCase();
+  if (selectedRoomCode) landingLiveSelectedRoomCode = selectedRoomCode;
+  landingLiveData = {
+    featuredRun,
+    liveRuns,
+    selectedRoomCode,
+    now: payload?.now || Date.now(),
+  };
+  const fallbackCommentary = personalizeLandingCommentary(pickLandingCommentaryLive(featuredRun, payload), featuredRun);
+  const spectatorCommentaryAgeMs = Date.now() - Math.max(0, Number(landingLiveSpectatorCommentary.at) || 0);
+  const hasFreshSpectatorCommentary = Boolean(
+    landingLiveSpectatorCommentary.title
+    && landingLiveSpectatorCommentary.text
+    && spectatorCommentaryAgeMs < (featuredRun?.code ? 45000 : 12000)
+    && (
+      !featuredRun?.code
+      || String(landingLiveSpectatorCommentary.roomCode || '').trim().toUpperCase() === String(featuredRun.code || '').trim().toUpperCase()
+    )
+  );
+  const commentary = hasFreshSpectatorCommentary
+    ? {
+        title: landingLiveSpectatorCommentary.title,
+        text: landingLiveSpectatorCommentary.text,
+      }
+    : fallbackCommentary;
+
+  if (liveActiveRuns) liveActiveRuns.textContent = String(Math.max(0, Number(payload?.activeRuns) || 0));
+  if (liveInGame) liveInGame.textContent = String(Math.max(0, Number(payload?.presence?.inGame) || 0));
+  if (liveCommentatorTitle) liveCommentatorTitle.textContent = commentary.title;
+  if (liveCommentatorText) liveCommentatorText.textContent = commentary.text;
+  maybeSpeakLandingCommentary(commentary.title, commentary.text, featuredRun?.code || payload?.selectedRoomCode || '');
+  renderLandingLiveSwitcher(payload, featuredRun);
+
+  if (featuredRun?.preview) {
+    setLandingLiveFallbackArt(false);
+    if (liveEmpty) liveEmpty.classList.add('is-hidden');
+    if (liveKicker) liveKicker.textContent = 'Longest live run';
+    if (liveTitle) liveTitle.textContent = `Комната ${featuredRun.code} уже держится ${formatLiveDuration(featuredRun.liveForSec)}.`;
+    if (liveDescription) {
+      liveDescription.textContent = `Сейчас в эфире ${featuredRun.players}/${featuredRun.maxPlayers} игроков. Блок тянет живой снимок самой долгой активной комнаты и обновляет арену прямо на лендинге.`;
+    }
+    if (liveRoomCode) liveRoomCode.textContent = String(featuredRun.code || '--');
+    if (liveMode) liveMode.textContent = `Режим: ${formatRunGameModeLabel({ runDetails: { gameMode: featuredRun.gameMode } })}`;
+    if (livePlayers) livePlayers.textContent = `Игроки: ${featuredRun.players}/${featuredRun.maxPlayers}`;
+    if (liveThreat) liveThreat.textContent = `Угроза: Lv${Math.max(1, Number(featuredRun.roomDifficulty?.level) || 1)}`;
+    if (liveBoss) liveBoss.textContent = featuredRun.bossAlive ? 'Босс: в игре' : 'Босс: на подходе';
+    if (liveFootline) liveFootline.textContent = featuredRun.bossAlive ? 'На карте уже есть живой босс' : 'Комната наращивает давление до следующего босса';
+    if (liveViewers) liveViewers.textContent = `${Math.max(0, Number(featuredRun.spectators) || 0)} зрителей`;
+    if (liveKills) liveKills.textContent = `${Math.max(0, Number(featuredRun.totalEnemyKills) || 0)} киллов`;
+    if (livePrimaryLink) {
+      livePrimaryLink.href = buildLiveSpectatorUrl(featuredRun.code);
+      livePrimaryLink.target = '_blank';
+      livePrimaryLink.rel = 'noopener noreferrer';
+      livePrimaryLink.textContent = 'В новом окне';
+      livePrimaryLink.textContent = 'Залететь в эту комнату';
+    }
+    if (liveSecondaryLink) {
+      liveSecondaryLink.href = '#';
+      liveSecondaryLink.target = '';
+      liveSecondaryLink.rel = '';
+      liveSecondaryLink.textContent = 'На весь экран';
+      liveSecondaryLink.textContent = 'Открыть Battle Hub';
+    }
+    if (livePrimaryLink) livePrimaryLink.textContent = 'В новом окне';
+    if (liveSecondaryLink) liveSecondaryLink.textContent = 'На весь экран';
+    setLiveStatusPill('live', 'live');
+    if (!updateLiveIframe(featuredRun.code)) {
+      drawLivePreview(featuredRun.preview);
+    }
+    refreshLandingLiveRuntime();
+    return;
+  }
+
+  clearLivePreview();
+  setLandingLiveFallbackArt(true);
+  if (liveEmpty) liveEmpty.classList.remove('is-hidden');
+
+  const fallbackRun = payload?.fallbackRun || null;
+  const activeRuns = Math.max(0, Number(payload?.activeRuns) || 0);
+  const localActiveRuns = Math.max(0, Number(payload?.localActiveRuns) || 0);
+
+  if (liveKicker) liveKicker.textContent = activeRuns > 0 ? 'Live preview paused' : 'Сейчас тихо';
+  if (liveTitle) {
+    liveTitle.textContent = activeRuns > 0 && localActiveRuns <= 0
+      ? 'Онлайн-забеги есть, но на другом игровом инстансе.'
+      : 'Прямо сейчас никто не держит арену онлайн.';
+  }
+  if (liveDescription) {
+    liveDescription.textContent = fallbackRun
+      ? `Пока live-комнаты рядом нет, можно открыть свежий реплей ${String(fallbackRun.name || 'последнего игрока')} и не ждать новый заход.`
+      : 'Как только кто-то снова поднимет комнату, этот блок автоматически переключится в режим live-preview.';
+  }
+  if (liveRoomCode) liveRoomCode.textContent = fallbackRun?.roomCode || '--';
+  if (liveDuration) liveDuration.textContent = formatLiveDuration(fallbackRun?.durationSec || 0);
+  if (liveMode) liveMode.textContent = `Режим: ${fallbackRun ? formatRunGameModeLabel(fallbackRun) : '--'}`;
+  if (livePlayers) livePlayers.textContent = 'Игроки: --';
+  if (liveThreat) liveThreat.textContent = activeRuns > 0 ? `Локально: ${localActiveRuns}` : 'Угроза: --';
+  if (liveBoss) liveBoss.textContent = fallbackRun ? `Повтор: ${Math.max(0, Number(fallbackRun.kills) || 0)} киллов` : 'Босс: --';
+  if (liveViewers) liveViewers.textContent = activeRuns > 0 ? '0 зрителей' : '--';
+  if (liveFootline) {
+    liveFootline.textContent = fallbackRun
+      ? `Свежий повтор от ${String(fallbackRun.name || 'игрока')}`
+      : 'Ждём новый матч, чтобы поднять его сюда автоматически';
+  }
+  if (liveKills) liveKills.textContent = `${Math.max(0, Number(fallbackRun?.kills) || 0)} киллов`;
+  if (liveUpdated) liveUpdated.textContent = formatLiveUpdatedLabel(payload?.now || Date.now());
+  if (livePrimaryLink) {
+    livePrimaryLink.href = String(fallbackRun?.replayUrl || '/play');
+    livePrimaryLink.target = '_blank';
+    livePrimaryLink.rel = 'noopener noreferrer';
+    livePrimaryLink.textContent = fallbackRun ? 'Открыть свежий реплей' : 'Открыть игру';
+  }
+  if (liveSecondaryLink) {
+    liveSecondaryLink.href = '#';
+    liveSecondaryLink.target = '';
+    liveSecondaryLink.rel = '';
+    liveSecondaryLink.textContent = 'Перейти к вылазкам';
+  }
+  if (livePrimaryLink) livePrimaryLink.textContent = 'В новом окне';
+  if (liveSecondaryLink) liveSecondaryLink.textContent = 'На весь экран';
+  setLiveStatusPill('waiting', activeRuns > 0 ? 'remote' : 'offline');
+}
+
+async function loadLandingLive() {
+  if (!liveTitle) return;
+  try {
+    const params = new URLSearchParams();
+    if (landingLiveSelectedRoomCode) params.set('roomCode', landingLiveSelectedRoomCode);
+    const response = await fetch(`/api/landing/live-run${params.toString() ? `?${params.toString()}` : ''}`, { cache: 'no-store' });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.ok) throw new Error(`HTTP ${response.status}`);
+    renderLandingLive(payload);
+  } catch (_error) {
+    landingLiveData = null;
+    clearLivePreview();
+    setLandingLiveFallbackArt(true);
+    if (liveEmpty) liveEmpty.classList.remove('is-hidden');
+    if (liveKicker) liveKicker.textContent = 'Signal lost';
+    if (liveTitle) liveTitle.textContent = 'Не удалось подтянуть live-сводку.';
+    if (liveDescription) liveDescription.textContent = 'Попробуем обновить блок ещё раз автоматически, а пока можно открыть игру обычным способом.';
+    if (liveSwitchStatus) liveSwitchStatus.textContent = 'Эфир недоступен';
+    if (livePrevBtn) livePrevBtn.disabled = true;
+    if (liveNextBtn) liveNextBtn.disabled = true;
+    if (livePrimaryLink) {
+      livePrimaryLink.href = '/play';
+      livePrimaryLink.textContent = 'Открыть игру';
+    }
+    setLiveStatusPill('waiting', 'error');
+  }
+}
+
 async function loadNews() {
   if (!newsGrid) return;
   try {
@@ -647,7 +2035,33 @@ function startLatestRunsPolling() {
   }, 15000);
 }
 
+function startLandingLivePolling() {
+  if (!liveTitle || landingLivePollTimer) return;
+  landingLivePollTimer = window.setInterval(() => {
+    if (document.hidden) return;
+    void loadLandingLive();
+  }, 2500);
+}
+
+function startLandingLiveRuntime() {
+  if (!liveTitle || landingLiveRuntimeTimer) return;
+  landingLiveRuntimeTimer = window.setInterval(() => {
+    refreshLandingLiveRuntime();
+  }, 1000);
+}
+
+livePrevBtn?.addEventListener('click', () => {
+  cycleLandingLive(-1);
+});
+
+liveNextBtn?.addEventListener('click', () => {
+  cycleLandingLive(1);
+});
+
 void loadNews();
 void loadRatings();
+void loadLandingLive();
 void loadLatestRuns();
 startLatestRunsPolling();
+startLandingLivePolling();
+startLandingLiveRuntime();
