@@ -957,7 +957,21 @@ function requireAdminManager(req, res, next) {
   next();
 }
 
-function setAdminSessionCookie(res, token) {
+function getCookieDomainForRequest(req) {
+  const configured = String(SESSION_COOKIE_DOMAIN || '').trim().toLowerCase();
+  if (!configured) return '';
+  const host = String(req?.headers?.host || '').split(':')[0].trim().toLowerCase();
+  const domain = configured.replace(/^\./, '');
+  if (!host) return '';
+  return host === domain || host.endsWith(`.${domain}`) ? configured : '';
+}
+
+function appendCookieDomain(parts, req) {
+  const domain = getCookieDomainForRequest(req);
+  if (domain) parts.push(`Domain=${domain}`);
+}
+
+function setAdminSessionCookie(req, res, token) {
   const parts = [
     `${ADMIN_SESSION_COOKIE}=${encodeURIComponent(token)}`,
     'Path=/',
@@ -965,12 +979,12 @@ function setAdminSessionCookie(res, token) {
     'SameSite=Lax',
     `Max-Age=${Math.floor((1000 * 60 * 60 * 24 * 14) / 1000)}`,
   ];
-  if (SESSION_COOKIE_DOMAIN) parts.push(`Domain=${SESSION_COOKIE_DOMAIN}`);
+  appendCookieDomain(parts, req);
   if (IS_PROD) parts.push('Secure');
   res.setHeader('Set-Cookie', parts.join('; '));
 }
 
-function clearAdminSessionCookie(res) {
+function clearAdminSessionCookie(req, res) {
   const parts = [
     `${ADMIN_SESSION_COOKIE}=`,
     'Path=/',
@@ -978,12 +992,12 @@ function clearAdminSessionCookie(res) {
     'SameSite=Lax',
     'Max-Age=0',
   ];
-  if (SESSION_COOKIE_DOMAIN) parts.push(`Domain=${SESSION_COOKIE_DOMAIN}`);
+  appendCookieDomain(parts, req);
   if (IS_PROD) parts.push('Secure');
   res.setHeader('Set-Cookie', parts.join('; '));
 }
 
-function setPlayerSessionCookie(res, token) {
+function setPlayerSessionCookie(req, res, token) {
   const parts = [
     `${PLAYER_SESSION_COOKIE}=${encodeURIComponent(token)}`,
     'Path=/',
@@ -991,12 +1005,12 @@ function setPlayerSessionCookie(res, token) {
     'SameSite=Lax',
     `Max-Age=${Math.floor((1000 * 60 * 60 * 24 * 30) / 1000)}`,
   ];
-  if (SESSION_COOKIE_DOMAIN) parts.push(`Domain=${SESSION_COOKIE_DOMAIN}`);
+  appendCookieDomain(parts, req);
   if (IS_PROD) parts.push('Secure');
   res.setHeader('Set-Cookie', parts.join('; '));
 }
 
-function clearPlayerSessionCookie(res) {
+function clearPlayerSessionCookie(req, res) {
   const parts = [
     `${PLAYER_SESSION_COOKIE}=`,
     'Path=/',
@@ -1004,7 +1018,7 @@ function clearPlayerSessionCookie(res) {
     'SameSite=Lax',
     'Max-Age=0',
   ];
-  if (SESSION_COOKIE_DOMAIN) parts.push(`Domain=${SESSION_COOKIE_DOMAIN}`);
+  appendCookieDomain(parts, req);
   if (IS_PROD) parts.push('Secure');
   res.setHeader('Set-Cookie', parts.join('; '));
 }
@@ -1425,7 +1439,7 @@ app.post('/api/player/register', (req, res) => {
     res.status(result.code).json({ ok: false, message: result.message });
     return;
   }
-  setPlayerSessionCookie(res, result.token);
+  setPlayerSessionCookie(req, res, result.token);
   res.json({
     ok: true,
     player: result.player,
@@ -1442,7 +1456,7 @@ app.post('/api/player/login', (req, res) => {
     res.status(result.code).json({ ok: false, message: result.message });
     return;
   }
-  setPlayerSessionCookie(res, result.token);
+  setPlayerSessionCookie(req, res, result.token);
   res.json({
     ok: true,
     player: result.player,
@@ -1454,7 +1468,7 @@ app.post('/api/player/login', (req, res) => {
 app.post('/api/player/logout', (req, res) => {
   const cookies = parseCookies(req);
   playerAuthStore.deleteSession(cookies[PLAYER_SESSION_COOKIE] || '');
-  clearPlayerSessionCookie(res);
+  clearPlayerSessionCookie(req, res);
   res.json({ ok: true });
 });
 
@@ -1482,14 +1496,14 @@ app.post('/api/admin/login', (req, res) => {
     res.status(result.code).json({ ok: false, message: result.message });
     return;
   }
-  setAdminSessionCookie(res, result.token);
+  setAdminSessionCookie(req, res, result.token);
   res.json({ ok: true, user: result.user });
 });
 
 app.post('/api/admin/logout', (req, res) => {
   const cookies = parseCookies(req);
   adminAuthStore.deleteSession(cookies[ADMIN_SESSION_COOKIE] || '');
-  clearAdminSessionCookie(res);
+  clearAdminSessionCookie(req, res);
   res.json({ ok: true });
 });
 
