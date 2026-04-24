@@ -1293,6 +1293,8 @@ main {
 }
 
 .live-player-controlbar {
+  grid-row: 2;
+  align-self: end;
   display: grid;
   grid-template-columns: auto auto minmax(120px, 1fr) auto;
   gap: 12px;
