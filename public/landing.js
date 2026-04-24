@@ -251,7 +251,7 @@ function composeLandingLiveLayout() {
     const controls = document.createElement('div');
     controls.className = 'live-player-controls';
     controls.innerHTML = `
-      <button class="live-player-fullscreen-toggle" type="button" aria-label="Open live fullscreen">[]</button>
+      <button class="live-player-fullscreen-toggle" type="button" aria-label="Open live fullscreen"></button>
       <button class="live-player-center-toggle" type="button" aria-label="Pause Live">Pause</button>
       <div class="live-player-controlbar">
         <button class="live-player-play-toggle" type="button" aria-label="Pause Live">Pause</button>
@@ -641,7 +641,7 @@ function updateLandingFullscreenButtonLabel() {
     liveSecondaryLink.textContent = isFullscreen ? 'Exit Fullscreen' : 'Fullscreen';
   }
   if (landingLiveFullscreenToggle instanceof HTMLButtonElement) {
-    landingLiveFullscreenToggle.textContent = isFullscreen ? 'X' : '[]';
+    landingLiveFullscreenToggle.classList.toggle('is-exit', isFullscreen);
     landingLiveFullscreenToggle.setAttribute('aria-label', isFullscreen ? 'Exit live fullscreen' : 'Open live fullscreen');
     landingLiveFullscreenToggle.title = isFullscreen ? 'Exit fullscreen' : 'Fullscreen';
   }

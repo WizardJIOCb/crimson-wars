@@ -1191,8 +1191,9 @@ main {
 }
 
 .live-player-fullscreen-toggle {
-  justify-self: end;
-  align-self: start;
+  position: absolute;
+  top: 22px;
+  right: 22px;
   min-width: 46px;
   min-height: 46px;
   padding: 0;
@@ -1209,6 +1210,39 @@ main {
   letter-spacing: 0.04em;
   box-shadow: 0 18px 54px rgba(0, 0, 0, 0.34);
   pointer-events: auto;
+}
+
+.live-player-fullscreen-toggle::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 18px;
+  height: 18px;
+  background:
+    linear-gradient(currentColor, currentColor) left top / 7px 2px no-repeat,
+    linear-gradient(currentColor, currentColor) left top / 2px 7px no-repeat,
+    linear-gradient(currentColor, currentColor) right top / 7px 2px no-repeat,
+    linear-gradient(currentColor, currentColor) right top / 2px 7px no-repeat,
+    linear-gradient(currentColor, currentColor) left bottom / 7px 2px no-repeat,
+    linear-gradient(currentColor, currentColor) left bottom / 2px 7px no-repeat,
+    linear-gradient(currentColor, currentColor) right bottom / 7px 2px no-repeat,
+    linear-gradient(currentColor, currentColor) right bottom / 2px 7px no-repeat;
+  opacity: 0.92;
+}
+
+.live-player-fullscreen-toggle.is-exit::before {
+  width: 16px;
+  height: 16px;
+  background:
+    linear-gradient(currentColor, currentColor) left 4px top / 5px 2px no-repeat,
+    linear-gradient(currentColor, currentColor) left 4px top / 2px 5px no-repeat,
+    linear-gradient(currentColor, currentColor) right 4px top / 5px 2px no-repeat,
+    linear-gradient(currentColor, currentColor) right 4px top / 2px 5px no-repeat,
+    linear-gradient(currentColor, currentColor) left 4px bottom / 5px 2px no-repeat,
+    linear-gradient(currentColor, currentColor) left 4px bottom / 2px 5px no-repeat,
+    linear-gradient(currentColor, currentColor) right 4px bottom / 5px 2px no-repeat,
+    linear-gradient(currentColor, currentColor) right 4px bottom / 2px 5px no-repeat;
 }
 
 .live-run-canvas-wrap:hover .live-player-controls,
@@ -1235,7 +1269,9 @@ main {
 }
 
 .live-player-center-toggle {
-  place-self: center;
+  position: absolute;
+  inset: 0;
+  margin: auto;
   min-width: 132px;
   min-height: 132px;
   border-radius: 999px;
