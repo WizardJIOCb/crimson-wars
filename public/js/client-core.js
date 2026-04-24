@@ -2125,6 +2125,13 @@ function setGameSfxEnabled(enabled) {
   if (game.sfxEnabled) unlockGameAudio();
 }
 
+function applyGameSfxEnabled(enabled, { persist = true, unlock = true } = {}) {
+  game.sfxEnabled = Boolean(enabled);
+  if (gameSfxToggleEl) gameSfxToggleEl.checked = game.sfxEnabled;
+  if (persist) localStorage.setItem('cw:sfxEnabled', game.sfxEnabled ? '1' : '0');
+  if (game.sfxEnabled && unlock) unlockGameAudio();
+}
+
 function setGameSfxVolume(percent) {
   const value = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
   game.sfxVolume = value / 100;
@@ -2134,8 +2141,24 @@ function setGameSfxVolume(percent) {
   if (gameAudio.master) gameAudio.master.gain.value = 0.6 * game.sfxVolume;
 }
 
+function applyGameSfxVolume(percent, { persist = true } = {}) {
+  const value = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  game.sfxVolume = value / 100;
+  if (persist) localStorage.setItem('cw:sfxVolume', String(value));
+  if (gameSfxVolumeEl) gameSfxVolumeEl.value = String(value);
+  if (gameSfxVolumeValueEl) gameSfxVolumeValueEl.textContent = `${value}%`;
+  if (gameAudio.master) gameAudio.master.gain.value = 0.6 * game.sfxVolume;
+}
+
 window.cwSetGameSfxEnabled = setGameSfxEnabled;
 window.cwSetGameSfxVolume = setGameSfxVolume;
+window.cwApplyLiveSfxState = (volume, muted = false, unlock = false) => {
+  const normalizedVolume = Math.max(0, Math.min(1, Number(volume) || 0));
+  const effectiveVolume = muted ? 0 : normalizedVolume;
+  applyGameSfxVolume(Math.round(effectiveVolume * 100), { persist: false });
+  applyGameSfxEnabled(effectiveVolume > 0, { persist: false, unlock: Boolean(unlock) });
+  if (unlock && effectiveVolume > 0) unlockGameAudio();
+};
 
 function getGameSfxVolume() {
   const value = Number(game.sfxVolume);
@@ -2166,6 +2189,15 @@ function unlockGameAudio() {
 }
 
 window.cwUnlockGameAudio = unlockGameAudio;
+
+window.addEventListener('message', (event) => {
+  if (event.origin !== window.location.origin) return;
+  const payload = event.data;
+  if (!payload || payload.type !== 'cw-live-audio-control') return;
+  const volume = Math.max(0, Math.min(1, Number(payload.volume) || 0));
+  const muted = Boolean(payload.muted);
+  window.cwApplyLiveSfxState(volume, muted, Boolean(payload.unlock));
+});
 
 function sfxDistanceGain(x, y, radius = 760) {
   const me = game.state?.players?.find((p) => p.id === game.myId) || null;
@@ -2239,7 +2271,7 @@ const SFX_ASSET_VARIANTS = {
     rocket: ['weapon-rocket-launch'],
     default: ['weapon-pistol-shot'],
   },
-  enemyShot: ['enemy-ranged-shot', 'boss-attack'],
+  enemyShot: ['boss-attack'],
   enemyDeath: {
     charger: ['enemy-charger-death', 'enemy-death-1', 'enemy-death-2'],
     ranged: ['enemy-ranged-death', 'enemy-death-2', 'enemy-death-3'],

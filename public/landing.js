@@ -1484,19 +1484,26 @@ function updateLandingLiveVolumeUi() {
   }
 }
 
-function applyLandingLiveAudioState() {
+function postLandingLiveAudioControl(unlock = false) {
+  if (!(liveIframe instanceof HTMLIFrameElement) || !liveIframe.contentWindow) return;
+  liveIframe.contentWindow.postMessage({
+    type: 'cw-live-audio-control',
+    volume: Math.max(0, Math.min(1, Number(landingLiveVolume) || 0)),
+    muted: landingLiveMuted,
+    unlock: Boolean(unlock),
+  }, window.location.origin);
+}
+
+function applyLandingLiveAudioState({ unlock = false } = {}) {
   const effectiveVolume = getLandingLiveEffectiveVolume();
   try {
     const frameWindow = liveIframe instanceof HTMLIFrameElement ? liveIframe.contentWindow : null;
     if (!frameWindow) return;
-    if (typeof frameWindow.cwSetGameSfxVolume === 'function') {
-      frameWindow.cwSetGameSfxVolume(Math.round(effectiveVolume * 100));
+    postLandingLiveAudioControl(unlock);
+    if (typeof frameWindow.cwApplyLiveSfxState === 'function') {
+      frameWindow.cwApplyLiveSfxState(Math.max(0, Math.min(1, Number(landingLiveVolume) || 0)), landingLiveMuted, unlock);
     } else if (frameWindow.cwGame) {
       frameWindow.cwGame.sfxVolume = effectiveVolume;
-    }
-    if (typeof frameWindow.cwSetGameSfxEnabled === 'function') {
-      frameWindow.cwSetGameSfxEnabled(effectiveVolume > 0);
-    } else if (frameWindow.cwGame) {
       frameWindow.cwGame.sfxEnabled = effectiveVolume > 0;
     }
   } catch {
@@ -1505,7 +1512,7 @@ function applyLandingLiveAudioState() {
 }
 
 function unlockLandingLiveAudio() {
-  applyLandingLiveAudioState();
+  applyLandingLiveAudioState({ unlock: true });
   if (getLandingLiveEffectiveVolume() <= 0) return;
   try {
     const frameWindow = liveIframe instanceof HTMLIFrameElement ? liveIframe.contentWindow : null;
