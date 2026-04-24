@@ -767,9 +767,10 @@ function attachSocketBridge(socket) {
   });
 }
 
-function connectGameSocket(origin = currentWorkerOrigin) {
+function connectGameSocket(origin = currentWorkerOrigin, options = {}) {
   const nextOrigin = normalizeOrigin(origin);
-  if (ws instanceof WebSocket && currentWorkerOrigin === nextOrigin && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+  const forceReconnect = Boolean(options?.forceReconnect);
+  if (!forceReconnect && ws instanceof WebSocket && currentWorkerOrigin === nextOrigin && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
     return socketOpenPromise || Promise.resolve();
   }
 
@@ -1024,7 +1025,14 @@ function setPlayerAccessCollapsed(collapsed) {
 function reloadForPlayerSession(message) {
   setAuthFeedback(message, 'ok');
   statusEl.textContent = message;
-  void refreshPlayerAuthSession({ silent: true });
+  void (async () => {
+    await refreshPlayerAuthSession({ silent: true });
+    try {
+      await connectGameSocket(APP_ORIGIN, { forceReconnect: true });
+    } catch {
+      // The normal join flow will surface connection errors if reconnect fails.
+    }
+  })();
 }
 
 function scheduleClientReload(delayMs = 1500, message = 'Server restarting. Reconnecting...') {
