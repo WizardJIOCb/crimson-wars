@@ -2134,6 +2134,9 @@ function setGameSfxVolume(percent) {
   if (gameAudio.master) gameAudio.master.gain.value = 0.6 * game.sfxVolume;
 }
 
+window.cwSetGameSfxEnabled = setGameSfxEnabled;
+window.cwSetGameSfxVolume = setGameSfxVolume;
+
 function getGameSfxVolume() {
   const value = Number(game.sfxVolume);
   return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0.7;

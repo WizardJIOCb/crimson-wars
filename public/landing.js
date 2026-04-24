@@ -83,6 +83,15 @@ let landingLiveIframeRoomCode = '';
 let landingLivePaused = false;
 let landingLivePauseReason = '';
 let landingLivePauseToggle = null;
+let landingLiveCenterToggle = null;
+let landingLiveControlToggle = null;
+let landingLiveTimeline = null;
+let landingLiveTimelineLabel = null;
+let landingLiveMuteToggle = null;
+let landingLiveVolumeSlider = null;
+let landingLiveVolume = 0.72;
+let landingLiveMuted = false;
+let landingLiveTimelineDragging = false;
 let landingLiveIframeWatchdog = 0;
 let landingLiveIframeReady = false;
 let landingLiveIframeProbeTimer = 0;
@@ -118,6 +127,8 @@ const HERO_LABELS = {
   raider: 'Raider',
 };
 const LANDING_COMMENTARY_TTS_KEY = 'cw:landingCommentatorTtsEnabled';
+const LANDING_LIVE_VOLUME_KEY = 'cw:landingLiveVolume';
+const LANDING_LIVE_MUTED_KEY = 'cw:landingLiveMuted';
 const landingCommentarySpeech = {
   supported: typeof window !== 'undefined' && 'speechSynthesis' in window && typeof window.SpeechSynthesisUtterance === 'function',
   enabled: false,
@@ -137,6 +148,15 @@ try {
   landingCommentarySpeech.enabled = localStorage.getItem(LANDING_COMMENTARY_TTS_KEY) === '1';
 } catch {
   landingCommentarySpeech.enabled = false;
+}
+
+try {
+  const storedVolume = Number(localStorage.getItem(LANDING_LIVE_VOLUME_KEY));
+  if (Number.isFinite(storedVolume)) landingLiveVolume = Math.max(0, Math.min(1, storedVolume));
+  landingLiveMuted = localStorage.getItem(LANDING_LIVE_MUTED_KEY) === '1';
+} catch {
+  landingLiveVolume = 0.72;
+  landingLiveMuted = false;
 }
 
 function composeLandingLiveLayout() {
@@ -240,6 +260,64 @@ function composeLandingLiveLayout() {
     landingCommentaryVoiceToggle = commentary?.querySelector('.live-run-commentary-voice-btn') || null;
     landingCommentaryVoiceStatus = commentary?.querySelector('.live-run-commentary-voice-status') || null;
   }
+  if (canvasWrap instanceof HTMLElement && !canvasWrap.querySelector('.live-player-controls')) {
+    const controls = document.createElement('div');
+    controls.className = 'live-player-controls';
+    controls.innerHTML = `
+      <button class="live-player-center-toggle" type="button" aria-label="Pause Live">Pause</button>
+      <div class="live-player-controlbar">
+        <button class="live-player-play-toggle" type="button" aria-label="Pause Live">Pause</button>
+        <span class="live-player-time">LIVE 00:00</span>
+        <input class="live-player-timeline" type="range" min="0" max="1" value="1" step="1" aria-label="Live timeline" />
+        <div class="live-player-volume">
+          <button class="live-player-mute-toggle" type="button" aria-label="Mute live sound">Sound</button>
+          <input class="live-player-volume-slider" type="range" min="0" max="100" value="72" step="1" aria-label="Live sound volume" />
+        </div>
+      </div>
+    `;
+    canvasWrap.appendChild(controls);
+    landingLiveCenterToggle = controls.querySelector('.live-player-center-toggle');
+    landingLiveControlToggle = controls.querySelector('.live-player-play-toggle');
+    landingLiveTimeline = controls.querySelector('.live-player-timeline');
+    landingLiveTimelineLabel = controls.querySelector('.live-player-time');
+    landingLiveMuteToggle = controls.querySelector('.live-player-mute-toggle');
+    landingLiveVolumeSlider = controls.querySelector('.live-player-volume-slider');
+    landingLiveCenterToggle?.addEventListener('click', () => {
+      setLandingLivePaused(!landingLivePaused, 'manual');
+    });
+    landingLiveControlToggle?.addEventListener('click', () => {
+      setLandingLivePaused(!landingLivePaused, 'manual');
+    });
+    landingLiveMuteToggle?.addEventListener('click', () => {
+      setLandingLiveMuted(!landingLiveMuted);
+    });
+    landingLiveVolumeSlider?.addEventListener('input', () => {
+      setLandingLiveVolume((Number(landingLiveVolumeSlider.value) || 0) / 100);
+    });
+    landingLiveTimeline?.addEventListener('pointerdown', () => {
+      landingLiveTimelineDragging = true;
+    });
+    landingLiveTimeline?.addEventListener('input', () => {
+      updateLandingLiveTimelineUi(true);
+    });
+    landingLiveTimeline?.addEventListener('change', () => {
+      landingLiveTimelineDragging = false;
+      jumpLandingLiveToLiveEdge();
+    });
+    landingLiveTimeline?.addEventListener('pointerup', () => {
+      landingLiveTimelineDragging = false;
+      jumpLandingLiveToLiveEdge();
+    });
+  } else if (canvasWrap instanceof HTMLElement) {
+    landingLiveCenterToggle = canvasWrap.querySelector('.live-player-center-toggle');
+    landingLiveControlToggle = canvasWrap.querySelector('.live-player-play-toggle');
+    landingLiveTimeline = canvasWrap.querySelector('.live-player-timeline');
+    landingLiveTimelineLabel = canvasWrap.querySelector('.live-player-time');
+    landingLiveMuteToggle = canvasWrap.querySelector('.live-player-mute-toggle');
+    landingLiveVolumeSlider = canvasWrap.querySelector('.live-player-volume-slider');
+  }
+  updateLandingLiveControlsUi();
+  updateLandingLiveVolumeUi();
   updateLandingLivePauseUi();
 }
 
@@ -450,7 +528,7 @@ function flushLandingCommentarySpeechQueue() {
   }
   utterance.rate = 2.36;
   utterance.pitch = 0.94;
-  utterance.volume = 0.9;
+  utterance.volume = Math.max(0, Math.min(1, 0.9 * getLandingLiveEffectiveVolume()));
   utterance.onstart = () => {
     if (speakSeq !== landingCommentarySpeech.seq) return;
     landingCommentarySpeech.lastSpokenAt = Date.now();
@@ -1389,6 +1467,105 @@ function setLiveStatusPill(state, label) {
   liveStatusPill.textContent = label;
 }
 
+function getLandingLiveEffectiveVolume() {
+  return landingLiveMuted ? 0 : Math.max(0, Math.min(1, Number(landingLiveVolume) || 0));
+}
+
+function updateLandingLiveControlsUi() {
+  const label = landingLivePaused ? 'Play' : 'Pause';
+  const aria = landingLivePaused ? 'Resume Live Run Feed' : 'Pause Live Run Feed';
+  if (landingLiveCenterToggle instanceof HTMLButtonElement) {
+    landingLiveCenterToggle.textContent = label;
+    landingLiveCenterToggle.setAttribute('aria-label', aria);
+  }
+  if (landingLiveControlToggle instanceof HTMLButtonElement) {
+    landingLiveControlToggle.textContent = label;
+    landingLiveControlToggle.setAttribute('aria-label', aria);
+  }
+}
+
+function updateLandingLiveVolumeUi() {
+  const volumePercent = Math.round(Math.max(0, Math.min(1, Number(landingLiveVolume) || 0)) * 100);
+  if (landingLiveVolumeSlider instanceof HTMLInputElement) {
+    landingLiveVolumeSlider.value = String(volumePercent);
+  }
+  if (landingLiveMuteToggle instanceof HTMLButtonElement) {
+    landingLiveMuteToggle.textContent = landingLiveMuted || volumePercent <= 0 ? 'Muted' : 'Sound';
+    landingLiveMuteToggle.setAttribute('aria-pressed', landingLiveMuted ? 'true' : 'false');
+    landingLiveMuteToggle.setAttribute('aria-label', landingLiveMuted ? 'Unmute live sound' : 'Mute live sound');
+  }
+}
+
+function applyLandingLiveAudioState() {
+  const effectiveVolume = getLandingLiveEffectiveVolume();
+  try {
+    const frameWindow = liveIframe instanceof HTMLIFrameElement ? liveIframe.contentWindow : null;
+    if (!frameWindow) return;
+    if (typeof frameWindow.cwSetGameSfxVolume === 'function') {
+      frameWindow.cwSetGameSfxVolume(Math.round(effectiveVolume * 100));
+    } else if (frameWindow.cwGame) {
+      frameWindow.cwGame.sfxVolume = effectiveVolume;
+    }
+    if (typeof frameWindow.cwSetGameSfxEnabled === 'function') {
+      frameWindow.cwSetGameSfxEnabled(effectiveVolume > 0);
+    } else if (frameWindow.cwGame) {
+      frameWindow.cwGame.sfxEnabled = effectiveVolume > 0;
+    }
+  } catch {
+    // Same-origin audio bridge is best-effort while the iframe is loading.
+  }
+}
+
+function setLandingLiveVolume(value) {
+  landingLiveVolume = Math.max(0, Math.min(1, Number(value) || 0));
+  if (landingLiveVolume > 0) landingLiveMuted = false;
+  try {
+    localStorage.setItem(LANDING_LIVE_VOLUME_KEY, String(landingLiveVolume));
+    localStorage.setItem(LANDING_LIVE_MUTED_KEY, landingLiveMuted ? '1' : '0');
+  } catch {
+    // ignore storage failures
+  }
+  updateLandingLiveVolumeUi();
+  applyLandingLiveAudioState();
+}
+
+function setLandingLiveMuted(muted) {
+  landingLiveMuted = Boolean(muted);
+  try {
+    localStorage.setItem(LANDING_LIVE_MUTED_KEY, landingLiveMuted ? '1' : '0');
+  } catch {
+    // ignore storage failures
+  }
+  updateLandingLiveVolumeUi();
+  applyLandingLiveAudioState();
+}
+
+function updateLandingLiveTimelineUi(fromDrag = false) {
+  const run = landingLiveData?.featuredRun || null;
+  const startedAt = Number(run?.startedAt) || 0;
+  const elapsed = run ? Math.max(0, Math.floor((Date.now() - (startedAt || Date.now())) / 1000)) : 0;
+  const max = Math.max(1, elapsed);
+  if (landingLiveTimeline instanceof HTMLInputElement) {
+    landingLiveTimeline.max = String(max);
+    if (!landingLiveTimelineDragging || !fromDrag) landingLiveTimeline.value = String(max);
+  }
+  if (landingLiveTimelineLabel) {
+    const current = landingLiveTimelineDragging && landingLiveTimeline instanceof HTMLInputElement
+      ? Math.max(0, Number(landingLiveTimeline.value) || 0)
+      : max;
+    landingLiveTimelineLabel.textContent = landingLivePaused
+      ? `PAUSED ${formatLiveDuration(current)}`
+      : `LIVE ${formatLiveDuration(current)}`;
+  }
+}
+
+function jumpLandingLiveToLiveEdge() {
+  updateLandingLiveTimelineUi(false);
+  if (landingLivePaused && landingLivePauseReason === 'timeline') {
+    setLandingLivePaused(false, 'manual');
+  }
+}
+
 function updateLandingLivePauseUi() {
   if (liveLayout instanceof HTMLElement) {
     liveLayout.classList.toggle('is-live-paused', landingLivePaused);
@@ -1398,6 +1575,8 @@ function updateLandingLivePauseUi() {
     landingLivePauseToggle.setAttribute('aria-pressed', landingLivePaused ? 'true' : 'false');
     landingLivePauseToggle.title = landingLivePaused ? 'Resume Live Run Feed' : 'Pause Live Run Feed';
   }
+  updateLandingLiveControlsUi();
+  updateLandingLiveTimelineUi(false);
 }
 
 function setLandingLivePaused(paused, reason = 'manual') {
@@ -1575,6 +1754,7 @@ function updateLiveIframe(roomCode) {
   if (landingLiveIframeReady) {
     liveIframe.classList.remove('is-hidden');
     if (liveCanvas instanceof HTMLCanvasElement) liveCanvas.classList.add('is-hidden');
+    applyLandingLiveAudioState();
     return true;
   }
   liveIframe.classList.add('is-hidden');
@@ -1792,6 +1972,7 @@ function refreshLandingLiveRuntime() {
   if (liveDuration) {
     liveDuration.textContent = formatLiveDuration(Math.max(0, Math.floor((Date.now() - (Number(run.startedAt) || Date.now())) / 1000)));
   }
+  updateLandingLiveTimelineUi(false);
   if (liveUpdated) {
     liveUpdated.textContent = formatLiveUpdatedLabel(run.preview?.now || landingLiveData.now || Date.now());
   }
