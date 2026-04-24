@@ -2247,6 +2247,7 @@ const SFX_ASSET_VARIANTS = {
   skill: ['skill-cast', 'skill-pickup'],
   skillDodge: ['skill-dodge'],
   weaponPickup: ['weapon-pickup', 'drop-pickup'],
+  weaponReload: ['weapon-reload'],
   playerHit: ['player-hit'],
   playerDeath: ['player-death'],
   playerDowned: ['player-downed'],
@@ -2375,6 +2376,15 @@ function playGameSfx(name, options = {}) {
     playNoise(0.075, { volume: volume * 0.2, filter: 1800, filterType: 'bandpass' });
     playTone(148, 0.09, { type: 'sawtooth', volume: volume * 0.12, pitchTo: 72 });
     playTone(520, 0.055, { type: 'triangle', volume: volume * 0.08, pitchTo: 310, delay: 0.008 });
+    return;
+  }
+  if (name === 'weaponReload') {
+    const isShotgun = weapon.includes('shotgun');
+    const isSniper = weapon.includes('sniper');
+    const isSmg = weapon.includes('smg');
+    playNoise(isShotgun ? 0.11 : 0.07, { volume: volume * 0.11, filter: isSniper ? 620 : 1180, filterType: 'bandpass' });
+    playTone(isSniper ? 150 : isSmg ? 260 : 210, isShotgun ? 0.13 : 0.09, { type: 'triangle', volume: volume * 0.08, pitchTo: isSniper ? 92 : 165 });
+    playTone(isShotgun ? 92 : 420, 0.045, { type: 'square', volume: volume * 0.035, pitchTo: isShotgun ? 76 : 360, delay: isShotgun ? 0.08 : 0.045 });
     return;
   }
   if (name === 'enemyDeath') {

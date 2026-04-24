@@ -709,6 +709,11 @@ function processStateFx(nextState) {
       moveY: Number(p.moveY) || 0,
       aimX: Number(p.aimX) || Number(p.x) || 0,
       aimY: Number(p.aimY) || Number(p.y) || 0,
+      weaponKey: String(p.weaponKey || 'pistol').toLowerCase(),
+      reloadLeftMs: Math.max(0, Number(p.reloadLeftMs) || 0),
+      reloadTotalMs: Math.max(0, Number(p.reloadTotalMs) || 0),
+      isCompanion: Boolean(p.isCompanion),
+      ownerId: p.ownerId || '',
     });
     const prev = prevPlayerMap.get(p.id);
     if (prev && p.hp < prev.hp) {
@@ -730,6 +735,23 @@ function processStateFx(nextState) {
       spawnHitFx(p.x, p.y, 18, true);
       window.cwPlaySfx?.('playerDeath', { x: p.x, y: p.y, key: `playerDeath:${p.id}`, minGapMs: 900, radius: 1300, volume: p.id === game.myId ? 1.15 : 0.76 });
       if (p.id === game.myId) triggerHitScreenFx(22, hitDir.x, hitDir.y);
+    }
+
+    const prevReloadLeft = Math.max(0, Number(prev?.reloadLeftMs) || 0);
+    const nextReloadLeft = Math.max(0, Number(p.reloadLeftMs) || 0);
+    const reloadTotal = Math.max(0, Number(p.reloadTotalMs) || 0);
+    if (prev && prevReloadLeft <= 0 && nextReloadLeft > 0 && reloadTotal > 0) {
+      const isMe = p.id === game.myId;
+      const isMyCompanion = Boolean(p.isCompanion) && p.ownerId === game.myId;
+      window.cwPlaySfx?.('weaponReload', {
+        x: p.x,
+        y: p.y,
+        weaponKey: p.weaponKey,
+        key: `reload:${p.id}:${p.weaponKey || 'weapon'}`,
+        minGapMs: 120,
+        radius: isMe || isMyCompanion ? 1600 : 900,
+        volume: isMe ? 0.95 : (isMyCompanion ? 0.7 : 0.38),
+      });
     }
 
     const prevDodgeUntil = Number(prev?.dodgeInvulnUntil) || 0;
