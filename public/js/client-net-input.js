@@ -6497,6 +6497,13 @@ message: (ev) => {
     joinOverlay.classList.remove('death-mode');
     setDeathCinematicActive(false);
     updateMobileControlsVisibility();
+    if (!game.spectating && window.parent && window.parent !== window) {
+      window.parent.postMessage({
+        type: 'cw-player-run',
+        status: 'started',
+        roomCode: String(msg.roomCode || ''),
+      }, window.location.origin);
+    }
     if (game.embedMode && game.spectating) {
       window.parent?.postMessage({
         type: 'cw-live-spectator',

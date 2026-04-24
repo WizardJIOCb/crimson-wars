@@ -80,6 +80,9 @@ let landingLiveRuntimeTimer = 0;
 let landingLiveData = null;
 let landingLiveSelectedRoomCode = '';
 let landingLiveIframeRoomCode = '';
+let landingLivePaused = false;
+let landingLivePauseReason = '';
+let landingLivePauseToggle = null;
 let landingLiveIframeWatchdog = 0;
 let landingLiveIframeReady = false;
 let landingLiveIframeProbeTimer = 0;
@@ -140,6 +143,7 @@ function composeLandingLiveLayout() {
   if (!(liveLayout instanceof HTMLElement) || !(liveCopyPanel instanceof HTMLElement) || !(livePlayerPanel instanceof HTMLElement)) return;
   if (liveLayout.dataset.composed === '1') return;
 
+  const playerHead = livePlayerPanel.querySelector('.live-run-player-head');
   const canvasWrap = livePlayerPanel.querySelector('.live-run-canvas-wrap');
   const playerFoot = livePlayerPanel.querySelector('.live-run-player-foot');
   const commentary = livePlayerPanel.querySelector('.live-run-commentary');
@@ -179,6 +183,19 @@ function composeLandingLiveLayout() {
   livePlayerPanel.classList.add('live-run-player-wide');
   liveCopyPanel.remove();
   liveLayout.dataset.composed = '1';
+
+  if (playerHead instanceof HTMLElement && !playerHead.querySelector('.live-run-pause-btn')) {
+    const pauseBtn = document.createElement('button');
+    pauseBtn.type = 'button';
+    pauseBtn.className = 'live-run-pause-btn';
+    pauseBtn.addEventListener('click', () => {
+      setLandingLivePaused(!landingLivePaused, 'manual');
+    });
+    playerHead.insertBefore(pauseBtn, liveStatusPill || null);
+    landingLivePauseToggle = pauseBtn;
+  } else {
+    landingLivePauseToggle = livePlayerPanel.querySelector('.live-run-pause-btn');
+  }
 
   if (commentary instanceof HTMLElement && !commentary.querySelector('.live-run-commentary-tools')) {
     if (!commentary.querySelector('.live-run-commentary-avatar')) {
@@ -223,6 +240,7 @@ function composeLandingLiveLayout() {
     landingCommentaryVoiceToggle = commentary?.querySelector('.live-run-commentary-voice-btn') || null;
     landingCommentaryVoiceStatus = commentary?.querySelector('.live-run-commentary-voice-status') || null;
   }
+  updateLandingLivePauseUi();
 }
 
 function toggleMenu(forceOpen) {
@@ -1371,6 +1389,41 @@ function setLiveStatusPill(state, label) {
   liveStatusPill.textContent = label;
 }
 
+function updateLandingLivePauseUi() {
+  if (liveLayout instanceof HTMLElement) {
+    liveLayout.classList.toggle('is-live-paused', landingLivePaused);
+  }
+  if (landingLivePauseToggle instanceof HTMLButtonElement) {
+    landingLivePauseToggle.textContent = landingLivePaused ? 'Resume Live' : 'Pause Live';
+    landingLivePauseToggle.setAttribute('aria-pressed', landingLivePaused ? 'true' : 'false');
+    landingLivePauseToggle.title = landingLivePaused ? 'Resume Live Run Feed' : 'Pause Live Run Feed';
+  }
+}
+
+function setLandingLivePaused(paused, reason = 'manual') {
+  const nextPaused = Boolean(paused);
+  landingLivePaused = nextPaused;
+  landingLivePauseReason = nextPaused ? String(reason || 'manual') : '';
+  updateLandingLivePauseUi();
+
+  if (nextPaused) {
+    clearLivePreview();
+    setLandingLiveFallbackArt(true);
+    setLiveStatusPill('waiting', 'paused');
+    if (liveKicker) liveKicker.textContent = landingLivePauseReason === 'auto-play' ? 'Live paused while you play' : 'Live preview paused';
+    if (liveFootline) liveFootline.textContent = 'Live Run Feed paused';
+    try {
+      window.speechSynthesis?.cancel?.();
+    } catch {
+      // Voice cancellation is best-effort.
+    }
+    return;
+  }
+
+  setLiveStatusPill('waiting', 'loading');
+  void loadLandingLive();
+}
+
 function clearLivePreview() {
   if (liveIframe instanceof HTMLIFrameElement) {
     liveIframe.classList.add('is-hidden');
@@ -1432,6 +1485,7 @@ function getLiveIframeSpectatorState() {
 }
 
 function forceLiveIframeReady(frameState) {
+  if (landingLivePaused) return false;
   const state = frameState || getLiveIframeSpectatorState();
   if (!state || !state.hasState || !state.matchesRoom) return false;
   try {
@@ -1464,6 +1518,11 @@ function forceLiveIframeReady(frameState) {
 
 function updateLiveIframe(roomCode) {
   if (!(liveIframe instanceof HTMLIFrameElement)) return false;
+  if (landingLivePaused) {
+    clearLivePreview();
+    setLandingLiveFallbackArt(true);
+    return false;
+  }
   const normalizedRoomCode = String(roomCode || '').trim().toUpperCase();
   if (!normalizedRoomCode) {
     liveIframe.classList.add('is-hidden');
@@ -1526,7 +1585,12 @@ function updateLiveIframe(roomCode) {
 window.addEventListener('message', (event) => {
   if (event.origin !== window.location.origin) return;
   const payload = event.data;
+  if (payload?.type === 'cw-player-run' && payload.status === 'started') {
+    setLandingLivePaused(true, 'auto-play');
+    return;
+  }
   if (!payload || payload.type !== 'cw-live-spectator') return;
+  if (landingLivePaused) return;
   const roomCode = String(payload.roomCode || '').trim().toUpperCase();
   if (!roomCode || roomCode !== landingLiveIframeRoomCode) return;
   if (payload.status === 'commentary') {
@@ -1722,6 +1786,7 @@ function drawLivePreview(preview) {
 }
 
 function refreshLandingLiveRuntime() {
+  if (landingLivePaused) return;
   if (!landingLiveData?.featuredRun) return;
   const run = landingLiveData.featuredRun;
   if (liveDuration) {
@@ -1754,6 +1819,7 @@ function renderLandingLiveSwitcher(payload, featuredRun) {
 }
 
 function cycleLandingLive(direction) {
+  if (landingLivePaused) return;
   const runs = Array.isArray(landingLiveData?.liveRuns) ? landingLiveData.liveRuns : [];
   if (runs.length <= 1) return;
   const selectedCode = String(landingLiveSelectedRoomCode || landingLiveData?.selectedRoomCode || runs[0]?.code || '').trim().toUpperCase();
@@ -1768,6 +1834,7 @@ function cycleLandingLive(direction) {
 
 function renderLandingLive(payload) {
   if (!liveTitle) return;
+  if (landingLivePaused) return;
   const featuredRun = payload?.live ? payload?.featuredRun : null;
   const liveRuns = Array.isArray(payload?.liveRuns) ? payload.liveRuns : [];
   const selectedRoomCode = String(payload?.selectedRoomCode || featuredRun?.code || '').trim().toUpperCase();
@@ -1895,6 +1962,7 @@ function renderLandingLive(payload) {
 
 async function loadLandingLive() {
   if (!liveTitle) return;
+  if (landingLivePaused) return;
   try {
     const params = new URLSearchParams();
     if (landingLiveSelectedRoomCode) params.set('roomCode', landingLiveSelectedRoomCode);
@@ -2038,7 +2106,7 @@ function startLatestRunsPolling() {
 function startLandingLivePolling() {
   if (!liveTitle || landingLivePollTimer) return;
   landingLivePollTimer = window.setInterval(() => {
-    if (document.hidden) return;
+    if (document.hidden || landingLivePaused) return;
     void loadLandingLive();
   }, 2500);
 }
@@ -2046,6 +2114,7 @@ function startLandingLivePolling() {
 function startLandingLiveRuntime() {
   if (!liveTitle || landingLiveRuntimeTimer) return;
   landingLiveRuntimeTimer = window.setInterval(() => {
+    if (landingLivePaused) return;
     refreshLandingLiveRuntime();
   }, 1000);
 }
