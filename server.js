@@ -2258,6 +2258,9 @@ function createCompanion(room, owner, def, ordinal = 0) {
     maxHp: 1,
     fireCooldownLeft: 0,
     weaponKey: String(def.companionWeaponKey || 'pistol').toLowerCase(),
+    weaponMagazine: Math.max(1, Math.floor(Number(WEAPONS[String(def.companionWeaponKey || 'pistol').toLowerCase()]?.magazineSize) || 1)),
+    weaponReserveAmmo: null,
+    weaponReloadLeftMs: 0,
     playerClass: owner.playerClass || 'cyber',
     name: '',
     holdOffsetX: Math.cos(holdAngle) * holdRadius,
@@ -2296,7 +2299,14 @@ function syncRoomCompanions(room) {
     if (matchIndex >= 0) {
       used.add(matchIndex);
       const companion = room.companions[matchIndex];
-      companion.weaponKey = String(entry.def.companionWeaponKey || companion.weaponKey || 'pistol').toLowerCase();
+      const nextWeaponKey = String(entry.def.companionWeaponKey || companion.weaponKey || 'pistol').toLowerCase();
+      if (companion.weaponKey !== nextWeaponKey) {
+        companion.weaponKey = nextWeaponKey;
+        companion.weaponMagazine = getWeaponMagazineSize(nextWeaponKey);
+        companion.weaponReloadLeftMs = 0;
+      } else {
+        ensureCompanionWeaponAmmo(companion);
+      }
       companion.playerClass = entry.owner.playerClass || companion.playerClass || 'cyber';
       nextCompanions.push(companion);
       continue;
@@ -2313,8 +2323,57 @@ function getCompanionWeaponRange(weaponKey) {
   return 520;
 }
 
+function getWeaponMagazineSize(weaponKey) {
+  const weapon = WEAPONS[String(weaponKey || 'pistol').toLowerCase()] || WEAPONS.pistol;
+  return Math.max(1, Math.floor(Number(weapon.magazineSize) || 1));
+}
+
+function getWeaponReloadMs(weaponKey) {
+  const weapon = WEAPONS[String(weaponKey || 'pistol').toLowerCase()] || WEAPONS.pistol;
+  return Math.max(120, Math.floor(Number(weapon.reloadMs) || 900));
+}
+
+function ensureCompanionWeaponAmmo(companion) {
+  if (!companion) return;
+  const magazineSize = getWeaponMagazineSize(companion.weaponKey);
+  if (!Number.isFinite(Number(companion.weaponMagazine))) {
+    companion.weaponMagazine = magazineSize;
+  } else {
+    companion.weaponMagazine = Math.max(0, Math.min(magazineSize, Math.floor(Number(companion.weaponMagazine) || 0)));
+  }
+  companion.weaponReserveAmmo = null;
+  companion.weaponReloadLeftMs = Math.max(0, Number(companion.weaponReloadLeftMs) || 0);
+}
+
+function startCompanionReload(companion) {
+  if (!companion) return false;
+  ensureCompanionWeaponAmmo(companion);
+  if (Number(companion.weaponReloadLeftMs) > 0) return true;
+  if (Math.max(0, Math.floor(Number(companion.weaponMagazine) || 0)) >= getWeaponMagazineSize(companion.weaponKey)) return false;
+  companion.weaponReloadLeftMs = getWeaponReloadMs(companion.weaponKey);
+  companion.fireCooldownLeft = Math.max(Number(companion.fireCooldownLeft) || 0, companion.weaponReloadLeftMs);
+  return true;
+}
+
+function updateCompanionReload(companion, dtMs) {
+  if (!companion) return;
+  ensureCompanionWeaponAmmo(companion);
+  if (Number(companion.weaponReloadLeftMs) <= 0) return;
+  companion.weaponReloadLeftMs = Math.max(0, Number(companion.weaponReloadLeftMs) - dtMs);
+  if (companion.weaponReloadLeftMs <= 0) {
+    companion.weaponMagazine = getWeaponMagazineSize(companion.weaponKey);
+    companion.weaponReserveAmmo = null;
+  }
+}
+
 function fireCompanionWeapon(room, companion, owner, now) {
   const weapon = WEAPONS[companion.weaponKey] || WEAPONS.pistol;
+  ensureCompanionWeaponAmmo(companion);
+  if (Number(companion.weaponReloadLeftMs) > 0) return;
+  if (Math.max(0, Math.floor(Number(companion.weaponMagazine) || 0)) <= 0) {
+    startCompanionReload(companion);
+    return;
+  }
   const dx = companion.aimX - companion.x;
   const dy = companion.aimY - companion.y;
   const baseAngle = Math.atan2(dy, dx);
@@ -2329,7 +2388,8 @@ function fireCompanionWeapon(room, companion, owner, now) {
     const bulletSpeed = Math.max(120, weapon.bulletSpeed * speedMul);
     room.bullets.push({
       id: room.nextBulletId++,
-      ownerId: owner?.id || companion.ownerId,
+      ownerId: companion.id,
+      ownerPlayerId: owner?.id || companion.ownerId,
       fromEnemy: false,
       x: companion.x,
       y: companion.y,
@@ -2340,11 +2400,14 @@ function fireCompanionWeapon(room, companion, owner, now) {
       color: weapon.color,
       weaponKey: String(companion.weaponKey || 'pistol').toLowerCase(),
       segmentHit: String(companion.weaponKey || '').toLowerCase() === 'sniper',
+      shooterType: 'companion',
     });
   }
 
   companion.fireCooldownLeft = Math.max(35, weapon.cooldownMs / fireRateMul);
   companion.lastShotAt = now;
+  companion.weaponMagazine = Math.max(0, Math.floor(Number(companion.weaponMagazine) || 0) - 1);
+  if (companion.weaponMagazine <= 0) startCompanionReload(companion);
 }
 
 function tickCompanions(room, dtSec, now) {
@@ -2362,6 +2425,7 @@ function tickCompanions(room, dtSec, now) {
   for (const companion of room.companions) {
     const owner = room.players.get(companion.ownerId);
     if (!owner) continue;
+    updateCompanionReload(companion, dtSec * 1000);
     const squad = byOwner.get(companion.ownerId) || [companion];
     const slotIndex = Math.max(0, squad.findIndex((item) => item.id === companion.id));
     const slotCount = Math.max(1, squad.length);
@@ -2625,7 +2689,7 @@ function explodeRocket(room, bullet, now) {
     const dist = Math.hypot(dx, dy);
     if (dist > reach) continue;
     const falloff = 1 - Math.min(0.45, (dist / Math.max(1, reach)) * 0.45);
-    enemyTakeDamage(room, enemy, Math.max(1, Math.round((Number(bullet.damage) || 1) * falloff)), bullet.ownerId, now, {
+    enemyTakeDamage(room, enemy, Math.max(1, Math.round((Number(bullet.damage) || 1) * falloff)), bullet.ownerPlayerId || bullet.ownerId, now, {
       sourceX: bullet.x,
       sourceY: bullet.y,
       stunMs: ENEMY_HIT_STUN_MS * 1.2,
@@ -2634,7 +2698,8 @@ function explodeRocket(room, bullet, now) {
   }
 
   if (isPvpRoom(room)) {
-    const attacker = bullet?.ownerId ? room.players.get(bullet.ownerId) : null;
+    const attackerId = bullet?.ownerPlayerId || bullet?.ownerId;
+    const attacker = attackerId ? room.players.get(attackerId) : null;
     if (attacker) {
       for (const player of room.players.values()) {
         if (!player || !player.alive || player.id === attacker.id) continue;
@@ -2725,7 +2790,12 @@ function serializeRoom(room) {
     kills: room.kills.get(p.id) || 0,
     weaponKey: p.weaponKey,
     weaponLabel: WEAPONS[p.weaponKey].label,
-    ammo: p.weaponAmmo,
+    ammo: p.weaponReserveAmmo,
+    magazineAmmo: Math.max(0, Math.floor(Number(p.weaponMagazine) || 0)),
+    magazineSize: Math.max(1, Math.floor(Number(WEAPONS[p.weaponKey]?.magazineSize) || 1)),
+    reserveAmmo: p.weaponReserveAmmo,
+    reloadLeftMs: Math.max(0, Math.round(Number(p.weaponReloadLeftMs) || 0)),
+    reloadTotalMs: Math.max(120, Math.round(Number(WEAPONS[p.weaponKey]?.reloadMs) || 900)),
     aimX: Number(p.aimX) || p.x,
     aimY: Number(p.aimY) || p.y,
     shooting: Boolean(p.shooting),
@@ -2784,6 +2854,11 @@ function serializeRoom(room) {
     weaponKey: companion.weaponKey,
     weaponLabel: WEAPONS[companion.weaponKey]?.label || companion.weaponKey || 'Pistol',
     ammo: null,
+    magazineAmmo: Math.max(0, Math.floor(Number(companion.weaponMagazine) || 0)),
+    magazineSize: getWeaponMagazineSize(companion.weaponKey),
+    reserveAmmo: null,
+    reloadLeftMs: Math.max(0, Math.round(Number(companion.weaponReloadLeftMs) || 0)),
+    reloadTotalMs: getWeaponReloadMs(companion.weaponKey),
     aimX: Number(companion.aimX) || companion.x,
     aimY: Number(companion.aimY) || companion.y,
     shooting: Number(companion.fireCooldownLeft) > 0 && now - Number(companion.lastShotAt || 0) < 120,
@@ -2842,6 +2917,8 @@ function serializeRoom(room) {
     bullets: room.bullets.map((b) => ({
       id: b.id,
       ownerId: b.ownerId,
+      ownerPlayerId: b.ownerPlayerId || '',
+      weaponKey: b.weaponKey || '',
       x: b.x,
       y: b.y,
       vx: b.vx,
@@ -2850,6 +2927,7 @@ function serializeRoom(room) {
       kind: b.kind || 'bullet',
       radius: Math.max(2, Number(b.radius) || BULLET_RADIUS),
       fromEnemy: Boolean(b.fromEnemy),
+      shooterType: b.shooterType || (b.fromEnemy ? 'enemy' : ''),
     })),
     enemies: room.enemies.map((e) => ({
       id: e.id,
@@ -3151,12 +3229,106 @@ function maybeSpawnDrop(room, x, y) {
 
 function setPlayerWeapon(player, weaponKey) {
   const weapon = WEAPONS[weaponKey] || WEAPONS.pistol;
-  player.weaponKey = weaponKey;
-  player.weaponAmmo = weapon.ammo;
+  const key = WEAPONS[weaponKey] ? weaponKey : 'pistol';
+  player.weaponKey = key;
+  player.weaponMagazine = Math.max(1, Math.floor(Number(weapon.magazineSize) || 1));
+  player.weaponReserveAmmo = weapon.reserveAmmo === null ? null : Math.max(0, Math.floor(Number(weapon.reserveAmmo) || 0));
+  player.weaponReloadLeftMs = 0;
+  player.weaponAmmo = player.weaponReserveAmmo;
+}
+
+function refillPlayerWeapon(player, weaponKey) {
+  const weapon = WEAPONS[weaponKey] || WEAPONS.pistol;
+  const key = WEAPONS[weaponKey] ? weaponKey : 'pistol';
+  const magazineSize = Math.max(1, Math.floor(Number(weapon.magazineSize) || 1));
+  const pickupAmmo = weapon.pickupAmmo === null ? null : Math.max(0, Math.floor(Number(weapon.pickupAmmo) || 0));
+  if (player.weaponKey !== key) {
+    setPlayerWeapon(player, key);
+    return { switched: true, addedAmmo: player.weaponReserveAmmo, magazineSize };
+  }
+  player.weaponMagazine = Math.min(magazineSize, Math.max(0, Math.floor(Number(player.weaponMagazine) || 0)) + magazineSize);
+  if (pickupAmmo === null) {
+    player.weaponReserveAmmo = null;
+  } else {
+    player.weaponReserveAmmo = Math.max(0, Math.floor(Number(player.weaponReserveAmmo) || 0)) + pickupAmmo;
+  }
+  player.weaponAmmo = player.weaponReserveAmmo;
+  if (Number(player.weaponReloadLeftMs) > 0 && player.weaponMagazine > 0) player.weaponReloadLeftMs = 0;
+  return { switched: false, addedAmmo: pickupAmmo, magazineSize };
+}
+
+function getPlayerWeaponAmmoLabel(player) {
+  const magazine = Math.max(0, Math.floor(Number(player.weaponMagazine) || 0));
+  const reserve = player.weaponReserveAmmo === null ? '∞' : String(Math.max(0, Math.floor(Number(player.weaponReserveAmmo) || 0)));
+  return `${magazine}/${reserve}`;
+}
+
+function startPlayerReload(player, weapon, { force = false } = {}) {
+  if (!player || !weapon) return false;
+  if (Number(player.weaponReloadLeftMs) > 0) return true;
+  const magazineSize = Math.max(1, Math.floor(Number(weapon.magazineSize) || 1));
+  const magazine = Math.max(0, Math.floor(Number(player.weaponMagazine) || 0));
+  if (!force && magazine >= magazineSize) return false;
+  if (player.weaponReserveAmmo !== null && Math.max(0, Math.floor(Number(player.weaponReserveAmmo) || 0)) <= 0) return false;
+  player.weaponReloadLeftMs = Math.max(120, Math.floor(Number(weapon.reloadMs) || 900));
+  player.fireCooldownLeft = Math.max(player.fireCooldownLeft || 0, player.weaponReloadLeftMs);
+  return true;
+}
+
+function completePlayerReload(player, weapon) {
+  const magazineSize = Math.max(1, Math.floor(Number(weapon.magazineSize) || 1));
+  const magazine = Math.max(0, Math.floor(Number(player.weaponMagazine) || 0));
+  const need = Math.max(0, magazineSize - magazine);
+  if (need <= 0) return false;
+  if (player.weaponReserveAmmo === null) {
+    player.weaponMagazine = magazineSize;
+    player.weaponAmmo = null;
+    return true;
+  }
+  const reserve = Math.max(0, Math.floor(Number(player.weaponReserveAmmo) || 0));
+  const load = Math.min(need, reserve);
+  if (load <= 0) return false;
+  player.weaponMagazine = magazine + load;
+  player.weaponReserveAmmo = reserve - load;
+  player.weaponAmmo = player.weaponReserveAmmo;
+  return true;
+}
+
+function fallbackToPistolIfOut(player) {
+  if (!player || player.weaponKey === 'pistol') return false;
+  const magazine = Math.max(0, Math.floor(Number(player.weaponMagazine) || 0));
+  const reserve = Math.max(0, Math.floor(Number(player.weaponReserveAmmo) || 0));
+  if (magazine > 0 || reserve > 0) return false;
+  setPlayerWeapon(player, 'pistol');
+  sendTo(player.ws, { type: 'system', message: 'Ammo ended. Back to pistol.' });
+  return true;
+}
+
+function updatePlayerReload(player, dtMs) {
+  if (!player) return;
+  const weapon = WEAPONS[player.weaponKey] || WEAPONS.pistol;
+  if (!Number.isFinite(Number(player.weaponMagazine))) {
+    player.weaponMagazine = Math.max(1, Math.floor(Number(weapon.magazineSize) || 1));
+  }
+  if (player.weaponReserveAmmo === undefined) {
+    player.weaponReserveAmmo = weapon.reserveAmmo === null ? null : Math.max(0, Math.floor(Number(weapon.reserveAmmo) || 0));
+  }
+  if (Number(player.weaponReloadLeftMs) > 0) {
+    player.weaponReloadLeftMs = Math.max(0, Number(player.weaponReloadLeftMs) - dtMs);
+    if (player.weaponReloadLeftMs <= 0) completePlayerReload(player, weapon);
+  }
+  fallbackToPistolIfOut(player);
 }
 
 function fireFromPlayer(room, player) {
   const weapon = WEAPONS[player.weaponKey] || WEAPONS.pistol;
+  if (Number(player.weaponReloadLeftMs) > 0) return;
+  if (Math.max(0, Math.floor(Number(player.weaponMagazine) || 0)) <= 0) {
+    if (startPlayerReload(player, weapon, { force: true })) return;
+    if (fallbackToPistolIfOut(player)) return;
+  }
+  const activeWeapon = WEAPONS[player.weaponKey] || WEAPONS.pistol;
+  if (Math.max(0, Math.floor(Number(player.weaponMagazine) || 0)) <= 0) return;
   const dx = player.aimX - player.x;
   const dy = player.aimY - player.y;
   const baseAngle = Math.atan2(dy, dx);
@@ -3164,12 +3336,12 @@ function fireFromPlayer(room, player) {
   const damageMul = Math.max(0.2, Number(player.damageMul) || 1);
   const fireRateMul = Math.max(0.2, Number(player.fireRateMul) || 1);
 
-  for (let i = 0; i < weapon.pellets; i += 1) {
-    const spread = (Math.random() - 0.5) * (weapon.spreadDeg * Math.PI / 180);
+  for (let i = 0; i < activeWeapon.pellets; i += 1) {
+    const spread = (Math.random() - 0.5) * (activeWeapon.spreadDeg * Math.PI / 180);
     const angle = baseAngle + spread;
-    const speedVariance = Math.max(0, Number(weapon.bulletSpeedVariance) || 0);
+    const speedVariance = Math.max(0, Number(activeWeapon.bulletSpeedVariance) || 0);
     const speedMul = 1 + ((Math.random() * 2) - 1) * speedVariance;
-    const bulletSpeed = Math.max(120, weapon.bulletSpeed * speedMul);
+    const bulletSpeed = Math.max(120, activeWeapon.bulletSpeed * speedMul);
     room.bullets.push({
       id: room.nextBulletId++,
       ownerId: player.id,
@@ -3178,22 +3350,19 @@ function fireFromPlayer(room, player) {
       y: player.y,
       vx: Math.cos(angle) * bulletSpeed,
       vy: Math.sin(angle) * bulletSpeed,
-      lifeMs: weapon.bulletLifeMs,
-      damage: Math.max(1, Math.round(weapon.bulletDamage * damageMul)),
-      color: weapon.color,
+      lifeMs: activeWeapon.bulletLifeMs,
+      damage: Math.max(1, Math.round(activeWeapon.bulletDamage * damageMul)),
+      color: activeWeapon.color,
       weaponKey: String(player.weaponKey || 'pistol').toLowerCase(),
       segmentHit: String(player.weaponKey || '').toLowerCase() === 'sniper',
+      shooterType: player.isCompanion ? 'companion' : 'player',
     });
   }
 
-  player.fireCooldownLeft = Math.max(35, weapon.cooldownMs / fireRateMul);
-
-  if (weapon.ammo !== null) {
-    player.weaponAmmo -= 1;
-    if (player.weaponAmmo <= 0) {
-      setPlayerWeapon(player, 'pistol');
-      sendTo(player.ws, { type: 'system', message: 'Ammo ended. Back to pistol.' });
-    }
+  player.fireCooldownLeft = Math.max(35, activeWeapon.cooldownMs / fireRateMul);
+  player.weaponMagazine = Math.max(0, Math.floor(Number(player.weaponMagazine) || 0) - 1);
+  if (player.weaponMagazine <= 0) {
+    if (!startPlayerReload(player, activeWeapon, { force: true })) fallbackToPistolIfOut(player);
   }
 }
 
@@ -3213,6 +3382,7 @@ function fireEnemyProjectile(room, enemy, target) {
     lifeMs: ENEMY_RANGED_BULLET_LIFE_MS,
     damage: Math.max(1, Math.round(ENEMY_RANGED_DAMAGE * damageMul)),
     color: '#f87171',
+    shooterType: 'enemy',
   });
 }
 
@@ -4163,8 +4333,8 @@ function applyDevCheatCommand(room, player, rawCommand, now = Date.now()) {
     sendDevConsole(player, 'Commands below require cheats unlocked for your player:');
     sendDevConsole(player, 'lock - lock cheats. Example: lock');
     sendDevConsole(player, 'god [on|off] - invulnerability. Example: god on');
-    sendDevConsole(player, 'weapon <pistol|smg|shotgun|sniper> [ammo]. Example: weapon shotgun 40');
-    sendDevConsole(player, 'ammo <n> - set ammo. Example: ammo 120');
+    sendDevConsole(player, 'weapon <pistol|smg|shotgun|sniper> [reserve]. Example: weapon shotgun 40');
+    sendDevConsole(player, 'ammo <reserve> [magazine] - set ammo. Example: ammo 120 8');
     sendDevConsole(player, 'heal [n] - heal hp. Example: heal 50');
     sendDevConsole(player, 'hp <n> - set hp. Example: hp 200');
     sendDevConsole(player, 'xp <n> - add xp. Example: xp 500');
@@ -4244,21 +4414,24 @@ function applyDevCheatCommand(room, player, rawCommand, now = Date.now()) {
       return;
     }
     setPlayerWeapon(player, key);
-    if (player.weaponAmmo !== null && args[1] !== undefined) {
-      player.weaponAmmo = Math.max(0, Math.floor(Number(args[1]) || 0));
+    if (player.weaponReserveAmmo !== null && args[1] !== undefined) {
+      player.weaponReserveAmmo = Math.max(0, Math.floor(Number(args[1]) || 0));
+      player.weaponAmmo = player.weaponReserveAmmo;
     }
-    sendDevConsole(player, `Weapon set: ${WEAPONS[key].label}${player.weaponAmmo === null ? ' (inf)' : ` (${player.weaponAmmo})`}`);
+    sendDevConsole(player, `Weapon set: ${WEAPONS[key].label} ${getPlayerWeaponAmmoLabel(player)}`);
     return;
   }
 
   if (cmd === 'ammo') {
-    if (player.weaponAmmo === null) {
-      sendDevConsole(player, 'Current weapon has infinite ammo.', false);
-      return;
+    if (player.weaponReserveAmmo !== null) {
+      player.weaponReserveAmmo = Math.max(0, Math.floor(Number(args[0]) || 0));
+      player.weaponAmmo = player.weaponReserveAmmo;
     }
-    const ammo = Math.max(0, Math.floor(Number(args[0]) || 0));
-    player.weaponAmmo = ammo;
-    sendDevConsole(player, `Ammo: ${ammo}`);
+    if (args[1] !== undefined) {
+      const weapon = WEAPONS[player.weaponKey] || WEAPONS.pistol;
+      player.weaponMagazine = Math.max(0, Math.min(Math.max(1, Number(weapon.magazineSize) || 1), Math.floor(Number(args[1]) || 0)));
+    }
+    sendDevConsole(player, `Ammo: ${getPlayerWeaponAmmoLabel(player)}`);
     return;
   }
 
@@ -4535,6 +4708,9 @@ function joinRoom(ws, join) {
     lastProcessedInputSeq: 0,
     weaponKey: 'pistol',
     weaponAmmo: null,
+    weaponMagazine: Math.max(1, Math.floor(Number(WEAPONS.pistol.magazineSize) || 12)),
+    weaponReserveAmmo: null,
+    weaponReloadLeftMs: 0,
     playerClass,
     netQuality: 0,
     netPingMs: 0,
@@ -4790,7 +4966,8 @@ wss.on('connection', (ws, req) => {
       const key = msg.weaponKey;
       if (!WEAPONS[key]) return;
       if (key === 'pistol' || current.weaponKey === key) {
-        setPlayerWeapon(current, key);
+        if (key === 'pistol') setPlayerWeapon(current, key);
+        else startPlayerReload(current, WEAPONS[key], { force: true });
       }
     }
 
@@ -4843,6 +5020,7 @@ function tickRoom(room, dtSec, now) {
 
   syncRoomCompanions(room);
   const roomDifficulty = getRoomDifficulty(room, now);
+  const dtMs = dtSec * 1000;
   if (!room.pvpMatchEnded && room.players.size > 0 && now - room.lastEnemySpawnAt >= roomDifficulty.spawnIntervalMs) {
     room.lastEnemySpawnAt = now;
     const spawnMul = Math.max(1, Number(room.enemySpawnMul) || 1);
@@ -4888,7 +5066,8 @@ function tickRoom(room, dtSec, now) {
       continue;
     }
 
-    updatePlayerDodgeRecharge(p, dtSec * 1000);
+    updatePlayerReload(p, dtMs);
+    updatePlayerDodgeRecharge(p, dtMs);
     if (p.jumpQueued) {
       performPlayerDodge(p, now);
       p.jumpQueued = false;
@@ -4903,7 +5082,7 @@ function tickRoom(room, dtSec, now) {
     p.x = clamp(p.x + nx * PLAYER_SPEED * speedMul * dtSec, PLAYER_RADIUS, WORLD_WIDTH - PLAYER_RADIUS);
     p.y = clamp(p.y + ny * PLAYER_SPEED * speedMul * dtSec, PLAYER_RADIUS, WORLD_HEIGHT - PLAYER_RADIUS);
 
-    p.fireCooldownLeft = Math.max(0, p.fireCooldownLeft - dtSec * 1000);
+    p.fireCooldownLeft = Math.max(0, p.fireCooldownLeft - dtMs);
 
     if (p.shooting && p.fireCooldownLeft <= 0) {
       fireFromPlayer(room, p);
@@ -4976,7 +5155,7 @@ function tickRoom(room, dtSec, now) {
         }
       }
     } else {
-      const owner = room.players.get(b.ownerId);
+      const owner = room.players.get(b.ownerPlayerId || b.ownerId);
       if (normalizeGameMode(room.gameMode) === 'pvp' && owner) {
         for (const p of room.players.values()) {
           if (p.id === owner.id || !p.alive) continue;
@@ -5001,7 +5180,7 @@ function tickRoom(room, dtSec, now) {
           if (collides) {
             hit = true;
             if (b.kind === 'rocket') explodeRocket(room, b, now);
-            else enemyTakeDamage(room, e, b.damage, b.ownerId, now, {
+            else enemyTakeDamage(room, e, b.damage, b.ownerPlayerId || b.ownerId, now, {
               fromX: prevX,
               fromY: prevY,
               dirX: b.vx,
@@ -5252,9 +5431,10 @@ function tickRoom(room, dtSec, now) {
           sendTo(p.ws, { type: 'system', message: 'XP Surge: all XP crystals are flying to you!' });
           broadcastRoom(room, { type: 'system', message: `${p.name} activated XP Surge.` });
         } else {
-          setPlayerWeapon(p, drop.weaponKey);
+          const refill = refillPlayerWeapon(p, drop.weaponKey);
           const weaponLabel = WEAPONS[drop.weaponKey]?.label || 'Weapon';
-          sendTo(p.ws, { type: 'system', message: `Picked ${weaponLabel}` });
+          const ammoLabel = getPlayerWeaponAmmoLabel(p);
+          sendTo(p.ws, { type: 'system', message: `${refill.switched ? 'Picked' : 'Refilled'} ${weaponLabel}: ${ammoLabel}` });
           broadcastRoom(room, { type: 'system', message: `${p.name} picked ${weaponLabel}.` });
         }
         room.drops.splice(i, 1);

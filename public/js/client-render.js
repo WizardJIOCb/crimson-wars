@@ -38,6 +38,17 @@ function renderDiagReset() {
   renderDiag.totals.indicators = 0;
   renderDiag.totals.minimap = 0;
 }
+
+function hexToRgba(hex, alpha = 1) {
+  const raw = String(hex || '').replace('#', '').trim();
+  const full = raw.length === 3 ? raw.split('').map((ch) => ch + ch).join('') : raw;
+  const value = Number.parseInt(full, 16);
+  if (!Number.isFinite(value)) return `rgba(255,255,255,${Math.max(0, Math.min(1, alpha)).toFixed(3)})`;
+  const r = (value >> 16) & 255;
+  const g = (value >> 8) & 255;
+  const b = value & 255;
+  return `rgba(${r},${g},${b},${Math.max(0, Math.min(1, alpha)).toFixed(3)})`;
+}
 function scheduleNextFrame(delayMs = 0) {
   if (delayMs > 0) {
     setTimeout(() => requestAnimationFrame(render), delayMs);
@@ -97,18 +108,19 @@ function drawHpBar(x, y, ratio) {
   ctx.fillStyle = ratio > 0.35 ? '#84cc16' : '#ef4444';
   ctx.fillRect(sx, sy, 38 * ratio, 5);
 }
-function drawJumpChargesIndicator(p, sx, sy) {
+function drawJumpChargesIndicator(p, sx, sy, offsetY = -72) {
   if (!p || !p.alive) return;
-  const maxCharges = Math.max(1, Number(p.dodgeChargesMax) || 1);
-  const charges = Math.max(0, Math.min(maxCharges, Number(p.dodgeCharges) || 0));
+  const fallbackCharges = typeof PLAYER_DODGE_MAX_CHARGES === 'number' ? PLAYER_DODGE_MAX_CHARGES : 2;
+  const maxCharges = Math.max(1, Number(p.dodgeChargesMax) || fallbackCharges);
+  const charges = Math.max(0, Math.min(maxCharges, Number(p.dodgeCharges ?? maxCharges) || 0));
   const cdMs = Math.max(0, Number(p.dodgeRechargeMs ?? p.dodgeCooldownMs) || 0);
   const cdTotalMs = Math.max(1, Number(p.dodgeRechargeTotalMs) || 1200);
   const recharging = charges < maxCharges && cdMs > 0;
   const recoveringIndex = recharging ? charges : -1;
 
-  const radius = 7;
-  const gap = 6;
-  const y = sy - 72;
+  const radius = 4;
+  const gap = 4;
+  const y = sy + offsetY;
   const totalWidth = maxCharges * (radius * 2) + (maxCharges - 1) * gap;
   const startX = sx - totalWidth / 2 + radius;
 
@@ -116,33 +128,187 @@ function drawJumpChargesIndicator(p, sx, sy) {
   ctx.lineWidth = 2;
   for (let i = 0; i < maxCharges; i += 1) {
     const cx = startX + i * (radius * 2 + gap);
-    ctx.fillStyle = i < charges ? 'rgba(34,197,94,0.95)' : 'rgba(17,24,39,0.85)';
+    const ready = i < charges;
+    const grad = ctx.createRadialGradient(cx - 1.5, y - 1.5, 0.5, cx, y, radius + 2);
+    grad.addColorStop(0, ready ? 'rgba(224, 251, 255, 0.98)' : 'rgba(30, 41, 59, 0.9)');
+    grad.addColorStop(0.48, ready ? 'rgba(56, 189, 248, 0.95)' : 'rgba(15, 23, 42, 0.86)');
+    grad.addColorStop(1, ready ? 'rgba(37, 99, 235, 0.96)' : 'rgba(2, 6, 23, 0.82)');
+    ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.arc(cx, y, radius, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.strokeStyle = i < charges ? 'rgba(187,247,208,0.95)' : 'rgba(148,163,184,0.7)';
+    ctx.shadowColor = ready ? 'rgba(56, 189, 248, 0.85)' : 'transparent';
+    ctx.shadowBlur = ready ? 7 : 0;
+    ctx.strokeStyle = ready ? 'rgba(186, 230, 253, 0.96)' : 'rgba(71, 85, 105, 0.74)';
     ctx.beginPath();
     ctx.arc(cx, y, radius + 1, 0, Math.PI * 2);
     ctx.stroke();
+    ctx.shadowBlur = 0;
 
     if (i === recoveringIndex) {
       const progress = 1 - Math.max(0, Math.min(1, cdMs / cdTotalMs));
-      ctx.strokeStyle = '#facc15';
+      ctx.strokeStyle = '#67e8f9';
       ctx.beginPath();
-      ctx.arc(cx, y, radius + 3, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * progress));
+      ctx.arc(cx, y, radius + 2.5, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * progress));
       ctx.stroke();
     }
   }
 
   if (recharging) {
-    ctx.fillStyle = '#f8fafc';
-    ctx.font = '11px sans-serif';
+    ctx.fillStyle = '#bae6fd';
+    ctx.font = '9px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText((cdMs / 1000).toFixed(1) + 's', sx, y - 13);
+    ctx.fillText((cdMs / 1000).toFixed(1) + 's', sx, y + 17);
   }
   ctx.restore();
 }
+
+function drawPlayerWeaponAmmoBadge(p, sx, sy, offsetY = -52) {
+  if (!p || !p.alive) return;
+  const weaponKey = String(p.weaponKey || 'pistol').toLowerCase();
+  const fallbackMagSize = weaponKey === 'sniper' ? 5 : (weaponKey === 'shotgun' ? 8 : (weaponKey === 'smg' ? 36 : 12));
+  const magSize = Math.max(1, Math.floor(Number(p.magazineSize) || fallbackMagSize));
+  const mag = Math.max(0, Math.floor(Number(p.magazineAmmo ?? p.magazine ?? magSize) || 0));
+  const reserveRaw = p.reserveAmmo ?? p.ammo;
+  const reserve = reserveRaw === null || reserveRaw === undefined ? '∞' : String(Math.max(0, Math.floor(Number(reserveRaw) || 0)));
+  const reloadLeft = Math.max(0, Number(p.reloadLeftMs) || 0);
+  const reloadTotal = Math.max(1, Number(p.reloadTotalMs) || 1);
+  const label = reloadLeft > 0 ? `${mag}/${reserve}` : `${mag}/${reserve}`;
+  const y = sy + offsetY;
+  const w = Math.max(74, 42 + label.length * 6);
+  const h = 18;
+  const x = sx - w / 2;
+  const accent = weaponKey === 'sniper' ? '#e5e7eb'
+    : weaponKey === 'shotgun' ? '#fb923c'
+      : weaponKey === 'smg' ? '#38bdf8'
+        : '#f59e0b';
+
+  ctx.save();
+  ctx.globalAlpha = 0.96;
+  ctx.fillStyle = 'rgba(8, 13, 20, 0.82)';
+  ctx.strokeStyle = reloadLeft > 0 ? 'rgba(250, 204, 21, 0.92)' : 'rgba(148, 163, 184, 0.72)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 7);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.save();
+  ctx.translate(x + 15, y + h / 2);
+  ctx.scale(0.92, 0.92);
+  ctx.fillStyle = accent;
+  drawWeaponIcon(0, 0, weaponKey);
+  ctx.restore();
+
+  ctx.fillStyle = reloadLeft > 0 ? '#fde68a' : '#f8fafc';
+  ctx.font = 'bold 11px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, x + 28, y + h / 2 + 0.5);
+
+  if (reloadLeft > 0) {
+    const progress = 1 - Math.max(0, Math.min(1, reloadLeft / reloadTotal));
+    ctx.fillStyle = 'rgba(250, 204, 21, 0.22)';
+    ctx.fillRect(x + 5, y + h - 4, w - 10, 2);
+    ctx.fillStyle = '#facc15';
+    ctx.fillRect(x + 5, y + h - 4, (w - 10) * progress, 2);
+  }
+  ctx.restore();
+}
+
+function drawPlayerNameHpBadge(p, sx, sy) {
+  if (!p || !p.alive) return;
+  const name = String(p.name || '').trim();
+  const hp = Math.max(0, Math.ceil(Number(p.hp) || 0));
+  const maxHp = Math.max(1, Math.ceil(Number(p.maxHp) || 1));
+  const ratio = Math.max(0, Math.min(1, hp / maxHp));
+  const hpText = `${hp}/${maxHp}`;
+  const label = name || 'Player';
+  const width = Math.max(92, Math.min(150, 42 + Math.max(label.length, hpText.length) * 6.4));
+  const x = sx - width / 2;
+  const y = sy - 91;
+
+  ctx.save();
+  ctx.globalAlpha = 0.99;
+  ctx.fillStyle = 'rgba(4, 9, 15, 0.28)';
+  ctx.strokeStyle = 'rgba(226, 232, 240, 0.72)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(x, y, width, 25, 8);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = 'bold 10px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, sx, y + 7);
+
+  const barX = x + 6;
+  const barY = y + 13;
+  const barW = width - 12;
+  const barH = 9;
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.58)';
+  ctx.fillRect(barX, barY, barW, barH);
+  ctx.fillStyle = ratio > 0.45 ? '#84cc16' : (ratio > 0.2 ? '#facc15' : '#ef4444');
+  ctx.fillRect(barX, barY, barW * ratio, barH);
+  ctx.strokeStyle = 'rgba(226, 232, 240, 0.78)';
+  ctx.strokeRect(barX, barY, barW, barH);
+
+  ctx.font = 'bold 9px sans-serif';
+  ctx.fillStyle = '#052e16';
+  ctx.fillText(hpText, sx, barY + barH / 2 + 1.5);
+  ctx.restore();
+}
+
+function drawCompanionReloadBar(p, sx, sy) {
+  if (!p || !p.alive || !p.isCompanion) return;
+  const reloadLeft = Math.max(0, Number(p.reloadLeftMs) || 0);
+  const reloadTotal = Math.max(1, Number(p.reloadTotalMs) || 1);
+  if (reloadLeft <= 0 || reloadTotal <= 1) return;
+
+  const progress = 1 - Math.max(0, Math.min(1, reloadLeft / reloadTotal));
+  const width = 34;
+  const height = 5;
+  const x = sx - width / 2;
+  const y = sy - 45;
+
+  ctx.save();
+  ctx.globalAlpha = 0.94;
+  ctx.fillStyle = 'rgba(5, 10, 18, 0.72)';
+  ctx.strokeStyle = 'rgba(186, 230, 253, 0.78)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(x, y, width, height, 3);
+  ctx.fill();
+  ctx.stroke();
+
+  const grad = ctx.createLinearGradient(x, y, x + width, y);
+  grad.addColorStop(0, '#38bdf8');
+  grad.addColorStop(0.55, '#67e8f9');
+  grad.addColorStop(1, '#facc15');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.roundRect(x + 1, y + 1, Math.max(1, (width - 2) * progress), height - 2, 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#e0f2fe';
+  ctx.font = 'bold 7px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText('reload', sx, y - 2);
+  ctx.restore();
+}
+
+function drawPlayerOverheadUi(p, sx, sy, isMe) {
+  if (!p || !p.alive || p.isCompanion) return;
+  const stackY = sy + 14;
+  drawPlayerWeaponAmmoBadge(p, sx, stackY, -113);
+  drawPlayerNameHpBadge(p, sx, stackY);
+  drawJumpChargesIndicator(p, sx, stackY, -56);
+}
+
 function drawTrees() {
   for (const tr of game.sortedTrees) {
     if (!isVisibleWorld(tr.x, tr.y - 36, 90)) continue;
@@ -268,14 +434,8 @@ function drawPlayer(p, t, isMe, rx, ry) {
     drawCircle(rx, ry, 18, isMe ? '#22d3ee' : '#a78bfa');
   }
 
-  if (!isCompanion && isMe) drawJumpChargesIndicator(displayPlayer, x, y);
-  if (!isCompanion) drawHpBar(rx, ry, Math.max(0, p.hp / p.maxHp));
-  if (displayPlayer.name) {
-    ctx.fillStyle = '#f8fafc';
-    ctx.font = '13px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(displayPlayer.name, x, y - 42);
-  }
+  if (isCompanion) drawCompanionReloadBar(displayPlayer, x, y);
+  drawPlayerOverheadUi(displayPlayer, x, y, isMe);
 }
 function drawBossPortals(portals, nowMs) {
   if (!Array.isArray(portals)) return;
@@ -926,7 +1086,66 @@ function drawFx() {
     ctx.globalAlpha = 1;
   }
 
+  for (const f of visuals.muzzleGroundFlashes) {
+    if (!game.bulletTracersEnabled) continue;
+    if (!isVisibleWorld(f.x, f.y, 72)) continue;
+    const t = Math.max(0, f.life / f.ttl);
+    const sx = f.x - camera.x;
+    const sy = f.y - camera.y;
+    const size = Math.max(0.4, Number(f.size) || 1);
+    const intensity = Math.max(0.12, Math.min(1.4, Number(f.intensity) || 1));
+    const pulse = 1 + (1 - t) * 0.75;
+    const rx = 18 * size * pulse;
+    const ry = 6 * size * pulse;
+    const alpha = Math.min(1, t * 1.45) * intensity;
+
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(Number(f.a) || 0);
+    ctx.globalCompositeOperation = 'lighter';
+
+    ctx.save();
+    ctx.rotate(-(Number(f.a) || 0));
+    const groundR = 34 * size * (1 + (1 - t) * 1.2);
+    const groundGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, groundR);
+    groundGlow.addColorStop(0, hexToRgba(f.c1 || '#facc15', alpha * 0.22));
+    groundGlow.addColorStop(0.38, hexToRgba(f.c2 || '#fb923c', alpha * 0.12));
+    groundGlow.addColorStop(0.72, hexToRgba(f.c2 || '#fb923c', alpha * 0.045));
+    groundGlow.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = groundGlow;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, groundR * 1.18, groundR * 0.58, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, rx * 1.45);
+    glow.addColorStop(0, `rgba(255,255,255,${(alpha * 0.45).toFixed(3)})`);
+    glow.addColorStop(0.2, hexToRgba(f.c1 || '#facc15', alpha * 0.48));
+    glow.addColorStop(0.62, hexToRgba(f.c2 || '#fb923c', alpha * 0.16));
+    glow.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rx * 1.2, ry * 2.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = hexToRgba(f.c1 || '#facc15', alpha * 0.72);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = `rgba(255,255,255,${(alpha * 0.72).toFixed(3)})`;
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.moveTo(-rx * 0.45, 0);
+    ctx.lineTo(rx * 1.25, 0);
+    ctx.moveTo(rx * 0.12, -ry * 1.25);
+    ctx.lineTo(rx * 0.68, ry * 1.25);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   for (const f of visuals.muzzle) {
+    if (!game.bulletTracersEnabled) continue;
     if (!isVisibleWorld(f.x, f.y, 20)) continue;
     const a = Math.max(0, f.life / f.ttl);
     ctx.save();
@@ -1307,4 +1526,3 @@ startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 setInterval(sendNetStatsReport, 1500);
 scheduleNextFrame();
-

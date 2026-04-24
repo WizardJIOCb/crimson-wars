@@ -580,7 +580,10 @@ function processSkillCastFx(nextState) {
 
       if (Number.isFinite(prev)) {
         const casted = cur > 180 && (prev <= 120 || (cur - prev) > 220);
-        if (casted) spawnSkillCastFx(sid, p, nextState, s);
+        if (casted) {
+          spawnSkillCastFx(sid, p, nextState, s);
+          window.cwPlaySfx?.('skill', { x: p.x, y: p.y, key: `skill:${p.id}:${sid}`, minGapMs: 140, volume: p.id === game.myId ? 1.1 : 0.72 });
+        }
       }
       visuals.skillCdPrev.set(key, cur);
     }
@@ -673,16 +676,25 @@ function processStateFx(nextState) {
     if (!nextEnemyMap.has(id)) {
       if (prev.type === 'boss') {
         spawnBossDeathExplosion(prev.x, prev.y);
+        window.cwPlaySfx?.('bossDeath', { x: prev.x, y: prev.y, key: `bossDeath:${id}`, radius: 1600, volume: 1.35 });
       } else {
         const hitDir = resolveImpactDir(prev.x, prev.y, false);
         spawnBlood(prev.x, prev.y, 18, hitDir.x, hitDir.y, 0.96 * (hitDir.strength || 1));
         spawnGoreBurst(prev.x, prev.y, 18, hitDir.x, hitDir.y, 0.82 * (hitDir.strength || 1));
         spawnBloodPuddle(prev.x, prev.y, 1);
         spawnHitFx(prev.x, prev.y, 14, false);
+        window.cwPlaySfx?.('enemyDeath', { x: prev.x, y: prev.y, enemyType: prev.type, key: `enemyDeath:${id}`, minGapMs: 28, radius: 920, volume: 0.92 });
       }
     }
   }
   visuals.enemyPrev = nextEnemyMap;
+
+  const bossAlive = Boolean(nextState.bossAlive);
+  if (!visuals.prevBossAlive && bossAlive) {
+    const boss = (nextState.enemies || []).find((e) => e.type === 'boss') || null;
+    window.cwPlaySfx?.('bossSpawn', { x: boss?.x, y: boss?.y, key: 'bossSpawn', minGapMs: 2500, radius: 1800, volume: 1.08 });
+  }
+  visuals.prevBossAlive = bossAlive;
 
   const prevPlayerMap = visuals.playerPrev;
   const nextPlayerMap = new Map();
@@ -707,6 +719,7 @@ function processStateFx(nextState) {
       spawnBlood(p.x, p.y, bloodCount, hitDir.x, hitDir.y, 0.9 * (hitDir.strength || 1));
       if (game.extraBloodEnabled) spawnGoreBurst(p.x, p.y, Math.max(6, hitDamage * 0.9), hitDir.x, hitDir.y, 0.76 * (hitDir.strength || 1));
       spawnHitFx(p.x, p.y, hitDamage * meBonus, true);
+      if (p.id === game.myId) window.cwPlaySfx?.('playerHit', { x: p.x, y: p.y, key: 'playerHit:me', minGapMs: 260, volume: 0.88 });
       if (p.id === game.myId) triggerHitScreenFx(hitDamage * meBonus, hitDir.x, hitDir.y);
     }
     if (prev && prev.alive && !p.alive) {
@@ -715,6 +728,7 @@ function processStateFx(nextState) {
       spawnBloodPuddle(p.x, p.y, 1.15);
       spawnGoreBurst(p.x, p.y, 20, hitDir.x, hitDir.y, 0.82 * (hitDir.strength || 1));
       spawnHitFx(p.x, p.y, 18, true);
+      window.cwPlaySfx?.('playerDeath', { x: p.x, y: p.y, key: `playerDeath:${p.id}`, minGapMs: 900, radius: 1300, volume: p.id === game.myId ? 1.15 : 0.76 });
       if (p.id === game.myId) triggerHitScreenFx(22, hitDir.x, hitDir.y);
     }
 
@@ -740,6 +754,13 @@ function processStateFx(nextState) {
       const isMe = p.id === game.myId;
       // Phase 1: immediate gust at dodge start point.
       spawnDodgeWindFx(startX, startY, dirX, dirY, isMe);
+      window.cwPlaySfx?.('skillDodge', {
+        x: startX,
+        y: startY,
+        key: `dodge:${p.id}`,
+        minGapMs: 160,
+        volume: isMe ? 1 : 0.5,
+      });
       // Phase 2: tiny delayed gust at dodge end point.
       visuals.dodgeWindScheduled.push({
         x: endX,
@@ -790,19 +811,123 @@ function processStateFx(nextState) {
     if (!nextOfferMap.has(id)) {
       const color = prev.ownerId === game.myId ? '#86efac' : '#9ca3af';
       spawnSkillBurstFx(prev.x, prev.y, color, 92);
+      window.cwPlaySfx?.('skill', { x: prev.x, y: prev.y, key: `skillOffer:${id}`, minGapMs: 120, volume: prev.ownerId === game.myId ? 1.05 : 0.65 });
     }
   }
   visuals.skillOfferPrev = nextOfferMap;
 
+  const prevDropMap = visuals.dropPrev || new Map();
+  const nextDropMap = new Map();
+  for (const drop of nextState.drops || []) {
+    nextDropMap.set(drop.id, { x: drop.x, y: drop.y, kind: drop.kind, weaponKey: drop.weaponKey });
+  }
+  for (const [id, prev] of prevDropMap.entries()) {
+    if (!nextDropMap.has(id)) {
+      const isWeapon = String(prev.kind || 'weapon') === 'weapon';
+      window.cwPlaySfx?.(isWeapon ? 'weaponPickup' : 'skill', {
+        x: prev.x,
+        y: prev.y,
+        weaponKey: prev.weaponKey,
+        key: `drop:${id}`,
+        minGapMs: 90,
+        volume: isWeapon ? 0.95 : 1.05,
+      });
+    }
+  }
+  visuals.dropPrev = nextDropMap;
+
+  const prevXpMap = visuals.xpOrbPrev || new Map();
+  const nextXpMap = new Map();
+  for (const orb of nextState.xpOrbs || []) {
+    nextXpMap.set(orb.id, { x: orb.x, y: orb.y });
+  }
+  let crystalCount = 0;
+  let crystalX = 0;
+  let crystalY = 0;
+  for (const [id, prev] of prevXpMap.entries()) {
+    if (!nextXpMap.has(id)) {
+      crystalCount += 1;
+      crystalX += Number(prev.x) || 0;
+      crystalY += Number(prev.y) || 0;
+    }
+  }
+  if (crystalCount > 0) {
+    window.cwPlaySfx?.('crystal', {
+      x: crystalX / crystalCount,
+      y: crystalY / crystalCount,
+      key: 'crystalPickup',
+      minGapMs: crystalCount > 4 ? 55 : 85,
+      volume: Math.min(1.35, 0.68 + crystalCount * 0.08),
+    });
+  }
+  visuals.xpOrbPrev = nextXpMap;
+
   const playersById = new Map(nextState.players.map((p) => [p.id, p]));
+  const enemyShooters = new Map((nextState.enemies || []).map((e) => [e.id, e]));
   const ids = new Set();
   for (const b of nextState.bullets) {
     ids.add(b.id);
     if (!visuals.bulletIds.has(b.id)) {
       const owner = playersById.get(b.ownerId);
       if (owner) {
-        const a = Math.atan2(b.y - owner.y, b.x - owner.x);
-        visuals.muzzle.push({ x: owner.x + Math.cos(a) * 20, y: owner.y + Math.sin(a) * 20, a, c: b.color || '#ffd166', life: 0.05, ttl: 0.05 });
+        const bvx = Number(b.vx) || 0;
+        const bvy = Number(b.vy) || 0;
+        const dx = Math.abs(bvx) + Math.abs(bvy) > 0.001 ? bvx : ((Number(b.x) || owner.x) - owner.x);
+        const dy = Math.abs(bvx) + Math.abs(bvy) > 0.001 ? bvy : ((Number(b.y) || owner.y) - owner.y);
+        const a = Math.atan2(dy, dx || 1);
+        const isCompanionShot = Boolean(owner.isCompanion) || String(b.shooterType || '').toLowerCase() === 'companion';
+        const weaponKey = String(b.weaponKey || owner.weaponKey || '').toLowerCase();
+        if (game.bulletTracersEnabled) {
+          visuals.muzzle.push({ x: owner.x + Math.cos(a) * 20, y: owner.y + Math.sin(a) * 20, a, c: b.color || '#ffd166', life: 0.05, ttl: 0.05 });
+          visuals.muzzleGroundFlashes.push({
+            x: owner.x + Math.cos(a) * 23,
+            y: owner.y + Math.sin(a) * 23 + 8,
+            a,
+            c1: (isCompanionShot || owner.id === game.myId) ? '#facc15' : '#60a5fa',
+            c2: (isCompanionShot || owner.id === game.myId) ? '#fb923c' : '#93c5fd',
+            life: 0.13,
+            ttl: 0.13,
+          size: isCompanionShot ? 0.9 : (weaponKey === 'shotgun' ? 1.72 : (weaponKey === 'sniper' ? 1.55 : 1)),
+          intensity: isCompanionShot ? 0.62 : (weaponKey === 'shotgun' ? 0.46 : 1),
+        });
+        }
+        const isMyCompanionShot = isCompanionShot && owner.ownerId === game.myId;
+        window.cwPlaySfx?.('shot', {
+          x: owner.x,
+          y: owner.y,
+          weaponKey,
+          key: `shot:${isCompanionShot ? 'companion' : 'player'}:${owner.id}:${weaponKey || 'weapon'}`,
+          minGapMs: owner.id === game.myId ? 28 : (isMyCompanionShot ? 44 : 72),
+          volume: owner.id === game.myId ? 0.92 : (isMyCompanionShot ? 0.62 : 0.46),
+        });
+      } else if (b.fromEnemy) {
+        const shooter = enemyShooters.get(b.ownerId) || null;
+        const vx = Number(b.vx) || 1;
+        const vy = Number(b.vy) || 0;
+        const a = Math.atan2(vy, vx);
+        const sx = shooter ? Number(shooter.x) || b.x : Number(b.x) || 0;
+        const sy = shooter ? Number(shooter.y) || b.y : Number(b.y) || 0;
+        if (game.bulletTracersEnabled) {
+          visuals.muzzleGroundFlashes.push({
+            x: sx + Math.cos(a) * 24,
+            y: sy + Math.sin(a) * 24 + 8,
+            a,
+            c1: '#fb7185',
+            c2: '#ef4444',
+            life: 0.15,
+            ttl: 0.15,
+            size: 0.82,
+            intensity: 0.68,
+            npcShot: true,
+          });
+        }
+        window.cwPlaySfx?.('enemyShot', {
+          x: sx,
+          y: sy,
+          key: `enemyShot:${b.ownerId || 'enemy'}`,
+          minGapMs: 95,
+          volume: 0.5,
+        });
       }
     }
   }
@@ -821,6 +946,7 @@ function processStateFx(nextState) {
 
   const maxM = getQ().maxMuzzle;
   if (visuals.muzzle.length > maxM) visuals.muzzle.splice(0, visuals.muzzle.length - maxM);
+  if (visuals.muzzleGroundFlashes.length > maxM) visuals.muzzleGroundFlashes.splice(0, visuals.muzzleGroundFlashes.length - maxM);
 }
 
 function updateFx(dt) {
@@ -961,6 +1087,11 @@ function updateFx(dt) {
   for (let i = visuals.muzzle.length - 1; i >= 0; i -= 1) {
     visuals.muzzle[i].life -= dt;
     if (visuals.muzzle[i].life <= 0) visuals.muzzle.splice(i, 1);
+  }
+
+  for (let i = visuals.muzzleGroundFlashes.length - 1; i >= 0; i -= 1) {
+    visuals.muzzleGroundFlashes[i].life -= dt;
+    if (visuals.muzzleGroundFlashes[i].life <= 0) visuals.muzzleGroundFlashes.splice(i, 1);
   }
 
   for (let i = visuals.dodgeWind.length - 1; i >= 0; i -= 1) {

@@ -1795,6 +1795,20 @@ body.replay-game-active #scoreboard {
   gap: 6px;
 }
 
+.shadow-range-option {
+  display: grid;
+  gap: 6px;
+}
+
+.shadow-range-option label {
+  justify-content: space-between;
+}
+
+.shadow-range-option input[type="range"] {
+  width: min(220px, 100%);
+  accent-color: #38bdf8;
+}
+
 #shadow-toggle {
   pointer-events: auto;
 }

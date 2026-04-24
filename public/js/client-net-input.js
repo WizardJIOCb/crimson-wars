@@ -3870,13 +3870,18 @@ function seekReplayGame(elapsedMs, { keepPaused = null } = {}) {
   visuals.bulletIds = new Set();
   visuals.skillCdPrev = new Map();
   visuals.skillOfferPrev = new Map();
+  visuals.dropPrev = new Map();
+  visuals.xpOrbPrev = new Map();
+  visuals.prevBossAlive = false;
   visuals.blood = [];
   visuals.bloodPuddles = [];
   visuals.gore = [];
   visuals.hitFx = [];
   visuals.muzzle = [];
+  visuals.muzzleGroundFlashes = [];
   visuals.bossBlast = [];
   visuals.bloodMist = [];
+  visuals.muzzleGroundFlashes = [];
   visuals.rocketSmoke = [];
   visuals.rocketFire = [];
   visuals.rocketBlast = [];
@@ -4432,6 +4437,7 @@ function startReplayGame(payload, record) {
   visuals.gore = [];
   visuals.hitFx = [];
   visuals.muzzle = [];
+  visuals.muzzleGroundFlashes = [];
   visuals.bossBlast = [];
   visuals.bloodMist = [];
   visuals.rocketSmoke = [];
@@ -4445,6 +4451,9 @@ function startReplayGame(payload, record) {
   visuals.dodgeWindScheduled = [];
   visuals.skillCdPrev = new Map();
   visuals.skillOfferPrev = new Map();
+  visuals.dropPrev = new Map();
+  visuals.xpOrbPrev = new Map();
+  visuals.prevBossAlive = false;
   closeGameVersionModal();
   joinOverlay.style.display = 'none';
   document.body.classList.add('replay-game-active');
@@ -5237,6 +5246,8 @@ function syncBulletsFromState(nextState) {
         color: b.color,
         kind: b.kind || 'bullet',
         radius: b.radius || 3,
+        shooterType: b.shooterType || '',
+        weaponKey: b.weaponKey || '',
       };
       game.renderBullets.set(id, r);
       continue;
@@ -5249,6 +5260,8 @@ function syncBulletsFromState(nextState) {
     r.color = b.color;
     r.kind = b.kind || 'bullet';
     r.radius = b.radius || 3;
+    r.shooterType = b.shooterType || '';
+    r.weaponKey = b.weaponKey || '';
   }
 
   for (const id of Array.from(game.renderBullets.keys())) {
@@ -5276,6 +5289,8 @@ function updateBulletInterpolation(dt) {
         color: tb.color,
         kind: tb.kind || 'bullet',
         radius: tb.radius || 3,
+        shooterType: tb.shooterType || '',
+        weaponKey: tb.weaponKey || '',
       };
       game.renderBullets.set(id, r);
       continue;
@@ -5290,6 +5305,8 @@ function updateBulletInterpolation(dt) {
     r.color = tb.color;
     r.kind = tb.kind || 'bullet';
     r.radius = tb.radius || 3;
+    r.shooterType = tb.shooterType || '';
+    r.weaponKey = tb.weaponKey || '';
 
     if (replayGame.active) {
       if (isRocket && typeof spawnRocketTrailFx === 'function') {
@@ -5388,6 +5405,8 @@ function pushNetSnapshot(state) {
       color: b.color,
       kind: b.kind || 'bullet',
       radius: b.radius || 3,
+      shooterType: b.shooterType || '',
+      weaponKey: b.weaponKey || '',
     })),
     xpOrbs: state.xpOrbs.map((o) => ({ id: o.id, x: o.x, y: o.y })),
   };
@@ -5469,6 +5488,8 @@ function sampleBufferedState() {
           color: pb.color ?? pa.color,
           kind: pb.kind ?? pa.kind,
           radius: pb.radius ?? pa.radius,
+          shooterType: pb.shooterType ?? pa.shooterType,
+          weaponKey: pb.weaponKey ?? pa.weaponKey,
           faceLeft: typeof pb.faceLeft === 'boolean' ? pb.faceLeft : pa.faceLeft,
           alive: pbAliveKnown ? Boolean(pb.alive) : (paAliveKnown ? Boolean(pa.alive) : undefined),
           dodgeInvulnUntil: Number(pb.dodgeInvulnUntil ?? pa.dodgeInvulnUntil) || 0,
@@ -5562,7 +5583,10 @@ function updateScoreboard(players) {
     const kills = Number(p.kills) || 0;
     const pvpKills = Math.max(0, Number(p.pvpKills) || 0);
     const enemyKills = Math.max(0, Number(p.enemyKills) || kills);
-    const ammo = p.ammo === null ? 'inf' : p.ammo;
+    const mag = Math.max(0, Number(p.magazineAmmo) || 0);
+    const reserve = p.reserveAmmo === null ? '∞' : Math.max(0, Number(p.reserveAmmo) || 0);
+    const reload = Math.max(0, Number(p.reloadLeftMs) || 0);
+    const ammo = reload > 0 ? `${mag}/${reserve} reloading` : `${mag}/${reserve}`;
     const meClass = p.id === game.myId ? ' me' : '';
     const conn = getConnectionIndicatorData(p);
     const connIcon = game.connectionIndicatorEnabled
@@ -6162,6 +6186,9 @@ function clearLocalSessionState() {
   visuals.skillCdPrev = new Map();
   visuals.skillOfferPrev = new Map();
   visuals.rocketPrev = new Map();
+  visuals.dropPrev = new Map();
+  visuals.xpOrbPrev = new Map();
+  visuals.prevBossAlive = false;
   updateTopCenterHud(Date.now());
   updateBottomHud();
   updateStatsPanel(null);
@@ -6391,6 +6418,7 @@ message: (ev) => {
     visuals.gore = [];
     visuals.hitFx = [];
     visuals.muzzle = [];
+    visuals.muzzleGroundFlashes = [];
     visuals.bossBlast = [];
     visuals.bloodMist = [];
     visuals.rocketSmoke = [];
@@ -6405,6 +6433,9 @@ message: (ev) => {
     visuals.skillCdPrev = new Map();
     visuals.skillOfferPrev = new Map();
     visuals.rocketPrev = new Map();
+    visuals.dropPrev = new Map();
+    visuals.xpOrbPrev = new Map();
+    visuals.prevBossAlive = false;
     roomMetaEl.textContent = `Room: ${msg.roomCode}`;
     if (!game.spectating) copyRoomCodeToClipboard(msg.roomCode, { silent: true });
     statusEl.textContent = game.spectating
@@ -6611,7 +6642,12 @@ message: (ev) => {
       updateJumpButtonUi(me);
       const dodgeCdMeta = Math.max(0, Number(me.dodgeCooldownMs) || 0);
       const jumpMeta = dodgeCdMeta > 0 ? (dodgeCdMeta / 1000).toFixed(1) + 's' : 'ready';
-      weaponMetaEl.textContent = `Weapon: ${me.weaponLabel} | Ammo: ${me.ammo === null ? 'inf' : me.ammo} | Jump: ${jumpMeta}`;
+      const mag = Math.max(0, Number(me.magazineAmmo) || 0);
+      const magSize = Math.max(1, Number(me.magazineSize) || 1);
+      const reserve = me.reserveAmmo === null ? '∞' : Math.max(0, Number(me.reserveAmmo) || 0);
+      const reloadLeft = Math.max(0, Number(me.reloadLeftMs) || 0);
+      const reloadText = reloadLeft > 0 ? ` | Reload ${(reloadLeft / 1000).toFixed(1)}s` : '';
+      weaponMetaEl.textContent = `Weapon: ${me.weaponLabel} | Mag: ${mag}/${magSize} | Ammo: ${reserve}${reloadText} | Jump: ${jumpMeta}`;
       if (movementMetaEl) {
         const nowMs = Date.now();
         const slowed = (Number(me.slowUntil) || 0) > nowMs;

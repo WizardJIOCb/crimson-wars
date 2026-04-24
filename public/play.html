@@ -118,6 +118,16 @@
         </p>
         <p class="shadow-option">
           <label>
+            <input id="game-sfx-toggle" type="checkbox" checked />
+            Game sounds
+          </label>
+        </p>
+        <p class="shadow-option shadow-range-option">
+          <label for="game-sfx-volume">Sound volume <span id="game-sfx-volume-value">70%</span></label>
+          <input id="game-sfx-volume" type="range" min="0" max="100" step="1" value="70" />
+        </p>
+        <p class="shadow-option">
+          <label>
             <input id="show-commentator-toggle" type="checkbox" />
             <span id="show-commentator-toggle-label">Arena commentator</span>
           </label>
@@ -495,10 +505,10 @@
     </form>
   </div>
   <script src="/js/client-i18n.js?v=20260424live2"></script>
-  <script src="/js/client-core.js?v=20260424live8"></script>
-  <script src="/js/client-net-input.js?v=20260424live22"></script>
-  <script src="/js/client-fx.js?v=20260424live1"></script>
-  <script src="/js/client-render.js?v=20260424live1"></script>
+  <script src="/js/client-core.js?v=20260425enemydeath1"></script>
+  <script src="/js/client-net-input.js?v=20260424npcflash1"></script>
+  <script src="/js/client-fx.js?v=20260425enemydeath1"></script>
+  <script src="/js/client-render.js?v=20260425companionreloadbar1"></script>
 </body>
 </html>
 

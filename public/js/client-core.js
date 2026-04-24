@@ -9,6 +9,9 @@ const movementMetaEl = document.getElementById('movement-meta');
 const netMetaEl = document.getElementById('net-meta');
 const showFpsToggleEl = document.getElementById('show-fps-toggle');
 const showChatToggleEl = document.getElementById('show-chat-toggle');
+const gameSfxToggleEl = document.getElementById('game-sfx-toggle');
+const gameSfxVolumeEl = document.getElementById('game-sfx-volume');
+const gameSfxVolumeValueEl = document.getElementById('game-sfx-volume-value');
 const showCommentatorToggleEl = document.getElementById('show-commentator-toggle');
 const replayPlayerToggleEl = document.getElementById('replay-player-toggle');
 const replayPlayerToggleWrapEl = document.getElementById('replay-player-toggle-wrap');
@@ -229,6 +232,16 @@ function getToggleDefaultOff(key) {
   return stored === '1';
 }
 
+function getStoredPercent(key, fallback = 70) {
+  const stored = localStorage.getItem(key);
+  if (stored === null) {
+    localStorage.setItem(key, String(fallback));
+    return fallback;
+  }
+  const value = Math.round(Number(stored));
+  return Math.max(0, Math.min(100, Number.isFinite(value) ? value : fallback));
+}
+
 const game = {
   myId: null,
   spectating: false,
@@ -248,6 +261,8 @@ const game = {
   connectionIndicatorEnabled: getToggleDefaultOn('cw:connectionIndicatorEnabled'),
   showFpsEnabled: getToggleDefaultOn('cw:showFpsEnabled'),
   showChatEnabled: getToggleDefaultOn('cw:showChatEnabled'),
+  sfxEnabled: getToggleDefaultOn('cw:sfxEnabled'),
+  sfxVolume: getStoredPercent('cw:sfxVolume', 70) / 100,
   showCommentatorEnabled: getToggleDefaultOff('cw:showCommentatorEnabled'),
   showReplayPlayerEnabled: getToggleDefaultOn('cw:showReplayPlayerEnabled'),
   showMinimapEnabled: getToggleDefaultOn('cw:showMinimapEnabled'),
@@ -297,6 +312,7 @@ const visuals = {
   bloodPuddles: [],
   gore: [],
   muzzle: [],
+  muzzleGroundFlashes: [],
   rocketSmoke: [],
   rocketFire: [],
   rocketBlast: [],
@@ -314,9 +330,22 @@ const visuals = {
   enemyPrev: new Map(),
   playerPrev: new Map(),
   rocketPrev: new Map(),
+  dropPrev: new Map(),
   bulletIds: new Set(),
+  xpOrbPrev: new Map(),
+  prevBossAlive: false,
   groundTileCanvas: null,
   groundTileSize: 0,
+};
+
+const gameAudio = {
+  ctx: null,
+  unlocked: false,
+  master: null,
+  lastPlayedAt: new Map(),
+  assetCache: new Map(),
+  missingAssets: new Set(),
+  warmupStarted: false,
 };
 
 let joinMode = 'create';
@@ -2082,6 +2111,326 @@ showChatToggleEl?.addEventListener('change', () => {
   setShowChatEnabled(showChatToggleEl.checked);
 });
 setShowChatEnabled(game.showChatEnabled);
+
+function setGameSfxEnabled(enabled) {
+  game.sfxEnabled = Boolean(enabled);
+  if (gameSfxToggleEl) gameSfxToggleEl.checked = game.sfxEnabled;
+  localStorage.setItem('cw:sfxEnabled', game.sfxEnabled ? '1' : '0');
+  if (game.sfxEnabled) unlockGameAudio();
+}
+
+function setGameSfxVolume(percent) {
+  const value = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  game.sfxVolume = value / 100;
+  localStorage.setItem('cw:sfxVolume', String(value));
+  if (gameSfxVolumeEl) gameSfxVolumeEl.value = String(value);
+  if (gameSfxVolumeValueEl) gameSfxVolumeValueEl.textContent = `${value}%`;
+  if (gameAudio.master) gameAudio.master.gain.value = 0.6 * game.sfxVolume;
+}
+
+function getGameSfxVolume() {
+  const value = Number(game.sfxVolume);
+  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0.7;
+}
+
+function getGameAudioContext() {
+  if (!game.sfxEnabled || typeof window === 'undefined') return null;
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextCtor) return null;
+  if (!gameAudio.ctx) {
+    gameAudio.ctx = new AudioContextCtor();
+    gameAudio.master = gameAudio.ctx.createGain();
+    gameAudio.master.gain.value = 0.6 * getGameSfxVolume();
+    gameAudio.master.connect(gameAudio.ctx.destination);
+  }
+  return gameAudio.ctx;
+}
+
+function unlockGameAudio() {
+  const ctxAudio = getGameAudioContext();
+  if (!ctxAudio) return;
+  if (ctxAudio.state === 'suspended') {
+    void ctxAudio.resume().catch(() => {});
+  }
+  gameAudio.unlocked = true;
+  warmupSfxAssets();
+}
+
+function sfxDistanceGain(x, y, radius = 760) {
+  const me = game.state?.players?.find((p) => p.id === game.myId) || null;
+  if (!me || game.spectating) return 0.78;
+  const dist = Math.hypot((Number(x) || 0) - (Number(me.x) || 0), (Number(y) || 0) - (Number(me.y) || 0));
+  return Math.max(0.08, Math.min(1, 1 - (dist / Math.max(160, radius))));
+}
+
+function makeSfxEnvelope(ctxAudio, when, volume, attack = 0.006, decay = 0.18) {
+  const gain = ctxAudio.createGain();
+  gain.gain.setValueAtTime(0.0001, when);
+  gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, volume), when + attack);
+  gain.gain.exponentialRampToValueAtTime(0.0001, when + attack + decay);
+  gain.connect(gameAudio.master || ctxAudio.destination);
+  return gain;
+}
+
+function playTone(freq, duration, {
+  type = 'sine',
+  volume = 0.18,
+  pitchTo = 0,
+  delay = 0,
+  attack = 0.006,
+  decay = null,
+} = {}) {
+  const ctxAudio = getGameAudioContext();
+  if (!ctxAudio || !gameAudio.unlocked || ctxAudio.state === 'suspended') return;
+  const now = ctxAudio.currentTime + Math.max(0, Number(delay) || 0);
+  const osc = ctxAudio.createOscillator();
+  const gain = makeSfxEnvelope(ctxAudio, now, volume, attack, decay ?? Math.max(0.035, duration - attack));
+  osc.type = type;
+  osc.frequency.setValueAtTime(Math.max(20, freq), now);
+  if (pitchTo > 0) osc.frequency.exponentialRampToValueAtTime(Math.max(20, pitchTo), now + Math.max(0.02, duration));
+  osc.connect(gain);
+  osc.start(now);
+  osc.stop(now + Math.max(0.03, duration) + 0.03);
+}
+
+function playNoise(duration, {
+  volume = 0.16,
+  delay = 0,
+  filter = 900,
+  filterType = 'lowpass',
+  attack = 0.003,
+} = {}) {
+  const ctxAudio = getGameAudioContext();
+  if (!ctxAudio || !gameAudio.unlocked || ctxAudio.state === 'suspended') return;
+  const len = Math.max(1, Math.floor(ctxAudio.sampleRate * Math.max(0.025, duration)));
+  const buffer = ctxAudio.createBuffer(1, len, ctxAudio.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < len; i += 1) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+  const src = ctxAudio.createBufferSource();
+  const biquad = ctxAudio.createBiquadFilter();
+  const now = ctxAudio.currentTime + Math.max(0, Number(delay) || 0);
+  const gain = makeSfxEnvelope(ctxAudio, now, volume, attack, Math.max(0.035, duration - attack));
+  src.buffer = buffer;
+  biquad.type = filterType;
+  biquad.frequency.setValueAtTime(Math.max(60, filter), now);
+  src.connect(biquad);
+  biquad.connect(gain);
+  src.start(now);
+  src.stop(now + Math.max(0.03, duration) + 0.03);
+}
+
+const SFX_ASSET_VARIANTS = {
+  shot: {
+    pistol: ['weapon-pistol-shot'],
+    smg: ['weapon-smg-shot'],
+    shotgun: ['weapon-shotgun-shot'],
+    sniper: ['weapon-sniper-shot'],
+    rocket: ['weapon-rocket-launch'],
+    default: ['weapon-pistol-shot'],
+  },
+  enemyShot: ['enemy-ranged-shot', 'boss-attack'],
+  enemyDeath: {
+    charger: ['enemy-charger-death', 'enemy-death-1', 'enemy-death-2'],
+    ranged: ['enemy-ranged-death', 'enemy-death-2', 'enemy-death-3'],
+    default: ['enemy-death-1', 'enemy-death-2', 'enemy-death-3'],
+  },
+  bossDeath: ['boss-death'],
+  bossSpawn: ['boss-spawn'],
+  bossPortal: ['boss-portal-open'],
+  crystal: ['xp-crystal-pickup-1', 'xp-crystal-pickup-2', 'xp-crystal-pickup-3'],
+  skill: ['skill-cast', 'skill-pickup'],
+  skillDodge: ['skill-dodge'],
+  weaponPickup: ['weapon-pickup', 'drop-pickup'],
+  playerHit: ['player-hit'],
+  playerDeath: ['player-death'],
+  playerDowned: ['player-downed'],
+  playerRespawn: ['player-respawn'],
+  levelup: ['player-levelup', 'skill-levelup'],
+  uiClick: ['ui-click'],
+  uiHover: ['ui-hover'],
+  uiOpen: ['ui-open'],
+  uiClose: ['ui-close'],
+  uiError: ['ui-error'],
+  uiSuccess: ['ui-success'],
+};
+const SFX_ASSET_EXTS = ['ogg', 'wav', 'mp3'];
+
+function chooseSfxAssetBase(name, options = {}) {
+  const entry = SFX_ASSET_VARIANTS[name];
+  if (!entry) return '';
+  let list = Array.isArray(entry) ? entry : null;
+  if (!list) {
+    const enemyType = String(options.enemyType || '').toLowerCase();
+    const weapon = String(options.weaponKey || '').toLowerCase();
+    const key = entry[enemyType] ? enemyType
+      : weapon.includes('shotgun') ? 'shotgun'
+        : weapon.includes('sniper') ? 'sniper'
+          : weapon.includes('smg') ? 'smg'
+            : weapon.includes('rocket') ? 'rocket'
+              : weapon.includes('pistol') ? 'pistol'
+                : 'default';
+    list = entry[key] || entry.default || [];
+  }
+  const available = list.filter((base) => !gameAudio.missingAssets.has(base) && gameAudio.assetCache.has(base));
+  const candidates = available.length ? available : list.filter((base) => !gameAudio.missingAssets.has(base));
+  if (!candidates.length) return '';
+  return candidates[Math.floor(Math.random() * candidates.length)] || '';
+}
+
+function resolveSfxAssetUrl(base) {
+  if (!base) return Promise.resolve('');
+  if (gameAudio.assetCache.has(base)) return Promise.resolve(gameAudio.assetCache.get(base) || '');
+  if (gameAudio.missingAssets.has(base)) return Promise.resolve('');
+  const tryExt = (index) => {
+    if (index >= SFX_ASSET_EXTS.length) {
+      gameAudio.missingAssets.add(base);
+      return Promise.resolve('');
+    }
+    const url = `/assets/sounds/${base}.${SFX_ASSET_EXTS[index]}`;
+    return fetch(url, { method: 'HEAD', cache: 'force-cache' })
+      .then((res) => {
+        if (res.ok) {
+          gameAudio.assetCache.set(base, url);
+          return url;
+        }
+        return tryExt(index + 1);
+      })
+      .catch(() => tryExt(index + 1));
+  };
+  return tryExt(0);
+}
+
+function warmupSfxAssets() {
+  if (gameAudio.warmupStarted) return;
+  gameAudio.warmupStarted = true;
+  const bases = new Set();
+  for (const entry of Object.values(SFX_ASSET_VARIANTS)) {
+    if (Array.isArray(entry)) {
+      for (const base of entry) bases.add(base);
+    } else {
+      for (const list of Object.values(entry)) {
+        for (const base of list) bases.add(base);
+      }
+    }
+  }
+  for (const base of bases) void resolveSfxAssetUrl(base);
+}
+
+function playSfxAssetUrl(url, volume) {
+  if (!url || !gameAudio.unlocked) return false;
+  try {
+    const audio = new Audio(url);
+    audio.preload = 'auto';
+    audio.volume = Math.max(0, Math.min(1, volume));
+    audio.playbackRate = 0.94 + Math.random() * 0.12;
+    const promise = audio.play();
+    if (promise && typeof promise.catch === 'function') promise.catch(() => {});
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function tryPlaySfxAsset(name, options, volume) {
+  const base = chooseSfxAssetBase(name, options);
+  if (!base) return false;
+  const cachedUrl = gameAudio.assetCache.get(base);
+  if (cachedUrl) return playSfxAssetUrl(cachedUrl, volume);
+  void resolveSfxAssetUrl(base);
+  return false;
+}
+
+function playGameSfx(name, options = {}) {
+  if (!game.sfxEnabled || game.embedMode || replayGame.active) return;
+  const key = String(options.key || name || 'sfx');
+  const nowMs = performance.now();
+  const minGap = Math.max(0, Number(options.minGapMs) || 0);
+  const lastAt = Math.max(0, Number(gameAudio.lastPlayedAt.get(key)) || 0);
+  if (minGap > 0 && nowMs - lastAt < minGap) return;
+  gameAudio.lastPlayedAt.set(key, nowMs);
+
+  const distance = sfxDistanceGain(options.x, options.y, options.radius);
+  const volume = Math.max(0, Math.min(1, (Number(options.volume) || 1) * distance * getGameSfxVolume()));
+  if (volume <= 0.01) return;
+  const weapon = String(options.weaponKey || '').toLowerCase();
+  if (tryPlaySfxAsset(name, options, volume)) return;
+
+  if (name === 'shot') {
+    const isShotgun = weapon.includes('shotgun');
+    const isSniper = weapon.includes('sniper');
+    const isSmg = weapon.includes('smg');
+    const base = isSniper ? 98 : isShotgun ? 124 : isSmg ? 205 : 176;
+    playNoise(isSniper ? 0.11 : isShotgun ? 0.09 : 0.045, { volume: volume * (isSniper ? 0.34 : isShotgun ? 0.3 : 0.17), filter: isSniper ? 420 : isShotgun ? 760 : 1450 });
+    playTone(base, isSniper ? 0.16 : 0.07, { type: 'square', volume: volume * (isSniper ? 0.18 : 0.1), pitchTo: base * 0.42 });
+    if (isShotgun) playTone(64, 0.13, { type: 'sawtooth', volume: volume * 0.16, pitchTo: 38, delay: 0.012 });
+    return;
+  }
+  if (name === 'enemyShot') {
+    playNoise(0.075, { volume: volume * 0.2, filter: 1800, filterType: 'bandpass' });
+    playTone(148, 0.09, { type: 'sawtooth', volume: volume * 0.12, pitchTo: 72 });
+    playTone(520, 0.055, { type: 'triangle', volume: volume * 0.08, pitchTo: 310, delay: 0.008 });
+    return;
+  }
+  if (name === 'enemyDeath') {
+    playNoise(0.16, { volume: volume * 0.22, filter: 520 });
+    playTone(132, 0.18, { type: 'sawtooth', volume: volume * 0.12, pitchTo: 58 });
+    return;
+  }
+  if (name === 'bossDeath') {
+    playNoise(0.55, { volume: volume * 0.52, filter: 360 });
+    playTone(92, 0.72, { type: 'sawtooth', volume: volume * 0.36, pitchTo: 28 });
+    playTone(46, 0.62, { type: 'triangle', volume: volume * 0.28, pitchTo: 24, delay: 0.08 });
+    return;
+  }
+  if (name === 'bossSpawn') {
+    playTone(58, 0.72, { type: 'sawtooth', volume: volume * 0.25, pitchTo: 118 });
+    playNoise(0.32, { volume: volume * 0.2, filter: 240 });
+    return;
+  }
+  if (name === 'crystal') {
+    playTone(880, 0.12, { type: 'sine', volume: volume * 0.13, pitchTo: 1320 });
+    playTone(1760, 0.16, { type: 'triangle', volume: volume * 0.08, pitchTo: 2480, delay: 0.035 });
+    return;
+  }
+  if (name === 'skill') {
+    playTone(392, 0.2, { type: 'triangle', volume: volume * 0.16, pitchTo: 784 });
+    playTone(988, 0.22, { type: 'sine', volume: volume * 0.1, pitchTo: 1480, delay: 0.025 });
+    playNoise(0.2, { volume: volume * 0.08, filter: 2200, filterType: 'highpass' });
+    return;
+  }
+  if (name === 'skillDodge') {
+    playNoise(0.11, { volume: volume * 0.11, filter: 1800, filterType: 'highpass' });
+    playTone(520, 0.13, { type: 'triangle', volume: volume * 0.13, pitchTo: 980 });
+    playTone(180, 0.12, { type: 'sine', volume: volume * 0.06, pitchTo: 92, delay: 0.018 });
+    return;
+  }
+  if (name === 'weaponPickup') {
+    playTone(220, 0.12, { type: 'square', volume: volume * 0.14, pitchTo: 330 });
+    playTone(660, 0.16, { type: 'triangle', volume: volume * 0.1, pitchTo: 990, delay: 0.045 });
+    return;
+  }
+  if (name === 'playerHit') {
+    playNoise(0.13, { volume: volume * 0.2, filter: 680 });
+    playTone(116, 0.12, { type: 'sawtooth', volume: volume * 0.1, pitchTo: 72 });
+    return;
+  }
+  if (name === 'playerDeath') {
+    playNoise(0.28, { volume: volume * 0.32, filter: 420 });
+    playTone(154, 0.34, { type: 'sawtooth', volume: volume * 0.2, pitchTo: 38 });
+  }
+}
+
+window.cwPlaySfx = playGameSfx;
+window.addEventListener('pointerdown', unlockGameAudio, { passive: true });
+window.addEventListener('keydown', unlockGameAudio);
+gameSfxToggleEl?.addEventListener('change', () => {
+  setGameSfxEnabled(gameSfxToggleEl.checked);
+});
+gameSfxVolumeEl?.addEventListener('input', () => {
+  setGameSfxVolume(gameSfxVolumeEl.value);
+});
+setGameSfxVolume(Math.round(getGameSfxVolume() * 100));
+setGameSfxEnabled(game.sfxEnabled);
 
 function setShowCommentatorEnabled(enabled) {
   game.showCommentatorEnabled = Boolean(enabled);
