@@ -1024,9 +1024,7 @@ function setPlayerAccessCollapsed(collapsed) {
 function reloadForPlayerSession(message) {
   setAuthFeedback(message, 'ok');
   statusEl.textContent = message;
-  window.setTimeout(() => {
-    window.location.reload();
-  }, 120);
+  void refreshPlayerAuthSession({ silent: true });
 }
 
 function scheduleClientReload(delayMs = 1500, message = 'Server restarting. Reconnecting...') {
@@ -1149,7 +1147,7 @@ async function loginPlayerAccount() {
     statusEl.textContent = trCore('ui.auth.logged_in_short', `Logged in as ${data.player?.nickname || nickname}.`, { nickname: data.player?.nickname || nickname });
     renderPlayerAuthUi();
     setPlayerAccessCollapsed(true);
-    reloadForPlayerSession('Logged in. Refreshing session...');
+    reloadForPlayerSession('Logged in. Session refreshed.');
   } catch (err) {
     setPlayerAccessCollapsed(false);
     setAuthFeedback(err.message, 'err');
@@ -1183,7 +1181,7 @@ async function registerPlayerAccount() {
     statusEl.textContent = trCore('ui.auth.registered_short', `Nickname ${data.player?.nickname || nickname} registered.`, { nickname: data.player?.nickname || nickname });
     renderPlayerAuthUi();
     setPlayerAccessCollapsed(true);
-    reloadForPlayerSession('Nickname registered. Refreshing session...');
+    reloadForPlayerSession('Nickname registered. Session refreshed.');
   } catch (err) {
     setPlayerAccessCollapsed(false);
     setAuthFeedback(err.message, 'err');
@@ -1209,7 +1207,7 @@ async function logoutPlayerAccount() {
     renderPlayerAuthUi();
     setPlayerAccessCollapsed(false);
     void updateNicknameStatus(nameInput?.value || '');
-    reloadForPlayerSession('Logged out. Refreshing session...');
+    reloadForPlayerSession('Logged out. Session refreshed.');
   } catch (err) {
     setPlayerAccessCollapsed(false);
     setAuthFeedback(err.message, 'err');
