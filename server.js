@@ -879,6 +879,14 @@ function buildRoomRedirectUrl(baseUrl, roomCode, mode = 'join', gameMode = 'norm
   return url.toString();
 }
 
+function getRequestBaseUrl(req) {
+  const host = String(req?.headers?.host || '').trim();
+  if (!host) return PUBLIC_BASE_URL;
+  const protoHeader = String(req?.headers?.['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
+  const proto = protoHeader || (IS_PROD ? 'https' : 'http');
+  return `${proto}://${host}`.replace(/\/+$/, '');
+}
+
 function buildPartnerRunJoinUrl(session) {
   return buildUrlWithParams(buildRoomRedirectUrl(
     PUBLIC_BASE_URL,
@@ -1080,6 +1088,7 @@ app.get('/api/room-route', (req, res) => {
   const roomCode = cleanRoomCodeForLookup(req.query.roomCode || req.query.room_code || '');
   const gameMode = normalizeGameMode(req.query.gameMode || req.query.game_mode || 'normal');
   const pvpDurationMin = normalizePvpDurationMin(req.query.pvpDurationMin || req.query.pvp_duration_min);
+  const requestBaseUrl = getRequestBaseUrl(req);
 
   if (mode === 'join') {
     if (!roomCode) {
@@ -1095,8 +1104,8 @@ app.get('/api/room-route', (req, res) => {
         roomCode,
         target: {
           instanceId: INSTANCE_ID,
-          publicBaseUrl: PUBLIC_BASE_URL,
-          redirectUrl: buildRoomRedirectUrl(PUBLIC_BASE_URL, roomCode, mode, gameMode, pvpDurationMin),
+          publicBaseUrl: requestBaseUrl || PUBLIC_BASE_URL,
+          redirectUrl: buildRoomRedirectUrl(requestBaseUrl || PUBLIC_BASE_URL, roomCode, mode, gameMode, pvpDurationMin),
           isCurrentInstance: true,
         },
       });
@@ -1123,10 +1132,13 @@ app.get('/api/room-route', (req, res) => {
     return;
   }
 
-  const target = runtimeRegistryStore.chooseTargetInstance() || {
+  const target = req.playerUser ? {
+    instanceId: INSTANCE_ID,
+    publicBaseUrl: requestBaseUrl || PUBLIC_BASE_URL,
+  } : (runtimeRegistryStore.chooseTargetInstance() || {
     instanceId: INSTANCE_ID,
     publicBaseUrl: PUBLIC_BASE_URL,
-  };
+  });
   res.json({
     ok: true,
     mode,
