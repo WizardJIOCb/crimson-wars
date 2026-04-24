@@ -2281,6 +2281,7 @@ const SFX_ASSET_VARIANTS = {
   bossDeath: ['boss-death'],
   bossSpawn: ['boss-spawn'],
   bossPortal: ['boss-portal-open'],
+  rocketExplosion: ['skill-rocket-explosion'],
   crystal: ['xp-crystal-pickup-1', 'xp-crystal-pickup-2', 'xp-crystal-pickup-3'],
   skill: ['skill-cast', 'skill-pickup'],
   skillDodge: ['skill-dodge'],
@@ -2443,6 +2444,12 @@ function playGameSfx(name, options = {}) {
   if (name === 'bossSpawn') {
     playTone(58, 0.72, { type: 'sawtooth', volume: volume * 0.25, pitchTo: 118 });
     playNoise(0.32, { volume: volume * 0.2, filter: 240 });
+    return;
+  }
+  if (name === 'rocketExplosion') {
+    playNoise(0.34, { volume: volume * 0.42, filter: 340 });
+    playTone(74, 0.32, { type: 'sawtooth', volume: volume * 0.22, pitchTo: 34 });
+    playTone(156, 0.16, { type: 'triangle', volume: volume * 0.12, pitchTo: 58, delay: 0.035 });
     return;
   }
   if (name === 'crystal') {

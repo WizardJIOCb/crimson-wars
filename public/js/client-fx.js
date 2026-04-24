@@ -820,6 +820,14 @@ function processStateFx(nextState) {
         target: 'both',
       });
       spawnRocketExplosionFx(prev.x, prev.y);
+      window.cwPlaySfx?.('rocketExplosion', {
+        x: prev.x,
+        y: prev.y,
+        key: `rocketExplosion:${id}`,
+        minGapMs: 90,
+        radius: 1700,
+        volume: 1.18,
+      });
     }
   }
   visuals.rocketPrev = nextRocketMap;
