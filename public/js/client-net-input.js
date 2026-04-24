@@ -6678,6 +6678,14 @@ message: (ev) => {
         movementMetaEl.textContent = `Move: ${slowText} | Jump: ${dodgeText}${invuln ? ' | i-frames' : ''}`;
       }
       if (prevMyAlive === true && !me.alive) {
+        window.cwPlaySfx?.('playerDeath', {
+          x: me.x,
+          y: me.y,
+          key: `playerDeath:${me.id || game.myId || 'me'}`,
+          minGapMs: 900,
+          radius: 1300,
+          volume: 1.18,
+        });
         const deathsByLives = Math.max(0,
           Math.max(1, Number(me.livesTotal) || 1) - Math.max(0, Number(me.livesLeft) || 0),
         );
