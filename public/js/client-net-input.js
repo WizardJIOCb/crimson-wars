@@ -5241,6 +5241,8 @@ function syncBulletsFromState(nextState) {
         y: b.y,
         serverX: b.x,
         serverY: b.y,
+        ownerId: b.ownerId || '',
+        ownerPlayerId: b.ownerPlayerId || '',
         vx: b.vx || 0,
         vy: b.vy || 0,
         color: b.color,
@@ -5255,6 +5257,8 @@ function syncBulletsFromState(nextState) {
 
     r.serverX = b.x;
     r.serverY = b.y;
+    r.ownerId = b.ownerId || '';
+    r.ownerPlayerId = b.ownerPlayerId || '';
     r.vx = (r.vx * 0.3) + ((b.vx || 0) * 0.7);
     r.vy = (r.vy * 0.3) + ((b.vy || 0) * 0.7);
     r.color = b.color;
@@ -5284,6 +5288,8 @@ function updateBulletInterpolation(dt) {
         y: tb.y,
         serverX: tb.x,
         serverY: tb.y,
+        ownerId: tb.ownerId || '',
+        ownerPlayerId: tb.ownerPlayerId || '',
         vx: tb.vx || 0,
         vy: tb.vy || 0,
         color: tb.color,
@@ -5298,6 +5304,8 @@ function updateBulletInterpolation(dt) {
 
     r.serverX = tb.x;
     r.serverY = tb.y;
+    r.ownerId = tb.ownerId || '';
+    r.ownerPlayerId = tb.ownerPlayerId || '';
     const isRocket = String(tb.kind || r.kind || '').toLowerCase() === 'rocket';
     const velBlend = isRocket ? 0.45 : 0.65;
     r.vx = (r.vx * (1 - velBlend)) + ((tb.vx || 0) * velBlend);
@@ -5398,6 +5406,8 @@ function pushNetSnapshot(state) {
     enemies: state.enemies.map((e) => ({ id: e.id, x: e.x, y: e.y, faceLeft: Boolean(e.faceLeft) })),
     bullets: state.bullets.map((b) => ({
       id: b.id ?? `${b.x.toFixed(1)}:${b.y.toFixed(1)}`,
+      ownerId: b.ownerId || '',
+      ownerPlayerId: b.ownerPlayerId || '',
       x: b.x,
       y: b.y,
       vx: b.vx || 0,
@@ -5488,6 +5498,8 @@ function sampleBufferedState() {
           color: pb.color ?? pa.color,
           kind: pb.kind ?? pa.kind,
           radius: pb.radius ?? pa.radius,
+          ownerId: pb.ownerId ?? pa.ownerId ?? '',
+          ownerPlayerId: pb.ownerPlayerId ?? pa.ownerPlayerId ?? '',
           shooterType: pb.shooterType ?? pa.shooterType,
           weaponKey: pb.weaponKey ?? pa.weaponKey,
           faceLeft: typeof pb.faceLeft === 'boolean' ? pb.faceLeft : pa.faceLeft,

@@ -868,7 +868,7 @@ function processStateFx(nextState) {
   for (const b of nextState.bullets) {
     ids.add(b.id);
     if (!visuals.bulletIds.has(b.id)) {
-      const owner = playersById.get(b.ownerId);
+      const owner = playersById.get(b.ownerId) || playersById.get(b.ownerPlayerId);
       if (owner) {
         const bvx = Number(b.vx) || 0;
         const bvy = Number(b.vy) || 0;
@@ -891,14 +891,15 @@ function processStateFx(nextState) {
           intensity: isCompanionShot ? 0.62 : (weaponKey === 'shotgun' ? 0.46 : 1),
         });
         }
-        const isMyCompanionShot = isCompanionShot && owner.ownerId === game.myId;
+        const isMyCompanionShot = isCompanionShot && (owner.ownerId === game.myId || b.ownerPlayerId === game.myId);
         window.cwPlaySfx?.('shot', {
           x: owner.x,
           y: owner.y,
           weaponKey,
           key: `shot:${isCompanionShot ? 'companion' : 'player'}:${owner.id}:${weaponKey || 'weapon'}`,
-          minGapMs: owner.id === game.myId ? 28 : (isMyCompanionShot ? 44 : 72),
-          volume: owner.id === game.myId ? 0.92 : (isMyCompanionShot ? 0.62 : 0.46),
+          minGapMs: owner.id === game.myId ? 28 : (isMyCompanionShot ? 26 : 72),
+          radius: isMyCompanionShot ? 1800 : 1100,
+          volume: owner.id === game.myId ? 0.92 : (isMyCompanionShot ? 0.86 : 0.46),
         });
       } else if (b.fromEnemy) {
         const shooter = enemyShooters.get(b.ownerId) || null;
