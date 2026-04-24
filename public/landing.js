@@ -283,9 +283,11 @@ function composeLandingLiveLayout() {
     landingLiveMuteToggle = controls.querySelector('.live-player-mute-toggle');
     landingLiveVolumeSlider = controls.querySelector('.live-player-volume-slider');
     landingLiveCenterToggle?.addEventListener('click', () => {
+      unlockLandingLiveAudio();
       setLandingLivePaused(!landingLivePaused, 'manual');
     });
     landingLiveControlToggle?.addEventListener('click', () => {
+      unlockLandingLiveAudio();
       setLandingLivePaused(!landingLivePaused, 'manual');
     });
     landingLiveMuteToggle?.addEventListener('click', () => {
@@ -1516,6 +1518,21 @@ function applyLandingLiveAudioState() {
   }
 }
 
+function unlockLandingLiveAudio() {
+  applyLandingLiveAudioState();
+  if (getLandingLiveEffectiveVolume() <= 0) return;
+  try {
+    const frameWindow = liveIframe instanceof HTMLIFrameElement ? liveIframe.contentWindow : null;
+    if (typeof frameWindow?.cwUnlockGameAudio === 'function') {
+      frameWindow.cwUnlockGameAudio();
+    }
+    const ctx = frameWindow?.cwGame?.audio?.ctx || frameWindow?.gameAudio?.ctx || null;
+    if (ctx?.state === 'suspended') void ctx.resume?.().catch?.(() => {});
+  } catch {
+    // Browser audio unlock is user-gesture dependent and best-effort.
+  }
+}
+
 function setLandingLiveVolume(value) {
   landingLiveVolume = Math.max(0, Math.min(1, Number(value) || 0));
   if (landingLiveVolume > 0) landingLiveMuted = false;
@@ -1526,7 +1543,7 @@ function setLandingLiveVolume(value) {
     // ignore storage failures
   }
   updateLandingLiveVolumeUi();
-  applyLandingLiveAudioState();
+  unlockLandingLiveAudio();
 }
 
 function setLandingLiveMuted(muted) {
@@ -1537,7 +1554,7 @@ function setLandingLiveMuted(muted) {
     // ignore storage failures
   }
   updateLandingLiveVolumeUi();
-  applyLandingLiveAudioState();
+  unlockLandingLiveAudio();
 }
 
 function updateLandingLiveTimelineUi(fromDrag = false) {
@@ -1755,6 +1772,7 @@ function updateLiveIframe(roomCode) {
     liveIframe.classList.remove('is-hidden');
     if (liveCanvas instanceof HTMLCanvasElement) liveCanvas.classList.add('is-hidden');
     applyLandingLiveAudioState();
+    window.setTimeout(applyLandingLiveAudioState, 250);
     return true;
   }
   liveIframe.classList.add('is-hidden');

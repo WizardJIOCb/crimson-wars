@@ -2165,6 +2165,8 @@ function unlockGameAudio() {
   warmupSfxAssets();
 }
 
+window.cwUnlockGameAudio = unlockGameAudio;
+
 function sfxDistanceGain(x, y, radius = 760) {
   const me = game.state?.players?.find((p) => p.id === game.myId) || null;
   if (!me || game.spectating) return 0.78;
