@@ -2502,9 +2502,6 @@ function setShowCommentatorEnabled(enabled) {
   game.showCommentatorEnabled = Boolean(enabled);
   if (showCommentatorToggleEl) showCommentatorToggleEl.checked = game.showCommentatorEnabled;
   localStorage.setItem('cw:showCommentatorEnabled', game.showCommentatorEnabled ? '1' : '0');
-  if (typeof window.renderCommentatorVoiceUi === 'function') {
-    window.renderCommentatorVoiceUi();
-  }
   updateHudVisibility(getComputedStyle(joinOverlay).display !== 'none');
 }
 
