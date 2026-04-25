@@ -164,6 +164,18 @@ const trSkillNameCore = (skillId, fallback = '') => {
   if (!id) return String(fallback || '');
   return trCore(`skill.${id}.name`, String(fallback || id));
 };
+const trItemNameCore = (itemId, fallback = '') => {
+  const id = String(itemId || '').trim().toLowerCase();
+  if (!id) return String(fallback || '');
+  return trCore(`item.${id}.name`, String(fallback || id));
+};
+
+function getProgressionCatalogItem(itemId) {
+  const id = String(itemId || '').trim();
+  if (!id) return null;
+  const items = Array.isArray(game.playerAuth?.progressionCatalog?.items) ? game.playerAuth.progressionCatalog.items : [];
+  return items.find((item) => String(item?.id || '').trim() === id) || null;
+}
 
 ctx.imageSmoothingEnabled = false;
 
@@ -1332,8 +1344,10 @@ function updateTopCenterHud(nowMs = Date.now()) {
 
 
 function rarityColor(r) {
+  if (r === 'legendary') return '#fbbf24';
   if (r === 'epic') return '#f0abfc';
   if (r === 'rare') return '#93c5fd';
+  if (r === 'uncommon') return '#86efac';
   return '#d1d5db';
 }
 
@@ -1446,6 +1460,12 @@ function buildSkillCurrentStatLines(skill, def) {
     const pickupFlat = (Number(def?.pickupRadiusPerLevel) || 0) * lvl;
     const regen = (Number(def?.hpRegenPerSecPerLevel) || 0) * lvl;
     const dodge = (Number(def?.extraDodgeChargesPerLevel) || 0) * lvl;
+    const globalDmgPct = (Number(def?.globalDamageMulPerLevel) || 0) * lvl * 100;
+    const globalFirePct = (Number(def?.globalFireRateMulPerLevel) || 0) * lvl * 100;
+    const globalMovePct = (Number(def?.globalMoveSpeedMulPerLevel) || 0) * lvl * 100;
+    const globalHpFlat = (Number(def?.globalMaxHpFlatPerLevel) || 0) * lvl;
+    const globalPickup = (Number(def?.globalPickupRadiusPerLevel) || 0) * lvl;
+    const globalRegen = (Number(def?.globalHpRegenPerSecPerLevel) || 0) * lvl;
 
     if (dmgPct !== 0) lines.push('Damage: +' + fmtSkillNumber(dmgPct, 1) + '%');
     if (firePct !== 0) lines.push('Fire rate: +' + fmtSkillNumber(firePct, 1) + '%');
@@ -1454,6 +1474,12 @@ function buildSkillCurrentStatLines(skill, def) {
     if (pickupFlat !== 0) lines.push('Pickup radius: +' + Math.round(pickupFlat));
     if (regen !== 0) lines.push('HP regen: +' + fmtSkillNumber(regen, 2) + '/s');
     if (dodge !== 0) lines.push('Jump charges: +' + Math.round(dodge));
+    if (globalDmgPct !== 0) lines.push('Other heroes damage: +' + fmtSkillNumber(globalDmgPct, 1) + '%');
+    if (globalFirePct !== 0) lines.push('Other heroes fire rate: +' + fmtSkillNumber(globalFirePct, 1) + '%');
+    if (globalMovePct !== 0) lines.push('Other heroes speed: +' + fmtSkillNumber(globalMovePct, 1) + '%');
+    if (globalHpFlat !== 0) lines.push('Other heroes HP: +' + Math.round(globalHpFlat));
+    if (globalPickup !== 0) lines.push('Other heroes pickup: +' + Math.round(globalPickup));
+    if (globalRegen !== 0) lines.push('Other heroes regen: +' + fmtSkillNumber(globalRegen, 2) + '/s');
   }
 
   const cdLeft = Math.max(0, Number(skill?.cooldownMs) || 0);
@@ -1599,7 +1625,7 @@ function updateBottomHud() {
   const skills = Array.isArray(me.skills) ? me.skills : [];
   if (skillBarEl) {
     const compactSkills = mobile.enabled;
-    const chips = skills.map((s) => {
+    const skillChips = skills.map((s) => {
       const cd = Math.max(0, Number(s.cooldownMs) || 0);
       const rarity = (s.rarity || 'common').toLowerCase();
       if (compactSkills) {
@@ -1613,7 +1639,22 @@ function updateBottomHud() {
       const cdText = s.kind === 'active' ? (cd > 0 ? `${(cd / 1000).toFixed(1)}s` : trCore('ui.skill.ready', 'ready')) : `Lv${s.level}`;
       return `<div class="skill-chip" data-skill-id="${s.id}" style="border-color:${rarityColor(rarity)}66"><div>${localizedSkillName} Lv${s.level}</div><div class="cd">${cdText}</div></div>`;
     });
-    const nextSkillBarHtml = chips.join('');
+    const quickChips = (Array.isArray(me.quickSlots) ? me.quickSlots : []).map((slot, index) => {
+      const rarity = String(slot?.rarity || 'common').toLowerCase();
+      const quantity = Math.max(0, Number(slot?.quantity) || 0);
+      const itemId = String(slot?.itemId || '').trim();
+      const itemDef = getProgressionCatalogItem(itemId) || {};
+      const itemName = trItemNameCore(itemId, String(slot?.name || itemDef?.name || itemId || `Quick ${index + 1}`));
+      const hotkey = `${index + 4}`;
+      const stateText = quantity > 0 ? `x${quantity}` : trCore('ui.inventory.empty_slot', 'Empty');
+      const badge = itemName.slice(0, 3).toUpperCase();
+      if (compactSkills) {
+        const label = `${hotkey}: ${itemName} ${stateText}`;
+        return `<div class="skill-chip compact quick-chip${quantity > 0 ? '' : ' empty'}" title="${label}" aria-label="${label}" style="border-color:${rarityColor(rarity)}66"><span class="skill-chip-icon">${badge}</span><span class="skill-chip-level">[${hotkey}]</span><span class="skill-chip-state${quantity > 0 ? ' ready' : ''}">${stateText}</span></div>`;
+      }
+      return `<div class="skill-chip quick-chip${quantity > 0 ? '' : ' empty'}" style="border-color:${rarityColor(rarity)}66"><div>${itemName} [${hotkey}]</div><div class="cd">${stateText}</div></div>`;
+    });
+    const nextSkillBarHtml = [...skillChips, ...quickChips].join('');
     if (nextSkillBarHtml !== lastSkillBarHtml) {
       skillBarEl.innerHTML = nextSkillBarHtml;
       lastSkillBarHtml = nextSkillBarHtml;
@@ -2720,7 +2761,7 @@ function updateMinimapVisibility(overlayOpen = null) {
 
 function updateHudVisibility(overlayOpen) {
   const menuOpen = Boolean(overlayOpen);
-  const showHudPanel = !menuOpen || !infoPanelHidden;
+  const showHudPanel = !menuOpen;
   const embedMode = Boolean(game.embedMode);
   canvas.classList.toggle('hidden', menuOpen);
   if (hudEl) hudEl.classList.toggle('menu-hidden', !showHudPanel || embedMode);

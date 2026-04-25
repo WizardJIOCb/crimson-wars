@@ -721,6 +721,32 @@ main {
   margin-bottom: 24px;
 }
 
+.battle-hub-heading {
+  max-width: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 420px);
+  gap: 24px;
+  align-items: center;
+}
+
+.battle-hub-heading-copy {
+  min-width: 0;
+}
+
+.battle-hub-heading-logo {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  pointer-events: none;
+}
+
+.battle-hub-heading-logo-img {
+  width: min(100%, 420px);
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 18px 34px rgba(84, 4, 6, 0.42));
+}
+
 .section-heading h2 {
   font-size: clamp(1.8rem, 3.2vw, 2.9rem);
 }
@@ -2545,6 +2571,18 @@ body.menu-open {
 
   .live-run-actions {
     grid-template-columns: 1fr;
+  }
+
+  .battle-hub-heading {
+    grid-template-columns: 1fr;
+  }
+
+  .battle-hub-heading-logo {
+    justify-content: flex-start;
+  }
+
+  .battle-hub-heading-logo-img {
+    width: min(100%, 320px);
   }
 }
 

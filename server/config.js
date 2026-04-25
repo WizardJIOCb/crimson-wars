@@ -184,6 +184,81 @@ const ACCOUNT_SHARDS_FROM_SCORE_MUL = 0.05;
 const ACCOUNT_SHARDS_FROM_KILLS_MUL = 1.1;
 const ACCOUNT_SHARDS_FROM_BOSS_KILLS_MUL = 12;
 const ACCOUNT_SHARDS_FROM_SURVIVAL_SEC_MUL = 0.08;
+const HERO_LEVEL_CAP = 999;
+const HERO_XP_BASE = 90;
+const HERO_XP_PER_LEVEL = 32;
+const HERO_XP_QUAD = 2.4;
+const ITEM_SALVAGE_START = 0;
+
+const ITEM_SLOT_DEFS = [
+  { key: 'head', name: 'Шапка', kind: 'gear', category: 'head' },
+  { key: 'armor', name: 'Броня', kind: 'gear', category: 'armor' },
+  { key: 'legs', name: 'Штаны', kind: 'gear', category: 'legs' },
+  { key: 'left_hand', name: 'Левая рука', kind: 'gear', category: 'hand' },
+  { key: 'right_hand', name: 'Правая рука', kind: 'gear', category: 'hand' },
+  { key: 'ring_1', name: 'Кольцо 1', kind: 'gear', category: 'ring' },
+  { key: 'ring_2', name: 'Кольцо 2', kind: 'gear', category: 'ring' },
+  { key: 'quick_1', name: 'Быстрый слот 1', kind: 'consumable', category: 'quick' },
+  { key: 'quick_2', name: 'Быстрый слот 2', kind: 'consumable', category: 'quick' },
+  { key: 'quick_3', name: 'Быстрый слот 3', kind: 'consumable', category: 'quick' },
+];
+
+const ITEM_DEFS = [
+  { id: 'wool_cap', name: 'Шерстяная шапка', slotCategory: 'head', rarity: 'common', sellSalvage: 6, upgradeSalvageBase: 10, upgradeSalvageStep: 6, stats: { maxHpFlat: 10, hpRegenPerSec: 0.08 } },
+  { id: 'scavenger_mask', name: 'Маска падальщика', slotCategory: 'head', rarity: 'uncommon', sellSalvage: 10, upgradeSalvageBase: 14, upgradeSalvageStep: 7, stats: { damageMul: 0.012, pickupRadius: 12 } },
+  { id: 'tactical_helmet', name: 'Тактический шлем', slotCategory: 'head', rarity: 'rare', sellSalvage: 15, upgradeSalvageBase: 18, upgradeSalvageStep: 9, stats: { damageMul: 0.015, maxHpFlat: 16 } },
+  { id: 'psi_visor', name: 'Пси-визор', slotCategory: 'head', rarity: 'epic', sellSalvage: 32, upgradeSalvageBase: 28, upgradeSalvageStep: 13, stats: { fireRateMul: 0.025, pickupRadius: 18 } },
+  { id: 'war_crown', name: 'Корона войны', slotCategory: 'head', rarity: 'legendary', sellSalvage: 52, upgradeSalvageBase: 42, upgradeSalvageStep: 18, stats: { damageMul: 0.03, fireRateMul: 0.018, maxHpFlat: 18 } },
+  { id: 'oracle_hood', name: 'Капюшон оракула', slotCategory: 'head', rarity: 'rare', sellSalvage: 19, upgradeSalvageBase: 21, upgradeSalvageStep: 10, stats: { pickupRadius: 22, hpRegenPerSec: 0.16 } },
+  { id: 'cloth_vest', name: 'Лёгкий жилет', slotCategory: 'armor', rarity: 'common', sellSalvage: 8, upgradeSalvageBase: 10, upgradeSalvageStep: 6, stats: { maxHpFlat: 18 } },
+  { id: 'hunter_jacket', name: 'Куртка охотника', slotCategory: 'armor', rarity: 'uncommon', sellSalvage: 12, upgradeSalvageBase: 16, upgradeSalvageStep: 8, stats: { maxHpFlat: 20, moveSpeedMul: 0.01 } },
+  { id: 'steel_carapace', name: 'Стальная кираса', slotCategory: 'armor', rarity: 'rare', sellSalvage: 18, upgradeSalvageBase: 20, upgradeSalvageStep: 10, stats: { maxHpFlat: 30, moveSpeedMul: -0.005 } },
+  { id: 'nano_mail', name: 'Нано-кольчуга', slotCategory: 'armor', rarity: 'epic', sellSalvage: 34, upgradeSalvageBase: 30, upgradeSalvageStep: 14, stats: { maxHpFlat: 24, hpRegenPerSec: 0.22, damageMul: 0.012 } },
+  { id: 'reactive_plate', name: 'Реактивная бронеплита', slotCategory: 'armor', rarity: 'legendary', sellSalvage: 56, upgradeSalvageBase: 44, upgradeSalvageStep: 19, stats: { maxHpFlat: 42, hpRegenPerSec: 0.28, damageMul: 0.018 } },
+  { id: 'hazmat_shell', name: 'Хазмат-корпус', slotCategory: 'armor', rarity: 'epic', sellSalvage: 37, upgradeSalvageBase: 31, upgradeSalvageStep: 14, stats: { maxHpFlat: 28, hpRegenPerSec: 0.18, pickupRadius: 14 } },
+  { id: 'field_pants', name: 'Полевые штаны', slotCategory: 'legs', rarity: 'common', sellSalvage: 7, upgradeSalvageBase: 10, upgradeSalvageStep: 5, stats: { moveSpeedMul: 0.012 } },
+  { id: 'runner_leggings', name: 'Штаны рейдера', slotCategory: 'legs', rarity: 'uncommon', sellSalvage: 10, upgradeSalvageBase: 13, upgradeSalvageStep: 7, stats: { moveSpeedMul: 0.016, pickupRadius: 8 } },
+  { id: 'combat_greaves', name: 'Боевые поножи', slotCategory: 'legs', rarity: 'rare', sellSalvage: 16, upgradeSalvageBase: 18, upgradeSalvageStep: 9, stats: { moveSpeedMul: 0.018, maxHpFlat: 10 } },
+  { id: 'shadow_treads', name: 'Теневые ботфорты', slotCategory: 'legs', rarity: 'epic', sellSalvage: 31, upgradeSalvageBase: 28, upgradeSalvageStep: 12, stats: { moveSpeedMul: 0.03, fireRateMul: 0.012 } },
+  { id: 'servo_greaves', name: 'Сервоприводные поножи', slotCategory: 'legs', rarity: 'legendary', sellSalvage: 50, upgradeSalvageBase: 41, upgradeSalvageStep: 18, stats: { moveSpeedMul: 0.04, fireRateMul: 0.015, maxHpFlat: 16 } },
+  { id: 'grav_boots', name: 'Грави-ботинки', slotCategory: 'legs', rarity: 'rare', sellSalvage: 18, upgradeSalvageBase: 20, upgradeSalvageStep: 9, stats: { moveSpeedMul: 0.022, pickupRadius: 12 } },
+  { id: 'combat_knife', name: 'Боевой нож', slotCategory: 'hand', rarity: 'common', sellSalvage: 7, upgradeSalvageBase: 9, upgradeSalvageStep: 5, stats: { damageMul: 0.014 } },
+  { id: 'breacher_glove', name: 'Перчатка взломщика', slotCategory: 'hand', rarity: 'uncommon', sellSalvage: 11, upgradeSalvageBase: 14, upgradeSalvageStep: 7, stats: { fireRateMul: 0.014, pickupRadius: 10 } },
+  { id: 'stabilizer_glove', name: 'Перчатка-стабилизатор', slotCategory: 'hand', rarity: 'rare', sellSalvage: 15, upgradeSalvageBase: 16, upgradeSalvageStep: 8, stats: { fireRateMul: 0.022 } },
+  { id: 'plasma_emitter', name: 'Плазменный эмиттер', slotCategory: 'hand', rarity: 'epic', sellSalvage: 33, upgradeSalvageBase: 29, upgradeSalvageStep: 13, stats: { damageMul: 0.022, fireRateMul: 0.014 } },
+  { id: 'nova_gauntlet', name: 'Нова-рукавица', slotCategory: 'hand', rarity: 'legendary', sellSalvage: 54, upgradeSalvageBase: 43, upgradeSalvageStep: 18, stats: { damageMul: 0.032, fireRateMul: 0.018, moveSpeedMul: 0.012 } },
+  { id: 'phase_blade', name: 'Фазовый клинок', slotCategory: 'hand', rarity: 'epic', sellSalvage: 36, upgradeSalvageBase: 30, upgradeSalvageStep: 13, stats: { damageMul: 0.026, moveSpeedMul: 0.015 } },
+  { id: 'copper_ring', name: 'Медное кольцо', slotCategory: 'ring', rarity: 'common', sellSalvage: 6, upgradeSalvageBase: 8, upgradeSalvageStep: 4, stats: { pickupRadius: 10 } },
+  { id: 'emerald_ring', name: 'Изумрудное кольцо', slotCategory: 'ring', rarity: 'uncommon', sellSalvage: 10, upgradeSalvageBase: 12, upgradeSalvageStep: 6, stats: { hpRegenPerSec: 0.15, pickupRadius: 8 } },
+  { id: 'ruby_ring', name: 'Рубиновое кольцо', slotCategory: 'ring', rarity: 'rare', sellSalvage: 14, upgradeSalvageBase: 15, upgradeSalvageStep: 8, stats: { damageMul: 0.012, maxHpFlat: 8 } },
+  { id: 'storm_ring', name: 'Кольцо шторма', slotCategory: 'ring', rarity: 'epic', sellSalvage: 30, upgradeSalvageBase: 27, upgradeSalvageStep: 12, stats: { fireRateMul: 0.02, moveSpeedMul: 0.012 } },
+  { id: 'void_ring', name: 'Кольцо пустоты', slotCategory: 'ring', rarity: 'legendary', sellSalvage: 49, upgradeSalvageBase: 39, upgradeSalvageStep: 17, stats: { damageMul: 0.026, fireRateMul: 0.012, pickupRadius: 18 } },
+  { id: 'sapphire_ring', name: 'Сапфировое кольцо', slotCategory: 'ring', rarity: 'rare', sellSalvage: 17, upgradeSalvageBase: 18, upgradeSalvageStep: 8, stats: { fireRateMul: 0.014, hpRegenPerSec: 0.12 } },
+  { id: 'bandage', name: 'Бинты', slotCategory: 'quick', rarity: 'common', stackable: true, maxStack: 12, sellSalvage: 2, combatUse: { type: 'heal', healFlat: 32 } },
+  { id: 'trauma_foam', name: 'Травма-пена', slotCategory: 'quick', rarity: 'uncommon', stackable: true, maxStack: 10, sellSalvage: 3, combatUse: { type: 'heal', healFlat: 48 } },
+  { id: 'medkit', name: 'Аптечка', slotCategory: 'quick', rarity: 'rare', stackable: true, maxStack: 8, sellSalvage: 5, combatUse: { type: 'heal', healFlat: 68 } },
+  { id: 'frag_grenade', name: 'Осколочная граната', slotCategory: 'quick', rarity: 'common', stackable: true, maxStack: 10, sellSalvage: 3, combatUse: { type: 'grenade', damage: 80, radius: 120 } },
+  { id: 'incendiary_grenade', name: 'Зажигательная граната', slotCategory: 'quick', rarity: 'uncommon', stackable: true, maxStack: 9, sellSalvage: 4, combatUse: { type: 'grenade', damage: 102, radius: 128 } },
+  { id: 'cluster_grenade', name: 'Кассетная граната', slotCategory: 'quick', rarity: 'rare', stackable: true, maxStack: 6, sellSalvage: 6, combatUse: { type: 'grenade', damage: 130, radius: 145 } },
+  { id: 'artillery_beacon', name: 'Маяк артиллерии', slotCategory: 'quick', rarity: 'epic', stackable: true, maxStack: 5, sellSalvage: 10, combatUse: { type: 'artillery', damage: 170, radius: 170, waves: 3 } },
+  { id: 'satellite_laser', name: 'Спутниковый лазер', slotCategory: 'quick', rarity: 'legendary', stackable: true, maxStack: 4, sellSalvage: 14, combatUse: { type: 'satellite', damage: 280, radius: 190 } },
+  { id: 'stim_pack', name: 'Стим-пак', slotCategory: 'quick', rarity: 'rare', stackable: true, maxStack: 7, sellSalvage: 6, combatUse: { type: 'buff', damageMul: 0.18, fireRateMul: 0.18, durationMs: 12000 } },
+  { id: 'adrenaline_shot', name: 'Адреналиновый укол', slotCategory: 'quick', rarity: 'epic', stackable: true, maxStack: 6, sellSalvage: 8, combatUse: { type: 'buff', damageMul: 0.14, fireRateMul: 0.16, moveSpeedMul: 0.12, durationMs: 14000 } },
+  { id: 'regen_injector', name: 'Реген-инъектор', slotCategory: 'quick', rarity: 'epic', stackable: true, maxStack: 5, sellSalvage: 9, combatUse: { type: 'regen', hpRegenPerSec: 7.5, durationMs: 10000 } },
+  { id: 'shock_mine', name: 'Шок-мина', slotCategory: 'quick', rarity: 'rare', stackable: true, maxStack: 6, sellSalvage: 5, combatUse: { type: 'grenade', damage: 95, radius: 110, stunMs: 900 } },
+  { id: 'orbital_marker', name: 'Орбитальный маркер', slotCategory: 'quick', rarity: 'legendary', stackable: true, maxStack: 3, sellSalvage: 16, combatUse: { type: 'satellite', damage: 340, radius: 210, stunMs: 1200 } },
+  { id: 'phoenix_kit', name: 'Феникс-комплект', slotCategory: 'quick', rarity: 'legendary', stackable: true, maxStack: 4, sellSalvage: 15, combatUse: { type: 'heal', healFlat: 120 } },
+  { id: 'drone_swarm', name: 'Рой дронов', slotCategory: 'quick', rarity: 'epic', stackable: true, maxStack: 5, sellSalvage: 11, combatUse: { type: 'artillery', damage: 210, radius: 155, waves: 4 } },
+];
+
+function makeHeroUniqueSkills(heroId, defs) {
+  return defs.map((def) => ({
+    id: `${heroId}_${def.id}`,
+    heroId,
+    sourceHeroId: heroId,
+    ...def,
+  }));
+}
 
 const HERO_DEFS = [
   {
@@ -203,6 +278,8 @@ const HERO_DEFS = [
     unlockCardName: '',
     unlockCardNeed: 0,
     tagline: 'Universal adaptive operator',
+    baseStats: { power: 7, agility: 6, vitality: 7, tech: 9 },
+    levelGrowth: { power: 0.045, agility: 0.03, vitality: 0.055, tech: 0.06 },
   },
   {
     id: 'scout',
@@ -221,6 +298,8 @@ const HERO_DEFS = [
     unlockCardName: 'Scout Core Card',
     unlockCardNeed: 12,
     tagline: 'Fast recon and chase specialist',
+    baseStats: { power: 6, agility: 10, vitality: 5, tech: 7 },
+    levelGrowth: { power: 0.038, agility: 0.065, vitality: 0.038, tech: 0.04 },
   },
   {
     id: 'shadow',
@@ -239,6 +318,8 @@ const HERO_DEFS = [
     unlockCardName: 'Shadow Core Card',
     unlockCardNeed: 18,
     tagline: 'Ambush and burst assassin',
+    baseStats: { power: 9, agility: 8, vitality: 5, tech: 6 },
+    levelGrowth: { power: 0.06, agility: 0.045, vitality: 0.035, tech: 0.03 },
   },
   {
     id: 'medic',
@@ -257,6 +338,8 @@ const HERO_DEFS = [
     unlockCardName: 'Medic Core Card',
     unlockCardNeed: 24,
     tagline: 'Sustain and recovery master',
+    baseStats: { power: 5, agility: 6, vitality: 10, tech: 8 },
+    levelGrowth: { power: 0.03, agility: 0.03, vitality: 0.07, tech: 0.05 },
   },
   {
     id: 'raider',
@@ -275,8 +358,58 @@ const HERO_DEFS = [
     unlockCardName: 'Raider Core Card',
     unlockCardNeed: 30,
     tagline: 'Frontline brawler and bruiser',
+    baseStats: { power: 10, agility: 5, vitality: 9, tech: 4 },
+    levelGrowth: { power: 0.07, agility: 0.025, vitality: 0.06, tech: 0.02 },
   },
 ];
+
+const HERO_UNIQUE_SKILL_DEFS = {
+  cyber: makeHeroUniqueSkills('cyber', [
+    { id: 'pulse_wave', name: 'Pulse Wave', kind: 'active', castType: 'shockwave', rarity: 'rare', maxLevel: 10, unlockCostShards: 60, upgradeCostShardsBase: 22, upgradeCostShardsStep: 10, cooldownMs: 5200, cooldownMulPerLevel: 0.045, radius: 170, radiusPerLevel: 16, damage: 44, damagePerLevel: 14, desc: 'EMP blast around the hero' },
+    { id: 'ion_lance', name: 'Ion Lance', kind: 'active', castType: 'laser_strike', rarity: 'epic', maxLevel: 8, unlockCostShards: 95, upgradeCostShardsBase: 28, upgradeCostShardsStep: 12, cooldownMs: 2400, cooldownMulPerLevel: 0.05, radius: 340, radiusPerLevel: 22, damage: 42, damagePerLevel: 13, targets: 2, targetsPerLevel: 1, desc: 'Fires instant ion beams at nearby targets' },
+    { id: 'arc_matrix', name: 'Arc Matrix', kind: 'active', castType: 'chain_lightning', rarity: 'epic', maxLevel: 10, unlockCostShards: 120, upgradeCostShardsBase: 32, upgradeCostShardsStep: 14, cooldownMs: 5600, cooldownMulPerLevel: 0.05, radius: 360, radiusPerLevel: 18, damage: 48, damagePerLevel: 15, targets: 3, targetsPerLevel: 1, desc: 'Releases chained electric discharges' },
+    { id: 'seeker_protocol', name: 'Seeker Protocol', kind: 'active', castType: 'homing_missiles', rarity: 'legendary', maxLevel: 7, unlockCostShards: 155, upgradeCostShardsBase: 38, upgradeCostShardsStep: 16, cooldownMs: 7200, cooldownMulPerLevel: 0.05, radius: 1480, radiusPerLevel: 90, damage: 35, damagePerLevel: 12, targets: 4, targetsPerLevel: 1, missileSpeed: 700, missileSpeedPerLevel: 48, turnRate: 6.2, turnRatePerLevel: 0.26, explosionRadius: 62, explosionRadiusPerLevel: 6, lifeMs: 2700, desc: 'Launches autonomous smart rockets' },
+    { id: 'adaptive_frame', name: 'Adaptive Frame', kind: 'passive', rarity: 'common', maxLevel: 10, unlockCostShards: 45, upgradeCostShardsBase: 16, upgradeCostShardsStep: 7, maxHpFlatPerLevel: 14, desc: '+max HP and stability' },
+    { id: 'combat_firmware', name: 'Combat Firmware', kind: 'passive', rarity: 'rare', maxLevel: 10, unlockCostShards: 70, upgradeCostShardsBase: 20, upgradeCostShardsStep: 9, damageMulPerLevel: 0.038, fireRateMulPerLevel: 0.018, desc: '+damage and fire rate' },
+    { id: 'sync_link', name: 'Sync Link', kind: 'passive', rarity: 'epic', maxLevel: 10, unlockCostShards: 110, upgradeCostShardsBase: 24, upgradeCostShardsStep: 10, globalAura: true, globalDamageMulPerLevel: 0.02, globalFireRateMulPerLevel: 0.012, desc: 'Boosts every other hero in the roster' },
+  ]),
+  scout: makeHeroUniqueSkills('scout', [
+    { id: 'razor_wind', name: 'Razor Wind', kind: 'active', castType: 'blade_orbit', rarity: 'rare', maxLevel: 10, unlockCostShards: 60, upgradeCostShardsBase: 22, upgradeCostShardsStep: 10, cooldownMs: 1300, cooldownMulPerLevel: 0.04, radius: 340, radiusPerLevel: 20, damage: 25, damagePerLevel: 8, targets: 3, targetsPerLevel: 1, desc: 'Rapid slices through the nearest enemies' },
+    { id: 'hunter_mark', name: 'Hunter Mark', kind: 'active', castType: 'laser_strike', rarity: 'rare', maxLevel: 9, unlockCostShards: 92, upgradeCostShardsBase: 28, upgradeCostShardsStep: 11, cooldownMs: 2100, cooldownMulPerLevel: 0.045, radius: 390, radiusPerLevel: 24, damage: 36, damagePerLevel: 11, targets: 2, targetsPerLevel: 1, desc: 'Targets and instantly pierces enemies' },
+    { id: 'storm_net', name: 'Storm Net', kind: 'active', castType: 'chain_lightning', rarity: 'epic', maxLevel: 8, unlockCostShards: 118, upgradeCostShardsBase: 31, upgradeCostShardsStep: 13, cooldownMs: 5000, cooldownMulPerLevel: 0.048, radius: 380, radiusPerLevel: 20, damage: 43, damagePerLevel: 13, targets: 4, targetsPerLevel: 1, desc: 'Electrified chain burst for clustered packs' },
+    { id: 'sky_chasers', name: 'Sky Chasers', kind: 'active', castType: 'homing_missiles', rarity: 'legendary', maxLevel: 7, unlockCostShards: 150, upgradeCostShardsBase: 37, upgradeCostShardsStep: 15, cooldownMs: 6800, cooldownMulPerLevel: 0.05, radius: 1600, radiusPerLevel: 100, damage: 32, damagePerLevel: 10, targets: 5, targetsPerLevel: 1, missileSpeed: 760, missileSpeedPerLevel: 50, turnRate: 6.8, turnRatePerLevel: 0.28, explosionRadius: 54, explosionRadiusPerLevel: 5, lifeMs: 2500, desc: 'Fast pursuit missiles for distant prey' },
+    { id: 'long_stride', name: 'Long Stride', kind: 'passive', rarity: 'common', maxLevel: 10, unlockCostShards: 48, upgradeCostShardsBase: 17, upgradeCostShardsStep: 7, moveSpeedMulPerLevel: 0.028, desc: '+movement speed' },
+    { id: 'vital_sight', name: 'Vital Sight', kind: 'passive', rarity: 'rare', maxLevel: 10, unlockCostShards: 76, upgradeCostShardsBase: 21, upgradeCostShardsStep: 9, fireRateMulPerLevel: 0.025, damageMulPerLevel: 0.02, desc: '+precision and fire rhythm' },
+    { id: 'trailblazer', name: 'Trailblazer', kind: 'passive', rarity: 'epic', maxLevel: 10, unlockCostShards: 112, upgradeCostShardsBase: 24, upgradeCostShardsStep: 10, globalAura: true, globalMoveSpeedMulPerLevel: 0.018, globalPickupRadiusPerLevel: 8, desc: 'Gives every other hero mobility and reach' },
+  ]),
+  shadow: makeHeroUniqueSkills('shadow', [
+    { id: 'void_burst', name: 'Void Burst', kind: 'active', castType: 'psi_blast', rarity: 'epic', maxLevel: 8, unlockCostShards: 68, upgradeCostShardsBase: 24, upgradeCostShardsStep: 11, cooldownMs: 7600, cooldownMulPerLevel: 0.05, radius: 230, radiusPerLevel: 18, damage: 56, damagePerLevel: 16, knockbackMul: 8.8, stunMs: 170, desc: 'Dark pulse that stuns and hurls enemies away' },
+    { id: 'night_fangs', name: 'Night Fangs', kind: 'active', castType: 'blade_orbit', rarity: 'rare', maxLevel: 10, unlockCostShards: 96, upgradeCostShardsBase: 29, upgradeCostShardsStep: 12, cooldownMs: 1200, cooldownMulPerLevel: 0.045, radius: 330, radiusPerLevel: 18, damage: 29, damagePerLevel: 9, targets: 3, targetsPerLevel: 1, desc: 'Shadow blades tear into nearby targets' },
+    { id: 'eclipse_chain', name: 'Eclipse Chain', kind: 'active', castType: 'chain_lightning', rarity: 'epic', maxLevel: 8, unlockCostShards: 122, upgradeCostShardsBase: 33, upgradeCostShardsStep: 14, cooldownMs: 5200, cooldownMulPerLevel: 0.05, radius: 350, radiusPerLevel: 18, damage: 50, damagePerLevel: 15, targets: 3, targetsPerLevel: 1, desc: 'Dark chain strike for burst assassinations' },
+    { id: 'black_comets', name: 'Black Comets', kind: 'active', castType: 'homing_missiles', rarity: 'legendary', maxLevel: 7, unlockCostShards: 158, upgradeCostShardsBase: 39, upgradeCostShardsStep: 16, cooldownMs: 6900, cooldownMulPerLevel: 0.05, radius: 1540, radiusPerLevel: 85, damage: 38, damagePerLevel: 13, targets: 4, targetsPerLevel: 1, missileSpeed: 720, missileSpeedPerLevel: 52, turnRate: 6.4, turnRatePerLevel: 0.28, explosionRadius: 58, explosionRadiusPerLevel: 5, lifeMs: 2600, desc: 'Explosive shadow missiles lock on silently' },
+    { id: 'assassin_instinct', name: 'Assassin Instinct', kind: 'passive', rarity: 'common', maxLevel: 10, unlockCostShards: 52, upgradeCostShardsBase: 18, upgradeCostShardsStep: 8, damageMulPerLevel: 0.045, desc: '+damage' },
+    { id: 'ghost_step', name: 'Ghost Step', kind: 'passive', rarity: 'rare', maxLevel: 10, unlockCostShards: 80, upgradeCostShardsBase: 22, upgradeCostShardsStep: 9, moveSpeedMulPerLevel: 0.02, fireRateMulPerLevel: 0.016, desc: '+speed and evasiveness' },
+    { id: 'umbral_doctrine', name: 'Umbral Doctrine', kind: 'passive', rarity: 'epic', maxLevel: 10, unlockCostShards: 118, upgradeCostShardsBase: 25, upgradeCostShardsStep: 10, globalAura: true, globalDamageMulPerLevel: 0.024, desc: 'Increases the lethality of every other hero' },
+  ]),
+  medic: makeHeroUniqueSkills('medic', [
+    { id: 'sterile_wave', name: 'Sterile Wave', kind: 'active', castType: 'shockwave', rarity: 'rare', maxLevel: 9, unlockCostShards: 64, upgradeCostShardsBase: 23, upgradeCostShardsStep: 10, cooldownMs: 5000, cooldownMulPerLevel: 0.045, radius: 180, radiusPerLevel: 16, damage: 37, damagePerLevel: 12, desc: 'Medical shock pulse that clears space' },
+    { id: 'triage_beam', name: 'Triage Beam', kind: 'active', castType: 'laser_strike', rarity: 'rare', maxLevel: 9, unlockCostShards: 92, upgradeCostShardsBase: 28, upgradeCostShardsStep: 11, cooldownMs: 2350, cooldownMulPerLevel: 0.045, radius: 320, radiusPerLevel: 20, damage: 39, damagePerLevel: 12, targets: 2, targetsPerLevel: 1, desc: 'Focused combat beam for emergency eliminations' },
+    { id: 'toxin_arc', name: 'Toxin Arc', kind: 'active', castType: 'chain_lightning', rarity: 'epic', maxLevel: 8, unlockCostShards: 121, upgradeCostShardsBase: 32, upgradeCostShardsStep: 13, cooldownMs: 5400, cooldownMulPerLevel: 0.048, radius: 370, radiusPerLevel: 20, damage: 45, damagePerLevel: 13, targets: 4, targetsPerLevel: 1, desc: 'Contagious bio-electric chain discharge' },
+    { id: 'rescue_rockets', name: 'Rescue Rockets', kind: 'active', castType: 'homing_missiles', rarity: 'legendary', maxLevel: 7, unlockCostShards: 154, upgradeCostShardsBase: 38, upgradeCostShardsStep: 15, cooldownMs: 7100, cooldownMulPerLevel: 0.05, radius: 1500, radiusPerLevel: 80, damage: 34, damagePerLevel: 11, targets: 4, targetsPerLevel: 1, missileSpeed: 690, missileSpeedPerLevel: 44, turnRate: 6.0, turnRatePerLevel: 0.24, explosionRadius: 60, explosionRadiusPerLevel: 5, lifeMs: 2650, desc: 'Support rockets that hunt priority threats' },
+    { id: 'field_aid', name: 'Field Aid', kind: 'passive', rarity: 'common', maxLevel: 10, unlockCostShards: 50, upgradeCostShardsBase: 17, upgradeCostShardsStep: 8, hpRegenPerSecPerLevel: 0.42, desc: '+HP regen' },
+    { id: 'vital_plating', name: 'Vital Plating', kind: 'passive', rarity: 'rare', maxLevel: 10, unlockCostShards: 78, upgradeCostShardsBase: 21, upgradeCostShardsStep: 9, maxHpFlatPerLevel: 16, desc: '+max HP' },
+    { id: 'support_protocol', name: 'Support Protocol', kind: 'passive', rarity: 'epic', maxLevel: 10, unlockCostShards: 114, upgradeCostShardsBase: 24, upgradeCostShardsStep: 10, globalAura: true, globalMaxHpFlatPerLevel: 8, globalHpRegenPerSecPerLevel: 0.16, desc: 'Improves survivability of every other hero' },
+  ]),
+  raider: makeHeroUniqueSkills('raider', [
+    { id: 'war_stomp', name: 'War Stomp', kind: 'active', castType: 'shockwave', rarity: 'rare', maxLevel: 10, unlockCostShards: 66, upgradeCostShardsBase: 24, upgradeCostShardsStep: 10, cooldownMs: 4800, cooldownMulPerLevel: 0.045, radius: 185, radiusPerLevel: 18, damage: 49, damagePerLevel: 15, desc: 'Brutal ground smash around the raider' },
+    { id: 'shrapnel_burst', name: 'Shrapnel Burst', kind: 'active', castType: 'laser_strike', rarity: 'rare', maxLevel: 9, unlockCostShards: 98, upgradeCostShardsBase: 29, upgradeCostShardsStep: 12, cooldownMs: 2300, cooldownMulPerLevel: 0.045, radius: 300, radiusPerLevel: 18, damage: 46, damagePerLevel: 14, targets: 2, targetsPerLevel: 1, desc: 'Wide kill burst on the closest targets' },
+    { id: 'berserk_arc', name: 'Berserk Arc', kind: 'active', castType: 'chain_lightning', rarity: 'epic', maxLevel: 8, unlockCostShards: 124, upgradeCostShardsBase: 33, upgradeCostShardsStep: 14, cooldownMs: 5200, cooldownMulPerLevel: 0.05, radius: 340, radiusPerLevel: 18, damage: 52, damagePerLevel: 16, targets: 3, targetsPerLevel: 1, desc: 'Violent chain strike for close engagements' },
+    { id: 'siege_barrage', name: 'Siege Barrage', kind: 'active', castType: 'homing_missiles', rarity: 'legendary', maxLevel: 7, unlockCostShards: 162, upgradeCostShardsBase: 40, upgradeCostShardsStep: 16, cooldownMs: 7000, cooldownMulPerLevel: 0.05, radius: 1460, radiusPerLevel: 82, damage: 40, damagePerLevel: 13, targets: 4, targetsPerLevel: 1, missileSpeed: 660, missileSpeedPerLevel: 42, turnRate: 5.8, turnRatePerLevel: 0.22, explosionRadius: 68, explosionRadiusPerLevel: 6, lifeMs: 2750, desc: 'Heavy rockets for smashing elite targets' },
+    { id: 'battle_rage', name: 'Battle Rage', kind: 'passive', rarity: 'common', maxLevel: 10, unlockCostShards: 54, upgradeCostShardsBase: 18, upgradeCostShardsStep: 8, damageMulPerLevel: 0.04, desc: '+damage' },
+    { id: 'iron_hide', name: 'Iron Hide', kind: 'passive', rarity: 'rare', maxLevel: 10, unlockCostShards: 84, upgradeCostShardsBase: 23, upgradeCostShardsStep: 9, maxHpFlatPerLevel: 18, moveSpeedMulPerLevel: 0.01, desc: '+max HP and unstoppable momentum' },
+    { id: 'war_banner', name: 'War Banner', kind: 'passive', rarity: 'epic', maxLevel: 10, unlockCostShards: 120, upgradeCostShardsBase: 25, upgradeCostShardsStep: 10, globalAura: true, globalDamageMulPerLevel: 0.016, globalFireRateMulPerLevel: 0.016, desc: 'Empowers the offense of every other hero' },
+  ]),
+};
 
 const HERO_SKILL_TREE_DEFS = {
   cyber: [
@@ -406,6 +539,14 @@ module.exports = {
   ACCOUNT_SHARDS_FROM_KILLS_MUL,
   ACCOUNT_SHARDS_FROM_BOSS_KILLS_MUL,
   ACCOUNT_SHARDS_FROM_SURVIVAL_SEC_MUL,
+  ITEM_SALVAGE_START,
+  ITEM_SLOT_DEFS,
+  ITEM_DEFS,
   HERO_DEFS,
+  HERO_LEVEL_CAP,
+  HERO_XP_BASE,
+  HERO_XP_PER_LEVEL,
+  HERO_XP_QUAD,
+  HERO_UNIQUE_SKILL_DEFS,
   HERO_SKILL_TREE_DEFS,
 };

@@ -134,7 +134,15 @@ const {
   ACCOUNT_SHARDS_FROM_KILLS_MUL,
   ACCOUNT_SHARDS_FROM_BOSS_KILLS_MUL,
   ACCOUNT_SHARDS_FROM_SURVIVAL_SEC_MUL,
+  ITEM_SALVAGE_START,
+  ITEM_SLOT_DEFS,
+  ITEM_DEFS,
   HERO_DEFS,
+  HERO_LEVEL_CAP,
+  HERO_XP_BASE,
+  HERO_XP_PER_LEVEL,
+  HERO_XP_QUAD,
+  HERO_UNIQUE_SKILL_DEFS,
   HERO_SKILL_TREE_DEFS,
 } = config;
 
@@ -376,6 +384,14 @@ const accountProgressionStore = createAccountProgressionStore({
   baseHeroId: ACCOUNT_BASE_HERO_ID,
   heroDefs: HERO_DEFS,
   heroSkillTreeDefs: HERO_SKILL_TREE_DEFS,
+  heroUniqueSkillDefs: HERO_UNIQUE_SKILL_DEFS,
+  heroLevelCap: HERO_LEVEL_CAP,
+  heroXpBase: HERO_XP_BASE,
+  heroXpPerLevel: HERO_XP_PER_LEVEL,
+  heroXpQuad: HERO_XP_QUAD,
+  itemSalvageStart: ITEM_SALVAGE_START,
+  itemSlotDefs: ITEM_SLOT_DEFS,
+  itemDefs: ITEM_DEFS,
   xpBase: ACCOUNT_XP_BASE,
   xpPerLevel: ACCOUNT_XP_PER_LEVEL,
   xpQuad: ACCOUNT_XP_QUAD,
@@ -412,6 +428,23 @@ const newsStore = createNewsStore({
 });
 const progressionCatalog = accountProgressionStore.getCatalogPayload();
 const heroDefsById = Object.fromEntries((progressionCatalog.heroes || []).map((hero) => [hero.id, hero]));
+const itemDefsById = Object.fromEntries((ITEM_DEFS || []).map((item) => [String(item.id || '').trim(), item]));
+const heroUniqueSkillDefsById = Object.fromEntries(
+  Object.values(HERO_UNIQUE_SKILL_DEFS || {})
+    .flatMap((list) => Array.isArray(list) ? list : [])
+    .map((skill) => [skill.id, skill]),
+);
+
+function getCombatSkillDef(skillId, playerClass = '') {
+  const id = String(skillId || '').trim().toLowerCase();
+  if (!id) return null;
+  const classId = String(playerClass || '').trim().toLowerCase();
+  if (classId && Array.isArray(HERO_UNIQUE_SKILL_DEFS[classId])) {
+    const heroSkill = HERO_UNIQUE_SKILL_DEFS[classId].find((skill) => skill.id === id);
+    if (heroSkill) return heroSkill;
+  }
+  return heroUniqueSkillDefsById[id] || skillsStore.getById(id) || null;
+}
 
 const LEADERBOARD_CATEGORIES = {
   best_kills_run: { key: 'best_kills_run', title: '\u0423\u0431\u0438\u0442\u043e \u0437\u0430 \u0437\u0430\u0431\u0435\u0433', source: 'runs', unit: 'kills' },
@@ -1410,6 +1443,95 @@ app.post('/api/player/progression/upgrade-node', (req, res) => {
   const result = accountProgressionStore.upgradeHeroNode(req.playerUser.id, heroId, nodeId);
   if (!result?.ok) {
     res.status(result?.code || 400).json({ ok: false, message: result?.message || 'Failed to upgrade node' });
+    return;
+  }
+  res.json({ ok: true, progression: result.progression });
+});
+
+app.post('/api/player/progression/unlock-hero-skill', (req, res) => {
+  if (!req.playerUser) {
+    res.status(401).json({ ok: false, message: 'Authentication required' });
+    return;
+  }
+  const heroId = (req.body?.heroId || '').toString();
+  const skillId = (req.body?.skillId || '').toString();
+  const result = accountProgressionStore.unlockHeroSkill(req.playerUser.id, heroId, skillId);
+  if (!result?.ok) {
+    res.status(result?.code || 400).json({ ok: false, message: result?.message || 'Failed to unlock hero skill' });
+    return;
+  }
+  res.json({ ok: true, progression: result.progression, alreadyUnlocked: !!result.alreadyUnlocked });
+});
+
+app.post('/api/player/progression/upgrade-hero-skill', (req, res) => {
+  if (!req.playerUser) {
+    res.status(401).json({ ok: false, message: 'Authentication required' });
+    return;
+  }
+  const heroId = (req.body?.heroId || '').toString();
+  const skillId = (req.body?.skillId || '').toString();
+  const result = accountProgressionStore.upgradeHeroSkill(req.playerUser.id, heroId, skillId);
+  if (!result?.ok) {
+    res.status(result?.code || 400).json({ ok: false, message: result?.message || 'Failed to upgrade hero skill' });
+    return;
+  }
+  res.json({ ok: true, progression: result.progression });
+});
+
+app.post('/api/player/progression/equip-item', (req, res) => {
+  if (!req.playerUser) {
+    res.status(401).json({ ok: false, message: 'Authentication required' });
+    return;
+  }
+  const heroId = (req.body?.heroId || '').toString();
+  const itemUid = (req.body?.itemUid || '').toString();
+  const slotKey = (req.body?.slotKey || '').toString();
+  const result = accountProgressionStore.equipItem(req.playerUser.id, heroId, itemUid, slotKey);
+  if (!result?.ok) {
+    res.status(result?.code || 400).json({ ok: false, message: result?.message || 'Failed to equip item' });
+    return;
+  }
+  res.json({ ok: true, progression: result.progression });
+});
+
+app.post('/api/player/progression/unequip-item', (req, res) => {
+  if (!req.playerUser) {
+    res.status(401).json({ ok: false, message: 'Authentication required' });
+    return;
+  }
+  const heroId = (req.body?.heroId || '').toString();
+  const slotKey = (req.body?.slotKey || '').toString();
+  const result = accountProgressionStore.unequipItem(req.playerUser.id, heroId, slotKey);
+  if (!result?.ok) {
+    res.status(result?.code || 400).json({ ok: false, message: result?.message || 'Failed to unequip item' });
+    return;
+  }
+  res.json({ ok: true, progression: result.progression });
+});
+
+app.post('/api/player/progression/sell-item', (req, res) => {
+  if (!req.playerUser) {
+    res.status(401).json({ ok: false, message: 'Authentication required' });
+    return;
+  }
+  const itemUid = (req.body?.itemUid || '').toString();
+  const result = accountProgressionStore.sellItem(req.playerUser.id, itemUid);
+  if (!result?.ok) {
+    res.status(result?.code || 400).json({ ok: false, message: result?.message || 'Failed to sell item' });
+    return;
+  }
+  res.json({ ok: true, progression: result.progression });
+});
+
+app.post('/api/player/progression/upgrade-item', (req, res) => {
+  if (!req.playerUser) {
+    res.status(401).json({ ok: false, message: 'Authentication required' });
+    return;
+  }
+  const itemUid = (req.body?.itemUid || '').toString();
+  const result = accountProgressionStore.upgradeItem(req.playerUser.id, itemUid);
+  if (!result?.ok) {
+    res.status(result?.code || 400).json({ ok: false, message: result?.message || 'Failed to upgrade item' });
     return;
   }
   res.json({ ok: true, progression: result.progression });
@@ -2743,7 +2865,7 @@ function explodeRocket(room, bullet, now) {
 }
 
 function castPlayerActiveSkill(room, player, def, st, now) {
-  const skillId = String(def?.id || '').toLowerCase();
+  const skillId = String(def?.castType || def?.id || '').toLowerCase();
   if (skillId === 'homing_missiles') {
     return castHomingMissiles(room, player, def, st, now);
   }
@@ -2854,7 +2976,7 @@ function serializeRoom(room) {
     pvpDeaths: Math.max(0, Math.floor(Number(p.pvpDeaths) || 0)),
     skills: (p.skillOrder || []).map((sid) => {
       const st = p.skills?.[sid] || { level: 0, cooldownMs: 0, maxCooldownMs: 0 };
-      const def = skillsStore.getById(sid) || { id: sid, name: sid, kind: 'passive', rarity: 'common', desc: '' };
+      const def = getCombatSkillDef(sid, p.playerClass) || { id: sid, name: sid, kind: 'passive', rarity: 'common', desc: '' };
       return {
         id: sid,
         name: def.name,
@@ -2866,6 +2988,7 @@ function serializeRoom(room) {
         maxCooldownMs: Math.max(0, Math.round(Number(st.maxCooldownMs) || 0)),
       };
     }),
+    quickSlots: getPlayerQuickSlotsState(p),
   }));
   const serializedCompanions = (room.companions || []).map((companion) => ({
     id: companion.id,
@@ -3489,6 +3612,26 @@ function ensureSkillState(player, skillId) {
   return player.skills[skillId];
 }
 
+function applyPersistentHeroSkillsToPlayer(player) {
+  if (!player || !player.accountProgression || !player.playerClass) return;
+  const runtimeSkills = accountProgressionStore.getHeroRuntimeSkills(player.accountProgression, player.playerClass);
+  const skillIds = Object.keys(runtimeSkills || {});
+  if (skillIds.length <= 0) return;
+  if (!player.skills || typeof player.skills !== 'object') player.skills = {};
+  if (!Array.isArray(player.skillOrder)) player.skillOrder = [];
+  for (const skillId of skillIds) {
+    const level = Math.max(1, Number(runtimeSkills[skillId]) || 1);
+    const st = ensureSkillState(player, skillId);
+    st.level = level;
+    const def = getCombatSkillDef(skillId, player.playerClass);
+    if (def?.kind === 'active') {
+      st.maxCooldownMs = Math.max(0, Math.round(Number(def.cooldownMs) || 0));
+      st.cooldownMs = 0;
+    }
+    if (!player.skillOrder.includes(skillId)) player.skillOrder.push(skillId);
+  }
+}
+
 function rebuildPlayerDerivedStats(player) {
   player.damageMul = 1;
   player.fireRateMul = 1;
@@ -3498,7 +3641,12 @@ function rebuildPlayerDerivedStats(player) {
   player.pickupRadius = PLAYER_PICKUP_RADIUS_BASE;
   player.extraDodgeCharges = 0;
 
-  for (const def of skillsStore.getList()) {
+  const skillIds = player.skills && typeof player.skills === 'object'
+    ? Object.keys(player.skills)
+    : [];
+  for (const skillId of skillIds) {
+    const def = getCombatSkillDef(skillId, player.playerClass);
+    if (!def) continue;
     const lvl = getSkillRank(player, def.id);
     if (lvl <= 0) continue;
     player.damageMul += (Number(def.damageMulPerLevel) || 0) * lvl;
@@ -3523,6 +3671,20 @@ function rebuildPlayerDerivedStats(player) {
     player.extraDodgeCharges += Number(accountBonuses.extraDodgeCharges) || 0;
   }
 
+  const activeConsumableBuffs = Array.isArray(player.activeConsumableBuffs) ? player.activeConsumableBuffs : [];
+  if (activeConsumableBuffs.length > 0) {
+    const now = Date.now();
+    player.activeConsumableBuffs = activeConsumableBuffs.filter((buff) => Math.max(0, Number(buff?.expiresAt) || 0) > now);
+    for (const buff of player.activeConsumableBuffs) {
+      player.damageMul += Number(buff.damageMul) || 0;
+      player.fireRateMul += Number(buff.fireRateMul) || 0;
+      player.moveSpeedMul += Number(buff.moveSpeedMul) || 0;
+      player.hpRegenPerSec += Number(buff.hpRegenPerSec) || 0;
+    }
+  } else {
+    player.activeConsumableBuffs = [];
+  }
+
   const nextMaxHp = PLAYER_HP_MAX + Math.max(0, Math.round(player.maxHpBonus));
   if (!Number.isFinite(player.maxHp) || player.maxHp <= 0) player.maxHp = PLAYER_HP_MAX;
   if (nextMaxHp !== player.maxHp) {
@@ -3537,6 +3699,39 @@ function rebuildPlayerDerivedStats(player) {
   const baseCharges = PLAYER_DODGE_MAX_CHARGES + Math.max(0, Math.floor(player.extraDodgeCharges || 0));
   player.dodgeChargesMax = baseCharges;
   player.dodgeCharges = Math.max(0, Math.min(player.dodgeChargesMax, Number(player.dodgeCharges) || player.dodgeChargesMax));
+}
+
+function getPlayerQuickSlotState(player, slotKey) {
+  const progression = player?.accountProgression;
+  const heroId = String(player?.playerClass || '').trim();
+  const heroEquipment = progression?.heroEquipment?.[heroId];
+  const itemUid = String(heroEquipment?.[slotKey] || '').trim();
+  if (!itemUid) return null;
+  const inventoryItems = Array.isArray(progression?.inventoryItems) ? progression.inventoryItems : [];
+  const item = inventoryItems.find((entry) => String(entry?.uid || '').trim() === itemUid);
+  if (!item) return null;
+  const itemDef = itemDefsById[String(item.itemId || '').trim()] || null;
+  if (!itemDef) return null;
+  return {
+    slotKey,
+    itemUid,
+    itemId: String(item.itemId || '').trim(),
+    name: String(itemDef.name || item.itemId || slotKey),
+    rarity: String(itemDef.rarity || 'common'),
+    quantity: Math.max(0, Math.floor(Number(item.quantity) || 0)),
+    level: Math.max(1, Math.floor(Number(item.level) || 1)),
+    combatUse: itemDef.combatUse && typeof itemDef.combatUse === 'object' ? { ...itemDef.combatUse } : null,
+  };
+}
+
+function getPlayerQuickSlotsState(player) {
+  return ['quick_1', 'quick_2', 'quick_3']
+    .map((slotKey) => getPlayerQuickSlotState(player, slotKey))
+    .filter(Boolean);
+}
+
+function scaleConsumableMagnitude(base, level, step = 0.22) {
+  return Number(base || 0) * (1 + Math.max(0, Math.floor(Number(level) || 1) - 1) * step);
 }
 
 function roundReplayCoord(value) {
@@ -3627,7 +3822,7 @@ function captureReplayFrame(room, replay, now, options = {}) {
       for (const sid of p.skillOrder || Object.keys(p.skills)) {
         const st = p.skills[sid];
         if (!st) continue;
-        const def = skillsStore.getById(sid);
+        const def = getCombatSkillDef(sid, p.playerClass);
         skills.push([
           sid,
           Math.max(0, Math.floor(Number(st.level) || 0)),
@@ -3981,17 +4176,124 @@ function enemyTakeDamage(room, enemy, damage, ownerId, now, options = {}) {
   return true;
 }
 
+function applyConsumableAreaDamage(room, player, centerX, centerY, damage, radius, now, options = {}) {
+  const targets = collectEnemiesInRadius(room, centerX, centerY, radius, player.id);
+  let hitCount = 0;
+  for (const target of targets) {
+    enemyTakeDamage(room, target.enemy, damage, player.id, now, {
+      damageSource: 'consumable',
+      sourceX: centerX,
+      sourceY: centerY,
+      stunMs: Math.max(0, Number(options.stunMs) || 0),
+      knockback: Math.max(0, Number(options.knockback) || (ENEMY_HIT_KNOCKBACK_SPEED * 1.35)),
+    });
+    hitCount += 1;
+  }
+  return hitCount;
+}
+
+function usePlayerQuickConsumable(room, player, slotKey, now = Date.now()) {
+  if (!room || !player || !player.alive || !player.playerAccountId) {
+    return { ok: false, code: 403, message: 'Consumable is unavailable right now' };
+  }
+  const consumed = accountProgressionStore.consumeEquippedItem(player.playerAccountId, player.playerClass, slotKey);
+  if (!consumed?.ok || !consumed.usedItem) return consumed || { ok: false, code: 400, message: 'Failed to use consumable' };
+
+  player.accountProgression = consumed.progression || player.accountProgression;
+  const usedItem = consumed.usedItem;
+  const itemDef = itemDefsById[String(usedItem.itemId || '').trim()] || null;
+  const combatUse = usedItem.combatUse && typeof usedItem.combatUse === 'object' ? usedItem.combatUse : {};
+  const level = Math.max(1, Number(usedItem.level) || 1);
+  const itemName = String(itemDef?.name || usedItem.itemId || slotKey);
+  let resultMessage = `${itemName} used.`;
+
+  switch (String(combatUse.type || '').trim().toLowerCase()) {
+    case 'heal': {
+      const healAmount = Math.max(1, Math.round(scaleConsumableMagnitude(combatUse.healFlat, level, 0.3)));
+      player.hp = clamp((Number(player.hp) || 0) + healAmount, 0, player.maxHp || PLAYER_HP_MAX);
+      resultMessage = `${itemName}: +${healAmount} HP.`;
+      break;
+    }
+    case 'grenade': {
+      const damage = Math.max(1, Math.round(scaleConsumableMagnitude(combatUse.damage, level, 0.26)));
+      const radius = Math.max(40, Math.round(scaleConsumableMagnitude(combatUse.radius, level, 0.08)));
+      const stunMs = Math.max(0, Math.round(scaleConsumableMagnitude(combatUse.stunMs, level, 0.14)));
+      const hitCount = applyConsumableAreaDamage(room, player, player.aimX || player.x, player.aimY || player.y, damage, radius, now, { stunMs });
+      resultMessage = `${itemName}: ${hitCount} target(s) hit.`;
+      break;
+    }
+    case 'artillery': {
+      const waves = Math.max(1, Math.round(Number(combatUse.waves) || 1));
+      const damage = Math.max(1, Math.round(scaleConsumableMagnitude(combatUse.damage, level, 0.24)));
+      const radius = Math.max(70, Math.round(scaleConsumableMagnitude(combatUse.radius, level, 0.09)));
+      let totalHits = 0;
+      for (let i = 0; i < waves; i += 1) {
+        const waveX = clamp((Number(player.aimX) || player.x) + (Math.random() - 0.5) * 56, 0, WORLD_WIDTH);
+        const waveY = clamp((Number(player.aimY) || player.y) + (Math.random() - 0.5) * 56, 0, WORLD_HEIGHT);
+        totalHits += applyConsumableAreaDamage(room, player, waveX, waveY, damage, radius, now, { stunMs: 220 });
+      }
+      resultMessage = `${itemName}: artillery barrage hit ${totalHits} target(s).`;
+      break;
+    }
+    case 'satellite': {
+      const damage = Math.max(1, Math.round(scaleConsumableMagnitude(combatUse.damage, level, 0.28)));
+      const radius = Math.max(90, Math.round(scaleConsumableMagnitude(combatUse.radius, level, 0.08)));
+      const stunMs = Math.max(240, Math.round(scaleConsumableMagnitude(combatUse.stunMs || 900, level, 0.12)));
+      const hitCount = applyConsumableAreaDamage(room, player, player.aimX || player.x, player.aimY || player.y, damage, radius, now, { stunMs, knockback: ENEMY_HIT_KNOCKBACK_SPEED * 2.1 });
+      resultMessage = `${itemName}: orbital strike hit ${hitCount} target(s).`;
+      break;
+    }
+    case 'buff':
+    case 'regen': {
+      if (!Array.isArray(player.activeConsumableBuffs)) player.activeConsumableBuffs = [];
+      const durationMs = Math.max(1000, Math.round(scaleConsumableMagnitude(combatUse.durationMs, level, 0.06)));
+      player.activeConsumableBuffs.push({
+        id: `${usedItem.itemId}:${now}:${Math.random().toString(36).slice(2, 6)}`,
+        itemId: usedItem.itemId,
+        damageMul: Number(scaleConsumableMagnitude(combatUse.damageMul, level, 0.16).toFixed(3)) || 0,
+        fireRateMul: Number(scaleConsumableMagnitude(combatUse.fireRateMul, level, 0.16).toFixed(3)) || 0,
+        moveSpeedMul: Number(scaleConsumableMagnitude(combatUse.moveSpeedMul, level, 0.14).toFixed(3)) || 0,
+        hpRegenPerSec: Number(scaleConsumableMagnitude(combatUse.hpRegenPerSec, level, 0.18).toFixed(3)) || 0,
+        expiresAt: now + durationMs,
+      });
+      rebuildPlayerDerivedStats(player);
+      resultMessage = `${itemName}: buff active for ${Math.max(1, Math.round(durationMs / 1000))}s.`;
+      break;
+    }
+    default:
+      resultMessage = `${itemName} used.`;
+      break;
+  }
+
+  sendTo(player.ws, {
+    type: 'accountProgression',
+    progression: player.accountProgression,
+  });
+  sendTo(player.ws, { type: 'system', message: resultMessage });
+  return {
+    ok: true,
+    progression: player.accountProgression,
+    usedItem,
+    message: resultMessage,
+  };
+}
+
 function tickPlayerSkills(room, player, dtSec, now) {
-  if (!player || !player.alive || !player.skills) return;
+  if (!player || !player.alive) return;
+  if (Array.isArray(player.activeConsumableBuffs) && player.activeConsumableBuffs.length > 0) {
+    const before = player.activeConsumableBuffs.length;
+    player.activeConsumableBuffs = player.activeConsumableBuffs.filter((buff) => Math.max(0, Number(buff?.expiresAt) || 0) > now);
+    if (player.activeConsumableBuffs.length !== before) rebuildPlayerDerivedStats(player);
+  }
   if (player.hpRegenPerSec > 0) {
     player.hp = clamp(player.hp + player.hpRegenPerSec * dtSec, 0, player.maxHp || PLAYER_HP_MAX);
   }
+  if (!player.skills) return;
 
-  const defs = skillsStore.getMap();
   for (const skillId of player.skillOrder || []) {
     const st = player.skills[skillId];
     if (!st || st.level <= 0) continue;
-    const def = defs[skillId];
+    const def = getCombatSkillDef(skillId, player.playerClass);
     if (!def || def.kind !== 'active') continue;
     st.cooldownMs = Math.max(0, (Number(st.cooldownMs) || 0) - dtSec * 1000);
     if (st.cooldownMs > 0) continue;
@@ -4038,7 +4340,7 @@ function buildRunDetails(room, target, now) {
       const st = target.skills[skillId];
       const level = Math.max(0, Number(st?.level) || 0);
       if (level <= 0) continue;
-      const def = skillsStore.getById(skillId);
+      const def = getCombatSkillDef(skillId, target.playerClass);
       skills.push({
         id: skillId,
         name: def?.name || skillId,
@@ -4756,6 +5058,7 @@ function joinRoom(ws, join) {
     bossKills: 0,
     pvpKills: 0,
     pvpDeaths: 0,
+    activeConsumableBuffs: [],
     extraDodgeCharges: 0,
     joinedAt: Date.now(),
     devUnlocked: false,
@@ -4782,6 +5085,7 @@ function joinRoom(ws, join) {
     } : null,
   };
 
+  applyPersistentHeroSkillsToPlayer(player);
   rebuildPlayerDerivedStats(player);
   player.runReplay = createRunReplay(room, player, Date.now());
   room.players.set(id, player);
@@ -4995,6 +5299,12 @@ wss.on('connection', (ws, req) => {
         if (key === 'pistol') setPlayerWeapon(current, key);
         else startPlayerReload(current, WEAPONS[key], { force: true });
       }
+    }
+
+    if (msg.type === 'useQuickItem') {
+      const slotKey = String(msg.slotKey || '').trim();
+      usePlayerQuickConsumable(room, current, slotKey, Date.now());
+      return;
     }
 
     

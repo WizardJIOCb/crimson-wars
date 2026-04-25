@@ -438,6 +438,18 @@ body.live-embed #top-center-hud .top-center-row {
   font-weight: 700;
 }
 
+.quick-chip .cd {
+  color: #86efac;
+}
+
+.quick-chip.empty .cd {
+  color: #94a3b8;
+}
+
+.quick-chip.empty .skill-chip-state {
+  color: #94a3b8;
+}
+
 .skill-chip.compact {
   position: relative;
   min-width: 42px;
@@ -864,31 +876,6 @@ body.replay-game-active #scoreboard {
   overflow: hidden;
 }
 
-#join-overlay .menu-logo-wrap {
-  position: absolute;
-  left: 50%;
-  top: clamp(6px, 2.2vh, 24px);
-  transform: translateX(-50%);
-  width: min(760px, calc(100vw - 84px));
-  display: flex;
-  justify-content: center;
-  pointer-events: none;
-  z-index: 3;
-}
-
-#join-overlay .menu-logo-img {
-  width: min(100%, 700px);
-  height: auto;
-  display: block;
-  object-fit: contain;
-  filter: drop-shadow(0 12px 28px rgba(80, 0, 0, 0.45));
-}
-
-#join-overlay.death-mode .menu-logo-wrap,
-#join-overlay.death-cinematic-active .menu-logo-wrap {
-  display: none;
-}
-
 #join-overlay::before,
 #join-overlay::after {
   content: '';
@@ -935,8 +922,8 @@ body.replay-game-active #scoreboard {
   display: grid;
   gap: 8px;
   width: min(1460px, calc(100vw - 24px));
-  margin-top: clamp(96px, 14vh, 156px);
-  max-height: calc(100vh - 20px - clamp(96px, 14vh, 156px));
+  margin-top: clamp(16px, 4vh, 40px);
+  max-height: calc(100vh - 20px - clamp(16px, 4vh, 40px));
   overflow: auto;
 }
 #join-form input,
@@ -1158,11 +1145,25 @@ body.replay-game-active #scoreboard {
   color: #cbd5e1;
 }
 
-.character-select {
+#menu-panel-skills {
   display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+#menu-panel-skills > label,
+#menu-panel-skills > .account-progress-summary,
+#menu-panel-skills > .hero-action-feedback {
+  grid-column: 1 / -1;
+}
+
+.character-select {
+  display: none;
   place-items: center;
   padding: 14px 0 12px;
   overflow: visible;
+  align-self: start;
 }
 
 .hero-wheel {
@@ -1279,10 +1280,261 @@ body.replay-game-active #scoreboard {
 .hero-tree-panel {
   display: grid;
   gap: 8px;
+  width: 100%;
   border: 1px solid rgba(255,255,255,0.12);
   border-radius: 10px;
   background: rgba(8, 12, 18, 0.72);
   padding: 10px;
+  align-self: start;
+}
+
+.hero-loadout-shell {
+  display: grid;
+  gap: 12px;
+}
+
+.hero-skill-panels-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.hero-loadout-layout {
+  display: grid;
+  gap: 12px;
+}
+
+.hero-loadout-card {
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  background: rgba(9, 14, 24, 0.72);
+  padding: 10px;
+}
+
+.hero-loadout-card-top {
+  display: grid;
+  grid-template-columns: 136px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.hero-loadout-portrait-wrap {
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.95), rgba(10, 14, 24, 0.95));
+}
+
+.hero-loadout-portrait {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+  display: block;
+}
+
+.hero-loadout-copy {
+  min-width: 0;
+}
+
+.hero-loadout-stage-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.hero-loadout-stage-side {
+  display: grid;
+  gap: 10px;
+}
+
+.hero-loadout-stage-portrait {
+  display: grid;
+  gap: 10px;
+}
+
+.hero-loadout-portrait-large {
+  min-height: 280px;
+}
+
+.hero-slot-group {
+  display: grid;
+  gap: 8px;
+}
+
+.hero-slot-group-title {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #cbd5e1;
+}
+
+.hero-slot-group-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.hero-equip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.hero-equip-slot {
+  display: grid;
+  gap: 4px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(15, 23, 42, 0.62);
+  padding: 8px;
+}
+
+.hero-equip-slot.empty {
+  color: #94a3b8;
+}
+
+.hero-equip-slot-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #93c5fd;
+}
+
+.hero-equip-slot-hotkey {
+  color: #fcd34d;
+}
+
+.hero-equip-slot-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.hero-equip-slot-meta {
+  font-size: 11px;
+  color: #cbd5e1;
+}
+
+.hero-equip-slot-empty-cta {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.hero-equip-action,
+.inventory-mini-btn {
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(30, 41, 59, 0.88);
+  color: #e2e8f0;
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 11px;
+}
+
+.inventory-mini-btn.active {
+  border-color: rgba(34, 197, 94, 0.45);
+  background: rgba(20, 83, 45, 0.78);
+  color: #dcfce7;
+}
+
+.inventory-mini-btn.danger {
+  border-color: rgba(244, 63, 94, 0.34);
+  background: rgba(127, 29, 29, 0.8);
+  color: #fecaca;
+}
+
+.inventory-mini-btn.disabled-like {
+  border-color: rgba(248, 113, 113, 0.34);
+  color: #fecaca;
+  background: rgba(69, 10, 10, 0.52);
+}
+
+.inventory-item-list {
+  display: grid;
+  gap: 8px;
+  max-height: 420px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.inventory-item-card {
+  display: grid;
+  gap: 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(15, 23, 42, 0.62);
+  padding: 8px;
+}
+
+.inventory-item-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.inventory-item-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.inventory-item-meta,
+.inventory-item-values,
+.inventory-item-consumable {
+  font-size: 11px;
+  color: #cbd5e1;
+}
+
+.inventory-item-actions-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rarity-common {
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.14);
+}
+
+.rarity-uncommon {
+  box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.22);
+}
+
+.rarity-rare {
+  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.22);
+}
+
+.rarity-epic {
+  box-shadow: inset 0 0 0 1px rgba(168, 85, 247, 0.24);
+}
+
+.rarity-legendary {
+  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.28);
+}
+
+@media (max-width: 980px) {
+  #menu-panel-skills {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-skill-panels-row {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-loadout-stage-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-loadout-card-top {
+    grid-template-columns: 1fr;
+  }
 }
 
 .hero-tree-head {
@@ -1301,6 +1553,8 @@ body.replay-game-active #scoreboard {
 .hero-lock-meta {
   font-size: 12px;
   color: #fecaca;
+  display: grid;
+  gap: 3px;
 }
 
 .hero-lock-meta.unlocked {
@@ -1349,6 +1603,24 @@ body.replay-game-active #scoreboard {
   color: #93c5fd;
 }
 
+.hero-req {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.hero-req.ok {
+  color: #86efac;
+}
+
+.hero-req.lack {
+  color: #fca5a5;
+}
+
+.hero-node-lack {
+  border-color: rgba(248, 113, 113, 0.34);
+  background: rgba(69, 10, 10, 0.24);
+}
+
 .hero-node-up {
   min-width: 86px;
   padding: 6px 8px;
@@ -1364,6 +1636,13 @@ body.replay-game-active #scoreboard {
   border-color: rgba(148, 163, 184, 0.24);
   background: rgba(30, 41, 59, 0.8);
   color: #94a3b8;
+}
+
+.hero-node-up-lack,
+.hero-node-up-lack:disabled {
+  border-color: rgba(248, 113, 113, 0.34);
+  background: rgba(127, 29, 29, 0.8);
+  color: #fecaca;
 }
 
 .hero-action-feedback {
@@ -3104,18 +3383,9 @@ body.levelup-open #dev-console-toggle {
     padding: calc(env(safe-area-inset-top) + 8px) 6px calc(env(safe-area-inset-bottom) + 8px);
   }
 
-  #join-overlay .menu-logo-wrap {
-    top: calc(env(safe-area-inset-top) + -16px);
-    width: calc(100vw - 74px);
-  }
-
-  #join-overlay .menu-logo-img {
-    width: min(100%, 500px);
-  }
-
   #join-form {
     margin: 0 auto;
-    margin-top: clamp(128px, 24vw, 176px);
+    margin-top: clamp(8px, 3vw, 20px);
     width: calc(100vw - 12px);
     max-height: none;
     min-height: 0;
@@ -3158,7 +3428,7 @@ body.levelup-open #dev-console-toggle {
 /* Main menu v2 layout + hero galleries */
 .main-menu-tabs {
   display: grid;
-  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  grid-template-columns: repeat(7, minmax(100px, 1fr));
   gap: 10px;
   margin: 6px 0 8px;
 }
@@ -3191,6 +3461,26 @@ body.levelup-open #dev-console-toggle {
 
 .menu-panel.active {
   display: grid;
+}
+
+#menu-panel-menu {
+  grid-template-columns: 1fr;
+}
+
+.info-panel-menu-host:empty,
+#info-panel-hud-host:empty {
+  display: none;
+}
+
+#menu-panel-menu #info-panel {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  z-index: auto;
+}
+
+#menu-panel-menu #info-panel-close {
+  display: none;
 }
 
 .panel-variant-title {

@@ -22,6 +22,7 @@
 <body>
   <noscript><div><img src="https://mc.yandex.ru/watch/107267514" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
   <div id="hud">
+    <div id="info-panel-hud-host">
     <div class="panel" id="info-panel">
       <div class="panel-head">
         <h1>Crimson Wars</h1>
@@ -151,6 +152,7 @@
       </div>
       <button id="session-exit-btn" type="button" class="session-exit-btn" aria-label="End current run">Exit Run</button>
     </div>
+    </div>
     <button id="toggle-info" class="hud-toggle" type="button" aria-label="Menu">
       <span class="menu-burger" aria-hidden="true">&#9776;</span>
       <span class="menu-label">Menu</span>
@@ -238,10 +240,6 @@
   <div id="hit-screen-overlay" aria-hidden="true"></div>
 
   <div id="join-overlay">
-    <button id="join-toggle-info" class="hud-toggle" type="button" aria-label="Show menu" title="Show menu">
-      <span class="menu-burger" aria-hidden="true">&#9776;</span>
-      <span class="menu-label">Menu</span>
-    </button>
     <div id="death-cinematic" class="death-cinematic" aria-hidden="true">
       <div id="death-text" class="death-text">YOU DIE!!!</div>
       <div class="death-impact"></div>
@@ -253,9 +251,6 @@
         <button id="death-rewards-menu" type="button" class="death-rewards-menu-btn">Back to menu</button>
       </div>
       <!--<button id="death-continue" type="button" class="death-continue">Show menu</button>-->
-    </div>
-    <div class="menu-logo-wrap" aria-hidden="true">
-      <img class="menu-logo-img" src="/assets/other/crimson wars title.png" alt="" />
     </div>
     <form id="join-form" autocomplete="off">
       <details id="player-access-details" class="auth-card">
@@ -316,7 +311,12 @@
         <button type="button" class="main-menu-tab" data-menu-tab="profile">Profile</button>        
         <button type="button" class="main-menu-tab" data-menu-tab="rating">Rating</button>
         <button type="button" class="main-menu-tab" data-menu-tab="news">News</button>
+        <button type="button" class="main-menu-tab" data-menu-tab="menu">Настройки</button>
       </div>
+
+      <section id="menu-panel-menu" class="menu-panel" data-menu-panel="menu">
+        <div id="info-panel-menu-host" class="info-panel-menu-host"></div>
+      </section>
 
       <section id="menu-panel-play" class="menu-panel active" data-menu-panel="play">
         <label id="room-code-label" for="room-code">Room code (optional)</label>
@@ -402,6 +402,7 @@
       
       <section id="menu-panel-characters" class="menu-panel" data-menu-panel="characters">
         <div id="hero-gallery-v2" class="hero-gallery-v2" aria-live="polite"></div>
+        <div id="hero-character-panel" class="hero-tree-panel"></div>
       </section>
 
       <section id="menu-panel-skills" class="menu-panel" data-menu-panel="skills">
