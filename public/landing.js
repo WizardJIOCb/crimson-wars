@@ -34,6 +34,17 @@ const liveUpdated = document.getElementById('landing-live-updated');
 const liveCommentatorTitle = document.getElementById('landing-live-commentator-title');
 const liveCommentatorText = document.getElementById('landing-live-commentator-text');
 const revealNodes = Array.from(document.querySelectorAll('.reveal'));
+const navLinks = Array.from(document.querySelectorAll('.site-nav a'));
+const navSectionTargets = navLinks
+  .map((link) => {
+    const href = String(link.getAttribute('href') || '').trim();
+    if (!href.startsWith('#')) return null;
+    const id = href.slice(1);
+    const target = id ? document.getElementById(id) : null;
+    if (!(target instanceof HTMLElement)) return null;
+    return { id, link, target };
+  })
+  .filter(Boolean);
 const profileModal = document.getElementById('landing-profile-modal');
 const profileBody = document.getElementById('landing-profile-body');
 const profileTitle = document.getElementById('landing-profile-title');
@@ -91,6 +102,7 @@ let landingLiveMuteToggle = null;
 let landingLiveVolumeSlider = null;
 let landingLiveVolume = 0.72;
 let landingLiveMuted = false;
+let activeNavSectionId = '';
 let landingLiveTimelineDragging = false;
 let landingLiveIframeWatchdog = 0;
 let landingLiveIframeReady = false;
@@ -323,12 +335,25 @@ function toggleMenu(forceOpen) {
   mobileToggle.classList.toggle('is-open', nextState);
 }
 
+function setActiveNavSection(sectionId) {
+  const nextId = String(sectionId || '').trim();
+  if (!nextId || activeNavSectionId === nextId) return;
+  activeNavSectionId = nextId;
+  for (const item of navSectionTargets) {
+    const isActive = item.id === nextId;
+    item.link.classList.toggle('is-active', isActive);
+    if (isActive) item.link.setAttribute('aria-current', 'page');
+    else item.link.removeAttribute('aria-current');
+  }
+}
+
 mobileToggle?.addEventListener('click', () => {
   toggleMenu();
 });
 
-for (const link of Array.from(document.querySelectorAll('.site-nav a'))) {
-  link.addEventListener('click', () => {
+for (const item of navSectionTargets) {
+  item.link.addEventListener('click', () => {
+    setActiveNavSection(item.id);
     toggleMenu(false);
   });
 }
@@ -344,6 +369,26 @@ const revealObserver = new IntersectionObserver((entries) => {
 for (const node of revealNodes) {
   revealObserver.observe(node);
 }
+
+const navSpyObserver = new IntersectionObserver((entries) => {
+  const visibleEntries = entries
+    .filter((entry) => entry.isIntersecting)
+    .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
+  if (!visibleEntries.length) return;
+  const nextTarget = visibleEntries[0]?.target;
+  if (!(nextTarget instanceof HTMLElement) || !nextTarget.id) return;
+  setActiveNavSection(nextTarget.id);
+}, {
+  root: null,
+  rootMargin: '-22% 0px -52% 0px',
+  threshold: [0.2, 0.35, 0.5, 0.7],
+});
+
+for (const item of navSectionTargets) {
+  navSpyObserver.observe(item.target);
+}
+
+setActiveNavSection(window.location.hash ? window.location.hash.slice(1) : 'top');
 
 function getHubUrl(tabId) {
   const nextTab = HUB_TABS.has(String(tabId || '').trim().toLowerCase()) ? String(tabId).trim().toLowerCase() : 'play';

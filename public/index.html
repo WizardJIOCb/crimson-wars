@@ -38,8 +38,8 @@
       </button>
 
       <nav id="site-nav" class="site-nav" aria-label="Главное меню">
-        <a href="#play">Играть</a>
         <a href="#live-run">Live</a>
+        <a href="#play">Играть</a>
         <a href="#video">Повторы</a>
         <a href="#ratings">Рейтинг</a>
         <a href="#news">Новости</a>
@@ -361,11 +361,24 @@
         </div>
 
         <div class="arsenal-panel">
-          <div class="arsenal-copy">
+          <div class="arsenal-copy arsenal-copy-library">
+            <span class="arsenal-kicker">Arena Codex</span>
             <h3>Стволы и активки</h3>
             <p>Пистолет открывает бой, SMG дробит темп, дробовик рвет ближний круг, снайперка снимает цель, а активки добивают арену сверху.</p>
+            <div class="arsenal-spotlight">
+              <div class="arsenal-spotlight-head">
+                <span class="arsenal-spotlight-label">Сборка на вход</span>
+                <strong>SMG + Chain Lightning + Bloodlust</strong>
+              </div>
+              <p>Темповый старт для тех, кто хочет быстро разгонять экран, держать толпу под контролем и не отпускать давление ни на секунду.</p>
+              <div class="arsenal-synergy-row" aria-label="Ключевые свойства сборки">
+                <span>Темп</span>
+                <span>Контроль</span>
+                <span>Синергия</span>
+              </div>
+            </div>
           </div>
-          <div class="skill-list">
+          <div class="skill-list skill-list-legacy">
             <span>Shockwave</span>
             <span>Blade Orbit</span>
             <span>Chain Lightning</span>
@@ -374,6 +387,60 @@
             <span>Bloodlust</span>
             <span>Regeneration</span>
             <span>Dodge Instinct</span>
+          </div>
+          <div class="knowledge-library" aria-label="База знаний Crimson Wars">
+            <article class="codex-card codex-card-weapons">
+              <div class="codex-card-head">
+                <span class="codex-badge">Оружие</span>
+                <strong>Арсенал забега</strong>
+              </div>
+              <p>От стартового пистолета до снайперки и дробовика: у каждого ствола свой ритм, дистанция и момент силы.</p>
+              <div class="codex-chip-row">
+                <span>Pistol</span>
+                <span>SMG</span>
+                <span>Shotgun</span>
+                <span>Sniper</span>
+              </div>
+            </article>
+            <article class="codex-card codex-card-abilities">
+              <div class="codex-card-head">
+                <span class="codex-badge">Активки</span>
+                <strong>Удар сверху</strong>
+              </div>
+              <p>Shockwave, Laser Strike, Blade Orbit и ракеты превращают хороший ран в полноценную мясорубку с ультой на каждом экране.</p>
+              <div class="codex-chip-row">
+                <span>Shockwave</span>
+                <span>Laser Strike</span>
+                <span>Blade Orbit</span>
+                <span>Missiles</span>
+              </div>
+            </article>
+            <article class="codex-card codex-card-bonuses">
+              <div class="codex-card-head">
+                <span class="codex-badge">Бонусы</span>
+                <strong>Топливо для билда</strong>
+              </div>
+              <p>Баффы на урон, реген, уклонение и бешенство решают, доживешь ли ты до босса или сгоришь на середине волны.</p>
+              <div class="codex-chip-row">
+                <span>Bloodlust</span>
+                <span>Regeneration</span>
+                <span>Dodge Instinct</span>
+                <span>Crit Boost</span>
+              </div>
+            </article>
+            <article class="codex-card codex-card-enemies">
+              <div class="codex-card-head">
+                <span class="codex-badge">Враги</span>
+                <strong>Досье угроз</strong>
+              </div>
+              <p>Рейнджи жгут дистанцию, чарджеры ломают строй, а босс закрывает вопрос, насколько твой билд реально готов к поздней игре.</p>
+              <div class="codex-chip-row">
+                <span>Ranged</span>
+                <span>Charger</span>
+                <span>Mummy</span>
+                <span>Boss</span>
+              </div>
+            </article>
           </div>
         </div>
 
@@ -430,35 +497,40 @@
           <figure class="shot-card shot-wide">
             <img src="/assets/characters/shadow.png" alt="Shadow battle pose" />
             <figcaption>
-              <strong>Boss teleport in</strong>
+              <strong>Shadow</strong>
+              <span class="shot-card-copy">Ныряет в самую гущу рассматривая лицо врага в упор, режет тени быстрее загрузки мозга у врагов и обожает делать вид, что это не ульта, а просто настроение.</span>
               <span>Когда портал босса открывается, у тебя остается только одно: встретить его лицом к лицу.</span>
             </figcaption>
           </figure>
           <figure class="shot-card">
             <img src="/assets/characters/scout.png" alt="Scout sprint" />
             <figcaption>
-              <strong>High mobility</strong>
+              <strong>Scout</strong>
+              <span class="shot-card-copy">Живет на рывках, скорости и ощущении, что карта создана лично для его дерзких заходов. Если ты моргнул, он уже у тебя за спиной и недоволен темпом.</span>
               <span>Scout не бегает кругами. Он режет карту так быстро, что волна не успевает сомкнуться.</span>
             </figcaption>
           </figure>
           <figure class="shot-card">
             <img src="/assets/characters/cyber.png" alt="Cyber with glow" />
             <figcaption>
-              <strong>Build pressure</strong>
+              <strong>Cyber</strong>
+              <span class="shot-card-copy">Любит стабильный урон, холодную голову и такие разгоны билда, после которых враги начинают уважать технологии, пусть и уже лежа.</span>
               <span>Стоит билду разогнаться, и обычная перестрелка превращается в непрерывный шквал урона.</span>
             </figcaption>
           </figure>
           <figure class="shot-card">
             <img src="/assets/characters/raider.png" alt="Raider assault" />
             <figcaption>
-              <strong>Frontline impact</strong>
+              <strong>Raider</strong>
+              <span class="shot-card-copy">Врывается первым, шумит громче всех и решает любой спор аргументом «я уже здесь». Его активки обычно приходят вместе с паникой у всей волны.</span>
               <span>Raider давит так, будто сам выбрал быть финальным боссом для всей волны сразу.</span>
             </figcaption>
           </figure>
           <figure class="shot-card">
             <img src="/assets/characters/medis.png" alt="Medic support" />
             <figcaption>
-              <strong>Last stand sustain</strong>
+              <strong>Medic</strong>
+              <span class="shot-card-copy">Тот самый герой, который делает вид, что он саппорт, а потом внезапно переживает весь ад на экране. Лечит, тянет ран и тихо осуждает твои ошибки.</span>
               <span>Medic переживает тот отрезок боя, где экран уже захлебывается уроном, а отступать поздно.</span>
             </figcaption>
           </figure>
@@ -514,9 +586,9 @@
           </article>
           <article class="contact-card">
             <span class="contact-label">Сайт</span>
-            <h3>crimson.rodion.pro</h3>
+            <h3>crimsonwars.ru</h3>
             <p>Главная точка входа, которую можно кидать друзьям перед тем, как собирать пати и включать мясорубку.</p>
-            <a href="https://crimson.rodion.pro">Открыть сайт</a>
+            <a href="https://crimsonwars.ru">Открыть сайт</a>
           </article>
           <article class="contact-card">
             <span class="contact-label">Новости</span>

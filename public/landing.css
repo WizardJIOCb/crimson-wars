@@ -132,8 +132,13 @@ img {
 }
 
 .site-nav a:hover::after,
-.site-nav a:focus-visible::after {
+.site-nav a:focus-visible::after,
+.site-nav a.is-active::after {
   transform: scaleX(1);
+}
+
+.site-nav a.is-active {
+  color: #fff6f2;
 }
 
 .mobile-menu-toggle {
@@ -1575,11 +1580,202 @@ main {
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
   gap: 18px;
   margin-top: 18px;
+  background:
+    radial-gradient(circle at top left, rgba(255, 140, 92, 0.16), transparent 34%),
+    linear-gradient(135deg, rgba(32, 11, 16, 0.94), rgba(14, 8, 12, 0.92));
 }
 
 .skill-list {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   align-content: start;
+}
+
+.arsenal-copy-library {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  padding: 26px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 48%),
+    radial-gradient(circle at top left, rgba(255, 186, 120, 0.12), transparent 42%);
+}
+
+.arsenal-copy-library::after {
+  content: "FAQ";
+  position: absolute;
+  right: 26px;
+  top: 24px;
+  width: 92px;
+  height: 92px;
+  display: grid;
+  place-items: center;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 212, 180, 0.14);
+  background:
+    linear-gradient(135deg, rgba(255, 142, 94, 0.14), rgba(255, 221, 182, 0.04)),
+    radial-gradient(circle at center, rgba(255, 255, 255, 0.08), transparent 70%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  color: rgba(255, 230, 216, 0.82);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  transform: rotate(10deg);
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+.arsenal-kicker {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 202, 174, 0.18);
+  background: rgba(255, 255, 255, 0.05);
+  color: #ffd4c1;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.arsenal-spotlight {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(circle at top right, rgba(255, 152, 102, 0.16), transparent 34%),
+    rgba(0, 0, 0, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.arsenal-spotlight-head {
+  display: grid;
+  gap: 6px;
+}
+
+.arsenal-spotlight-label {
+  color: #ffb998;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.arsenal-spotlight strong,
+.codex-card-head strong {
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.arsenal-synergy-row,
+.codex-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.arsenal-synergy-row span,
+.codex-chip-row span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff2ec;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.skill-list-legacy {
+  display: none;
+}
+
+.knowledge-library {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-content: start;
+  padding: 26px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 44%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 100%);
+  background-size: auto, 100% 58px;
+}
+
+.codex-card {
+  position: relative;
+  display: grid;
+  gap: 14px;
+  min-height: 212px;
+  padding: 18px;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02)),
+    rgba(9, 4, 6, 0.72);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.03),
+    0 14px 34px rgba(0, 0, 0, 0.16);
+}
+
+.codex-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05), transparent 42%);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.codex-card-head {
+  display: grid;
+  gap: 8px;
+}
+
+.codex-badge {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #ffe0d0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.codex-card-weapons .codex-badge,
+.codex-card-weapons .codex-chip-row span {
+  background: rgba(255, 123, 93, 0.11);
+}
+
+.codex-card-abilities .codex-badge,
+.codex-card-abilities .codex-chip-row span {
+  background: rgba(255, 204, 120, 0.1);
+}
+
+.codex-card-bonuses .codex-badge,
+.codex-card-bonuses .codex-chip-row span {
+  background: rgba(255, 104, 104, 0.11);
+}
+
+.codex-card-enemies .codex-badge,
+.codex-card-enemies .codex-chip-row span {
+  background: rgba(255, 165, 120, 0.1);
 }
 
 .skill-list span {
@@ -1832,7 +2028,28 @@ button.rating-name:hover {
 }
 
 .shots-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  justify-content: center;
+}
+
+.shots-grid > .shot-card {
+  grid-column: span 2;
+}
+
+.shots-grid > .shot-card:nth-child(1) {
+  grid-column: span 2;
+}
+
+.shots-grid > .shot-card:nth-child(2) {
+  grid-column: span 2;
+}
+
+.shots-grid > .shot-card:nth-child(4) {
+  grid-column: 2 / span 2;
+}
+
+.shots-grid > .shot-card:nth-child(5) {
+  grid-column: 4 / span 2;
 }
 
 .shot-wide {
@@ -1852,11 +2069,21 @@ button.rating-name:hover {
 .shot-card figcaption {
   position: absolute;
   inset: auto 16px 16px 16px;
+  display: grid;
+  gap: 8px;
   padding: 16px;
   border-radius: 18px;
   background: rgba(10, 5, 7, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(12px);
+}
+
+.shot-card figcaption > span {
+  display: none;
+}
+
+.shot-card figcaption > .shot-card-copy {
+  display: block;
 }
 
 .raid-card-topline,
@@ -2290,8 +2517,17 @@ body.menu-open {
     grid-column: span 2;
   }
 
+  .shots-grid > .shot-card:nth-child(1),
+  .shots-grid > .shot-card:nth-child(2) {
+    grid-column: span 1;
+  }
+
   .skill-list {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .knowledge-library {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .live-run-overview,
@@ -2398,7 +2634,8 @@ body.menu-open {
   }
 
   .site-nav a:hover,
-  .site-nav a:focus-visible {
+  .site-nav a:focus-visible,
+  .site-nav a.is-active {
     border-color: rgba(255, 186, 159, 0.34);
     background:
       linear-gradient(180deg, rgba(255, 144, 102, 0.14), rgba(255, 255, 255, 0.03)),
@@ -2425,8 +2662,18 @@ body.menu-open {
   .contacts-grid,
   .heroes-showcase,
   .shots-grid,
-  .skill-list {
+  .skill-list,
+  .knowledge-library {
     grid-template-columns: 1fr;
+  }
+
+  .arsenal-copy-library,
+  .knowledge-library {
+    padding: 22px;
+  }
+
+  .codex-card {
+    min-height: auto;
   }
 
   .hub-tab-grid {
@@ -2435,6 +2682,10 @@ body.menu-open {
 
   .play-card-main,
   .shot-wide {
+    grid-column: auto;
+  }
+
+  .shots-grid > .shot-card {
     grid-column: auto;
   }
 
