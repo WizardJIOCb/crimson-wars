@@ -1002,9 +1002,13 @@ function renderPlayerAuthUi() {
   const loggedIn = Boolean(player);
   if (playerAccessDetailsEl) playerAccessDetailsEl.classList.toggle('is-authenticated', loggedIn);
   if (playerAuthSummaryEl) {
-    playerAuthSummaryEl.textContent = loggedIn
-      ? trCore('ui.auth.summary_logged_in', `Logged in as ${player.nickname}. This nickname is reserved for your account.`, { nickname: player.nickname })
-      : trCore('ui.auth.summary_guest', 'Guest mode. Registered nicknames require login.');
+    if (loggedIn) {
+      const summaryText = trCore('ui.auth.summary_logged_in', `Logged in as ${player.nickname}. This nickname is reserved for your account.`, { nickname: player.nickname });
+      const escapedNickname = escapeHtml(player.nickname);
+      playerAuthSummaryEl.innerHTML = escapeHtml(summaryText).replace(escapedNickname, `<span class="auth-summary-nickname">${escapedNickname}</span>`);
+    } else {
+      playerAuthSummaryEl.textContent = trCore('ui.auth.summary_guest', 'Guest mode. Registered nicknames require login.');
+    }
   }
   if (playerLogoutBtn) playerLogoutBtn.classList.toggle('hidden', !loggedIn);
   if (nameInput) {
