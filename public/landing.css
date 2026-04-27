@@ -865,7 +865,6 @@ main {
   position: relative;
   min-height: 920px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 28px;
   overflow: hidden;
   background:
     radial-gradient(circle at top, rgba(255, 114, 84, 0.09), transparent 34%),

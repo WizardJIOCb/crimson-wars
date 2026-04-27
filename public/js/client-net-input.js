@@ -304,6 +304,7 @@ const gameVersionBodyEl = document.getElementById('game-version-body');
 const newsFeedEl = document.getElementById('news-feed');
 const ratingBoardEl = document.getElementById('rating-board');
 const deathScreenBloodOverlayEl = document.getElementById('death-screen-blood');
+const hitScreenOverlayEl = document.getElementById('hit-screen-overlay');
 const mainMenuTabButtons = Array.from(document.querySelectorAll('#main-menu-tabs .main-menu-tab'));
 const mainMenuPanels = Array.from(document.querySelectorAll('#join-form [data-menu-panel]'));
 let heroFocusId = selectedPlayerClass;
@@ -3207,32 +3208,33 @@ function splitHeroPanelsBetweenMenus(hero) {
 
   const cards = Array.from(shell.children);
   const headerCard = cards[0] || null;
-  const loadoutCard = cards[1] || null;
-  const skillCards = cards.filter((_, index) => index !== 1);
+  const layoutCard = cards[1] || null;
+  const layoutChildren = Array.from(layoutCard?.children || []);
+  const stageCard = layoutChildren[0] || null;
+  const talentCard = layoutChildren[1] || null;
+  const uniqueCard = layoutChildren[2] || null;
 
   heroCharacterPanelEl.innerHTML = '';
   const characterShell = document.createElement('div');
   characterShell.className = 'hero-loadout-shell';
-  if (headerCard) characterShell.appendChild(headerCard.cloneNode(true));
-  if (loadoutCard) characterShell.appendChild(loadoutCard.cloneNode(true));
+  if (stageCard) characterShell.appendChild(stageCard.cloneNode(true));
   const characterSkillsRow = document.createElement('div');
   characterSkillsRow.className = 'hero-skill-panels-row';
-  for (const card of skillCards.filter((_, index) => index > 0)) {
-    characterSkillsRow.appendChild(card.cloneNode(true));
-  }
+  if (talentCard) characterSkillsRow.appendChild(talentCard.cloneNode(true));
+  if (uniqueCard) characterSkillsRow.appendChild(uniqueCard.cloneNode(true));
   if (characterSkillsRow.children.length) characterShell.appendChild(characterSkillsRow);
   heroCharacterPanelEl.appendChild(characterShell);
 
   shell.innerHTML = '';
-  if (headerCard) {
-    shell.appendChild(headerCard);
-  }
+  if (headerCard) shell.appendChild(headerCard);
   const skillsRow = document.createElement('div');
   skillsRow.className = 'hero-skill-panels-row';
-  for (const card of skillCards.filter((_, index) => index > 0)) skillsRow.appendChild(card);
+  if (talentCard) skillsRow.appendChild(talentCard);
+  if (uniqueCard) skillsRow.appendChild(uniqueCard);
   shell.appendChild(skillsRow);
 
   bindHeroUnlockButton(heroCharacterPanelEl, hero);
+  bindHeroProgressionButtons(heroCharacterPanelEl, hero);
   bindHeroInventoryButtons(heroCharacterPanelEl, hero);
   bindHeroUnlockButton(heroTreePanelEl, hero);
   bindHeroProgressionButtons(heroTreePanelEl, hero);
@@ -3525,7 +3527,7 @@ function renderHeroTreePanelV2(catalog, progression, hero, unlocked) {
     ? `POW ${Math.max(0, Number(hero.baseStats.power) || 0)} | AGI ${Math.max(0, Number(hero.baseStats.agility) || 0)} | VIT ${Math.max(0, Number(hero.baseStats.vitality) || 0)} | TEC ${Math.max(0, Number(hero.baseStats.tech) || 0)}`
     : '';
   const heroXpLabel = heroLevel >= heroLevelCap ? `Lv ${heroLevel}/${heroLevelCap} MAX` : `Lv ${heroLevel}/${heroLevelCap} | XP ${heroXpValue}/${heroXpNeed}`;
-  heroTreePanelEl.innerHTML = `<div class="hero-loadout-shell"><div class="hero-loadout-card"><div class="hero-tree-head"><div><b>${escapeHtml(heroDisplayName)}</b><div class="hero-tagline">${escapeHtml(heroTagline)}</div><div class="hero-tagline">${escapeHtml(heroXpLabel)}</div><div class="hero-tagline">${escapeHtml(heroStats)}</div></div>${unlockMeta}</div>${actionBtn}</div><div class="hero-loadout-layout"><div class="hero-loadout-card hero-loadout-stage"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.inventory.equipment', 'Экипировка'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.equipment_hint', 'Слева круг героев, справа портрет, слоты экипировки и боевые расходники.'))}</div></div><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.salvage', 'Лом'))}: ${salvage}</div></div><div class="hero-loadout-stage-grid"><div class="hero-loadout-stage-side">${coreGearGroupHtml}${handGearGroupHtml}${ringGearGroupHtml}<div class="hero-slot-group"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.inventory.items', 'Инвентарь'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.items_hint', 'Надевайте, меняйте, продавайте и улучшайте предметы прямо отсюда.'))}</div></div><div class="hero-tagline">${inventoryItems.length}</div></div><div class="inventory-item-list">${inventoryRows || `<div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.empty', 'Инвентарь пока пуст.'))}</div>`}</div></div></div><div class="hero-loadout-stage-portrait"><div class="hero-loadout-portrait-wrap hero-loadout-portrait-large"><img class="hero-loadout-portrait" src="${escapeHtml(getHeroCardImagePath(hero.id))}" alt="${escapeHtml(heroDisplayName)}" /></div><div class="hero-loadout-copy"><b>${escapeHtml(heroDisplayName)}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.quick_slots_hint', 'Быстрые слоты работают в бою на клавишах 4, 5 и 6.'))}</div></div><div class="hero-slot-group"><div class="hero-slot-group-title">${escapeHtml(trWithFallback('ui.inventory.quick_slots', 'Боевые расходники'))}</div><div class="hero-slot-group-grid">${quickSlotsHtml}</div></div></div></div></div><div class="hero-loadout-card"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.hero.talent_tree', 'Таланты героя'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.hero.talent_tree_hint', 'Пассивные улучшения аккаунта для выбранного героя.'))}</div></div></div><div class="hero-tree-list">${rows.join('')}</div></div><div class="hero-loadout-card"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.hero.unique_skills', 'Unique skills'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.hero.unique_skills_hint', '4 actives and 3 passives. Aura passives strengthen other heroes.'))}</div></div></div><div class="hero-tree-list">${skillRows || '<div class="hero-tagline">No unique skills.</div>'}</div></div></div>`;
+  heroTreePanelEl.innerHTML = `<div class="hero-loadout-shell"><div class="hero-loadout-card"><div class="hero-tree-head"><div><b>${escapeHtml(heroDisplayName)}</b><div class="hero-tagline">${escapeHtml(heroTagline)}</div><div class="hero-tagline">${escapeHtml(heroXpLabel)}</div><div class="hero-tagline">${escapeHtml(heroStats)}</div></div>${unlockMeta}</div>${actionBtn}</div><div class="hero-loadout-layout"><div class="hero-loadout-card hero-loadout-stage"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.inventory.equipment', 'Экипировка'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.equipment_hint', 'Слева круг героев, справа портрет, слоты экипировки и боевые расходники.'))}</div></div><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.salvage', 'Лом'))}: ${salvage}</div></div><div class="hero-loadout-stage-grid"><div class="hero-loadout-stage-side">${coreGearGroupHtml}${handGearGroupHtml}${ringGearGroupHtml}<div class="hero-slot-group"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.inventory.items', 'Инвентарь'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.items_hint', 'Надевайте, меняйте, продавайте и улучшайте предметы прямо отсюда.'))}</div></div><div class="hero-tagline">${inventoryItems.length}</div></div><div class="inventory-item-list">${inventoryRows || `<div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.empty', 'Инвентарь пока пуст.'))}</div>`}</div></div></div><div class="hero-loadout-stage-portrait"><div class="hero-loadout-portrait-wrap hero-loadout-portrait-large"><img class="hero-loadout-portrait" src="${escapeHtml(getHeroCardImagePath(hero.id))}" alt="${escapeHtml(heroDisplayName)}" /></div><div class="hero-tree-head hero-loadout-hero-head"><div><b>${escapeHtml(heroDisplayName)}</b><div class="hero-tagline">${escapeHtml(heroTagline)}</div><div class="hero-tagline">${escapeHtml(heroXpLabel)}</div><div class="hero-tagline">${escapeHtml(heroStats)}</div><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.quick_slots_hint', 'Быстрые слоты работают в бою на клавишах 4, 5 и 6.'))}</div></div></div><div class="hero-slot-group"><div class="hero-slot-group-title">${escapeHtml(trWithFallback('ui.inventory.quick_slots', 'Боевые расходники'))}</div><div class="hero-slot-group-grid">${quickSlotsHtml}</div></div></div></div></div><div class="hero-loadout-card"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.hero.talent_tree', 'Таланты героя'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.hero.talent_tree_hint', 'Пассивные улучшения аккаунта для выбранного героя.'))}</div></div></div><div class="hero-tree-list">${rows.join('')}</div></div><div class="hero-loadout-card"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.hero.unique_skills', 'Unique skills'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.hero.unique_skills_hint', '4 actives and 3 passives. Aura passives strengthen other heroes.'))}</div></div></div><div class="hero-tree-list">${skillRows || '<div class="hero-tagline">No unique skills.</div>'}</div></div></div>`;
 
   const unlockBtn = heroTreePanelEl.querySelector('[data-hero-unlock="1"]');
   unlockBtn?.addEventListener('click', async () => {
@@ -6656,6 +6658,12 @@ function clearDeathScreenBloodFx() {
   deathScreenBloodOverlayEl.innerHTML = '';
 }
 
+function clearHitScreenOverlayFx() {
+  if (!hitScreenOverlayEl) return;
+  hitScreenOverlayEl.innerHTML = '';
+  hitScreenOverlayEl.style.setProperty('--hit-flash', '0');
+}
+
 function spawnDeathScreenBloodFx() {
   if (!deathScreenBloodOverlayEl) return;
   clearDeathScreenBloodFx();
@@ -6751,6 +6759,7 @@ function scheduleDeathOverlay(result) {
 function clearLocalSessionState() {
   cancelPendingDeathOverlay();
   clearDeathCameraLock();
+  clearHitScreenOverlayFx();
   localDeathStateLocked = false;
   pendingManualExitRequested = false;
   commentatorState.lastEventAt.clear();
@@ -6884,6 +6893,8 @@ function setDeathCinematicActive(active) {
 function openDeathMenuAfterCinematic() {
   clearDeathCameraLock();
   clearDeathRewardsUi();
+  clearDeathScreenBloodFx();
+  clearHitScreenOverlayFx();
   setDeathCinematicActive(false);
   joinOverlay.classList.add('death-mode');
   statusEl.textContent = tr('ui.death.you_died');
