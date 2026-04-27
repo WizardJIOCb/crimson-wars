@@ -5886,6 +5886,10 @@ body.battle-hub-embed #join-form.cw-shell {
   display: grid;
   gap: 10px;
   max-width: 300px;
+  padding: 12px 14px;
+  border: 1px solid rgba(135, 143, 156, 0.18);
+  border-radius: 12px;
+  background: rgba(10, 12, 18, 0.72);
 }
 
 #settings-graphics-host > p .cw-settings-inline-label {
@@ -6020,6 +6024,24 @@ body.battle-hub-embed #join-form.cw-shell {
   gap: 10px;
 }
 
+#info-panel-menu-host #info-panel > p:has(#language-select) {
+  max-width: 300px;
+}
+
+#info-panel-menu-host #language-select {
+  width: 96% !important;
+  max-width: none !important;
+  margin: 0 auto 10px !important;
+  padding-left: 16px;
+  padding-right: 42px;
+}
+
+#language-select {
+  width: 96% !important;
+  max-width: none !important;
+  margin: 0 auto 10px !important;
+}
+
 #info-panel-menu-host .settings-toggles {
   margin-top: 0;
   grid-template-columns: repeat(2, minmax(260px, 1fr));
@@ -6052,6 +6074,14 @@ body.battle-hub-embed #join-form.cw-shell {
 /* Characters layout: roster full width, loadout below */
 #menu-panel-characters {
   grid-template-columns: 1fr;
+  height: auto !important;
+  min-height: max-content;
+  align-content: start;
+}
+
+#menu-panel-play,
+#menu-panel-menu,
+#menu-panel-news {
   height: auto !important;
   min-height: max-content;
   align-content: start;
