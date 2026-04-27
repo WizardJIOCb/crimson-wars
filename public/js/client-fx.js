@@ -582,7 +582,7 @@ function processSkillCastFx(nextState) {
         const casted = cur > 180 && (prev <= 120 || (cur - prev) > 220);
         if (casted) {
           spawnSkillCastFx(sid, p, nextState, s);
-          window.cwPlaySfx?.('skill', { x: p.x, y: p.y, key: `skill:${p.id}:${sid}`, minGapMs: 140, volume: p.id === game.myId ? 1.1 : 0.72 });
+          window.cwPlaySfx?.('skill', { x: p.x, y: p.y, key: `skill:${p.id}:${sid}`, skillId: sid, minGapMs: 140, volume: p.id === game.myId ? 1.1 : 0.72 });
         }
       }
       visuals.skillCdPrev.set(key, cur);
@@ -690,9 +690,27 @@ function processStateFx(nextState) {
   visuals.enemyPrev = nextEnemyMap;
 
   const bossAlive = Boolean(nextState.bossAlive);
+  const prevBossPortalMap = visuals.bossPortalPrev || new Map();
+  const nextBossPortalMap = new Map();
+  for (const portal of nextState.bossPortals || []) {
+    nextBossPortalMap.set(portal.id, { x: portal.x, y: portal.y, spawnAt: Number(portal.spawnAt) || 0 });
+    if (!prevBossPortalMap.has(portal.id)) {
+      window.cwPlaySfx?.('bossPortal', {
+        x: portal.x,
+        y: portal.y,
+        key: `bossPortal:${portal.id}`,
+        minGapMs: 600,
+        radius: 2200,
+        volume: 1.12,
+        rateMin: 0.78,
+        rateMax: 0.98,
+      });
+    }
+  }
+  visuals.bossPortalPrev = nextBossPortalMap;
   if (!visuals.prevBossAlive && bossAlive) {
     const boss = (nextState.enemies || []).find((e) => e.type === 'boss') || null;
-    window.cwPlaySfx?.('bossSpawn', { x: boss?.x, y: boss?.y, key: 'bossSpawn', minGapMs: 2500, radius: 1800, volume: 1.08 });
+    window.cwPlaySfx?.('bossSpawn', { x: boss?.x, y: boss?.y, key: 'bossSpawn', minGapMs: 2500, radius: 1800, volume: 1.08, rateMin: 0.74, rateMax: 0.96 });
   }
   visuals.prevBossAlive = bossAlive;
 
@@ -704,6 +722,7 @@ function processStateFx(nextState) {
       y: p.y,
       hp: p.hp,
       alive: Boolean(p.alive),
+      level: Math.max(1, Number(p.level) || 1),
       dodgeInvulnUntil: Number(p.dodgeInvulnUntil) || 0,
       moveX: Number(p.moveX) || 0,
       moveY: Number(p.moveY) || 0,
@@ -735,6 +754,30 @@ function processStateFx(nextState) {
       spawnHitFx(p.x, p.y, 18, true);
       window.cwPlaySfx?.('playerDeath', { x: p.x, y: p.y, key: `playerDeath:${p.id}`, minGapMs: 900, radius: 1300, volume: p.id === game.myId ? 1.15 : 0.76 });
       if (p.id === game.myId) triggerHitScreenFx(22, hitDir.x, hitDir.y);
+    }
+    if (prev && !prev.alive && p.alive) {
+      window.cwPlaySfx?.('playerRespawn', {
+        x: p.x,
+        y: p.y,
+        key: `playerRespawn:${p.id}`,
+        minGapMs: 900,
+        radius: 1400,
+        volume: p.id === game.myId ? 1.08 : 0.64,
+        rateMin: 0.96,
+        rateMax: 1.12,
+      });
+    }
+    if (prev && Number(p.level) > Number(prev.level || 1)) {
+      window.cwPlaySfx?.('levelup', {
+        x: p.x,
+        y: p.y,
+        key: `levelup:${p.id}:${p.level}`,
+        minGapMs: 180,
+        radius: p.id === game.myId ? 2000 : 900,
+        volume: p.id === game.myId ? 1.15 : 0.62,
+        rateMin: 0.94,
+        rateMax: 1.08,
+      });
     }
 
     const prevReloadLeft = Math.max(0, Number(prev?.reloadLeftMs) || 0);
@@ -841,7 +884,7 @@ function processStateFx(nextState) {
     if (!nextOfferMap.has(id)) {
       const color = prev.ownerId === game.myId ? '#86efac' : '#9ca3af';
       spawnSkillBurstFx(prev.x, prev.y, color, 92);
-      window.cwPlaySfx?.('skill', { x: prev.x, y: prev.y, key: `skillOffer:${id}`, minGapMs: 120, volume: prev.ownerId === game.myId ? 1.05 : 0.65 });
+      window.cwPlaySfx?.('skill', { x: prev.x, y: prev.y, key: `skillOffer:${id}`, skillId: 'skill_offer', minGapMs: 120, volume: prev.ownerId === game.myId ? 1.05 : 0.65 });
     }
   }
   visuals.skillOfferPrev = nextOfferMap;
@@ -850,6 +893,19 @@ function processStateFx(nextState) {
   const nextDropMap = new Map();
   for (const drop of nextState.drops || []) {
     nextDropMap.set(drop.id, { x: drop.x, y: drop.y, kind: drop.kind, weaponKey: drop.weaponKey });
+    if (!prevDropMap.has(drop.id)) {
+      const isWeapon = String(drop.kind || 'weapon') === 'weapon';
+      window.cwPlaySfx?.(isWeapon ? 'uiOpen' : 'skill', {
+        x: drop.x,
+        y: drop.y,
+        weaponKey: drop.weaponKey,
+        skillId: String(drop.kind || ''),
+        key: `dropSpawn:${drop.id}`,
+        minGapMs: 80,
+        radius: 1400,
+        volume: isWeapon ? 0.48 : 0.58,
+      });
+    }
   }
   for (const [id, prev] of prevDropMap.entries()) {
     if (!nextDropMap.has(id)) {
@@ -858,6 +914,7 @@ function processStateFx(nextState) {
         x: prev.x,
         y: prev.y,
         weaponKey: prev.weaponKey,
+        skillId: String(prev.kind || ''),
         key: `drop:${id}`,
         minGapMs: 90,
         volume: isWeapon ? 0.95 : 1.05,
@@ -895,6 +952,7 @@ function processStateFx(nextState) {
   const playersById = new Map(nextState.players.map((p) => [p.id, p]));
   const enemyShooters = new Map((nextState.enemies || []).map((e) => [e.id, e]));
   const ids = new Set();
+  const shotgunBurstKeys = new Set();
   for (const b of nextState.bullets) {
     ids.add(b.id);
     if (!visuals.bulletIds.has(b.id)) {
@@ -933,14 +991,19 @@ function processStateFx(nextState) {
         });
         }
         const isMyCompanionShot = isCompanionShot && (owner.ownerId === game.myId || b.ownerPlayerId === game.myId);
+        if (weaponKey === 'shotgun') {
+          const burstKey = `${isCompanionShot ? 'companion' : 'player'}:${owner.id}:${weaponKey}`;
+          if (shotgunBurstKeys.has(burstKey)) continue;
+          shotgunBurstKeys.add(burstKey);
+        }
         window.cwPlaySfx?.('shot', {
           x: owner.x,
           y: owner.y,
           weaponKey,
-          key: `shot:${isCompanionShot ? 'companion' : 'player'}:${owner.id}:${weaponKey || 'weapon'}`,
-          minGapMs: owner.id === game.myId ? 28 : (isMyCompanionShot ? 26 : 72),
+          key: `shot:${isCompanionShot ? 'companion' : 'player'}:${owner.id}:${weaponKey || 'weapon'}:${b.id}`,
+          minGapMs: 0,
           radius: isMyCompanionShot ? 1800 : 1100,
-          volume: owner.id === game.myId ? 0.92 : (isMyCompanionShot ? 0.86 : 0.46),
+          volume: owner.id === game.myId ? 1.08 : (isMyCompanionShot ? 0.74 : 0.26),
         });
       } else if (b.fromEnemy) {
         const shooter = enemyShooters.get(b.ownerId) || null;
@@ -963,13 +1026,7 @@ function processStateFx(nextState) {
             npcShot: true,
           });
         }
-        window.cwPlaySfx?.('enemyShot', {
-          x: sx,
-          y: sy,
-          key: `enemyShot:${b.ownerId || 'enemy'}`,
-          minGapMs: 95,
-          volume: 0.5,
-        });
+        // Monster shots are temporarily muted while we tune player weapon audio.
       }
     }
   }

@@ -343,6 +343,7 @@ const visuals = {
   enemyPrev: new Map(),
   playerPrev: new Map(),
   rocketPrev: new Map(),
+  bossPortalPrev: new Map(),
   dropPrev: new Map(),
   bulletIds: new Set(),
   xpOrbPrev: new Map(),
@@ -357,6 +358,10 @@ const gameAudio = {
   master: null,
   lastPlayedAt: new Map(),
   assetCache: new Map(),
+  assetBufferCache: new Map(),
+  assetBufferPromises: new Map(),
+  activeHtmlAudios: new Set(),
+  activeVoicesByGroup: new Map(),
   missingAssets: new Set(),
   warmupStarted: false,
 };
@@ -2305,48 +2310,202 @@ function playNoise(duration, {
   src.stop(now + Math.max(0.03, duration) + 0.03);
 }
 
-const SFX_ASSET_VARIANTS = {
-  shot: {
-    pistol: ['weapon-pistol-shot'],
-    smg: ['weapon-smg-shot'],
-    shotgun: ['weapon-shotgun-shot'],
-    sniper: ['weapon-sniper-shot'],
-    rocket: ['weapon-rocket-launch'],
-    default: ['weapon-pistol-shot'],
-  },
-  enemyShot: ['enemy-ranged-shot', 'boss-attack'],
-  enemyDeath: {
-    charger: ['enemy-charger-death', 'enemy-death-1', 'enemy-death-2'],
-    ranged: ['enemy-ranged-death', 'enemy-death-2', 'enemy-death-3'],
-    default: ['enemy-death-1', 'enemy-death-2', 'enemy-death-3'],
-  },
-  bossDeath: ['boss-death'],
-  bossSpawn: ['boss-spawn'],
-  bossPortal: ['boss-portal-open'],
-  rocketExplosion: ['skill-rocket-explosion'],
-  crystal: ['xp-crystal-pickup-1', 'xp-crystal-pickup-2', 'xp-crystal-pickup-3'],
-  skill: ['skill-cast', 'skill-pickup'],
-  skillDodge: ['skill-dodge'],
-  weaponPickup: ['weapon-pickup', 'drop-pickup'],
-  weaponReload: ['weapon-reload'],
-  playerHit: ['player-hit'],
-  playerDeath: ['player-death'],
-  playerDowned: ['player-downed'],
-  playerRespawn: ['player-respawn'],
-  levelup: ['player-levelup', 'skill-levelup'],
-  uiClick: ['ui-click'],
-  uiHover: ['ui-hover'],
-  uiOpen: ['ui-open'],
-  uiClose: ['ui-close'],
-  uiError: ['ui-error'],
-  uiSuccess: ['ui-success'],
-};
-const SFX_ASSET_EXTS = ['ogg', 'wav', 'mp3', 'm4a', 'aac'];
-const SFX_ASSET_EXTS_BY_BASE = {
-  'weapon-reload': ['aac', 'ogg', 'wav', 'mp3', 'm4a'],
+function sfxRange(prefix, start, end, pad = 2, suffix = '.ogg') {
+  const out = [];
+  for (let i = start; i <= end; i += 1) out.push(`${prefix}${String(i).padStart(pad, '0')}${suffix}`);
+  return out;
+}
+
+function sfxJoin(...lists) {
+  return lists.flat().filter(Boolean);
+}
+
+const SFX_ROOT = '/assets/sfx';
+const SFX_COLLECTIONS = {
+  buttons: sfxRange(`${SFX_ROOT}/sfx-pack-button_sfx/v1/Buttons/ogg/buttonsound_`, 1, 100),
+  gunshot: sfxRange(`${SFX_ROOT}/sfx-pack-gun_sfx/v1/gunshot/ogg/gunshot_`, 6, 24),
+  gunEmpty: sfxRange(`${SFX_ROOT}/sfx-pack-gun_sfx/v1/gunempty/ogg/gunempty_`, 1, 17),
+  gunReload: sfxRange(`${SFX_ROOT}/sfx-pack-gun_sfx/v1/reload/ogg/reload_`, 1, 19),
+  gunReady: sfxRange(`${SFX_ROOT}/sfx-pack-gun_sfx/v1/gunready/ogg/gunready_`, 1, 17),
+  gunToggles: sfxRange(`${SFX_ROOT}/sfx-pack-gun_sfx/v1/guntoggles/ogg/guntoggles_`, 1, 16),
+  shellCasings: sfxRange(`${SFX_ROOT}/sfx-pack-gun_sfx/v1/shellcasings/ogg/shellcasings_`, 1, 20),
+  zombieAgro: sfxRange(`${SFX_ROOT}/sfx-pack-zombie_sfx/v1/agro/ogg/agro_`, 1, 17),
+  zombieGrowls: sfxRange(`${SFX_ROOT}/sfx-pack-zombie_sfx/v1/Growls/ogg/growls_`, 1, 10),
+  zombieHowls: sfxRange(`${SFX_ROOT}/sfx-pack-zombie_sfx/v1/howls/ogg/howls_`, 1, 10),
+  zombieIdle: sfxRange(`${SFX_ROOT}/sfx-pack-zombie_sfx/v1/idle/ogg/idle_`, 1, 11),
+  zombieMisc: sfxRange(`${SFX_ROOT}/sfx-pack-zombie_sfx/v1/misc/ogg/misc_`, 1, 24),
+  radioSignals: sfxRange(`${SFX_ROOT}/sfx-pack-radio_sfx/v1/ham_radio_signals/ogg/ham_radio_signals_`, 1, 7),
+  radioVoices: sfxRange(`${SFX_ROOT}/sfx-pack-radio_sfx/v1/Radio_static_with_Voices/ogg/Radio_static_with_Voices_`, 1, 12),
+  pistolDesigned: [
+    `${SFX_ROOT}/Survival Effects ogg/Combat/DesignedGunshot_Pistol1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Combat/DesignedGunshot_Pistol2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Combat/DesignedGunshot_Pistol3.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Combat/DesignedGunshot_Pistol4.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Combat/DesignedGunshot_Pistol1_Reverb.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Combat/DesignedGunshot_Pistol2_Reverb.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Combat/DesignedGunshot_Pistol3_Reverb.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Combat/DesignedGunshot_Pistol4_Reverb.ogg`,
+  ],
+  punches: [
+    `${SFX_ROOT}/Survival Effects ogg/Combat/DesignedPunch1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Combat/DesignedPunch2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Combat/DesignedPunch3.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Combat/DesignedPunch4.ogg`,
+  ],
+  playerInjured: [
+    `${SFX_ROOT}/Survival Effects ogg/Human/HumanInjured1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Human/HumanInjured2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Human/HumanInjured3.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Human/HumanInjured4.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Human/HumanInjured5.ogg`,
+  ],
+  playerBreath: [
+    `${SFX_ROOT}/Survival Effects ogg/Human/HumanBreathingOut1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Human/HumanBreathingOut2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Human/HumanBreathingOut3.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Human/HumanBreathingOut4.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Human/HumanExhausted1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Human/HumanCough1.ogg`,
+  ],
+  clothes: [
+    `${SFX_ROOT}/Survival Effects ogg/Clothing/ClothesRubberMovement1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Clothing/ClothesRubberMovement2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Clothing/ClothesRubberMovement3.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Clothing/ClothesSyntheticfabric1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Clothing/ClothesSyntheticfabric2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Clothing/ClothesSyntheticfabric3.ogg`,
+  ],
+  medicine: [
+    `${SFX_ROOT}/Survival Effects ogg/Medicine/Bandage1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Medicine/BlisterPack1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Medicine/BlisterPack2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Medicine/BlisterPack3.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Medicine/PillsBox1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Medicine/PillsBox2.ogg`,
+  ],
+  food: [
+    `${SFX_ROOT}/Survival Effects ogg/Food/EatingFood1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Food/EatingFood2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Food/EatingFood3.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Food/FoodPackagingDriedSoupBox1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Food/FoodPackagingDriedSoupBox2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Food/FoodPackagingNoodles1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Food/FoodPackagingNoodles2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Food/FoodPackagingNoodles3.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Food/FoodPackagingNoodles4.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Food/FoodPackagingWaterBottle1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Food/FoodPackagingWaterBottle2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Food/FoodPackagingWaterBottle3.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Food/SmallGlassBottles1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Food/SmallGlassBottles2.ogg`,
+  ],
+  equipmentHandling: [
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/DesignedGunSoundHandling1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/DesignedGunSoundHandling2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/DesignedGunSoundHandling3.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/DesignedGunSoundHandling4.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/DesignedGunSoundReload1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/DesignedGunSoundReload2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/DesignedGunSoundReload3.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/DesignedGunSoundReload4.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/LargeBagHandling1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/LargeBagHandling2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/LargeBagHandling3.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/LargeBagZip1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/LargeBagZip2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/PaperDocument1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/PaperDocument2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/PaperDocument3.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/PlasticBagHandling1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/PlasticBagHandling2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/PlasticBagHandling3.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/PlasticBox1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/PlasticBox2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/MatchHandling1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/MatchHandling2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/MatchLight1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/MatchLight2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/MatchStrike1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/MatchStrike2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/MatchStrike3.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/FirelighterPackaging1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Equipment/FirelighterPackaging2.ogg`,
+  ],
+  environmentLight: [
+    `${SFX_ROOT}/Survival Effects ogg/Environment/SwitchButton1_On.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Environment/SwitchButton2_On.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Environment/SwitchButton3_On.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Environment/WaterSplash1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Environment/WaterSplash2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Environment/GrassRip1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Environment/GrassRip2.ogg`,
+  ],
+  environmentHeavy: [
+    `${SFX_ROOT}/Survival Effects ogg/Environment/GateWoodChain1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Environment/GateWoodChain2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Environment/GateWoodChain3.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Environment/Gravelfall1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Environment/Gravelfall2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Environment/Gravelfall3.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Environment/Rockfall1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Environment/Rockfall2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Environment/Rockfall3.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Environment/MetalCabinet1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Environment/OldDoorOpen.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Environment/OldDoorClose.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Environment/OldDoorCreak.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Environment/OldDoorOpenAndClose.ogg`,
+  ],
+  destruction: [
+    `${SFX_ROOT}/Survival Effects ogg/Destruction/CardboardBoxRip1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Destruction/CardboardBoxRip2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Destruction/ClothRip1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Destruction/ClothRip2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Destruction/ClothRip3.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Destruction/DesignedCarCrash1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Destruction/DesignedCarCrash2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Destruction/LargeGlassMirrorCrunch1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Destruction/LargeGlassMirrorCrunch2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Destruction/LargeGlassMirrorSmash1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Destruction/LargeGlassMirrorSmash2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Destruction/WoodSnap1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Destruction/WoodSnap2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Destruction/WoodSnap3.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Destruction/WoodSnap4.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Destruction/WoodSnap5.ogg`,
+  ],
 };
 
-function chooseSfxAssetBase(name, options = {}) {
+const SFX_ASSET_VARIANTS = {
+  shot: {
+    pistol: [
+      `${SFX_ROOT}/sfx-pack-gun_sfx/v1/gunshot/ogg/gunshot_06.ogg`,
+    ],
+    smg: [
+      `${SFX_ROOT}/sfx-pack-gun_sfx/v1/gunshot/ogg/gunshot_16.ogg`,
+      `${SFX_ROOT}/sfx-pack-gun_sfx/v1/gunshot/ogg/gunshot_18.ogg`,
+    ],
+    shotgun: [
+      `${SFX_ROOT}/sfx-pack-gun_sfx/v1/gunshot/ogg/gunshot_08.ogg`,
+      `${SFX_ROOT}/sfx-pack-gun_sfx/v1/gunshot/ogg/gunshot_11.ogg`,
+    ],
+    sniper: [
+      `${SFX_ROOT}/sfx-pack-gun_sfx/v1/gunshot/ogg/gunshot_14.ogg`,
+      `${SFX_ROOT}/sfx-pack-gun_sfx/v1/gunshot/ogg/gunshot_15.ogg`,
+    ],
+    rocket: [
+      `${SFX_ROOT}/sfx-pack-gun_sfx/v1/gunshot/ogg/gunshot_10.ogg`,
+    ],
+    default: [
+      `${SFX_ROOT}/sfx-pack-gun_sfx/v1/gunshot/ogg/gunshot_06.ogg`,
+    ],
+  },
+  weaponReload: [
+    `${SFX_ROOT}/sfx-pack-gun_sfx/v1/gunready/ogg/gunready_08.ogg`,
+  ],
+};
+
+function chooseSfxAssetUrl(name, options = {}) {
   const entry = SFX_ASSET_VARIANTS[name];
   if (!entry) return '';
   let list = Array.isArray(entry) ? entry : null;
@@ -2362,91 +2521,161 @@ function chooseSfxAssetBase(name, options = {}) {
                 : 'default';
     list = entry[key] || entry.default || [];
   }
-  const available = list.filter((base) => !gameAudio.missingAssets.has(base) && gameAudio.assetCache.has(base));
-  const candidates = available.length ? available : list.filter((base) => !gameAudio.missingAssets.has(base));
-  if (!candidates.length) return '';
-  return candidates[Math.floor(Math.random() * candidates.length)] || '';
-}
-
-function resolveSfxAssetUrl(base) {
-  if (!base) return Promise.resolve('');
-  if (gameAudio.assetCache.has(base)) return Promise.resolve(gameAudio.assetCache.get(base) || '');
-  if (gameAudio.missingAssets.has(base)) return Promise.resolve('');
-  const exts = SFX_ASSET_EXTS_BY_BASE[base] || SFX_ASSET_EXTS;
-  const tryExt = (index) => {
-    if (index >= exts.length) {
-      gameAudio.missingAssets.add(base);
-      return Promise.resolve('');
-    }
-    const url = `/assets/sounds/${base}.${exts[index]}`;
-    return fetch(url, { method: 'HEAD', cache: 'force-cache' })
-      .then((res) => {
-        if (res.ok) {
-          gameAudio.assetCache.set(base, url);
-          return url;
-        }
-        return tryExt(index + 1);
-      })
-      .catch(() => tryExt(index + 1));
-  };
-  return tryExt(0);
+  if (!list.length) return '';
+  return list[Math.floor(Math.random() * list.length)] || '';
 }
 
 function warmupSfxAssets() {
   if (gameAudio.warmupStarted) return;
   gameAudio.warmupStarted = true;
-  const bases = new Set();
+  const urls = new Set();
   for (const entry of Object.values(SFX_ASSET_VARIANTS)) {
     if (Array.isArray(entry)) {
-      for (const base of entry) bases.add(base);
+      for (const url of entry) urls.add(url);
     } else {
       for (const list of Object.values(entry)) {
-        for (const base of list) bases.add(base);
+        for (const url of list) urls.add(url);
       }
     }
   }
-  for (const base of bases) void resolveSfxAssetUrl(base);
+  for (const url of urls) {
+    gameAudio.assetCache.set(url, url);
+    void loadSfxAssetBuffer(url);
+  }
 }
 
-function playSfxAssetUrl(url, volume) {
-  if (!url || !gameAudio.unlocked) return false;
+function loadSfxAssetBuffer(url) {
+  if (!url) return Promise.resolve(null);
+  if (gameAudio.assetBufferCache.has(url)) return Promise.resolve(gameAudio.assetBufferCache.get(url) || null);
+  if (gameAudio.assetBufferPromises.has(url)) return gameAudio.assetBufferPromises.get(url);
+  const ctxAudio = getGameAudioContext();
+  if (!ctxAudio) return Promise.resolve(null);
+  const promise = fetch(url, { cache: 'force-cache' })
+    .then((res) => (res.ok ? res.arrayBuffer() : Promise.reject(new Error(`HTTP ${res.status}`))))
+    .then((buf) => new Promise((resolve, reject) => {
+      ctxAudio.decodeAudioData(buf.slice(0), resolve, reject);
+    }))
+    .then((audioBuffer) => {
+      gameAudio.assetBufferCache.set(url, audioBuffer || null);
+      gameAudio.assetBufferPromises.delete(url);
+      return audioBuffer || null;
+    })
+    .catch(() => {
+      gameAudio.assetBufferPromises.delete(url);
+      return null;
+    });
+  gameAudio.assetBufferPromises.set(url, promise);
+  return promise;
+}
+
+function playSfxAssetBuffer(url, volume, options = {}, onFail = null) {
+  const ctxAudio = getGameAudioContext();
+  if (!ctxAudio || !gameAudio.unlocked || ctxAudio.state === 'suspended') return false;
+  const buffer = gameAudio.assetBufferCache.get(url);
+  if (!buffer) {
+    void loadSfxAssetBuffer(url);
+    return false;
+  }
   try {
-    const audio = new Audio(url);
-    audio.preload = 'auto';
-    audio.volume = Math.max(0, Math.min(1, volume));
-    audio.playbackRate = 0.94 + Math.random() * 0.12;
-    const promise = audio.play();
-    if (promise && typeof promise.catch === 'function') promise.catch(() => {});
+    const voiceGroup = String(options.voiceGroup || 'default');
+    const maxVoices = Math.max(1, Math.floor(Number(options.maxVoices) || 12));
+    let group = gameAudio.activeVoicesByGroup.get(voiceGroup);
+    if (!group) {
+      group = new Set();
+      gameAudio.activeVoicesByGroup.set(voiceGroup, group);
+    }
+    if (group.size >= maxVoices) return true;
+    const source = ctxAudio.createBufferSource();
+    const gain = ctxAudio.createGain();
+    const rateMin = Number(options.rateMin);
+    const rateMax = Number(options.rateMax);
+    const lo = Number.isFinite(rateMin) ? rateMin : 0.98;
+    const hi = Number.isFinite(rateMax) ? rateMax : 1.02;
+    source.buffer = buffer;
+    source.playbackRate.value = lo + Math.random() * Math.max(0.01, hi - lo);
+    gain.gain.value = Math.max(0, Math.min(1, volume));
+    source.connect(gain);
+    gain.connect(gameAudio.master || ctxAudio.destination);
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      group.delete(source);
+      if (group.size <= 0) gameAudio.activeVoicesByGroup.delete(voiceGroup);
+      try { source.disconnect(); } catch {}
+      try { gain.disconnect(); } catch {}
+    };
+    source.addEventListener('ended', cleanup, { once: true });
+    group.add(source);
+    source.start();
     return true;
   } catch {
+    if (typeof onFail === 'function') onFail();
     return false;
   }
 }
 
-function tryPlaySfxAsset(name, options, volume) {
-  const base = chooseSfxAssetBase(name, options);
-  if (!base) return false;
-  const cachedUrl = gameAudio.assetCache.get(base);
-  if (cachedUrl) return playSfxAssetUrl(cachedUrl, volume);
-  void resolveSfxAssetUrl(base);
-  return false;
+function playSfxAssetUrl(url, volume, options = {}, onFail = null) {
+  if (!url || !gameAudio.unlocked) return false;
+  try {
+    const voiceGroup = String(options.voiceGroup || 'default');
+    const maxVoices = Math.max(1, Math.floor(Number(options.maxVoices) || 12));
+    let group = gameAudio.activeVoicesByGroup.get(voiceGroup);
+    if (!group) {
+      group = new Set();
+      gameAudio.activeVoicesByGroup.set(voiceGroup, group);
+    }
+    if (group.size >= maxVoices) return true;
+    const audio = new Audio(url);
+    audio.preload = 'auto';
+    audio.volume = Math.max(0, Math.min(1, volume));
+    const rateMin = Number(options.rateMin);
+    const rateMax = Number(options.rateMax);
+    const lo = Number.isFinite(rateMin) ? rateMin : 0.94;
+    const hi = Number.isFinite(rateMax) ? rateMax : 1.06;
+    audio.playbackRate = lo + Math.random() * Math.max(0.01, hi - lo);
+    let failed = false;
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      group.delete(audio);
+      if (group.size <= 0) gameAudio.activeVoicesByGroup.delete(voiceGroup);
+      gameAudio.activeHtmlAudios.delete(audio);
+      audio.pause();
+      audio.removeAttribute('src');
+      try { audio.load(); } catch {}
+    };
+    const failOnce = () => {
+      if (failed) return;
+      failed = true;
+      cleanup();
+      if (typeof onFail === 'function') onFail();
+    };
+    group.add(audio);
+    gameAudio.activeHtmlAudios.add(audio);
+    audio.addEventListener('ended', cleanup, { once: true });
+    audio.addEventListener('error', failOnce, { once: true });
+    const promise = audio.play();
+    if (promise && typeof promise.catch === 'function') promise.catch(failOnce);
+    return true;
+  } catch {
+    if (typeof onFail === 'function') onFail();
+    return false;
+  }
 }
 
-function playGameSfx(name, options = {}) {
-  if (!game.sfxEnabled || (game.embedMode && !game.liveAudioEnabled) || replayGame.active) return;
-  const key = String(options.key || name || 'sfx');
-  const nowMs = performance.now();
-  const minGap = Math.max(0, Number(options.minGapMs) || 0);
-  const lastAt = Math.max(0, Number(gameAudio.lastPlayedAt.get(key)) || 0);
-  if (minGap > 0 && nowMs - lastAt < minGap) return;
-  gameAudio.lastPlayedAt.set(key, nowMs);
+function tryPlaySfxAsset(name, options, volume, onFail = null) {
+  const url = chooseSfxAssetUrl(name, options);
+  if (!url) return false;
+  if (name === 'shot') {
+    if (playSfxAssetBuffer(url, volume, options, onFail)) return true;
+  }
+  return playSfxAssetUrl(url, volume, options, onFail);
+}
 
-  const distance = sfxDistanceGain(options.x, options.y, options.radius);
-  const volume = Math.max(0, Math.min(1, (Number(options.volume) || 1) * distance * getGameSfxVolume()));
-  if (volume <= 0.01) return;
+function playProceduralSfx(name, options, volume) {
   const weapon = String(options.weaponKey || '').toLowerCase();
-  if (tryPlaySfxAsset(name, options, volume)) return;
-
   if (name === 'shot') {
     const isShotgun = weapon.includes('shotgun');
     const isSniper = weapon.includes('sniper');
@@ -2483,7 +2712,7 @@ function playGameSfx(name, options = {}) {
     playTone(46, 0.62, { type: 'triangle', volume: volume * 0.28, pitchTo: 24, delay: 0.08 });
     return;
   }
-  if (name === 'bossSpawn') {
+  if (name === 'bossSpawn' || name === 'bossPortal') {
     playTone(58, 0.72, { type: 'sawtooth', volume: volume * 0.25, pitchTo: 118 });
     playNoise(0.32, { volume: volume * 0.2, filter: 240 });
     return;
@@ -2494,7 +2723,7 @@ function playGameSfx(name, options = {}) {
     playTone(156, 0.16, { type: 'triangle', volume: volume * 0.12, pitchTo: 58, delay: 0.035 });
     return;
   }
-  if (name === 'crystal') {
+  if (name === 'crystal' || name === 'levelup') {
     playTone(880, 0.12, { type: 'sine', volume: volume * 0.13, pitchTo: 1320 });
     playTone(1760, 0.16, { type: 'triangle', volume: volume * 0.08, pitchTo: 2480, delay: 0.035 });
     return;
@@ -2505,26 +2734,64 @@ function playGameSfx(name, options = {}) {
     playNoise(0.2, { volume: volume * 0.08, filter: 2200, filterType: 'highpass' });
     return;
   }
-  if (name === 'skillDodge') {
+  if (name === 'skillDodge' || name === 'playerRespawn') {
     playNoise(0.11, { volume: volume * 0.11, filter: 1800, filterType: 'highpass' });
     playTone(520, 0.13, { type: 'triangle', volume: volume * 0.13, pitchTo: 980 });
     playTone(180, 0.12, { type: 'sine', volume: volume * 0.06, pitchTo: 92, delay: 0.018 });
     return;
   }
-  if (name === 'weaponPickup') {
+  if (name === 'weaponPickup' || name === 'uiOpen' || name === 'uiSuccess') {
     playTone(220, 0.12, { type: 'square', volume: volume * 0.14, pitchTo: 330 });
     playTone(660, 0.16, { type: 'triangle', volume: volume * 0.1, pitchTo: 990, delay: 0.045 });
     return;
   }
-  if (name === 'playerHit') {
+  if (name === 'playerHit' || name === 'uiError' || name === 'weaponEmpty') {
     playNoise(0.13, { volume: volume * 0.2, filter: 680 });
     playTone(116, 0.12, { type: 'sawtooth', volume: volume * 0.1, pitchTo: 72 });
     return;
   }
-  if (name === 'playerDeath') {
+  if (name === 'playerDeath' || name === 'playerDowned') {
     playNoise(0.28, { volume: volume * 0.32, filter: 420 });
     playTone(154, 0.34, { type: 'sawtooth', volume: volume * 0.2, pitchTo: 38 });
+    return;
   }
+}
+
+function playGameSfx(name, options = {}) {
+  if (!game.sfxEnabled || (game.embedMode && !game.liveAudioEnabled) || replayGame.active) return;
+  if (name !== 'shot' && name !== 'weaponReload') return;
+  const normalized = { ...options };
+  const weapon = String(normalized.weaponKey || '').toLowerCase();
+  if (name === 'shot') {
+    const isShotgun = weapon.includes('shotgun');
+    const isSniper = weapon.includes('sniper');
+    const isSmg = weapon.includes('smg');
+    const isRocket = weapon.includes('rocket');
+    normalized.voiceGroup = `shot:${weapon || 'default'}`;
+    normalized.maxVoices = isSmg ? 48 : (isShotgun ? 12 : (isSniper ? 8 : (isRocket ? 6 : 18)));
+    normalized.minGapMs = 0;
+    normalized.volume = (Number(normalized.volume) || 1) * (isSmg ? 0.82 : (isShotgun ? 1 : (isSniper ? 0.94 : (isRocket ? 1.08 : 0.88))));
+    normalized.rateMin = isSmg ? 0.98 : 0.94;
+    normalized.rateMax = isSniper ? 0.99 : 1.03;
+  } else if (name === 'weaponReload') {
+    normalized.voiceGroup = 'reload:all';
+    normalized.maxVoices = 6;
+    normalized.minGapMs = 0;
+    normalized.volume = (Number(normalized.volume) || 1) * 0.9;
+    normalized.rateMin = 0.98;
+    normalized.rateMax = 1.02;
+  }
+  const key = String(normalized.key || name || 'sfx');
+  const nowMs = performance.now();
+  const minGap = Math.max(0, Number(normalized.minGapMs) || 0);
+  const lastAt = Math.max(0, Number(gameAudio.lastPlayedAt.get(key)) || 0);
+  if (minGap > 0 && nowMs - lastAt < minGap) return;
+  gameAudio.lastPlayedAt.set(key, nowMs);
+
+  const distance = sfxDistanceGain(normalized.x, normalized.y, normalized.radius);
+  const volume = Math.max(0, Math.min(1, (Number(normalized.volume) || 1) * distance * getGameSfxVolume()));
+  if (volume <= 0.01) return;
+  if (tryPlaySfxAsset(name, normalized, volume, null)) return;
 }
 
 window.cwPlaySfx = playGameSfx;
