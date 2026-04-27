@@ -406,7 +406,7 @@ function syncBattleHubFrameSize() {
     const root = frameDocument?.documentElement || null;
     if (!body || !root) return;
     const nextHeight = Math.max(
-      920,
+      560,
       Math.ceil(body.scrollHeight || 0),
       Math.ceil(root.scrollHeight || 0),
       Math.ceil(body.offsetHeight || 0),
@@ -424,12 +424,14 @@ function bindBattleHubFrameAutosize() {
     const frameWindow = hubFrame.contentWindow || null;
     const frameDocument = hubFrame.contentDocument || frameWindow?.document || null;
     const body = frameDocument?.body || null;
-    if (!body) return;
+    const root = frameDocument?.documentElement || null;
+    if (!body || !root) return;
     battleHubFrameObserver?.disconnect?.();
     battleHubFrameObserver = null;
     if (typeof ResizeObserver !== 'undefined') {
       battleHubFrameObserver = new ResizeObserver(() => syncBattleHubFrameSize());
       battleHubFrameObserver.observe(body);
+      battleHubFrameObserver.observe(root);
     }
     frameWindow?.addEventListener?.('resize', syncBattleHubFrameSize);
     window.setTimeout(syncBattleHubFrameSize, 0);

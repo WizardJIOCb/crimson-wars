@@ -310,6 +310,9 @@ const mainMenuPanels = Array.from(document.querySelectorAll('#join-form [data-me
 let heroFocusId = selectedPlayerClass;
 let currentMainMenuTab = 'play';
 let tabScoreboardVisible = false;
+let heroEquipModalEl = null;
+let heroEquipModalTitleEl = null;
+let heroEquipModalBodyEl = null;
 let lastTabScoreboardHtml = '';
 let lastBattlePlayers = [];
 const playerAliveState = new Map();
@@ -520,6 +523,47 @@ function renderGameVersionHistory() {
       +   '<div class="version-entry-head"><b>' + version + '</b><span>' + date + '</span></div>'
       +   '<p>' + summary + '</p>'
       + '</article>';
+  }).join('');
+
+  const inventoryGroupOrder = [
+    ['consumable', trWithFallback('ui.inventory.group_consumables', 'Расходники')],
+    ['armor', trWithFallback('ui.inventory.group_armor', 'Броня')],
+    ['hands', trWithFallback('ui.inventory.group_hands', 'Руки и оружие')],
+    ['rings', trWithFallback('ui.inventory.group_rings', 'Кольца')],
+    ['other', trWithFallback('ui.inventory.group_other', 'Прочее')],
+  ];
+
+  const getInventoryGroupKey = (itemDef, equipTargets) => {
+    if (itemDef?.combatUse) return 'consumable';
+    const slotCategory = String(itemDef?.slotCategory || '').trim().toLowerCase();
+    if (['head', 'armor', 'legs'].includes(slotCategory)) return 'armor';
+    if (slotCategory === 'ring') return 'rings';
+    if (equipTargets.some((slot) => ['left_hand', 'right_hand'].includes(String(slot?.key || '').trim().toLowerCase()))) return 'hands';
+    return 'other';
+  };
+
+  const inventoryCardsByGroup = new Map(inventoryGroupOrder.map(([key]) => [key, []]));
+  for (const item of inventoryItems) {
+    const itemDef = itemMap[item.itemId] || {};
+    const quantity = Math.max(1, Number(item.quantity) || 1);
+    const equipTargets = getInventorySlotTargets(catalog, itemDef);
+    const equippedIn = Object.keys(equippedItems).filter((slotKey) => equippedItems[slotKey]?.uid === item.uid);
+    const upgradeCost = Math.max(0, Number(item.upgradeCost) || 0);
+    const canUpgradeItem = !itemDef.combatUse && Math.max(1, Number(item.level) || 1) < 10 && salvage >= upgradeCost;
+    const equipButtons = equipTargets.map((slot) => `<button type="button" class="inventory-mini-btn${equippedIn.includes(slot.key) ? ' active' : ''}" data-item-equip="${escapeHtml(item.uid)}" data-slot-key="${escapeHtml(slot.key)}">${escapeHtml(getItemSlotLabel(slot))}</button>`).join('');
+    const categoryLabel = getItemCategoryLabel(itemDef.slotCategory);
+    const equippedMeta = equippedIn.length
+      ? `<div class="inventory-item-chip inventory-item-chip-eq">${escapeHtml(equippedIn.map((slotKey) => getItemSlotLabel((catalog.itemSlots || []).find((slot) => slot.key === slotKey) || { key: slotKey })).join(', '))}</div>`
+      : '';
+    const cardHtml = `<div class="inventory-item-card inventory-item-card-compact rarity-${escapeHtml(String(itemDef.rarity || 'common').toLowerCase())}"><div class="inventory-item-name">${escapeHtml(getItemDisplayName(itemDef))}</div><div class="inventory-item-meta">${escapeHtml(getItemRarityLabel(itemDef.rarity))} • ${escapeHtml(categoryLabel)}</div><div class="inventory-item-chip-row"><div class="inventory-item-chip">Lv ${Math.max(1, Number(item.level) || 1)}</div>${quantity > 1 ? `<div class="inventory-item-chip">x${quantity}</div>` : ''}<div class="inventory-item-chip">${escapeHtml(trWithFallback('ui.inventory.sell_value_short', 'Продажа'))}: ${Math.max(0, Number(item.sellValue) || 0)}</div>${equippedMeta}</div>${equipButtons ? `<div class="inventory-item-actions-line">${equipButtons}</div>` : ''}<div class="inventory-item-actions-line">${!itemDef.combatUse ? `<button type="button" class="inventory-mini-btn${canUpgradeItem ? '' : ' disabled-like'}" data-item-upgrade="${escapeHtml(item.uid)}">${escapeHtml(`Улучшить • ${upgradeCost}`)}</button>` : `<span class="inventory-item-consumable">${escapeHtml(trWithFallback('ui.inventory.consumable_hint_keys', 'Клавиши 4/5/6 в бою'))}</span>`}<button type="button" class="inventory-mini-btn danger" data-item-sell="${escapeHtml(item.uid)}">${escapeHtml(`Продать • ${Math.max(0, Number(item.sellValue) || 0)}`)}</button></div></div>`;
+    const groupKey = getInventoryGroupKey(itemDef, equipTargets);
+    inventoryCardsByGroup.get(groupKey)?.push(cardHtml);
+  }
+
+  const inventorySectionsHtml = inventoryGroupOrder.map(([key, title]) => {
+    const cards = inventoryCardsByGroup.get(key) || [];
+    if (!cards.length) return '';
+    return `<div class="inventory-category-group"><div class="inventory-category-title">${escapeHtml(title)}</div><div class="inventory-category-grid">${cards.join('')}</div></div>`;
   }).join('');
   gameVersionBodyEl.innerHTML = '<div class="version-history">' + rows + '</div>';
 }
@@ -1794,6 +1838,57 @@ function ensureAuthorProfileModal() {
   authorProfileBodyEl = body;
 }
 
+function ensureHeroEquipModal() {
+  if (heroEquipModalEl) return;
+  const modal = document.createElement('div');
+  modal.id = 'hero-equip-modal';
+  modal.className = 'record-details-modal hidden';
+  modal.setAttribute('aria-live', 'polite');
+
+  const card = document.createElement('div');
+  card.className = 'record-details-card hero-equip-modal-card';
+
+  const head = document.createElement('div');
+  head.className = 'record-details-head';
+
+  const title = document.createElement('b');
+  title.id = 'hero-equip-modal-title';
+  title.textContent = 'Снарядить слот';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'mini';
+  closeBtn.textContent = trWithFallback('ui.close', 'Закрыть');
+  closeBtn.addEventListener('click', () => {
+    modal.classList.add('hidden');
+  });
+
+  head.appendChild(title);
+  head.appendChild(closeBtn);
+
+  const body = document.createElement('div');
+  body.id = 'hero-equip-modal-body';
+  body.className = 'record-details-body hero-equip-modal-body';
+  body.textContent = trWithFallback('ui.loading', 'Загрузка...');
+
+  card.appendChild(head);
+  card.appendChild(body);
+  modal.appendChild(card);
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.classList.add('hidden');
+  });
+
+  const modalHost = document.getElementById('join-overlay') || document.body;
+  modalHost.appendChild(modal);
+  heroEquipModalEl = modal;
+  heroEquipModalTitleEl = title;
+  heroEquipModalBodyEl = body;
+}
+
+function closeHeroEquipModal() {
+  heroEquipModalEl?.classList.add('hidden');
+}
+
 function formatPublicProfileDate(ts) {
   const ms = Math.max(0, Number(ts) || 0);
   if (!ms) return '--';
@@ -2978,6 +3073,68 @@ function getInventorySlotTargets(catalog, itemDef) {
   return (Array.isArray(catalog?.itemSlots) ? catalog.itemSlots : []).filter((slot) => String(slot?.category || '').trim() === slotCategory);
 }
 
+function openHeroEquipModal(hero, slotKey) {
+  const catalog = getProgressionCatalog();
+  const progression = getProgressionState();
+  const slot = (Array.isArray(catalog?.itemSlots) ? catalog.itemSlots : []).find((entry) => String(entry?.key || '') === String(slotKey || ''));
+  if (!slot) return;
+
+  ensureHeroEquipModal();
+  if (!heroEquipModalEl || !heroEquipModalTitleEl || !heroEquipModalBodyEl) return;
+
+  const itemMap = getCatalogItemMap(catalog);
+  const inventoryItems = Array.isArray(progression?.inventoryItems) ? progression.inventoryItems.slice() : [];
+  const equippedItems = getHeroEquipmentItemMap(catalog, progression, hero.id);
+  const matchingItems = inventoryItems
+    .filter((item) => {
+      const itemDef = itemMap[item.itemId] || {};
+      return getInventorySlotTargets(catalog, itemDef).some((target) => String(target?.key || '') === String(slotKey || ''));
+    })
+    .sort((a, b) => {
+      const itemDefA = itemMap[a.itemId] || {};
+      const itemDefB = itemMap[b.itemId] || {};
+      const aEquipped = Object.values(equippedItems).some((entry) => entry?.uid === a.uid) ? 1 : 0;
+      const bEquipped = Object.values(equippedItems).some((entry) => entry?.uid === b.uid) ? 1 : 0;
+      return (bEquipped - aEquipped)
+        || (getItemRaritySortWeight(itemDefB.rarity) - getItemRaritySortWeight(itemDefA.rarity))
+        || ((Number(b.level) || 0) - (Number(a.level) || 0))
+        || String(getItemDisplayName(itemDefA)).localeCompare(String(getItemDisplayName(itemDefB)));
+    });
+
+  heroEquipModalTitleEl.textContent = `${trWithFallback('ui.inventory.equip_slot_title', 'Снарядить слот')}: ${getItemSlotLabel(slot)}`;
+  if (!matchingItems.length) {
+    heroEquipModalBodyEl.innerHTML = `<div class="hero-equip-modal-empty">${escapeHtml(trWithFallback('ui.inventory.no_matching_items', 'Для этого слота пока нет подходящих предметов.'))}</div>`;
+    heroEquipModalEl.classList.remove('hidden');
+    return;
+  }
+
+  const rowsHtml = matchingItems.map((item) => {
+    const itemDef = itemMap[item.itemId] || {};
+    const quantity = Math.max(1, Number(item.quantity) || 1);
+    const equippedIn = Object.keys(equippedItems).filter((key) => equippedItems[key]?.uid === item.uid);
+    const equippedMeta = equippedIn.length
+      ? `<div class="hero-equip-picker-meta hero-equip-picker-meta-eq">${escapeHtml(trWithFallback('ui.inventory.equipped_in', 'Экипировано'))}: ${escapeHtml(equippedIn.map((key) => getItemSlotLabel((catalog.itemSlots || []).find((entry) => entry.key === key) || { key })).join(', '))}</div>`
+      : '';
+    return `<div class="hero-equip-picker-row rarity-${escapeHtml(String(itemDef.rarity || 'common').toLowerCase())}"><div class="hero-equip-picker-copy"><div class="hero-equip-picker-name">${escapeHtml(getItemDisplayName(itemDef))}</div><div class="hero-equip-picker-meta">${escapeHtml(getItemRarityLabel(itemDef.rarity))} • Lv ${Math.max(1, Number(item.level) || 1)}${quantity > 1 ? ` • x${quantity}` : ''}</div>${equippedMeta}</div><button type="button" class="hero-equip-action" data-modal-item-equip="${escapeHtml(item.uid)}" data-slot-key="${escapeHtml(slot.key)}">${escapeHtml(trWithFallback('ui.inventory.equip', 'Снарядить'))}</button></div>`;
+  }).join('');
+
+  heroEquipModalBodyEl.innerHTML = `<div class="hero-equip-picker-list">${rowsHtml}</div>`;
+  for (const btn of heroEquipModalBodyEl.querySelectorAll('[data-modal-item-equip]')) {
+    btn.addEventListener('click', async () => {
+      try {
+        await equipItemForAccount(hero.id, btn.getAttribute('data-modal-item-equip') || '', btn.getAttribute('data-slot-key') || '');
+        closeHeroEquipModal();
+        setHeroActionFeedback(trWithFallback('ui.inventory.equipped', 'Предмет экипирован.'), 'ok');
+        renderCharacterPicker();
+      } catch (err) {
+        setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to equip item.'), 'err');
+      }
+    });
+  }
+
+  heroEquipModalEl.classList.remove('hidden');
+}
+
 function getHeroEquipmentItemMap(catalog, progression, heroId) {
   const inventoryItems = Array.isArray(progression?.inventoryItems) ? progression.inventoryItems : [];
   const inventoryByUid = Object.fromEntries(inventoryItems.map((item) => [String(item.uid || ''), item]));
@@ -3149,6 +3306,12 @@ function bindHeroProgressionButtons(targetEl, hero) {
 }
 
 function bindHeroInventoryButtons(targetEl, hero) {
+  for (const btn of targetEl?.querySelectorAll?.('[data-open-slot-equip]') || []) {
+    btn.addEventListener('click', () => {
+      openHeroEquipModal(hero, btn.getAttribute('data-open-slot-equip') || '');
+    });
+  }
+
   for (const btn of targetEl?.querySelectorAll?.('[data-unequip-slot]') || []) {
     btn.addEventListener('click', async () => {
       try {
@@ -3489,6 +3652,47 @@ function renderHeroTreePanelV2(catalog, progression, hero, unlocked) {
 
   const quickSlotsHtml = quickSlots.map((slot, index) => renderEquipSlotCard(slot, `[${index + 4}]`)).join('');
 
+  const inventoryGroupOrder = [
+    ['consumable', trWithFallback('ui.inventory.group_consumables', 'Расходники')],
+    ['armor', trWithFallback('ui.inventory.group_armor', 'Броня')],
+    ['hands', trWithFallback('ui.inventory.group_hands', 'Руки и оружие')],
+    ['rings', trWithFallback('ui.inventory.group_rings', 'Кольца')],
+    ['other', trWithFallback('ui.inventory.group_other', 'Прочее')],
+  ];
+
+  const getInventoryGroupKey = (itemDef, equipTargets) => {
+    if (itemDef?.combatUse) return 'consumable';
+    const slotCategory = String(itemDef?.slotCategory || '').trim().toLowerCase();
+    if (['head', 'armor', 'legs'].includes(slotCategory)) return 'armor';
+    if (slotCategory === 'ring') return 'rings';
+    if (equipTargets.some((slot) => ['left_hand', 'right_hand'].includes(String(slot?.key || '').trim().toLowerCase()))) return 'hands';
+    return 'other';
+  };
+
+  const inventoryCardsByGroup = new Map(inventoryGroupOrder.map(([key]) => [key, []]));
+  for (const item of inventoryItems) {
+    const itemDef = itemMap[item.itemId] || {};
+    const quantity = Math.max(1, Number(item.quantity) || 1);
+    const equipTargets = getInventorySlotTargets(catalog, itemDef);
+    const equippedIn = Object.keys(equippedItems).filter((slotKey) => equippedItems[slotKey]?.uid === item.uid);
+    const upgradeCost = Math.max(0, Number(item.upgradeCost) || 0);
+    const canUpgradeItem = !itemDef.combatUse && Math.max(1, Number(item.level) || 1) < 10 && salvage >= upgradeCost;
+    const equipButtons = equipTargets.map((slot) => `<button type="button" class="inventory-mini-btn${equippedIn.includes(slot.key) ? ' active' : ''}" data-item-equip="${escapeHtml(item.uid)}" data-slot-key="${escapeHtml(slot.key)}">${escapeHtml(getItemSlotLabel(slot))}</button>`).join('');
+    const categoryLabel = getItemCategoryLabel(itemDef.slotCategory);
+    const equippedMeta = equippedIn.length
+      ? `<div class="inventory-item-chip inventory-item-chip-eq">${escapeHtml(equippedIn.map((slotKey) => getItemSlotLabel((catalog.itemSlots || []).find((slot) => slot.key === slotKey) || { key: slotKey })).join(', '))}</div>`
+      : '';
+    const cardHtml = `<div class="inventory-item-card inventory-item-card-compact rarity-${escapeHtml(String(itemDef.rarity || 'common').toLowerCase())}"><div class="inventory-item-name">${escapeHtml(getItemDisplayName(itemDef))}</div><div class="inventory-item-meta">${escapeHtml(getItemRarityLabel(itemDef.rarity))} • ${escapeHtml(categoryLabel)}</div><div class="inventory-item-chip-row"><div class="inventory-item-chip">Lv ${Math.max(1, Number(item.level) || 1)}</div>${quantity > 1 ? `<div class="inventory-item-chip">x${quantity}</div>` : ''}<div class="inventory-item-chip">${escapeHtml(trWithFallback('ui.inventory.sell_value_short', 'Продажа'))}: ${Math.max(0, Number(item.sellValue) || 0)}</div>${equippedMeta}</div>${equipButtons ? `<div class="inventory-item-actions-line">${equipButtons}</div>` : ''}<div class="inventory-item-actions-line">${!itemDef.combatUse ? `<button type="button" class="inventory-mini-btn${canUpgradeItem ? '' : ' disabled-like'}" data-item-upgrade="${escapeHtml(item.uid)}">${escapeHtml(`Улучшить • ${upgradeCost}`)}</button>` : `<span class="inventory-item-consumable">${escapeHtml(trWithFallback('ui.inventory.consumable_hint_keys', 'Клавиши 4/5/6 в бою'))}</span>`}<button type="button" class="inventory-mini-btn danger" data-item-sell="${escapeHtml(item.uid)}">${escapeHtml(`Продать • ${Math.max(0, Number(item.sellValue) || 0)}`)}</button></div></div>`;
+    const groupKey = getInventoryGroupKey(itemDef, equipTargets);
+    inventoryCardsByGroup.get(groupKey)?.push(cardHtml);
+  }
+
+  const inventorySectionsHtml = inventoryGroupOrder.map(([key, title]) => {
+    const cards = inventoryCardsByGroup.get(key) || [];
+    if (!cards.length) return '';
+    return `<div class="inventory-category-group"><div class="inventory-category-title">${escapeHtml(title)}</div><div class="inventory-category-grid">${cards.join('')}</div></div>`;
+  }).join('');
+
   const inventoryRows = inventoryItems
     .slice()
     .sort((a, b) => {
@@ -3527,7 +3731,29 @@ function renderHeroTreePanelV2(catalog, progression, hero, unlocked) {
     ? `POW ${Math.max(0, Number(hero.baseStats.power) || 0)} | AGI ${Math.max(0, Number(hero.baseStats.agility) || 0)} | VIT ${Math.max(0, Number(hero.baseStats.vitality) || 0)} | TEC ${Math.max(0, Number(hero.baseStats.tech) || 0)}`
     : '';
   const heroXpLabel = heroLevel >= heroLevelCap ? `Lv ${heroLevel}/${heroLevelCap} MAX` : `Lv ${heroLevel}/${heroLevelCap} | XP ${heroXpValue}/${heroXpNeed}`;
-  heroTreePanelEl.innerHTML = `<div class="hero-loadout-shell"><div class="hero-loadout-card"><div class="hero-tree-head"><div><b>${escapeHtml(heroDisplayName)}</b><div class="hero-tagline">${escapeHtml(heroTagline)}</div><div class="hero-tagline">${escapeHtml(heroXpLabel)}</div><div class="hero-tagline">${escapeHtml(heroStats)}</div></div>${unlockMeta}</div>${actionBtn}</div><div class="hero-loadout-layout"><div class="hero-loadout-card hero-loadout-stage"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.inventory.equipment', 'Экипировка'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.equipment_hint', 'Слева круг героев, справа портрет, слоты экипировки и боевые расходники.'))}</div></div><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.salvage', 'Лом'))}: ${salvage}</div></div><div class="hero-loadout-stage-grid"><div class="hero-loadout-stage-side">${coreGearGroupHtml}${handGearGroupHtml}${ringGearGroupHtml}<div class="hero-slot-group"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.inventory.items', 'Инвентарь'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.items_hint', 'Надевайте, меняйте, продавайте и улучшайте предметы прямо отсюда.'))}</div></div><div class="hero-tagline">${inventoryItems.length}</div></div><div class="inventory-item-list">${inventoryRows || `<div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.empty', 'Инвентарь пока пуст.'))}</div>`}</div></div></div><div class="hero-loadout-stage-portrait"><div class="hero-loadout-portrait-wrap hero-loadout-portrait-large"><img class="hero-loadout-portrait" src="${escapeHtml(getHeroCardImagePath(hero.id))}" alt="${escapeHtml(heroDisplayName)}" /></div><div class="hero-tree-head hero-loadout-hero-head"><div><b>${escapeHtml(heroDisplayName)}</b><div class="hero-tagline">${escapeHtml(heroTagline)}</div><div class="hero-tagline">${escapeHtml(heroXpLabel)}</div><div class="hero-tagline">${escapeHtml(heroStats)}</div><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.quick_slots_hint', 'Быстрые слоты работают в бою на клавишах 4, 5 и 6.'))}</div></div></div><div class="hero-slot-group"><div class="hero-slot-group-title">${escapeHtml(trWithFallback('ui.inventory.quick_slots', 'Боевые расходники'))}</div><div class="hero-slot-group-grid">${quickSlotsHtml}</div></div></div></div></div><div class="hero-loadout-card"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.hero.talent_tree', 'Таланты героя'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.hero.talent_tree_hint', 'Пассивные улучшения аккаунта для выбранного героя.'))}</div></div></div><div class="hero-tree-list">${rows.join('')}</div></div><div class="hero-loadout-card"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.hero.unique_skills', 'Unique skills'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.hero.unique_skills_hint', '4 actives and 3 passives. Aura passives strengthen other heroes.'))}</div></div></div><div class="hero-tree-list">${skillRows || '<div class="hero-tagline">No unique skills.</div>'}</div></div></div>`;
+  heroTreePanelEl.innerHTML = `<div class="hero-loadout-shell"><div class="hero-loadout-card"><div class="hero-tree-head"><div><b>${escapeHtml(heroDisplayName)}</b><div class="hero-tagline">${escapeHtml(heroTagline)}</div><div class="hero-tagline">${escapeHtml(heroXpLabel)}</div><div class="hero-tagline">${escapeHtml(heroStats)}</div></div>${unlockMeta}</div>${actionBtn}</div><div class="hero-loadout-layout"><div class="hero-loadout-card hero-loadout-stage"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.inventory.equipment', 'Экипировка'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.equipment_hint', 'Слева круг героев, справа портрет, слоты экипировки и боевые расходники.'))}</div></div><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.salvage', 'Лом'))}: ${salvage}</div></div><div class="hero-loadout-stage-grid"><div class="hero-loadout-stage-side">${coreGearGroupHtml}${handGearGroupHtml}${ringGearGroupHtml}<div class="hero-slot-group"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.inventory.items', 'Инвентарь'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.items_hint', 'Надевайте, меняйте, продавайте и улучшайте предметы прямо отсюда.'))}</div></div><div class="hero-tagline">${inventoryItems.length}</div></div><div class="inventory-category-list">${inventorySectionsHtml || `<div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.empty', 'Инвентарь пока пуст.'))}</div>`}</div></div></div><div class="hero-loadout-stage-portrait"><div class="hero-loadout-portrait-wrap hero-loadout-portrait-large"><img class="hero-loadout-portrait" src="${escapeHtml(getHeroCardImagePath(hero.id))}" alt="${escapeHtml(heroDisplayName)}" /></div><div class="hero-tree-head hero-loadout-hero-head"><div><b>${escapeHtml(heroDisplayName)}</b><div class="hero-tagline">${escapeHtml(heroTagline)}</div><div class="hero-tagline">${escapeHtml(heroXpLabel)}</div><div class="hero-tagline">${escapeHtml(heroStats)}</div><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.quick_slots_hint', 'Быстрые слоты работают в бою на клавишах 4, 5 и 6.'))}</div></div></div><div class="hero-slot-group"><div class="hero-slot-group-title">${escapeHtml(trWithFallback('ui.inventory.quick_slots', 'Боевые расходники'))}</div><div class="hero-slot-group-grid">${quickSlotsHtml}</div></div></div></div></div><div class="hero-loadout-card"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.hero.talent_tree', 'Таланты героя'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.hero.talent_tree_hint', 'Пассивные улучшения аккаунта для выбранного героя.'))}</div></div></div><div class="hero-tree-list">${rows.join('')}</div></div><div class="hero-loadout-card"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.hero.unique_skills', 'Unique skills'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.hero.unique_skills_hint', '4 actives and 3 passives. Aura passives strengthen other heroes.'))}</div></div></div><div class="hero-tree-list">${skillRows || '<div class="hero-tagline">No unique skills.</div>'}</div></div></div>`;
+
+  const renderedSlotOrder = [
+    ...gearSlotsByGroup.core,
+    ...gearSlotsByGroup.hands,
+    ...gearSlotsByGroup.rings,
+    ...quickSlots,
+  ];
+  const renderedSlotEls = Array.from(heroTreePanelEl.querySelectorAll('.hero-equip-slot'));
+  renderedSlotOrder.forEach((slot, index) => {
+    const slotEl = renderedSlotEls[index];
+    if (!(slotEl instanceof HTMLElement)) return;
+    slotEl.dataset.slotKey = String(slot.key || '');
+    if (!slotEl.classList.contains('empty')) return;
+    let actionEl = slotEl.querySelector('.hero-equip-slot-empty-cta');
+    if (!(actionEl instanceof HTMLElement)) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'hero-equip-action';
+    btn.dataset.openSlotEquip = String(slot.key || '');
+    btn.textContent = trWithFallback('ui.inventory.equip', 'Снарядить');
+    actionEl.replaceWith(btn);
+  });
 
   const unlockBtn = heroTreePanelEl.querySelector('[data-hero-unlock="1"]');
   unlockBtn?.addEventListener('click', async () => {
@@ -3567,6 +3793,12 @@ function renderHeroTreePanelV2(catalog, progression, hero, unlocked) {
       } catch (err) {
         setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to upgrade node.'), 'err');
       }
+    });
+  }
+
+  for (const btn of heroTreePanelEl.querySelectorAll('[data-open-slot-equip]')) {
+    btn.addEventListener('click', () => {
+      openHeroEquipModal(hero, btn.getAttribute('data-open-slot-equip') || '');
     });
   }
 

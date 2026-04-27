@@ -135,6 +135,18 @@
     );
   }
 
+  function CwShellHeading() {
+    return h('div', { className: 'cw-shell-heading' },
+      h('div', { className: 'cw-shell-heading-copy' },
+        h('span', { className: 'cw-kicker' }, 'Crimson Wars'),
+        h('div', { className: 'cw-shell-title-row' },
+          h('strong', { className: 'cw-shell-title' }, 'Battle Hub'),
+          h('span', { id: 'menu-version-slot', className: 'menu-version-slot' })
+        )
+      )
+    );
+  }
+
   function AuthShell() {
     return h('div', { id: 'player-access-details', className: 'auth-card' },
       h('div', { className: 'auth-card-body' },
@@ -370,6 +382,7 @@
     return h('form', { id: 'join-form', className: 'cw-shell', autoComplete: 'off' },
       h('section', { className: 'cw-shell-grid' },
         h('div', { className: 'cw-shell-main' },
+          h(CwShellHeading),
           h(CwNavTabs),
           h(SettingsPanel),
           h(PlayPanel),
@@ -384,6 +397,12 @@
   }
 
   ReactDomGlobal.render(h(CwShell), mountNode);
+
+  const versionTrigger = document.getElementById('menu-version-trigger');
+  const versionSlot = document.getElementById('menu-version-slot');
+  if (versionTrigger && versionSlot) {
+    versionSlot.appendChild(versionTrigger);
+  }
 
   function syncPlayHeroPanelHeights() {
     const leftCard = document.querySelector('#play-deploy-card');
