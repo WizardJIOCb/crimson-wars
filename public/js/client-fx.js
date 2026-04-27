@@ -1003,7 +1003,7 @@ function processStateFx(nextState) {
           key: `shot:${isCompanionShot ? 'companion' : 'player'}:${owner.id}:${weaponKey || 'weapon'}:${b.id}`,
           minGapMs: 0,
           radius: isMyCompanionShot ? 1800 : 1100,
-          volume: owner.id === game.myId ? 1.08 : (isMyCompanionShot ? 0.74 : 0.26),
+          volume: owner.id === game.myId ? 1.08 : (isMyCompanionShot ? 0.44 : 0.26),
         });
       } else if (b.fromEnemy) {
         const shooter = enemyShooters.get(b.ownerId) || null;
