@@ -170,10 +170,15 @@ function drawPlayerWeaponAmmoBadge(p, sx, sy, offsetY = -52) {
   const fallbackMagSize = weaponKey === 'sniper' ? 5 : (weaponKey === 'shotgun' ? 8 : (weaponKey === 'smg' ? 36 : 12));
   const magSize = Math.max(1, Math.floor(Number(p.magazineSize) || fallbackMagSize));
   const mag = Math.max(0, Math.floor(Number(p.magazineAmmo ?? p.magazine ?? magSize) || 0));
+  const ammoRatio = Math.max(0, Math.min(1, mag / magSize));
   const reserveRaw = p.reserveAmmo ?? p.ammo;
   const reserve = reserveRaw === null || reserveRaw === undefined ? '∞' : String(Math.max(0, Math.floor(Number(reserveRaw) || 0)));
   const reloadLeft = Math.max(0, Number(p.reloadLeftMs) || 0);
   const reloadTotal = Math.max(1, Number(p.reloadTotalMs) || 1);
+  const reloadProgress = reloadLeft > 0 ? (1 - Math.max(0, Math.min(1, reloadLeft / reloadTotal))) : 0;
+  const barRatio = reloadLeft > 0
+    ? Math.max(ammoRatio, Math.min(1, ammoRatio + ((1 - ammoRatio) * reloadProgress)))
+    : ammoRatio;
   const label = reloadLeft > 0 ? `${mag}/${reserve}` : `${mag}/${reserve}`;
   const y = sy + offsetY;
   const w = Math.max(74, 42 + label.length * 6);
@@ -207,13 +212,11 @@ function drawPlayerWeaponAmmoBadge(p, sx, sy, offsetY = -52) {
   ctx.textBaseline = 'middle';
   ctx.fillText(label, x + 28, y + h / 2 + 0.5);
 
-  if (reloadLeft > 0) {
-    const progress = 1 - Math.max(0, Math.min(1, reloadLeft / reloadTotal));
-    ctx.fillStyle = 'rgba(250, 204, 21, 0.22)';
-    ctx.fillRect(x + 5, y + h - 4, w - 10, 2);
-    ctx.fillStyle = '#facc15';
-    ctx.fillRect(x + 5, y + h - 4, (w - 10) * progress, 2);
-  }
+  const barColor = `rgb(${Math.round(239 - (107 * barRatio))}, ${Math.round(68 + (172 * barRatio))}, ${Math.round(68 + (49 * barRatio))})`;
+  ctx.fillStyle = 'rgba(148, 163, 184, 0.18)';
+  ctx.fillRect(x + 5, y + h - 4, w - 10, 2);
+  ctx.fillStyle = barColor;
+  ctx.fillRect(x + 5, y + h - 4, Math.max(1, (w - 10) * barRatio), 2);
   ctx.restore();
 }
 
