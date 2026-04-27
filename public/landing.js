@@ -392,7 +392,52 @@ setActiveNavSection(window.location.hash ? window.location.hash.slice(1) : 'top'
 
 function getHubUrl(tabId) {
   const nextTab = HUB_TABS.has(String(tabId || '').trim().toLowerCase()) ? String(tabId).trim().toLowerCase() : 'play';
-  return nextTab === 'play' ? '/play' : `/play?tab=${encodeURIComponent(nextTab)}`;
+  return nextTab === 'play' ? '/play?hub=1' : `/play?hub=1&tab=${encodeURIComponent(nextTab)}`;
+}
+
+let battleHubFrameObserver = null;
+
+function syncBattleHubFrameSize() {
+  if (!(hubFrame instanceof HTMLIFrameElement)) return;
+  try {
+    const frameWindow = hubFrame.contentWindow || null;
+    const frameDocument = hubFrame.contentDocument || frameWindow?.document || null;
+    const body = frameDocument?.body || null;
+    const root = frameDocument?.documentElement || null;
+    if (!body || !root) return;
+    const nextHeight = Math.max(
+      920,
+      Math.ceil(body.scrollHeight || 0),
+      Math.ceil(root.scrollHeight || 0),
+      Math.ceil(body.offsetHeight || 0),
+      Math.ceil(root.offsetHeight || 0),
+    );
+    hubFrame.style.height = `${nextHeight}px`;
+  } catch {
+    // Same-origin best effort only.
+  }
+}
+
+function bindBattleHubFrameAutosize() {
+  if (!(hubFrame instanceof HTMLIFrameElement)) return;
+  try {
+    const frameWindow = hubFrame.contentWindow || null;
+    const frameDocument = hubFrame.contentDocument || frameWindow?.document || null;
+    const body = frameDocument?.body || null;
+    if (!body) return;
+    battleHubFrameObserver?.disconnect?.();
+    battleHubFrameObserver = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      battleHubFrameObserver = new ResizeObserver(() => syncBattleHubFrameSize());
+      battleHubFrameObserver.observe(body);
+    }
+    frameWindow?.addEventListener?.('resize', syncBattleHubFrameSize);
+    window.setTimeout(syncBattleHubFrameSize, 0);
+    window.setTimeout(syncBattleHubFrameSize, 120);
+    window.setTimeout(syncBattleHubFrameSize, 360);
+  } catch {
+    battleHubFrameObserver = null;
+  }
 }
 
 function scrollToBattleHub() {
@@ -435,6 +480,8 @@ document.addEventListener('click', (event) => {
 
 hubFrame?.addEventListener('load', () => {
   hubLoading?.classList.add('is-hidden');
+  bindBattleHubFrameAutosize();
+  syncBattleHubFrameSize();
 });
 
 setActiveHubTab('play', { updateFrame: false, scrollIntoView: false });

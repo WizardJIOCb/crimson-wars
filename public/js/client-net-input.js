@@ -191,6 +191,8 @@ jumpBtnEl?.addEventListener('mousedown', (e) => { e.preventDefault(); queueJump(
 const joinToggleInfoBtn = document.getElementById('join-toggle-info');
 const infoPanelHudHostEl = document.getElementById('info-panel-hud-host');
 const infoPanelMenuHostEl = document.getElementById('info-panel-menu-host');
+const settingsGraphicsHostEl = document.getElementById('settings-graphics-host');
+const settingsTogglesHostEl = document.getElementById('settings-toggles-host');
 const sessionExitBtn = document.getElementById('session-exit-btn');
 const pvpDurationWrapEl = document.getElementById('pvp-duration-wrap');
 const pvpDurationSelectEl = document.getElementById('pvp-duration-select');
@@ -323,15 +325,103 @@ const profileRunHistoryUi = {
   lastLoadedAt: 0,
   fetchToken: 0,
 };
+const infoPanelOriginalChildren = infoPanelEl ? Array.from(infoPanelEl.children) : [];
+const infoPanelParagraphEls = infoPanelEl
+  ? Array.from(infoPanelEl.children).filter((el) => el.tagName === 'P')
+  : [];
+const infoPanelQualityRowEl = qualitySelect?.closest('p') || null;
+const infoPanelTogglesEl = infoPanelEl?.querySelector('.settings-toggles') || null;
+
+function localizeSettingsMenuControls() {
+  if (infoPanelQualityRowEl && qualitySelect) {
+    const qualityLabelEl = infoPanelQualityRowEl.querySelector('.cw-settings-inline-label') || document.createElement('span');
+    qualityLabelEl.className = 'cw-settings-inline-label';
+    qualityLabelEl.textContent = 'Уровень графики';
+    if (qualityLabelEl.parentElement !== infoPanelQualityRowEl) {
+      infoPanelQualityRowEl.insertBefore(qualityLabelEl, qualitySelect);
+    }
+    for (const node of Array.from(infoPanelQualityRowEl.childNodes)) {
+      if (node !== qualityLabelEl && node !== qualitySelect && node.nodeType === Node.TEXT_NODE) {
+        infoPanelQualityRowEl.removeChild(node);
+      }
+    }
+    const optionMap = {
+      low: 'Низкое',
+      medium: 'Среднее',
+      high: 'Высокое',
+    };
+    for (const option of Array.from(qualitySelect.options)) {
+      const nextLabel = optionMap[String(option.value || '').toLowerCase()];
+      if (nextLabel) option.textContent = nextLabel;
+    }
+  }
+
+  const toggleLabelMap = {
+    'shadow-toggle': 'Тени',
+    'show-minimap-toggle': 'Показывать миникарту',
+    'bullet-tracers-toggle': 'Трассеры пуль',
+    'enemy-hp-toggle': 'Полосы HP врагов',
+    'extra-blood-toggle': 'Больше крови',
+    'hit-effects-toggle': 'Эффекты попаданий',
+    'auto-fire-toggle': 'Авто-огонь',
+    'dynamic-sticks-toggle': 'Динамические стики',
+    'show-aim-stick-toggle': 'Показывать стик прицеливания',
+    'conn-indicator-toggle': 'Индикатор соединения',
+    'show-fps-toggle': 'Показывать FPS',
+    'show-chat-toggle': 'Показывать чат',
+    'game-sfx-toggle': 'Звуки игры',
+    'show-commentator-toggle': 'Комментатор арены',
+    'commentator-voice-setting-toggle': 'Озвучивать комментатора',
+    'replay-player-toggle': 'Показывать плеер повтора',
+  };
+
+  for (const [id, label] of Object.entries(toggleLabelMap)) {
+    const input = document.getElementById(id);
+    const labelEl = input?.closest('label');
+    if (!labelEl) continue;
+    const textNode = Array.from(labelEl.childNodes).find((node) => node.nodeType === Node.TEXT_NODE && String(node.textContent || '').trim());
+    if (textNode) {
+      textNode.textContent = ` ${label}`;
+      continue;
+    }
+    const span = Array.from(labelEl.querySelectorAll('span')).find((el) => el.id !== `${id}-value`);
+    if (span) span.textContent = label;
+  }
+
+  const volumeLabel = document.querySelector('label[for="game-sfx-volume"]');
+  if (volumeLabel) {
+    const valueEl = document.getElementById('game-sfx-volume-value');
+    volumeLabel.textContent = 'Громкость звука';
+    if (valueEl) volumeLabel.appendChild(valueEl);
+  }
+}
 
 function syncInfoPanelHost(overlayOpen = null) {
   if (!infoPanelEl) return;
   const menuOpen = overlayOpen === null ? (getComputedStyle(joinOverlay).display !== 'none') : Boolean(overlayOpen);
-  const targetHost = menuOpen
+  const settingsMenuActive = menuOpen && currentMainMenuTab === 'menu';
+  const targetHost = settingsMenuActive
     ? (infoPanelMenuHostEl || infoPanelHudHostEl)
     : infoPanelHudHostEl;
   if (targetHost && infoPanelEl.parentElement !== targetHost) targetHost.appendChild(infoPanelEl);
-  infoPanelEl.classList.toggle('info-panel-in-menu', menuOpen && targetHost === infoPanelMenuHostEl);
+  infoPanelEl.classList.toggle('info-panel-in-menu', settingsMenuActive && targetHost === infoPanelMenuHostEl);
+  layoutSettingsMenu(settingsMenuActive);
+}
+
+function layoutSettingsMenu(active) {
+  if (!infoPanelEl) return;
+  const hostsReady = settingsGraphicsHostEl && settingsTogglesHostEl;
+  if (!active || !hostsReady) {
+    for (const child of infoPanelOriginalChildren) {
+      if (child && child.parentElement !== infoPanelEl) infoPanelEl.appendChild(child);
+    }
+    return;
+  }
+  localizeSettingsMenuControls();
+  settingsGraphicsHostEl.replaceChildren();
+  settingsTogglesHostEl.replaceChildren();
+  if (infoPanelQualityRowEl) settingsGraphicsHostEl.appendChild(infoPanelQualityRowEl);
+  if (infoPanelTogglesEl) settingsTogglesHostEl.appendChild(infoPanelTogglesEl);
 }
 
 setInfoPanelHidden(infoPanelHidden);
@@ -2150,11 +2240,6 @@ function renderNewsFeed() {
 
   newsFeedEl.innerHTML = '';
 
-  const title = document.createElement('div');
-  title.className = 'news-main-title';
-  title.textContent = 'Новости';
-  newsFeedEl.appendChild(title);
-
   if (newsUi.loading && newsUi.items.length === 0 && !newsUi.activeItem) {
     const loading = document.createElement('div');
     loading.className = 'news-sub';
@@ -2478,26 +2563,27 @@ function getRatingCategoryTitle(cat) {
 
 function renderRatingBoard() {
   if (!ratingBoardEl) return;
-  const title = '<b>' + escapeNewsHtml(trWithFallback('ui.rating.title', 'Player Rating')) + '</b>';
+  const titleText = escapeNewsHtml(trWithFallback('ui.rating.title', 'Player Rating'));
+  const modeOptions = (ratingUi.modes || []).map((mode) => {
+    const key = String(mode?.key || 'all');
+    const modeTitle = String(mode?.titleKey ? tr(mode.titleKey) : (mode?.title || key || 'Mode'));
+    const selected = key === ratingUi.currentMode ? ' selected' : '';
+    return '<option value="' + escapeNewsHtml(key) + '"' + selected + '>' + escapeNewsHtml(modeTitle) + '</option>';
+  }).join('');
+  const modeControl = '<div class="rating-mode-wrap"><select id="rating-mode-select" class="rating-mode-select">' + modeOptions + '</select></div>';
+  const header = '<div class="rating-header-row"><b>' + titleText + '</b>' + modeControl + '</div>';
   if (ratingUi.loading && ratingUi.items.length === 0) {
-    ratingBoardEl.innerHTML = title + '<div class="profile-run-empty">' + escapeNewsHtml(trWithFallback('ui.rating.loading', 'Loading rating...')) + '</div>';
+    ratingBoardEl.innerHTML = header + '<div class="profile-run-empty">' + escapeNewsHtml(trWithFallback('ui.rating.loading', 'Loading rating...')) + '</div>';
     return;
   }
   if (ratingUi.error && ratingUi.items.length === 0) {
-    ratingBoardEl.innerHTML = title + '<div class="profile-run-empty">' + escapeNewsHtml(ratingUi.error) + '</div>';
+    ratingBoardEl.innerHTML = header + '<div class="profile-run-empty">' + escapeNewsHtml(ratingUi.error) + '</div>';
     return;
   }
 
   const categories = (ratingUi.categories || []).map((cat) => {
     const active = cat.key === ratingUi.currentCategory ? ' active' : '';
     return '<button type="button" class="mini rating-category-btn' + active + '" data-rating-cat="' + escapeNewsHtml(String(cat.key || '')) + '">' + escapeNewsHtml(getRatingCategoryTitle(cat)) + '</button>';
-  }).join('');
-
-  const modeOptions = (ratingUi.modes || []).map((mode) => {
-    const key = String(mode?.key || 'all');
-    const modeTitle = String(mode?.titleKey ? tr(mode.titleKey) : (mode?.title || key || 'Mode'));
-    const selected = key === ratingUi.currentMode ? ' selected' : '';
-    return '<option value="' + escapeNewsHtml(key) + '"' + selected + '>' + escapeNewsHtml(modeTitle) + '</option>';
   }).join('');
 
   const rows = (ratingUi.items || []).map((item, i) => {
@@ -2513,11 +2599,14 @@ function renderRatingBoard() {
     return '<div class="record-row rating-row"><div class="record-rank">#' + rank + '</div><div class="record-name">' + nickHtml + '</div><div class="record-meta"><span class="rating-value-text">' + valueText + '</span>' + playBtn + '</div></div>';
   }).join('');
 
-  const pager = '<div class="profile-run-history-pager"><button type="button" class="mini" data-rating-prev ' + (ratingUi.page <= 1 ? 'disabled' : '') + '>' + escapeNewsHtml(trWithFallback('ui.prev', 'Prev')) + '</button><span class="profile-run-history-page">' + escapeNewsHtml(trWithFallback('ui.page', 'Page')) + ' ' + ratingUi.page + '/' + ratingUi.totalPages + ' | ' + escapeNewsHtml(trWithFallback('ui.total', 'Total')) + ': ' + ratingUi.total + '</span><button type="button" class="mini" data-rating-next ' + (ratingUi.page >= ratingUi.totalPages ? 'disabled' : '') + '>' + escapeNewsHtml(trWithFallback('ui.next', 'Next')) + '</button></div>';
-  const modeControl = '<div class="rating-mode-wrap"><label class="rating-mode-label" for="rating-mode-select">' + escapeNewsHtml(trWithFallback('ui.rating.mode', 'Mode:')) + '</label><select id="rating-mode-select" class="rating-mode-select">' + modeOptions + '</select></div>';
-
-  ratingBoardEl.innerHTML = title
-    + modeControl
+  const prevDisabled = ratingUi.page <= 1 ? ' disabled' : '';
+  const nextDisabled = ratingUi.page >= ratingUi.totalPages ? ' disabled' : '';
+  const pager = '<div class="profile-run-history-pager">'
+    + '<button type="button" class="mini" data-rating-nav="prev"' + prevDisabled + '>' + escapeNewsHtml(trWithFallback('ui.prev', 'Prev')) + '</button>'
+    + '<span class="profile-run-history-page">' + escapeNewsHtml(trWithFallback('ui.page', 'Page')) + ' ' + ratingUi.page + '/' + ratingUi.totalPages + ' | ' + escapeNewsHtml(trWithFallback('ui.total', 'Total')) + ': ' + ratingUi.total + '</span>'
+    + '<button type="button" class="mini" data-rating-nav="next"' + nextDisabled + '>' + escapeNewsHtml(trWithFallback('ui.next', 'Next')) + '</button>'
+    + '</div>';
+  ratingBoardEl.innerHTML = header
     + '<div class="rating-categories">' + categories + '</div>'
     + (rows || '<div class="profile-run-empty">' + escapeNewsHtml(trWithFallback('ui.rating.empty', 'No data yet.')) + '</div>')
     + pager;
@@ -2532,12 +2621,17 @@ function renderRatingBoard() {
     });
   }
 
-  ratingBoardEl.querySelector('[data-rating-prev]')?.addEventListener('click', () => {
-    if (ratingUi.page > 1) void requestLeaderboard({ force: true, page: ratingUi.page - 1, category: ratingUi.currentCategory, mode: ratingUi.currentMode });
-  });
-  ratingBoardEl.querySelector('[data-rating-next]')?.addEventListener('click', () => {
-    if (ratingUi.page < ratingUi.totalPages) void requestLeaderboard({ force: true, page: ratingUi.page + 1, category: ratingUi.currentCategory, mode: ratingUi.currentMode });
-  });
+  for (const navBtn of Array.from(ratingBoardEl.querySelectorAll('[data-rating-nav]'))) {
+    navBtn.addEventListener('click', () => {
+      const dir = String(navBtn.getAttribute('data-rating-nav') || '').trim();
+      if (dir === 'prev' && ratingUi.page > 1) {
+        void requestLeaderboard({ force: true, page: ratingUi.page - 1, category: ratingUi.currentCategory, mode: ratingUi.currentMode });
+      }
+      if (dir === 'next' && ratingUi.page < ratingUi.totalPages) {
+        void requestLeaderboard({ force: true, page: ratingUi.page + 1, category: ratingUi.currentCategory, mode: ratingUi.currentMode });
+      }
+    });
+  }
 
   for (const b of Array.from(ratingBoardEl.querySelectorAll('[data-rating-player]'))) {
     b.addEventListener('click', () => {
@@ -3121,6 +3215,12 @@ function splitHeroPanelsBetweenMenus(hero) {
   characterShell.className = 'hero-loadout-shell';
   if (headerCard) characterShell.appendChild(headerCard.cloneNode(true));
   if (loadoutCard) characterShell.appendChild(loadoutCard.cloneNode(true));
+  const characterSkillsRow = document.createElement('div');
+  characterSkillsRow.className = 'hero-skill-panels-row';
+  for (const card of skillCards.filter((_, index) => index > 0)) {
+    characterSkillsRow.appendChild(card.cloneNode(true));
+  }
+  if (characterSkillsRow.children.length) characterShell.appendChild(characterSkillsRow);
   heroCharacterPanelEl.appendChild(characterShell);
 
   shell.innerHTML = '';
@@ -3538,90 +3638,6 @@ function renderCharacterPicker() {
 
   characterSelectEl.innerHTML = '';
   if (heroGalleryV2El) heroGalleryV2El.innerHTML = '';
-
-  const wheel = document.createElement('div');
-  wheel.className = 'hero-wheel';
-  const isMobileWheel = window.innerWidth <= 720;
-  const wheelSize = isMobileWheel
-    ? Math.max(220, Math.min(320, window.innerWidth - 34))
-    : Math.max(260, Math.min(420, window.innerWidth - 90));
-  const wheelRadius = isMobileWheel
-    ? Math.max(82, Math.round(wheelSize * 0.31))
-    : Math.max(98, Math.round(wheelSize * 0.39));
-  wheel.style.setProperty('--radius', wheelRadius + 'px');
-
-  const center = document.createElement('div');
-  center.className = 'hero-wheel-center';
-  center.innerHTML = `<div class="hero-center-label">${escapeHtml(trWithFallback('ui.hero.selected_label', 'Selected hero'))}</div><div class="hero-center-name">${escapeHtml(trHeroName(selectedPlayerClass, getPlayerVariant(selectedPlayerClass).name || selectedPlayerClass))}</div>`;
-  wheel.appendChild(center);
-
-  const count = Math.max(1, heroes.length);
-  const step = 360 / count;
-  for (let i = 0; i < heroes.length; i += 1) {
-    const hero = heroes[i];
-    const unlocked = unlockedHeroes.has(hero.id);
-    const active = selectedPlayerClass === hero.id;
-    const focused = heroFocusId === hero.id;
-    const angle = -90 + step * i;
-
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = `char-option wheel-option${active ? ' active' : ''}${focused ? ' focused' : ''}${unlocked ? '' : ' locked'}`;
-    btn.dataset.classId = hero.id;
-    const rad = (Math.PI / 180) * angle;
-    const offsetX = Math.round(Math.cos(rad) * wheelRadius);
-    const offsetY = Math.round(Math.sin(rad) * wheelRadius);
-    btn.style.setProperty('--x', offsetX + 'px');
-    btn.style.setProperty('--y', offsetY + 'px');
-    btn.style.setProperty('--accent', hero.accent || '#22d3ee');
-
-    const preview = document.createElement('canvas');
-    preview.width = 56;
-    preview.height = 62;
-    preview.className = 'char-preview';
-    drawCharacterPreview(preview, hero);
-
-    const label = document.createElement('span');
-    label.className = 'char-label';
-    label.textContent = trHeroName(hero.id, hero.name);
-
-    btn.appendChild(preview);
-    btn.appendChild(label);
-    if (!unlocked) {
-      const lock = document.createElement('span');
-      lock.className = 'char-lock';
-      const cardId = String(hero.unlockCardId || '').trim();
-      const needCards = Math.max(0, Number(hero.unlockCardNeed) || 0);
-      const haveCards = cardId ? Math.max(0, Number(progression?.heroCards?.[cardId]) || 0) : needCards;
-      lock.textContent = needCards > 0
-        ? (`C${haveCards}/${needCards}`)
-        : (`Lv${Math.max(1, Number(hero.unlockLevel) || 1)}`);
-      btn.appendChild(lock);
-    }
-
-    btn.addEventListener('click', async () => {
-      heroFocusId = hero.id;
-      if (!unlocked) {
-        renderCharacterPicker();
-        return;
-      }
-      selectedPlayerClass = hero.id;
-      localStorage.setItem(PLAYER_CLASS_STORAGE_KEY, selectedPlayerClass);
-      if (game.playerAuth?.player) {
-        try {
-          await selectHeroForAccount(hero.id);
-          setHeroActionFeedback(trWithFallback('ui.hero.selected', `${hero.name} selected.`, { hero: trHeroName(hero.id, hero.name) }), 'ok');
-        } catch (err) {
-          setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to select hero.'), 'err');
-        }
-      }
-      renderCharacterPicker();
-    });
-
-    wheel.appendChild(btn);
-  }
-
-  characterSelectEl.appendChild(wheel);
   const focusedHero = heroes.find((hero) => hero.id === heroFocusId) || heroes[0] || null;
   renderHeroGalleryV2(heroes, progression, unlockedHeroes);
   renderProfilePanel(heroes, progression, unlockedHeroes);

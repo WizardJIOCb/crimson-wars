@@ -15,10 +15,20 @@
     ],
     "isPublished": true,
     "createdAt": 1773841692981,
-    "updatedAt": 1777066725915,
+    "updatedAt": 1777317959685,
     "publishedAt": 1773841692981,
-    "views": 6,
-    "comments": []
+    "views": 12,
+    "comments": [
+      {
+        "id": "c-1777312842982-cqylpi",
+        "authorName": "WizardJIOCb",
+        "authorAccountId": 1,
+        "text": "Йоу!",
+        "createdAt": 1777312842982,
+        "updatedAt": 1777312842982,
+        "replies": []
+      }
+    ]
   },
   {
     "id": "news-1773829389464",
@@ -41,9 +51,9 @@
     ],
     "isPublished": true,
     "createdAt": 1773829389464,
-    "updatedAt": 1777057242493,
+    "updatedAt": 1777317968359,
     "publishedAt": 1773829389464,
-    "views": 3,
+    "views": 5,
     "comments": []
   },
   {
@@ -65,9 +75,9 @@
     ],
     "isPublished": true,
     "createdAt": 1773772219799,
-    "updatedAt": 1773783299407,
+    "updatedAt": 1777317974061,
     "publishedAt": 1773772219799,
-    "views": 19,
+    "views": 20,
     "comments": [
       {
         "id": "c-1773783210787-rgtxep",
@@ -98,9 +108,9 @@
     ],
     "isPublished": true,
     "createdAt": 1773781279660,
-    "updatedAt": 1773785212499,
+    "updatedAt": 1777317972003,
     "publishedAt": 1773781279660,
-    "views": 9,
+    "views": 10,
     "comments": [
       {
         "id": "c-1773781479422-7gat85",
@@ -120,9 +130,9 @@
     "items": [],
     "isPublished": true,
     "createdAt": 1773785767933,
-    "updatedAt": 1773788980168,
+    "updatedAt": 1777317963331,
     "publishedAt": 1773785767933,
-    "views": 12,
+    "views": 13,
     "comments": [
       {
         "id": "c-1773788965958-8lov7p",

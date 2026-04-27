@@ -863,7 +863,7 @@ main {
 
 .battle-hub-frame-wrap {
   position: relative;
-  min-height: 1180px;
+  min-height: 920px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 28px;
   overflow: hidden;
@@ -896,7 +896,7 @@ main {
 .battle-hub-frame {
   display: block;
   width: 100%;
-  min-height: 1180px;
+  height: 920px;
   border: 0;
   background: transparent;
 }

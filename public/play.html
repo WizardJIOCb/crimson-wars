@@ -37,11 +37,11 @@
       <p id="movement-meta"></p>
       <p id="net-meta">NET: --</p>
       <p>
-        Quality:
+        Качество:
         <select id="quality-select">
-          <option value="low">Low</option>
-          <option value="medium" selected>Medium</option>
-          <option value="high">High</option>
+          <option value="low">Низкое</option>
+          <option value="medium" selected>Среднее</option>
+          <option value="high">Высокое</option>
         </select>
       </p>
       <div class="settings-toggles">
@@ -252,6 +252,7 @@
       </div>
       <!--<button id="death-continue" type="button" class="death-continue">Show menu</button>-->
     </div>
+    <div id="cw-menu-root"></div>
     <form id="join-form" autocomplete="off">
       <details id="player-access-details" class="auth-card">
         <summary class="auth-card-summary" data-label-open="Show" data-label-close="Hide">Player access</summary>
@@ -511,6 +512,9 @@
       <input id="dev-console-input" maxlength="180" placeholder="type command..." />
     </form>
   </div>
+  <script src="/vendor/react.production.min.js"></script>
+  <script src="/vendor/react-dom.production.min.js"></script>
+  <script src="/js/cw-menu-react.js?v=20260427ui1"></script>
   <script src="/js/client-i18n.js?v=20260424live2"></script>
   <script src="/js/client-core.js?v=20260425commentatorvoice3"></script>
   <script src="/js/client-net-input.js?v=20260425commentatorvoice2"></script>
@@ -518,5 +522,4 @@
   <script src="/js/client-render.js?v=20260425companionreloadbar1"></script>
 </body>
 </html>
-
 

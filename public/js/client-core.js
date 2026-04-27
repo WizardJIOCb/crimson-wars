@@ -857,6 +857,7 @@ function applyInitialRoomIntent() {
   const mode = (params.get('mode') || '').trim().toLowerCase();
   const spectate = mode === 'spectate' || mode === 'watch' || mode === 'observer';
   const embed = params.get('embed') === '1' || params.get('view') === 'embed';
+  const hubEmbed = params.get('hub') === '1' || params.get('view') === 'hub';
   const integrationToken = String(params.get('integrationToken') || params.get('integration_token') || '').trim();
   const presetName = String(params.get('name') || '').trim();
   const presetHeroId = String(params.get('heroId') || params.get('hero_id') || '').trim().toLowerCase();
@@ -879,6 +880,7 @@ function applyInitialRoomIntent() {
   pendingAutoCreate = Boolean(!room && joinMode === 'create' && routed);
   game.embedMode = embed;
   document.body.classList.toggle('live-embed', game.embedMode);
+  document.body.classList.toggle('battle-hub-embed', hubEmbed);
   pendingIntegrationToken = integrationToken;
   selectedGameMode = gameMode;
   selectedPvpDurationMin = pvpDurationMin;
@@ -998,6 +1000,7 @@ function clearJoinFeedback() {
 function renderPlayerAuthUi() {
   const player = game.playerAuth.player;
   const loggedIn = Boolean(player);
+  if (playerAccessDetailsEl) playerAccessDetailsEl.classList.toggle('is-authenticated', loggedIn);
   if (playerAuthSummaryEl) {
     playerAuthSummaryEl.textContent = loggedIn
       ? trCore('ui.auth.summary_logged_in', `Logged in as ${player.nickname}. This nickname is reserved for your account.`, { nickname: player.nickname })
@@ -1037,7 +1040,7 @@ function renderPlayerAuthUi() {
 
 function setPlayerAccessCollapsed(collapsed) {
   if (!playerAccessDetailsEl) return;
-  playerAccessDetailsEl.open = !collapsed;
+  playerAccessDetailsEl.classList.toggle('is-collapsed', Boolean(collapsed));
 }
 
 function reloadForPlayerSession(message) {
@@ -1172,7 +1175,7 @@ async function loginPlayerAccount() {
     if (authLoginPasswordEl) authLoginPasswordEl.value = '';
     statusEl.textContent = trCore('ui.auth.logged_in_short', `Logged in as ${data.player?.nickname || nickname}.`, { nickname: data.player?.nickname || nickname });
     renderPlayerAuthUi();
-    setPlayerAccessCollapsed(true);
+    setPlayerAccessCollapsed(false);
     reloadForPlayerSession('Logged in. Session refreshed.');
   } catch (err) {
     setPlayerAccessCollapsed(false);
@@ -1206,7 +1209,7 @@ async function registerPlayerAccount() {
     if (authRegisterPasswordEl) authRegisterPasswordEl.value = '';
     statusEl.textContent = trCore('ui.auth.registered_short', `Nickname ${data.player?.nickname || nickname} registered.`, { nickname: data.player?.nickname || nickname });
     renderPlayerAuthUi();
-    setPlayerAccessCollapsed(true);
+    setPlayerAccessCollapsed(false);
     reloadForPlayerSession('Nickname registered. Session refreshed.');
   } catch (err) {
     setPlayerAccessCollapsed(false);
