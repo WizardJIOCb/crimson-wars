@@ -3900,6 +3900,7 @@ function getHeroCardImagePath(heroId) {
 function renderHeroGalleryV2(heroes, progression, unlockedHeroes) {
   if (!heroGalleryV2El) return;
   heroGalleryV2El.innerHTML = '';
+  const heroLevels = progression?.heroLevels && typeof progression.heroLevels === 'object' ? progression.heroLevels : {};
   for (const hero of heroes) {
     const unlocked = unlockedHeroes.has(hero.id);
     const focused = hero.id === heroFocusId;
@@ -3943,7 +3944,8 @@ function renderHeroGalleryV2(heroes, progression, unlockedHeroes) {
 
     const name = document.createElement('div');
     name.className = 'hero-v2-name';
-    name.textContent = trHeroName(hero.id, hero.name);
+    const heroLevel = Math.max(1, Number(heroLevels[hero.id]) || 1);
+    name.textContent = `${trHeroName(hero.id, hero.name)} [${heroLevel}]`;
 
     const status = document.createElement('div');
     status.className = `hero-v2-status${unlocked ? '' : ' locked'}`;
