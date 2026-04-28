@@ -1,0 +1,22 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: crimson-wars-mysql
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${MYSQL_LOCAL_PORT:-3307}:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-crimson_root_local}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-crimson_wars}
+      MYSQL_USER: ${MYSQL_USER:-crimson_wars_app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-crimson_wars_local}
+      TZ: UTC
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --max_allowed_packet=1G
+    volumes:
+      - crimson_wars_mysql_data:/var/lib/mysql
+
+volumes:
+  crimson_wars_mysql_data:
