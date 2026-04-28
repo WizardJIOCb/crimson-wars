@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { createMysqlSyncClient, escapeSql } = require('./mysql-sync');
 
 function nowMs() {
   return Date.now();
@@ -113,11 +114,31 @@ function seedDefaultNews() {
   ];
 }
 
-function createNewsStore({ dataDir, filePath }) {
-  fs.mkdirSync(dataDir, { recursive: true });
+function createNewsStore({ dataDir, filePath, mysql }) {
+  const useMysql = !!mysql?.enabled;
+  const mysqlClient = useMysql ? createMysqlSyncClient(mysql) : null;
+  if (!useMysql) fs.mkdirSync(dataDir, { recursive: true });
   const fullPath = filePath || path.join(dataDir, 'news.json');
+  const docKey = 'news';
 
   function readAll() {
+    if (useMysql) {
+      const row = mysqlClient.queryOne(`SELECT content_json FROM app_documents WHERE doc_key = ${escapeSql(docKey)} LIMIT 1`);
+      if (!row) {
+        const seeded = seedDefaultNews();
+        writeAll(seeded);
+        return seeded;
+      }
+      try {
+        const parsed = JSON.parse(row.content_json || '[]');
+        const arr = Array.isArray(parsed) ? parsed : [];
+        return arr.map((item) => normalizeNewsItem(item)).filter((item) => item.title || item.summary || item.items.length > 0);
+      } catch {
+        const seeded = seedDefaultNews();
+        writeAll(seeded);
+        return seeded;
+      }
+    }
     if (!fs.existsSync(fullPath)) {
       const seeded = seedDefaultNews();
       writeAll(seeded);
@@ -136,6 +157,14 @@ function createNewsStore({ dataDir, filePath }) {
   }
 
   function writeAll(items) {
+    if (useMysql) {
+      mysqlClient.execute([
+        'INSERT INTO app_documents (doc_key, content_json, updated_at)',
+        `VALUES (${escapeSql(docKey)}, ${escapeSql(JSON.stringify(items))}, ${escapeSql(nowMs())})`,
+        'ON DUPLICATE KEY UPDATE content_json=VALUES(content_json), updated_at=VALUES(updated_at)',
+      ].join('\n'));
+      return;
+    }
     fs.writeFileSync(fullPath, JSON.stringify(items, null, 2), 'utf8');
   }
 

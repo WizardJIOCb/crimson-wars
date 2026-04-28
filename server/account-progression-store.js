@@ -1,5 +1,6 @@
 ﻿const fs = require('fs');
 const Database = require('better-sqlite3');
+const { createMysqlSyncClient, escapeSql, jsonObjectSql } = require('./mysql-sync');
 
 function nowMs() {
   return Date.now();
@@ -60,11 +61,16 @@ function createAccountProgressionStore({
   shardsFromKillsMul,
   shardsFromBossKillsMul,
   shardsFromSurvivalSecMul,
+  mysql,
 }) {
-  fs.mkdirSync(dataDir, { recursive: true });
-  const db = new Database(dbPath);
-  db.pragma('journal_mode = WAL');
-  db.pragma('synchronous = NORMAL');
+  const useMysql = !!mysql?.enabled;
+  const mysqlClient = useMysql ? createMysqlSyncClient(mysql) : null;
+  if (!useMysql) fs.mkdirSync(dataDir, { recursive: true });
+  const db = useMysql ? null : new Database(dbPath);
+  if (!useMysql) {
+    db.pragma('journal_mode = WAL');
+    db.pragma('synchronous = NORMAL');
+  }
 
   const heroes = Array.isArray(heroDefs) ? heroDefs.map((h) => ({ ...h })) : [];
   const heroMap = Object.fromEntries(heroes.map((hero) => [hero.id, hero]));
@@ -88,7 +94,8 @@ function createAccountProgressionStore({
   }
   const cardDefMap = Object.fromEntries(cardDefs.map((card) => [card.id, card]));
 
-  db.exec([
+  if (!useMysql) {
+    db.exec([
     'CREATE TABLE IF NOT EXISTS account_progression (',
     '  player_id INTEGER PRIMARY KEY,',
     '  account_xp INTEGER NOT NULL DEFAULT 0,',
@@ -111,46 +118,128 @@ function createAccountProgressionStore({
     '  updated_at INTEGER NOT NULL,',
     '  FOREIGN KEY(player_id) REFERENCES player_accounts(id) ON DELETE CASCADE',
     ');',
-  ].join('\n'));
+    ].join('\n'));
 
-  const columns = db.prepare('PRAGMA table_info(account_progression)').all();
-  if (!columns.some((col) => col.name === 'hero_cards_json')) {
-    db.exec('ALTER TABLE account_progression ADD COLUMN hero_cards_json TEXT NOT NULL DEFAULT "{}"');
-  }
-  if (!columns.some((col) => col.name === 'total_runs')) {
-    db.exec('ALTER TABLE account_progression ADD COLUMN total_runs INTEGER NOT NULL DEFAULT 0');
-  }
-  if (!columns.some((col) => col.name === 'hero_runs_json')) {
-    db.exec('ALTER TABLE account_progression ADD COLUMN hero_runs_json TEXT NOT NULL DEFAULT "{}"');
-  }
-  if (!columns.some((col) => col.name === 'hero_levels_json')) {
-    db.exec('ALTER TABLE account_progression ADD COLUMN hero_levels_json TEXT NOT NULL DEFAULT "{}"');
-  }
-  if (!columns.some((col) => col.name === 'hero_xp_json')) {
-    db.exec('ALTER TABLE account_progression ADD COLUMN hero_xp_json TEXT NOT NULL DEFAULT "{}"');
-  }
-  if (!columns.some((col) => col.name === 'hero_skill_levels_json')) {
-    db.exec('ALTER TABLE account_progression ADD COLUMN hero_skill_levels_json TEXT NOT NULL DEFAULT "{}"');
-  }
-  if (!columns.some((col) => col.name === 'salvage')) {
-    db.exec('ALTER TABLE account_progression ADD COLUMN salvage INTEGER NOT NULL DEFAULT 0');
-  }
-  if (!columns.some((col) => col.name === 'inventory_items_json')) {
-    db.exec('ALTER TABLE account_progression ADD COLUMN inventory_items_json TEXT NOT NULL DEFAULT "[]"');
-  }
-  if (!columns.some((col) => col.name === 'hero_equipment_json')) {
-    db.exec('ALTER TABLE account_progression ADD COLUMN hero_equipment_json TEXT NOT NULL DEFAULT "{}"');
+    const columns = db.prepare('PRAGMA table_info(account_progression)').all();
+    if (!columns.some((col) => col.name === 'hero_cards_json')) {
+      db.exec('ALTER TABLE account_progression ADD COLUMN hero_cards_json TEXT NOT NULL DEFAULT "{}"');
+    }
+    if (!columns.some((col) => col.name === 'total_runs')) {
+      db.exec('ALTER TABLE account_progression ADD COLUMN total_runs INTEGER NOT NULL DEFAULT 0');
+    }
+    if (!columns.some((col) => col.name === 'hero_runs_json')) {
+      db.exec('ALTER TABLE account_progression ADD COLUMN hero_runs_json TEXT NOT NULL DEFAULT "{}"');
+    }
+    if (!columns.some((col) => col.name === 'hero_levels_json')) {
+      db.exec('ALTER TABLE account_progression ADD COLUMN hero_levels_json TEXT NOT NULL DEFAULT "{}"');
+    }
+    if (!columns.some((col) => col.name === 'hero_xp_json')) {
+      db.exec('ALTER TABLE account_progression ADD COLUMN hero_xp_json TEXT NOT NULL DEFAULT "{}"');
+    }
+    if (!columns.some((col) => col.name === 'hero_skill_levels_json')) {
+      db.exec('ALTER TABLE account_progression ADD COLUMN hero_skill_levels_json TEXT NOT NULL DEFAULT "{}"');
+    }
+    if (!columns.some((col) => col.name === 'salvage')) {
+      db.exec('ALTER TABLE account_progression ADD COLUMN salvage INTEGER NOT NULL DEFAULT 0');
+    }
+    if (!columns.some((col) => col.name === 'inventory_items_json')) {
+      db.exec('ALTER TABLE account_progression ADD COLUMN inventory_items_json TEXT NOT NULL DEFAULT "[]"');
+    }
+    if (!columns.some((col) => col.name === 'hero_equipment_json')) {
+      db.exec('ALTER TABLE account_progression ADD COLUMN hero_equipment_json TEXT NOT NULL DEFAULT "{}"');
+    }
   }
 
-  const stmtGet = db.prepare('SELECT * FROM account_progression WHERE player_id = ? LIMIT 1');
-  const stmtInsert = db.prepare([
+  const progressionJsonSql = jsonObjectSql({
+    player_id: 'player_id',
+    account_xp: 'account_xp',
+    account_level: 'account_level',
+    account_skill_points: 'account_skill_points',
+    shards: 'shards',
+    active_hero: 'active_hero',
+    unlocked_heroes_json: 'unlocked_heroes_json',
+    hero_nodes_json: 'hero_nodes_json',
+    hero_cards_json: 'hero_cards_json',
+    hero_levels_json: 'hero_levels_json',
+    hero_xp_json: 'hero_xp_json',
+    hero_skill_levels_json: 'hero_skill_levels_json',
+    salvage: 'salvage',
+    inventory_items_json: 'inventory_items_json',
+    hero_equipment_json: 'hero_equipment_json',
+    total_runs: 'total_runs',
+    hero_runs_json: 'hero_runs_json',
+    created_at: 'created_at',
+    updated_at: 'updated_at',
+  });
+  const stmtGet = useMysql
+    ? {
+      get(playerId) {
+        return mysqlClient.queryJsonOne(`SELECT ${progressionJsonSql} FROM account_progression WHERE player_id = ${escapeSql(Number(playerId) || 0)} LIMIT 1`);
+      },
+    }
+    : db.prepare('SELECT * FROM account_progression WHERE player_id = ? LIMIT 1');
+  const stmtInsert = useMysql ? {
+    run(payload) {
+      mysqlClient.execute([
+        'INSERT INTO account_progression (',
+        '  player_id, account_xp, account_level, account_skill_points, shards, active_hero, unlocked_heroes_json, hero_nodes_json, hero_cards_json, hero_levels_json, hero_xp_json, hero_skill_levels_json, salvage, inventory_items_json, hero_equipment_json, total_runs, hero_runs_json, created_at, updated_at',
+        ') VALUES (',
+        `  ${[
+          payload.playerId,
+          payload.accountXp,
+          payload.accountLevel,
+          payload.accountSkillPoints,
+          payload.shards,
+          payload.activeHero,
+          payload.unlockedHeroesJson,
+          payload.heroNodesJson,
+          payload.heroCardsJson,
+          payload.heroLevelsJson,
+          payload.heroXpJson,
+          payload.heroSkillLevelsJson,
+          payload.salvage,
+          payload.inventoryItemsJson,
+          payload.heroEquipmentJson,
+          payload.totalRuns,
+          payload.heroRunsJson,
+          payload.createdAt,
+          payload.updatedAt,
+        ].map(escapeSql).join(', ')}`,
+        ')',
+      ].join('\n'));
+    },
+  } : db.prepare([
     'INSERT INTO account_progression (',
     '  player_id, account_xp, account_level, account_skill_points, shards, active_hero, unlocked_heroes_json, hero_nodes_json, hero_cards_json, hero_levels_json, hero_xp_json, hero_skill_levels_json, salvage, inventory_items_json, hero_equipment_json, total_runs, hero_runs_json, created_at, updated_at',
     ') VALUES (',
     '  @playerId, @accountXp, @accountLevel, @accountSkillPoints, @shards, @activeHero, @unlockedHeroesJson, @heroNodesJson, @heroCardsJson, @heroLevelsJson, @heroXpJson, @heroSkillLevelsJson, @salvage, @inventoryItemsJson, @heroEquipmentJson, @totalRuns, @heroRunsJson, @createdAt, @updatedAt',
     ')',
   ].join('\n'));
-  const stmtUpdate = db.prepare([
+  const stmtUpdate = useMysql ? {
+    run(payload) {
+      mysqlClient.execute([
+        'UPDATE account_progression SET',
+        `  account_xp=${escapeSql(payload.accountXp)},`,
+        `  account_level=${escapeSql(payload.accountLevel)},`,
+        `  account_skill_points=${escapeSql(payload.accountSkillPoints)},`,
+        `  shards=${escapeSql(payload.shards)},`,
+        `  active_hero=${escapeSql(payload.activeHero)},`,
+        `  unlocked_heroes_json=${escapeSql(payload.unlockedHeroesJson)},`,
+        `  hero_nodes_json=${escapeSql(payload.heroNodesJson)},`,
+        `  hero_cards_json=${escapeSql(payload.heroCardsJson)},`,
+        `  hero_levels_json=${escapeSql(payload.heroLevelsJson)},`,
+        `  hero_xp_json=${escapeSql(payload.heroXpJson)},`,
+        `  hero_skill_levels_json=${escapeSql(payload.heroSkillLevelsJson)},`,
+        `  salvage=${escapeSql(payload.salvage)},`,
+        `  inventory_items_json=${escapeSql(payload.inventoryItemsJson)},`,
+        `  hero_equipment_json=${escapeSql(payload.heroEquipmentJson)},`,
+        `  total_runs=${escapeSql(payload.totalRuns)},`,
+        `  hero_runs_json=${escapeSql(payload.heroRunsJson)},`,
+        `  updated_at=${escapeSql(payload.updatedAt)}`,
+        `WHERE player_id=${escapeSql(payload.playerId)}`,
+      ].join('\n'));
+    },
+  } : db.prepare([
     'UPDATE account_progression SET',
     '  account_xp=@accountXp,',
     '  account_level=@accountLevel,',

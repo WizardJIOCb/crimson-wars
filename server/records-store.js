@@ -1,5 +1,6 @@
 const fs = require('fs');
 const Database = require('better-sqlite3');
+const { createMysqlSyncClient, escapeSql, jsonObjectSql } = require('./mysql-sync');
 
 function parseRecordRunDetails(raw) {
   if (!raw) return null;
@@ -72,7 +73,212 @@ function isBetterRecord(next, prev) {
   return nt > pt;
 }
 
-function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPageSize }) {
+function createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql }) {
+  const client = createMysqlSyncClient(mysql);
+  const records = [];
+  const runHistory = [];
+  const PLAYER_RUN_HISTORY_LIMIT = 50000;
+  const PLAYER_RUN_HISTORY_PAGE_SIZE = 20;
+  const MEMORY_RUN_HISTORY_LIMIT = 300;
+  const recordJson = jsonObjectSql({
+    id: 'id',
+    name: 'name',
+    attempts: 'attempts',
+    kills: 'kills',
+    score: 'score',
+    roomCode: 'room_code',
+    durationSec: 'duration_sec',
+    at: 'at',
+    runDetails: 'run_details',
+    runReplay: 'run_replay',
+  });
+  const playerRunJson = jsonObjectSql({
+    id: 'id',
+    name: 'name',
+    kills: 'kills',
+    score: 'score',
+    roomCode: 'room_code',
+    durationSec: 'duration_sec',
+    at: 'at',
+    runDetails: 'run_details',
+    runReplay: 'run_replay',
+  });
+
+  function loadRecordsFromDb() {
+    const rows = client.queryJsonRows([
+      `SELECT ${recordJson}`,
+      'FROM records',
+      'ORDER BY kills DESC, score DESC, at DESC',
+      `LIMIT ${Math.max(1, Number(leaderboardLimit) || 50) * 5}`,
+    ].join('\n'));
+    records.length = 0;
+    const seen = new Set();
+    for (const row of rows) {
+      const normalized = normalizeRecordEntry(row);
+      const key = recordNameKey(normalized.name);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      records.push(normalized);
+      if (records.length >= leaderboardLimit) break;
+    }
+  }
+
+  function listRecordsForLobby(page = 1, pageSize = leaderboardPageSize) {
+    loadRecordsFromDb();
+    const total = records.length;
+    const size = Math.max(1, Math.min(50, Math.floor(pageSize) || leaderboardPageSize));
+    const totalPages = Math.max(1, Math.ceil(total / size));
+    const currentPage = Math.max(1, Math.min(totalPages, Math.floor(page) || 1));
+    const start = (currentPage - 1) * size;
+    const items = records.slice(start, start + size).map((entry) => publicRecordEntry(entry));
+    return { page: currentPage, pageSize: size, total, totalPages, items };
+  }
+
+  function pushRecord(entry) {
+    const normalized = normalizeRecordEntry(entry);
+    runHistory.unshift(normalized);
+    if (runHistory.length > MEMORY_RUN_HISTORY_LIMIT) runHistory.length = MEMORY_RUN_HISTORY_LIMIT;
+
+    const key = recordNameKey(normalized.name);
+    const existingIndex = records.findIndex((x) => recordNameKey(x.name) === key);
+    if (existingIndex >= 0) {
+      const existing = records[existingIndex];
+      const attempts = Math.max(1, Number(existing?.attempts) || 1) + 1;
+      records[existingIndex] = isBetterRecord(normalized, existing)
+        ? { ...normalized, attempts }
+        : { ...existing, attempts };
+    } else {
+      records.push(normalized);
+    }
+    records.sort((a, b) => (b.kills - a.kills) || (b.score - a.score) || (b.at - a.at));
+    if (records.length > leaderboardLimit) records.length = leaderboardLimit;
+    const persistedRecord = records.find((x) => recordNameKey(x.name) === key) || normalized;
+
+    try {
+      client.execute([
+        'INSERT INTO player_runs (name, name_key, kills, score, room_code, duration_sec, at, run_details, run_replay)',
+        `VALUES (${[
+          normalized.name,
+          recordNameKey(normalized.name),
+          normalized.kills,
+          normalized.score,
+          normalized.roomCode,
+          normalized.durationSec,
+          normalized.at,
+          normalized.runDetails ? JSON.stringify(normalized.runDetails) : null,
+          normalized.runReplay ? JSON.stringify(normalized.runReplay) : null,
+        ].map(escapeSql).join(', ')})`,
+      ].join('\n'));
+      client.execute(`DELETE FROM records WHERE LOWER(name)=LOWER(${escapeSql(normalized.name)})`);
+      client.execute([
+        'INSERT INTO records (name, attempts, kills, score, room_code, duration_sec, at, run_details, run_replay)',
+        `VALUES (${[
+          persistedRecord.name,
+          persistedRecord.attempts,
+          persistedRecord.kills,
+          persistedRecord.score,
+          persistedRecord.roomCode,
+          persistedRecord.durationSec,
+          persistedRecord.at,
+          persistedRecord.runDetails ? JSON.stringify(persistedRecord.runDetails) : null,
+          persistedRecord.runReplay ? JSON.stringify(persistedRecord.runReplay) : null,
+        ].map(escapeSql).join(', ')})`,
+      ].join('\n'));
+      client.execute(`DELETE FROM records WHERE id NOT IN (SELECT id FROM (SELECT id FROM records ORDER BY kills DESC, score DESC, at DESC LIMIT ${Math.max(1, Number(leaderboardLimit) || 50)}) keep_records)`);
+      client.execute(`DELETE FROM player_runs WHERE id NOT IN (SELECT id FROM (SELECT id FROM player_runs ORDER BY at DESC LIMIT ${PLAYER_RUN_HISTORY_LIMIT}) keep_runs)`);
+    } catch (err) {
+      console.error('Records MySQL write failed:', err.message);
+    }
+  }
+
+  function listPlayerRunsByName(name, page = 1, pageSize = PLAYER_RUN_HISTORY_PAGE_SIZE) {
+    const normalizedNameKey = recordNameKey(name);
+    if (!normalizedNameKey) return { page: 1, pageSize: PLAYER_RUN_HISTORY_PAGE_SIZE, total: 0, totalPages: 1, items: [] };
+    const size = Math.max(1, Math.min(50, Math.floor(pageSize) || PLAYER_RUN_HISTORY_PAGE_SIZE));
+    const total = Math.max(0, Number(client.queryOne(`SELECT COUNT(1) AS total FROM player_runs WHERE name_key = ${escapeSql(normalizedNameKey)}`)?.total) || 0);
+    const totalPages = Math.max(1, Math.ceil(total / size));
+    const currentPage = Math.max(1, Math.min(totalPages, Math.floor(page) || 1));
+    const offset = (currentPage - 1) * size;
+    const rows = client.queryJsonRows([
+      `SELECT ${playerRunJson}`,
+      'FROM player_runs',
+      `WHERE name_key = ${escapeSql(normalizedNameKey)}`,
+      'ORDER BY at DESC',
+      `LIMIT ${size} OFFSET ${offset}`,
+    ].join('\n'));
+    return { page: currentPage, pageSize: size, total, totalPages, items: rows.map((row) => publicRecordEntry(row)) };
+  }
+
+  function listLatestPlayerRuns(page = 1, pageSize = PLAYER_RUN_HISTORY_PAGE_SIZE) {
+    const size = Math.max(1, Math.min(50, Math.floor(pageSize) || PLAYER_RUN_HISTORY_PAGE_SIZE));
+    const total = Math.max(0, Number(client.queryOne('SELECT COUNT(1) AS total FROM player_runs')?.total) || 0);
+    const totalPages = Math.max(1, Math.ceil(total / size));
+    const currentPage = Math.max(1, Math.min(totalPages, Math.floor(page) || 1));
+    const offset = (currentPage - 1) * size;
+    const rows = client.queryJsonRows([
+      `SELECT ${playerRunJson}`,
+      'FROM player_runs',
+      'ORDER BY at DESC',
+      `LIMIT ${size} OFFSET ${offset}`,
+    ].join('\n'));
+    return { page: currentPage, pageSize: size, total, totalPages, items: rows.map((row) => publicRecordEntry(row)) };
+  }
+
+  function getPlayerRunReplayByNameAndId(name, runId) {
+    const id = Math.max(0, Number(runId) || 0);
+    const nameKey = recordNameKey(name);
+    if (!id || !nameKey) return null;
+    const row = client.queryJsonOne([
+      `SELECT ${playerRunJson}`,
+      'FROM player_runs',
+      `WHERE id = ${escapeSql(id)} AND name_key = ${escapeSql(nameKey)}`,
+      'LIMIT 1',
+    ].join('\n'));
+    if (!row) return null;
+    return { id: row.id, name: row.name, kills: row.kills, score: row.score, roomCode: row.roomCode, durationSec: row.durationSec, at: row.at, replay: parseRecordReplay(row.runReplay) };
+  }
+
+  function getPlayerRunReplayById(runId) {
+    const id = Math.max(0, Number(runId) || 0);
+    if (!id) return null;
+    const row = client.queryJsonOne([
+      `SELECT ${playerRunJson}`,
+      'FROM player_runs',
+      `WHERE id = ${escapeSql(id)}`,
+      'LIMIT 1',
+    ].join('\n'));
+    if (!row) return null;
+    return { id: row.id, name: row.name, kills: row.kills, score: row.score, roomCode: row.roomCode, durationSec: row.durationSec, at: row.at, replay: parseRecordReplay(row.runReplay) };
+  }
+
+  function getRecordReplay(recordId) {
+    const id = Math.max(0, Number(recordId) || 0);
+    if (!id) return null;
+    const row = client.queryJsonOne([
+      `SELECT ${recordJson}`,
+      'FROM records',
+      `WHERE id = ${escapeSql(id)}`,
+      'LIMIT 1',
+    ].join('\n'));
+    if (!row) return null;
+    return { id: row.id, name: row.name, kills: row.kills, score: row.score, roomCode: row.roomCode, durationSec: row.durationSec, at: row.at, replay: parseRecordReplay(row.runReplay) };
+  }
+
+  loadRecordsFromDb();
+  console.log(`Records MySQL ready (loaded ${records.length})`);
+  return {
+    listRecordsForLobby,
+    listPlayerRunsByName,
+    listLatestPlayerRuns,
+    pushRecord,
+    getRecordReplay,
+    getPlayerRunReplayById,
+    getPlayerRunReplayByNameAndId,
+  };
+}
+
+function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPageSize, mysql }) {
+  if (mysql?.enabled) return createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql });
   const records = [];
   const runHistory = [];
   let recordsDb = null;

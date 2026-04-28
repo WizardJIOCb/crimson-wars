@@ -15,6 +15,7 @@ const { createRuntimeRegistryStore } = require('./server/runtime-registry-store'
 const { createSkillsStore } = require('./server/skills-store');
 const { createAccountProgressionStore } = require('./server/account-progression-store');
 const { createNewsStore } = require('./server/news-store');
+const { isMysqlStoreEnabled, createMysqlSyncClient } = require('./server/mysql-sync');
 const PORT = process.env.PORT || 8080;
 const IS_PROD = process.env.NODE_ENV === 'production';
 const DEV_CHEATS_ENABLED = (process.env.DEV_CHEATS_ENABLED || '1') !== '0';
@@ -35,6 +36,8 @@ const VK_CLIENT_ID = (process.env.VK_CLIENT_ID || '').toString().trim();
 const VK_CLIENT_SECRET = (process.env.VK_CLIENT_SECRET || '').toString().trim();
 const VK_REDIRECT_URI = (process.env.VK_REDIRECT_URI || '').toString().trim();
 const VK_SERVICE_TOKEN = (process.env.VK_SERVICE_TOKEN || '').toString().trim();
+const USE_MYSQL_STORE = isMysqlStoreEnabled();
+const MYSQL_STORE = USE_MYSQL_STORE ? { enabled: true } : { enabled: false };
 const CHAT_MAX_LEN = 180;
 const CHAT_HISTORY_LIMIT = 50;
 const CHAT_WELCOME_LIMIT = 30;
@@ -383,10 +386,12 @@ const adminAuthStore = createAdminAuthStore({
   bootstrapLogin: ADMIN_BOOTSTRAP_LOGIN,
   bootstrapPassword: ADMIN_BOOTSTRAP_PASSWORD,
   isProd: IS_PROD,
+  mysql: MYSQL_STORE,
 });
 const playerAuthStore = createPlayerAuthStore({
   dataDir: DATA_DIR,
   dbPath: PLAYER_AUTH_DB_PATH,
+  mysql: MYSQL_STORE,
 });
 const accountProgressionStore = createAccountProgressionStore({
   dataDir: DATA_DIR,
@@ -413,28 +418,33 @@ const accountProgressionStore = createAccountProgressionStore({
   shardsFromKillsMul: ACCOUNT_SHARDS_FROM_KILLS_MUL,
   shardsFromBossKillsMul: ACCOUNT_SHARDS_FROM_BOSS_KILLS_MUL,
   shardsFromSurvivalSecMul: ACCOUNT_SHARDS_FROM_SURVIVAL_SEC_MUL,
+  mysql: MYSQL_STORE,
 });
 const runtimeRegistryStore = createRuntimeRegistryStore({
   dataDir: DATA_DIR,
   dbPath: RUNTIME_REGISTRY_DB_PATH,
   instanceId: INSTANCE_ID,
+  mysql: MYSQL_STORE,
 });
 const recordsStore = createRecordsStore({
   dataDir: DATA_DIR,
   dbPath: RECORDS_DB_PATH,
   leaderboardLimit: LEADERBOARD_LIMIT,
   leaderboardPageSize: LEADERBOARD_PAGE_SIZE,
+  mysql: MYSQL_STORE,
 });
 
 const skillsStore = createSkillsStore({
   dataDir: DATA_DIR,
   skillsConfigPath: SKILLS_CONFIG_PATH,
   defaultSkillDefs: DEFAULT_SKILL_DEFS,
+  mysql: MYSQL_STORE,
 });
 
 const newsStore = createNewsStore({
   dataDir: DATA_DIR,
   filePath: path.join(DATA_DIR, 'news.json'),
+  mysql: MYSQL_STORE,
 });
 const progressionCatalog = accountProgressionStore.getCatalogPayload();
 const heroDefsById = Object.fromEntries((progressionCatalog.heroes || []).map((hero) => [hero.id, hero]));
@@ -478,14 +488,23 @@ const LEADERBOARD_MODES = {
 
 let leaderboardAuthDb = null;
 let leaderboardRecordsDb = null;
+let leaderboardMysqlDb = null;
+
+function getLeaderboardMysqlDb() {
+  if (!USE_MYSQL_STORE) return null;
+  if (!leaderboardMysqlDb) leaderboardMysqlDb = createMysqlSyncClient(MYSQL_STORE);
+  return leaderboardMysqlDb;
+}
 
 function getLeaderboardAuthDb() {
+  if (USE_MYSQL_STORE) return getLeaderboardMysqlDb();
   if (leaderboardAuthDb) return leaderboardAuthDb;
   try { leaderboardAuthDb = new Database(PLAYER_AUTH_DB_PATH, { readonly: true }); } catch { leaderboardAuthDb = null; }
   return leaderboardAuthDb;
 }
 
 function getLeaderboardRecordsDb() {
+  if (USE_MYSQL_STORE) return getLeaderboardMysqlDb();
   if (leaderboardRecordsDb) return leaderboardRecordsDb;
   try { leaderboardRecordsDb = new Database(RECORDS_DB_PATH, { readonly: true }); } catch { leaderboardRecordsDb = null; }
   return leaderboardRecordsDb;

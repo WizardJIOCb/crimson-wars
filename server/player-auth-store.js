@@ -1,6 +1,7 @@
 const fs = require('fs');
 const crypto = require('crypto');
 const Database = require('better-sqlite3');
+const { createMysqlSyncClient, escapeSql, jsonObjectSql } = require('./mysql-sync');
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 const NICKNAME_MIN_LENGTH = 2;
@@ -96,7 +97,373 @@ function sanitizeNicknameSeed(value, fallback = 'Player') {
   return normalized;
 }
 
-function createPlayerAuthStore({ dataDir, dbPath }) {
+function createMysqlPlayerAuthStore({ mysql }) {
+  const client = createMysqlSyncClient(mysql);
+  const playerJson = jsonObjectSql({
+    id: 'id',
+    nickname: 'nickname',
+    nickname_key: 'nickname_key',
+    is_active: 'is_active',
+    created_at: 'created_at',
+    updated_at: 'updated_at',
+    last_login_at: 'last_login_at',
+  });
+  const playerSecretJson = jsonObjectSql({
+    id: 'id',
+    nickname: 'nickname',
+    nickname_key: 'nickname_key',
+    password_hash: 'password_hash',
+    is_active: 'is_active',
+    created_at: 'created_at',
+    updated_at: 'updated_at',
+    last_login_at: 'last_login_at',
+  });
+  const identityJson = jsonObjectSql({
+    id: 'id',
+    player_account_id: 'player_account_id',
+    provider: 'provider',
+    provider_user_id: 'provider_user_id',
+    provider_email: 'provider_email',
+    created_at: 'created_at',
+  });
+  const sessionJson = jsonObjectSql({
+    session_id: 's.id',
+    session_player_id: 's.player_id',
+    session_created_at: 's.created_at',
+    session_expires_at: 's.expires_at',
+    session_last_seen_at: 's.last_seen_at',
+    id: 'p.id',
+    nickname: 'p.nickname',
+    nickname_key: 'p.nickname_key',
+    is_active: 'p.is_active',
+    created_at: 'p.created_at',
+    updated_at: 'p.updated_at',
+    last_login_at: 'p.last_login_at',
+  });
+
+  function pruneExpiredSessions() {
+    client.execute(`DELETE FROM player_sessions WHERE expires_at < ${escapeSql(nowMs())}`);
+  }
+
+  function getAccountRowByNicknameKey(nicknameKey, withSecret = false) {
+    return client.queryJsonOne(`SELECT ${withSecret ? playerSecretJson : playerJson} FROM player_accounts WHERE nickname_key = ${escapeSql(nicknameKey)} LIMIT 1`);
+  }
+
+  function getAccountRowById(id, withSecret = false) {
+    return client.queryJsonOne(`SELECT ${withSecret ? playerSecretJson : playerJson} FROM player_accounts WHERE id = ${escapeSql(Number(id) || 0)} LIMIT 1`);
+  }
+
+  function listIdentities(playerId) {
+    return client.queryJsonRows([
+      `SELECT ${identityJson}`,
+      'FROM player_identities',
+      `WHERE player_account_id = ${escapeSql(Number(playerId) || 0)}`,
+      'ORDER BY provider ASC',
+    ].join('\n')).map(parseIdentityRow);
+  }
+
+  function getIdentityByProviderUserId(provider, providerUserId) {
+    return parseIdentityRow(client.queryJsonOne([
+      `SELECT ${identityJson}`,
+      'FROM player_identities',
+      `WHERE provider = ${escapeSql(provider)} AND provider_user_id = ${escapeSql(providerUserId)}`,
+      'LIMIT 1',
+    ].join('\n')));
+  }
+
+  function createSession(playerId) {
+    pruneExpiredSessions();
+    const token = randomToken(32);
+    const now = nowMs();
+    client.execute([
+      'INSERT INTO player_sessions (player_id, token_hash, created_at, expires_at, last_seen_at)',
+      `VALUES (${escapeSql(playerId)}, ${escapeSql(hashSessionToken(token))}, ${escapeSql(now)}, ${escapeSql(now + SESSION_TTL_MS)}, ${escapeSql(now)})`,
+    ].join('\n'));
+    client.execute(`UPDATE player_accounts SET last_login_at = ${escapeSql(now)}, updated_at = ${escapeSql(now)} WHERE id = ${escapeSql(playerId)}`);
+    return token;
+  }
+
+  function getAccountById(id) {
+    return parsePlayerRow(getAccountRowById(id));
+  }
+
+  function getAccountByNickname(nickname) {
+    const validation = validateNickname(nickname);
+    if (!validation.ok) return null;
+    return parsePlayerRow(getAccountRowByNicknameKey(validation.nicknameKey));
+  }
+
+  function getAccountWithSecretByNickname(nickname) {
+    const validation = validateNickname(nickname);
+    if (!validation.ok) return null;
+    return getAccountRowByNicknameKey(validation.nicknameKey, true);
+  }
+
+  function getSession(token) {
+    if (!token) return null;
+    pruneExpiredSessions();
+    const tokenHash = hashSessionToken(token);
+    const row = client.queryJsonOne([
+      `SELECT ${sessionJson}`,
+      'FROM player_sessions s',
+      'JOIN player_accounts p ON p.id = s.player_id',
+      `WHERE s.token_hash = ${escapeSql(tokenHash)}`,
+      'LIMIT 1',
+    ].join('\n'));
+    if (!row) return null;
+    if (!row.is_active) {
+      client.execute(`DELETE FROM player_sessions WHERE player_id = ${escapeSql(row.session_player_id)}`);
+      return null;
+    }
+    const now = nowMs();
+    if (Number(row.session_expires_at) < now) {
+      client.execute(`DELETE FROM player_sessions WHERE token_hash = ${escapeSql(tokenHash)}`);
+      return null;
+    }
+    client.execute(`UPDATE player_sessions SET last_seen_at = ${escapeSql(now)}, expires_at = ${escapeSql(now + SESSION_TTL_MS)} WHERE id = ${escapeSql(row.session_id)}`);
+    return {
+      sessionId: row.session_id,
+      player: parsePlayerRow(row),
+      identities: listIdentities(row.id),
+    };
+  }
+
+  function deleteSession(token) {
+    if (!token) return;
+    client.execute(`DELETE FROM player_sessions WHERE token_hash = ${escapeSql(hashSessionToken(token))}`);
+  }
+
+  function register(nickname, password) {
+    const validation = validateNickname(nickname);
+    if (!validation.ok) return { ok: false, code: 400, message: validation.message };
+    const normalizedPassword = (password || '').toString();
+    if (normalizedPassword.length < PASSWORD_MIN_LENGTH) {
+      return { ok: false, code: 400, message: `Password must be at least ${PASSWORD_MIN_LENGTH} chars` };
+    }
+    if (getAccountRowByNicknameKey(validation.nicknameKey)) {
+      return { ok: false, code: 409, message: 'Nickname is already registered' };
+    }
+    const now = nowMs();
+    const id = client.insert([
+      'INSERT INTO player_accounts (nickname, nickname_key, password_hash, is_active, created_at, updated_at, last_login_at)',
+      `VALUES (${escapeSql(validation.nickname)}, ${escapeSql(validation.nicknameKey)}, ${escapeSql(hashPassword(normalizedPassword))}, 1, ${escapeSql(now)}, ${escapeSql(now)}, 0)`,
+    ].join('\n'));
+    const account = getAccountById(id);
+    const token = createSession(account.id);
+    return { ok: true, player: account, token, identities: [] };
+  }
+
+  function authenticate(nickname, password) {
+    const row = getAccountWithSecretByNickname(nickname);
+    if (!row || !row.is_active) return { ok: false, code: 401, message: 'Invalid nickname or password' };
+    if (!verifyPassword(password, row.password_hash)) return { ok: false, code: 401, message: 'Invalid nickname or password' };
+    const token = createSession(row.id);
+    return {
+      ok: true,
+      token,
+      player: parsePlayerRow(row),
+      identities: listIdentities(row.id),
+    };
+  }
+
+  function updatePassword(nickname, password) {
+    const validation = validateNickname(nickname);
+    if (!validation.ok) return { ok: false, code: 400, message: validation.message };
+    const normalizedPassword = (password || '').toString();
+    if (normalizedPassword.length < PASSWORD_MIN_LENGTH) {
+      return { ok: false, code: 400, message: `Password must be at least ${PASSWORD_MIN_LENGTH} chars` };
+    }
+    const row = getAccountWithSecretByNickname(validation.nickname);
+    if (!row || !row.is_active) return { ok: false, code: 404, message: 'Player not found' };
+    const now = nowMs();
+    client.execute(`UPDATE player_accounts SET password_hash = ${escapeSql(hashPassword(normalizedPassword))}, updated_at = ${escapeSql(now)} WHERE id = ${escapeSql(row.id)}`);
+    client.execute(`DELETE FROM player_sessions WHERE player_id = ${escapeSql(row.id)}`);
+    return {
+      ok: true,
+      player: parsePlayerRow({ ...row, updated_at: now }),
+      message: `Password updated for ${validation.nickname}`,
+    };
+  }
+
+  function getNicknameStatus(nickname) {
+    const validation = validateNickname(nickname);
+    if (!validation.ok) {
+      return {
+        ok: false,
+        code: 400,
+        message: validation.message,
+        nickname: normalizeNickname(nickname),
+        nicknameKey: normalizeNicknameKey(nickname),
+        isRegistered: false,
+      };
+    }
+    const account = parsePlayerRow(getAccountRowByNicknameKey(validation.nicknameKey));
+    return {
+      ok: true,
+      nickname: validation.nickname,
+      nicknameKey: validation.nicknameKey,
+      isRegistered: !!account,
+      player: account,
+    };
+  }
+
+  function countAccounts() {
+    const row = client.queryOne('SELECT COUNT(*) AS total FROM player_accounts WHERE is_active = 1');
+    return Math.max(0, Number(row?.total) || 0);
+  }
+
+  function createProviderPlaceholder(playerId, provider, providerUserId, providerEmail = '') {
+    const normalizedProvider = (provider || '').toString().trim().toLowerCase();
+    if (!PROVIDERS.has(normalizedProvider)) return { ok: false, code: 400, message: 'Unsupported provider' };
+    if (!getAccountById(playerId)) return { ok: false, code: 404, message: 'Player not found' };
+    try {
+      client.execute([
+        'INSERT INTO player_identities (player_account_id, provider, provider_user_id, provider_email, created_at)',
+        `VALUES (${escapeSql(Number(playerId) || 0)}, ${escapeSql(normalizedProvider)}, ${escapeSql((providerUserId || '').toString().trim())}, ${escapeSql((providerEmail || '').toString().trim().slice(0, 200))}, ${escapeSql(nowMs())})`,
+      ].join('\n'));
+    } catch (err) {
+      return { ok: false, code: 409, message: err?.message || 'Identity already exists' };
+    }
+    return { ok: true, identities: listIdentities(playerId) };
+  }
+
+  function createUniqueExternalNickname(provider, nicknameBase) {
+    const providerPrefixMap = { google: 'Google', vk: 'VK', mailru: 'Mail' };
+    const prefix = providerPrefixMap[(provider || '').toString().trim().toLowerCase()] || 'Player';
+    const seed = sanitizeNicknameSeed(nicknameBase, prefix);
+    const variants = [seed];
+    if (!seed.toLowerCase().startsWith(prefix.toLowerCase())) variants.push(sanitizeNicknameSeed(`${prefix} ${seed}`, prefix));
+    variants.push(prefix);
+    for (const baseVariant of variants) {
+      const base = sanitizeNicknameSeed(baseVariant, prefix).slice(0, NICKNAME_MAX_LENGTH);
+      const initialValidation = validateNickname(base);
+      if (initialValidation.ok && !getAccountRowByNicknameKey(initialValidation.nicknameKey)) return initialValidation.nickname;
+      for (let attempt = 1; attempt <= 200; attempt += 1) {
+        const suffix = ` ${1000 + attempt}`;
+        const trimmedBase = base.slice(0, Math.max(1, NICKNAME_MAX_LENGTH - suffix.length)).trim();
+        const candidate = normalizeNickname(`${trimmedBase}${suffix}`);
+        const validation = validateNickname(candidate);
+        if (!validation.ok) continue;
+        if (!getAccountRowByNicknameKey(validation.nicknameKey)) return validation.nickname;
+      }
+    }
+    return normalizeNickname(`Player ${Date.now().toString().slice(-6)}`);
+  }
+
+  function isGenericExternalNickname(nickname, provider) {
+    const normalizedNickname = normalizeNickname(nickname).toLowerCase();
+    const normalizedProvider = (provider || '').toString().trim().toLowerCase();
+    const providerPrefixMap = {
+      google: ['google', 'google player'],
+      vk: ['vk', 'vk player', 'vk id', 'vk user', 'vk игрок'],
+      mailru: ['mail', 'mail ru', 'mail player'],
+    };
+    const prefixes = providerPrefixMap[normalizedProvider] || ['player'];
+    return prefixes.some((prefix) => normalizedNickname === prefix || normalizedNickname.startsWith(`${prefix} `));
+  }
+
+  function maybeRefreshExternalNickname(player, provider, nicknameBase) {
+    if (!player || !player.id || !nicknameBase) return player;
+    if (!isGenericExternalNickname(player.nickname, provider)) return player;
+    const seed = sanitizeNicknameSeed(nicknameBase, player.nickname);
+    if (!seed || isGenericExternalNickname(seed, provider)) return player;
+    const validation = validateNickname(seed);
+    let nextNickname = '';
+    if (validation.ok && validation.nicknameKey === normalizeNicknameKey(player.nickname)) return player;
+    if (validation.ok && !getAccountRowByNicknameKey(validation.nicknameKey)) nextNickname = validation.nickname;
+    else nextNickname = createUniqueExternalNickname(provider, seed);
+    if (!nextNickname || normalizeNicknameKey(nextNickname) === normalizeNicknameKey(player.nickname)) return player;
+    const nextValidation = validateNickname(nextNickname);
+    if (!nextValidation.ok) return player;
+    const now = nowMs();
+    client.execute(`UPDATE player_accounts SET nickname = ${escapeSql(nextValidation.nickname)}, nickname_key = ${escapeSql(nextValidation.nicknameKey)}, updated_at = ${escapeSql(now)} WHERE id = ${escapeSql(player.id)}`);
+    return getAccountById(player.id) || player;
+  }
+
+  function needsNicknameSetup(playerId) {
+    const player = getAccountById(playerId);
+    if (!player || !player.isActive) return false;
+    const identities = listIdentities(player.id);
+    return identities.some((identity) => isGenericExternalNickname(player.nickname, identity.provider));
+  }
+
+  function renamePlayer(playerId, nickname, { requireNicknameSetup = false } = {}) {
+    const player = getAccountById(playerId);
+    if (!player || !player.isActive) return { ok: false, code: 404, message: 'Player not found' };
+    if (requireNicknameSetup && !needsNicknameSetup(player.id)) return { ok: false, code: 400, message: 'Nickname setup is not required' };
+    const validation = validateNickname(nickname);
+    if (!validation.ok) return { ok: false, code: 400, message: validation.message };
+    const existing = parsePlayerRow(getAccountRowByNicknameKey(validation.nicknameKey));
+    if (existing && existing.id !== player.id) return { ok: false, code: 409, message: 'Nickname is already registered' };
+    const now = nowMs();
+    client.execute(`UPDATE player_accounts SET nickname = ${escapeSql(validation.nickname)}, nickname_key = ${escapeSql(validation.nicknameKey)}, updated_at = ${escapeSql(now)} WHERE id = ${escapeSql(player.id)}`);
+    const updatedPlayer = getAccountById(player.id);
+    return {
+      ok: true,
+      player: updatedPlayer,
+      identities: listIdentities(player.id),
+      needsNicknameSetup: needsNicknameSetup(player.id),
+    };
+  }
+
+  function authenticateExternal({ provider, providerUserId, providerEmail = '', nicknameBase = '' }) {
+    const normalizedProvider = (provider || '').toString().trim().toLowerCase();
+    const externalUserId = (providerUserId || '').toString().trim();
+    const externalEmail = (providerEmail || '').toString().trim().slice(0, 200);
+    if (!PROVIDERS.has(normalizedProvider)) return { ok: false, code: 400, message: 'Unsupported provider' };
+    if (!externalUserId) return { ok: false, code: 400, message: 'Provider user id is required' };
+    const existingIdentity = getIdentityByProviderUserId(normalizedProvider, externalUserId);
+    if (existingIdentity) {
+      let player = getAccountById(existingIdentity.playerAccountId || 0);
+      if (!player || !player.isActive) return { ok: false, code: 404, message: 'Player account is unavailable' };
+      player = maybeRefreshExternalNickname(player, normalizedProvider, nicknameBase);
+      const token = createSession(player.id);
+      return { ok: true, token, player, identities: listIdentities(player.id), createdAccount: false };
+    }
+
+    let player = null;
+    try {
+      const nickname = createUniqueExternalNickname(normalizedProvider, nicknameBase);
+      const validation = validateNickname(nickname);
+      if (!validation.ok) throw new Error(validation.message || 'Failed to generate nickname');
+      const now = nowMs();
+      const playerId = client.insert([
+        'INSERT INTO player_accounts (nickname, nickname_key, password_hash, is_active, created_at, updated_at, last_login_at)',
+        `VALUES (${escapeSql(validation.nickname)}, ${escapeSql(validation.nicknameKey)}, ${escapeSql(hashPassword(randomToken(24)))}, 1, ${escapeSql(now)}, ${escapeSql(now)}, 0)`,
+      ].join('\n'));
+      client.execute([
+        'INSERT INTO player_identities (player_account_id, provider, provider_user_id, provider_email, created_at)',
+        `VALUES (${escapeSql(playerId)}, ${escapeSql(normalizedProvider)}, ${escapeSql(externalUserId)}, ${escapeSql(externalEmail)}, ${escapeSql(now)})`,
+      ].join('\n'));
+      player = getAccountById(playerId);
+    } catch (err) {
+      return { ok: false, code: 500, message: err?.message || 'Failed to create external account' };
+    }
+    if (!player) return { ok: false, code: 500, message: 'Failed to create external account' };
+    const token = createSession(player.id);
+    return { ok: true, token, player, identities: listIdentities(player.id), createdAccount: true };
+  }
+
+  return {
+    validateNickname,
+    getAccountById,
+    getAccountByNickname,
+    getNicknameStatus,
+    countAccounts,
+    getSession,
+    deleteSession,
+    register,
+    authenticate,
+    authenticateExternal,
+    renamePlayer,
+    needsNicknameSetup,
+    updatePassword,
+    createProviderPlaceholder,
+  };
+}
+
+function createPlayerAuthStore({ dataDir, dbPath, mysql }) {
+  if (mysql?.enabled) return createMysqlPlayerAuthStore({ mysql });
   fs.mkdirSync(dataDir, { recursive: true });
   const db = new Database(dbPath);
   db.pragma('journal_mode = WAL');

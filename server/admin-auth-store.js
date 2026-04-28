@@ -1,6 +1,7 @@
 const fs = require('fs');
 const crypto = require('crypto');
 const Database = require('better-sqlite3');
+const { createMysqlSyncClient, escapeSql, jsonObjectSql } = require('./mysql-sync');
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 14;
 
@@ -54,7 +55,263 @@ function parseAdminRow(row) {
   };
 }
 
-function createAdminAuthStore({ dataDir, dbPath, bootstrapLogin, bootstrapPassword, isProd }) {
+function createMysqlAdminAuthStore({ bootstrapLogin, bootstrapPassword, isProd, mysql }) {
+  const client = createMysqlSyncClient(mysql);
+  const adminJson = jsonObjectSql({
+    id: 'id',
+    login: 'login',
+    login_key: 'login_key',
+    can_manage_admins: 'can_manage_admins',
+    is_active: 'is_active',
+    created_at: 'created_at',
+    updated_at: 'updated_at',
+    last_login_at: 'last_login_at',
+  });
+  const adminWithSecretJson = jsonObjectSql({
+    id: 'id',
+    login: 'login',
+    login_key: 'login_key',
+    password_hash: 'password_hash',
+    can_manage_admins: 'can_manage_admins',
+    is_active: 'is_active',
+    created_at: 'created_at',
+    updated_at: 'updated_at',
+    last_login_at: 'last_login_at',
+  });
+  const sessionJson = jsonObjectSql({
+    session_id: 's.id',
+    session_user_id: 's.user_id',
+    session_created_at: 's.created_at',
+    session_expires_at: 's.expires_at',
+    session_last_seen_at: 's.last_seen_at',
+    id: 'u.id',
+    login: 'u.login',
+    login_key: 'u.login_key',
+    can_manage_admins: 'u.can_manage_admins',
+    is_active: 'u.is_active',
+    created_at: 'u.created_at',
+    updated_at: 'u.updated_at',
+    last_login_at: 'u.last_login_at',
+  });
+
+  function pruneExpiredSessions() {
+    client.execute(`DELETE FROM admin_sessions WHERE expires_at < ${escapeSql(nowMs())}`);
+  }
+
+  function getUserRowByLoginKey(loginKey, withSecret = false) {
+    return client.queryJsonOne(`SELECT ${withSecret ? adminWithSecretJson : adminJson} FROM admin_users WHERE login_key = ${escapeSql(loginKey)} LIMIT 1`);
+  }
+
+  function getUserRowById(id) {
+    return client.queryJsonOne(`SELECT ${adminJson} FROM admin_users WHERE id = ${escapeSql(Number(id) || 0)} LIMIT 1`);
+  }
+
+  function ensureBootstrapAdmin() {
+    const login = normalizeLogin(bootstrapLogin || 'WizardJIOCb');
+    const loginKey = normalizeLoginKey(login);
+    let row = getUserRowByLoginKey(loginKey);
+    if (row) return parseAdminRow(row);
+    const password = (bootstrapPassword || '').toString();
+    if (!password && isProd) {
+      throw new Error('Missing bootstrap admin password for production');
+    }
+    const finalPassword = password || 'WizardJIOCb-local';
+    const now = nowMs();
+    const id = client.insert([
+      'INSERT INTO admin_users (login, login_key, password_hash, can_manage_admins, is_active, created_at, updated_at, last_login_at)',
+      `VALUES (${escapeSql(login)}, ${escapeSql(loginKey)}, ${escapeSql(hashPassword(finalPassword))}, 1, 1, ${escapeSql(now)}, ${escapeSql(now)}, 0)`,
+    ].join('\n'));
+    row = getUserRowById(id);
+    console.log(`Bootstrap admin ready: ${login}`);
+    if (!isProd) {
+      console.log(`Bootstrap admin password: ${finalPassword}`);
+    }
+    return parseAdminRow(row);
+  }
+
+  function listUsers() {
+    return client.queryJsonRows(`SELECT ${adminJson} FROM admin_users ORDER BY can_manage_admins DESC, login_key ASC`).map(parseAdminRow);
+  }
+
+  function getUserById(id) {
+    return parseAdminRow(getUserRowById(id));
+  }
+
+  function getUserWithSecretByLogin(login) {
+    const key = normalizeLoginKey(login);
+    if (!key) return null;
+    return getUserRowByLoginKey(key, true);
+  }
+
+  function createSession(userId) {
+    pruneExpiredSessions();
+    const token = randomToken(32);
+    const now = nowMs();
+    client.execute([
+      'INSERT INTO admin_sessions (user_id, token_hash, created_at, expires_at, last_seen_at)',
+      `VALUES (${escapeSql(userId)}, ${escapeSql(hashSessionToken(token))}, ${escapeSql(now)}, ${escapeSql(now + SESSION_TTL_MS)}, ${escapeSql(now)})`,
+    ].join('\n'));
+    client.execute(`UPDATE admin_users SET last_login_at = ${escapeSql(now)}, updated_at = ${escapeSql(now)} WHERE id = ${escapeSql(userId)}`);
+    return token;
+  }
+
+  function getSession(token) {
+    if (!token) return null;
+    pruneExpiredSessions();
+    const tokenHash = hashSessionToken(token);
+    const row = client.queryJsonOne([
+      `SELECT ${sessionJson}`,
+      'FROM admin_sessions s',
+      'JOIN admin_users u ON u.id = s.user_id',
+      `WHERE s.token_hash = ${escapeSql(tokenHash)}`,
+      'LIMIT 1',
+    ].join('\n'));
+    if (!row) return null;
+    if (!row.is_active) {
+      client.execute(`DELETE FROM admin_sessions WHERE user_id = ${escapeSql(row.session_user_id)}`);
+      return null;
+    }
+    const now = nowMs();
+    if (Number(row.session_expires_at) < now) {
+      client.execute(`DELETE FROM admin_sessions WHERE token_hash = ${escapeSql(tokenHash)}`);
+      return null;
+    }
+    client.execute(`UPDATE admin_sessions SET last_seen_at = ${escapeSql(now)}, expires_at = ${escapeSql(now + SESSION_TTL_MS)} WHERE id = ${escapeSql(row.session_id)}`);
+    return {
+      sessionId: row.session_id,
+      user: parseAdminRow(row),
+    };
+  }
+
+  function deleteSession(token) {
+    if (!token) return;
+    client.execute(`DELETE FROM admin_sessions WHERE token_hash = ${escapeSql(hashSessionToken(token))}`);
+  }
+
+  function authenticate(login, password) {
+    const row = getUserWithSecretByLogin(login);
+    if (!row || !row.is_active) {
+      return { ok: false, code: 401, message: 'Invalid login or password' };
+    }
+    if (!verifyPassword(password, row.password_hash)) {
+      return { ok: false, code: 401, message: 'Invalid login or password' };
+    }
+    const token = createSession(row.id);
+    return {
+      ok: true,
+      token,
+      user: parseAdminRow(row),
+    };
+  }
+
+  function managersCount() {
+    const row = client.queryOne('SELECT COUNT(*) AS count FROM admin_users WHERE can_manage_admins = 1 AND is_active = 1');
+    return Math.max(0, Number(row?.count) || 0);
+  }
+
+  function createUser(actorUser, payload) {
+    if (!actorUser?.canManageAdmins) {
+      return { ok: false, code: 403, message: 'Forbidden' };
+    }
+    const login = normalizeLogin(payload?.login);
+    const loginKey = normalizeLoginKey(login);
+    const password = (payload?.password || '').toString();
+    if (!loginKey || password.length < 6) {
+      return { ok: false, code: 400, message: 'Login and password are required' };
+    }
+    if (getUserRowByLoginKey(loginKey)) {
+      return { ok: false, code: 409, message: 'Login already exists' };
+    }
+    const now = nowMs();
+    const id = client.insert([
+      'INSERT INTO admin_users (login, login_key, password_hash, can_manage_admins, is_active, created_at, updated_at, last_login_at)',
+      `VALUES (${escapeSql(login)}, ${escapeSql(loginKey)}, ${escapeSql(hashPassword(password))}, ${payload?.canManageAdmins ? 1 : 0}, ${payload?.isActive === false ? 0 : 1}, ${escapeSql(now)}, ${escapeSql(now)}, 0)`,
+    ].join('\n'));
+    return { ok: true, user: getUserById(id) };
+  }
+
+  function updateUser(actorUser, userId, payload) {
+    if (!actorUser?.canManageAdmins) {
+      return { ok: false, code: 403, message: 'Forbidden' };
+    }
+    const existing = client.queryJsonOne(`SELECT ${adminWithSecretJson} FROM admin_users WHERE id = ${escapeSql(Number(userId) || 0)} LIMIT 1`);
+    if (!existing) {
+      return { ok: false, code: 404, message: 'Admin not found' };
+    }
+    const nextLogin = normalizeLogin(payload?.login ?? existing.login);
+    const nextLoginKey = normalizeLoginKey(nextLogin);
+    const nextCanManage = payload?.canManageAdmins === undefined ? !!existing.can_manage_admins : !!payload.canManageAdmins;
+    const nextIsActive = payload?.isActive === undefined ? !!existing.is_active : !!payload.isActive;
+    const nextPasswordHash = (payload?.password || '').toString()
+      ? hashPassword(payload.password)
+      : existing.password_hash;
+    if (!nextLoginKey) return { ok: false, code: 400, message: 'Login is required' };
+    if ((payload?.password || '').toString() && String(payload.password).length < 6) {
+      return { ok: false, code: 400, message: 'Password must be at least 6 chars' };
+    }
+    const duplicate = getUserRowByLoginKey(nextLoginKey);
+    if (duplicate && Number(duplicate.id) !== Number(existing.id)) {
+      return { ok: false, code: 409, message: 'Login already exists' };
+    }
+    if (Number(existing.id) === Number(actorUser.id)) {
+      if (!nextIsActive) return { ok: false, code: 400, message: 'You cannot disable yourself' };
+      if (!nextCanManage) return { ok: false, code: 400, message: 'You cannot remove your own admin-management access' };
+    }
+    if (existing.can_manage_admins && (!nextCanManage || !nextIsActive) && managersCount() <= 1) {
+      return { ok: false, code: 400, message: 'At least one active admin manager is required' };
+    }
+    client.execute([
+      'UPDATE admin_users SET',
+      `login = ${escapeSql(nextLogin)}, login_key = ${escapeSql(nextLoginKey)}, password_hash = ${escapeSql(nextPasswordHash)},`,
+      `can_manage_admins = ${nextCanManage ? 1 : 0}, is_active = ${nextIsActive ? 1 : 0}, updated_at = ${escapeSql(nowMs())}`,
+      `WHERE id = ${escapeSql(existing.id)}`,
+    ].join('\n'));
+    if (!nextIsActive) {
+      client.execute(`DELETE FROM admin_sessions WHERE user_id = ${escapeSql(existing.id)}`);
+    }
+    return { ok: true, user: getUserById(existing.id) };
+  }
+
+  function deleteUser(actorUser, userId) {
+    if (!actorUser?.canManageAdmins) {
+      return { ok: false, code: 403, message: 'Forbidden' };
+    }
+    const existing = getUserRowById(Number(userId) || 0);
+    if (!existing) return { ok: false, code: 404, message: 'Admin not found' };
+    if (Number(existing.id) === Number(actorUser.id)) {
+      return { ok: false, code: 400, message: 'You cannot delete yourself' };
+    }
+    if (existing.can_manage_admins && managersCount() <= 1) {
+      return { ok: false, code: 400, message: 'At least one active admin manager is required' };
+    }
+    client.execute(`DELETE FROM admin_sessions WHERE user_id = ${escapeSql(existing.id)}`);
+    client.execute(`DELETE FROM admin_users WHERE id = ${escapeSql(existing.id)}`);
+    return { ok: true };
+  }
+
+  ensureBootstrapAdmin();
+
+  return {
+    authenticate,
+    getSession,
+    deleteSession,
+    listUsers,
+    getUserById,
+    createUser,
+    updateUser,
+    deleteUser,
+  };
+}
+
+function createAdminAuthStore({ dataDir, dbPath, bootstrapLogin, bootstrapPassword, isProd, mysql }) {
+  if (mysql?.enabled) {
+    return createMysqlAdminAuthStore({
+      bootstrapLogin,
+      bootstrapPassword,
+      isProd,
+      mysql,
+    });
+  }
   fs.mkdirSync(dataDir, { recursive: true });
   const db = new Database(dbPath);
   db.pragma('journal_mode = WAL');

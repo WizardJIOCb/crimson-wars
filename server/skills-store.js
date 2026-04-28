@@ -1,10 +1,14 @@
 const fs = require('fs');
+const { createMysqlSyncClient, escapeSql } = require('./mysql-sync');
 
 function cloneJson(obj) {
   return JSON.parse(JSON.stringify(obj));
 }
 
-function createSkillsStore({ dataDir, skillsConfigPath, defaultSkillDefs }) {
+function createSkillsStore({ dataDir, skillsConfigPath, defaultSkillDefs, mysql }) {
+  const useMysql = !!mysql?.enabled;
+  const mysqlClient = useMysql ? createMysqlSyncClient(mysql) : null;
+  const docKey = 'skills';
   let state = null;
 
   function normalizeSkillDef(raw, fallbackId = '') {
@@ -110,6 +114,14 @@ function createSkillsStore({ dataDir, skillsConfigPath, defaultSkillDefs }) {
 
   function saveState() {
     try {
+      if (useMysql) {
+        mysqlClient.execute([
+          'INSERT INTO app_documents (doc_key, content_json, updated_at)',
+          `VALUES (${escapeSql(docKey)}, ${escapeSql(JSON.stringify(state))}, ${escapeSql(Date.now())})`,
+          'ON DUPLICATE KEY UPDATE content_json=VALUES(content_json), updated_at=VALUES(updated_at)',
+        ].join('\n'));
+        return true;
+      }
       fs.mkdirSync(dataDir, { recursive: true });
       fs.writeFileSync(skillsConfigPath, JSON.stringify(state, null, 2), 'utf8');
       return true;
@@ -121,6 +133,24 @@ function createSkillsStore({ dataDir, skillsConfigPath, defaultSkillDefs }) {
 
   function loadState() {
     try {
+      if (useMysql) {
+        const row = mysqlClient.queryOne(`SELECT content_json FROM app_documents WHERE doc_key = ${escapeSql(docKey)} LIMIT 1`);
+        if (row?.content_json) state = normalizeState(JSON.parse(row.content_json));
+        else {
+          state = normalizeState({
+            activeCollectionId: defaultCollectionId(),
+            collections: [
+              {
+                id: defaultCollectionId(),
+                name: 'Default',
+                skills: Object.values(buildDefaultSkillsMap()),
+              },
+            ],
+          });
+          saveState();
+        }
+        return;
+      }
       fs.mkdirSync(dataDir, { recursive: true });
       if (fs.existsSync(skillsConfigPath)) {
         const raw = JSON.parse(fs.readFileSync(skillsConfigPath, 'utf8'));
