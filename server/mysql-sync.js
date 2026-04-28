@@ -95,7 +95,7 @@ function createMysqlSyncClient(overrides = {}) {
   function run(sql, { columnNames = false } = {}) {
     const defaultsPath = createDefaultsFile(config);
     const baseArgs = [
-      `--defaults-extra-file=${defaultsPath}`,
+      `--defaults-file=${defaultsPath}`,
       '--batch',
       '--raw',
     ];
