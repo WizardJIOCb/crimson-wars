@@ -106,7 +106,7 @@ function createMysqlSyncClient(overrides = {}) {
         input: `${String(sql || '').trim()};\n`,
         encoding: 'utf8',
         env: process.env,
-        maxBuffer: 1024 * 1024 * 64,
+        maxBuffer: 1024 * 1024 * 256,
       });
     } finally {
       try {

@@ -80,7 +80,18 @@ function createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql 
   const PLAYER_RUN_HISTORY_LIMIT = 50000;
   const PLAYER_RUN_HISTORY_PAGE_SIZE = 20;
   const MEMORY_RUN_HISTORY_LIMIT = 300;
-  const recordJson = jsonObjectSql({
+  const recordSummaryJson = jsonObjectSql({
+    id: 'id',
+    name: 'name',
+    attempts: 'attempts',
+    kills: 'kills',
+    score: 'score',
+    roomCode: 'room_code',
+    durationSec: 'duration_sec',
+    at: 'at',
+    runDetails: 'run_details',
+  });
+  const recordReplayJson = jsonObjectSql({
     id: 'id',
     name: 'name',
     attempts: 'attempts',
@@ -92,7 +103,17 @@ function createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql 
     runDetails: 'run_details',
     runReplay: 'run_replay',
   });
-  const playerRunJson = jsonObjectSql({
+  const playerRunSummaryJson = jsonObjectSql({
+    id: 'id',
+    name: 'name',
+    kills: 'kills',
+    score: 'score',
+    roomCode: 'room_code',
+    durationSec: 'duration_sec',
+    at: 'at',
+    runDetails: 'run_details',
+  });
+  const playerRunReplayJson = jsonObjectSql({
     id: 'id',
     name: 'name',
     kills: 'kills',
@@ -106,7 +127,7 @@ function createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql 
 
   function loadRecordsFromDb() {
     const rows = client.queryJsonRows([
-      `SELECT ${recordJson}`,
+      `SELECT ${recordSummaryJson}`,
       'FROM records',
       'ORDER BY kills DESC, score DESC, at DESC',
       `LIMIT ${Math.max(1, Number(leaderboardLimit) || 50) * 5}`,
@@ -141,10 +162,11 @@ function createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql 
 
     const key = recordNameKey(normalized.name);
     const existingIndex = records.findIndex((x) => recordNameKey(x.name) === key);
+    const newPersonalBest = existingIndex < 0 || isBetterRecord(normalized, records[existingIndex]);
     if (existingIndex >= 0) {
       const existing = records[existingIndex];
       const attempts = Math.max(1, Number(existing?.attempts) || 1) + 1;
-      records[existingIndex] = isBetterRecord(normalized, existing)
+      records[existingIndex] = newPersonalBest
         ? { ...normalized, attempts }
         : { ...existing, attempts };
     } else {
@@ -169,21 +191,25 @@ function createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql 
           normalized.runReplay ? JSON.stringify(normalized.runReplay) : null,
         ].map(escapeSql).join(', ')})`,
       ].join('\n'));
-      client.execute(`DELETE FROM records WHERE LOWER(name)=LOWER(${escapeSql(normalized.name)})`);
-      client.execute([
-        'INSERT INTO records (name, attempts, kills, score, room_code, duration_sec, at, run_details, run_replay)',
-        `VALUES (${[
-          persistedRecord.name,
-          persistedRecord.attempts,
-          persistedRecord.kills,
-          persistedRecord.score,
-          persistedRecord.roomCode,
-          persistedRecord.durationSec,
-          persistedRecord.at,
-          persistedRecord.runDetails ? JSON.stringify(persistedRecord.runDetails) : null,
-          persistedRecord.runReplay ? JSON.stringify(persistedRecord.runReplay) : null,
-        ].map(escapeSql).join(', ')})`,
-      ].join('\n'));
+      if (newPersonalBest) {
+        client.execute(`DELETE FROM records WHERE LOWER(name)=LOWER(${escapeSql(normalized.name)})`);
+        client.execute([
+          'INSERT INTO records (name, attempts, kills, score, room_code, duration_sec, at, run_details, run_replay)',
+          `VALUES (${[
+            persistedRecord.name,
+            persistedRecord.attempts,
+            persistedRecord.kills,
+            persistedRecord.score,
+            persistedRecord.roomCode,
+            persistedRecord.durationSec,
+            persistedRecord.at,
+            persistedRecord.runDetails ? JSON.stringify(persistedRecord.runDetails) : null,
+            persistedRecord.runReplay ? JSON.stringify(persistedRecord.runReplay) : null,
+          ].map(escapeSql).join(', ')})`,
+        ].join('\n'));
+      } else {
+        client.execute(`UPDATE records SET attempts = ${escapeSql(persistedRecord.attempts)} WHERE LOWER(name)=LOWER(${escapeSql(normalized.name)})`);
+      }
       client.execute(`DELETE FROM records WHERE id NOT IN (SELECT id FROM (SELECT id FROM records ORDER BY kills DESC, score DESC, at DESC LIMIT ${Math.max(1, Number(leaderboardLimit) || 50)}) keep_records)`);
       client.execute(`DELETE FROM player_runs WHERE id NOT IN (SELECT id FROM (SELECT id FROM player_runs ORDER BY at DESC LIMIT ${PLAYER_RUN_HISTORY_LIMIT}) keep_runs)`);
     } catch (err) {
@@ -200,7 +226,7 @@ function createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql 
     const currentPage = Math.max(1, Math.min(totalPages, Math.floor(page) || 1));
     const offset = (currentPage - 1) * size;
     const rows = client.queryJsonRows([
-      `SELECT ${playerRunJson}`,
+      `SELECT ${playerRunSummaryJson}`,
       'FROM player_runs',
       `WHERE name_key = ${escapeSql(normalizedNameKey)}`,
       'ORDER BY at DESC',
@@ -216,7 +242,7 @@ function createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql 
     const currentPage = Math.max(1, Math.min(totalPages, Math.floor(page) || 1));
     const offset = (currentPage - 1) * size;
     const rows = client.queryJsonRows([
-      `SELECT ${playerRunJson}`,
+      `SELECT ${playerRunSummaryJson}`,
       'FROM player_runs',
       'ORDER BY at DESC',
       `LIMIT ${size} OFFSET ${offset}`,
@@ -229,7 +255,7 @@ function createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql 
     const nameKey = recordNameKey(name);
     if (!id || !nameKey) return null;
     const row = client.queryJsonOne([
-      `SELECT ${playerRunJson}`,
+      `SELECT ${playerRunReplayJson}`,
       'FROM player_runs',
       `WHERE id = ${escapeSql(id)} AND name_key = ${escapeSql(nameKey)}`,
       'LIMIT 1',
@@ -242,7 +268,7 @@ function createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql 
     const id = Math.max(0, Number(runId) || 0);
     if (!id) return null;
     const row = client.queryJsonOne([
-      `SELECT ${playerRunJson}`,
+      `SELECT ${playerRunReplayJson}`,
       'FROM player_runs',
       `WHERE id = ${escapeSql(id)}`,
       'LIMIT 1',
@@ -255,7 +281,7 @@ function createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql 
     const id = Math.max(0, Number(recordId) || 0);
     if (!id) return null;
     const row = client.queryJsonOne([
-      `SELECT ${recordJson}`,
+      `SELECT ${recordReplayJson}`,
       'FROM records',
       `WHERE id = ${escapeSql(id)}`,
       'LIMIT 1',
