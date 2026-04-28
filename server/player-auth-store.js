@@ -104,6 +104,9 @@ function sanitizeNicknameSeed(value, fallback = 'Player') {
 function createMysqlPlayerAuthStore({ mysql }) {
   const client = createMysqlSyncClient(mysql);
   const sessionCache = new Map();
+  const accountCacheById = new Map();
+  const accountCacheByNicknameKey = new Map();
+  let accountCacheLoaded = false;
   let lastPruneAt = 0;
   let cachedAccountCount = null;
   let cachedAccountCountUntil = 0;
@@ -177,12 +180,94 @@ function createMysqlPlayerAuthStore({ mysql }) {
     cachedAccountCountUntil = 0;
   }
 
+  function rememberAccountRow(row) {
+    const normalizedRow = row && row.is_active === undefined && row.isActive !== undefined
+      ? {
+        id: row.id,
+        nickname: row.nickname,
+        nickname_key: row.nicknameKey || normalizeNicknameKey(row.nickname),
+        is_active: row.isActive ? 1 : 0,
+        created_at: row.createdAt,
+        updated_at: row.updatedAt,
+        last_login_at: row.lastLoginAt,
+      }
+      : row;
+    const player = parsePlayerRow(normalizedRow);
+    if (!player?.id) return null;
+    if (!player.isActive) {
+      accountCacheById.delete(player.id);
+      accountCacheByNicknameKey.delete(player.nicknameKey);
+      return null;
+    }
+    const cachedRow = {
+      id: player.id,
+      nickname: player.nickname,
+      nickname_key: player.nicknameKey,
+      is_active: player.isActive ? 1 : 0,
+      created_at: player.createdAt,
+      updated_at: player.updatedAt,
+      last_login_at: player.lastLoginAt,
+    };
+    accountCacheById.set(player.id, cachedRow);
+    accountCacheByNicknameKey.set(player.nicknameKey, cachedRow);
+    cachedAccountCount = accountCacheById.size;
+    cachedAccountCountUntil = nowMs() + ACCOUNT_COUNT_CACHE_MS;
+    return cachedRow;
+  }
+
+  function forgetAccountRow(row) {
+    const normalizedRow = row && row.is_active === undefined && row.isActive !== undefined
+      ? {
+        id: row.id,
+        nickname: row.nickname,
+        nickname_key: row.nicknameKey || normalizeNicknameKey(row.nickname),
+        is_active: row.isActive ? 1 : 0,
+        created_at: row.createdAt,
+        updated_at: row.updatedAt,
+        last_login_at: row.lastLoginAt,
+      }
+      : row;
+    const player = parsePlayerRow(normalizedRow);
+    if (!player?.id) return;
+    accountCacheById.delete(player.id);
+    accountCacheByNicknameKey.delete(player.nicknameKey);
+    cachedAccountCount = accountCacheById.size;
+    cachedAccountCountUntil = nowMs() + ACCOUNT_COUNT_CACHE_MS;
+  }
+
+  function loadAccountCache() {
+    if (accountCacheLoaded) return;
+    const rows = client.queryJsonRows([
+      `SELECT ${playerJson}`,
+      'FROM player_accounts',
+      'WHERE is_active = 1',
+    ].join('\n'));
+    accountCacheById.clear();
+    accountCacheByNicknameKey.clear();
+    for (const row of rows) rememberAccountRow(row);
+    accountCacheLoaded = true;
+    cachedAccountCount = accountCacheById.size;
+    cachedAccountCountUntil = nowMs() + ACCOUNT_COUNT_CACHE_MS;
+  }
+
   function getAccountRowByNicknameKey(nicknameKey, withSecret = false) {
-    return client.queryJsonOne(`SELECT ${withSecret ? playerSecretJson : playerJson} FROM player_accounts WHERE nickname_key = ${escapeSql(nicknameKey)} LIMIT 1`);
+    if (!withSecret) {
+      loadAccountCache();
+      return accountCacheByNicknameKey.get(String(nicknameKey || '').trim().toLowerCase()) || null;
+    }
+    return client.queryJsonOne(`SELECT ${playerSecretJson} FROM player_accounts WHERE nickname_key = ${escapeSql(nicknameKey)} LIMIT 1`);
   }
 
   function getAccountRowById(id, withSecret = false) {
-    return client.queryJsonOne(`SELECT ${withSecret ? playerSecretJson : playerJson} FROM player_accounts WHERE id = ${escapeSql(Number(id) || 0)} LIMIT 1`);
+    const pid = Number(id) || 0;
+    if (!withSecret) {
+      loadAccountCache();
+      const cached = accountCacheById.get(pid);
+      if (cached) return cached;
+      const row = client.queryJsonOne(`SELECT ${playerJson} FROM player_accounts WHERE id = ${escapeSql(pid)} LIMIT 1`);
+      return rememberAccountRow(row);
+    }
+    return client.queryJsonOne(`SELECT ${playerSecretJson} FROM player_accounts WHERE id = ${escapeSql(pid)} LIMIT 1`);
   }
 
   function listIdentities(playerId) {
@@ -291,6 +376,7 @@ function createMysqlPlayerAuthStore({ mysql }) {
     invalidateAccountCount();
     const account = getAccountById(id);
     const token = createSession(account.id);
+    rememberAccountRow(account);
     return { ok: true, player: account, token, identities: [] };
   }
 
@@ -299,6 +385,7 @@ function createMysqlPlayerAuthStore({ mysql }) {
     if (!row || !row.is_active) return { ok: false, code: 401, message: 'Invalid nickname or password' };
     if (!verifyPassword(password, row.password_hash)) return { ok: false, code: 401, message: 'Invalid nickname or password' };
     const token = createSession(row.id);
+    rememberAccountRow(row);
     return {
       ok: true,
       token,
@@ -422,7 +509,9 @@ function createMysqlPlayerAuthStore({ mysql }) {
     if (!nextValidation.ok) return player;
     const now = nowMs();
     client.execute(`UPDATE player_accounts SET nickname = ${escapeSql(nextValidation.nickname)}, nickname_key = ${escapeSql(nextValidation.nicknameKey)}, updated_at = ${escapeSql(now)} WHERE id = ${escapeSql(player.id)}`);
-    return getAccountById(player.id) || player;
+    forgetAccountRow(player);
+    const updated = client.queryJsonOne(`SELECT ${playerJson} FROM player_accounts WHERE id = ${escapeSql(player.id)} LIMIT 1`);
+    return parsePlayerRow(rememberAccountRow(updated)) || player;
   }
 
   function needsNicknameSetup(playerId) {
@@ -442,7 +531,9 @@ function createMysqlPlayerAuthStore({ mysql }) {
     if (existing && existing.id !== player.id) return { ok: false, code: 409, message: 'Nickname is already registered' };
     const now = nowMs();
     client.execute(`UPDATE player_accounts SET nickname = ${escapeSql(validation.nickname)}, nickname_key = ${escapeSql(validation.nicknameKey)}, updated_at = ${escapeSql(now)} WHERE id = ${escapeSql(player.id)}`);
-    const updatedPlayer = getAccountById(player.id);
+    forgetAccountRow(player);
+    const updatedRow = client.queryJsonOne(`SELECT ${playerJson} FROM player_accounts WHERE id = ${escapeSql(player.id)} LIMIT 1`);
+    const updatedPlayer = parsePlayerRow(rememberAccountRow(updatedRow));
     return {
       ok: true,
       player: updatedPlayer,
@@ -481,7 +572,8 @@ function createMysqlPlayerAuthStore({ mysql }) {
         'INSERT INTO player_identities (player_account_id, provider, provider_user_id, provider_email, created_at)',
         `VALUES (${escapeSql(playerId)}, ${escapeSql(normalizedProvider)}, ${escapeSql(externalUserId)}, ${escapeSql(externalEmail)}, ${escapeSql(now)})`,
       ].join('\n'));
-      player = getAccountById(playerId);
+      const row = client.queryJsonOne(`SELECT ${playerJson} FROM player_accounts WHERE id = ${escapeSql(playerId)} LIMIT 1`);
+      player = parsePlayerRow(rememberAccountRow(row));
     } catch (err) {
       return { ok: false, code: 500, message: err?.message || 'Failed to create external account' };
     }
@@ -489,6 +581,8 @@ function createMysqlPlayerAuthStore({ mysql }) {
     const token = createSession(player.id);
     return { ok: true, token, player, identities: listIdentities(player.id), createdAccount: true };
   }
+
+  loadAccountCache();
 
   return {
     validateNickname,
