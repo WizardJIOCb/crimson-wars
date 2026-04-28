@@ -644,6 +644,11 @@ function createAccountProgressionStore({
     }
   }
 
+  function listCachedProgressions() {
+    return Array.from(progressionCache.values()).map((progression) =>
+      toPublicProgression(cloneProgressionState(progression, progression.playerId)));
+  }
+
   function getCatalogPayload() {
     return {
       baseHeroId: fallbackHeroId,
@@ -1292,6 +1297,7 @@ function createAccountProgressionStore({
   return {
     getCatalogPayload,
     getOrCreateProgression,
+    listCachedProgressions,
     toPublicProgression,
     grantRunRewards,
     grantRunRewardsInMemory,

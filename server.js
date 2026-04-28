@@ -828,6 +828,168 @@ function listAccountLeaderboardRows(categoryKey, page, pageSize) {
   return { page: currentPage, pageSize, total, totalPages, items };
 }
 
+function paginateLeaderboardItems(items, page, pageSize) {
+  const safeItems = Array.isArray(items) ? items : [];
+  const total = safeItems.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.max(1, Math.min(totalPages, Math.floor(page) || 1));
+  const offset = (currentPage - 1) * pageSize;
+  return {
+    page: currentPage,
+    pageSize,
+    total,
+    totalPages,
+    items: safeItems.slice(offset, offset + pageSize),
+  };
+}
+
+function runMatchesLeaderboardMode(run, modeKey) {
+  if (modeKey === 'all') return true;
+  const details = parseLeaderboardRunDetails(run?.runDetails);
+  const runMode = String(details?.gameMode || 'normal').trim().toLowerCase();
+  return runMode === modeKey;
+}
+
+function makeLeaderboardReplayRun(run) {
+  if (!run) return null;
+  return {
+    id: Math.max(0, Number(run.id) || 0),
+    name: String(run.name || 'Unknown').slice(0, 18),
+    kills: Math.max(0, Number(run.kills) || 0),
+    score: Math.max(0, Number(run.score) || 0),
+    roomCode: String(run.roomCode || '-').slice(0, 12),
+    durationSec: Math.max(1, Number(run.durationSec) || 1),
+    at: Math.max(0, Number(run.at) || 0),
+    runDetails: parseLeaderboardRunDetails(run.runDetails),
+  };
+}
+
+function getFastLeaderboardPlayer(name) {
+  const nickname = normalizeNickname(name || 'Unknown') || 'Unknown';
+  const account = playerAuthStore.getAccountByNickname(nickname);
+  return {
+    playerId: Math.max(0, Number(account?.id) || 0),
+    nickname: String(account?.nickname || nickname || 'Unknown').slice(0, 18),
+  };
+}
+
+function listRunLeaderboardRowsFast(categoryKey, page, pageSize, modeKey = 'all') {
+  const sourcePayload = typeof recordsStore.listLatestPlayerRunsMemory === 'function'
+    ? recordsStore.listLatestPlayerRunsMemory(1, 300)
+    : recordsStore.listRecordsForLobby(1, LEADERBOARD_LIMIT);
+  const runs = (Array.isArray(sourcePayload?.items) ? sourcePayload.items : [])
+    .filter((run) => runMatchesLeaderboardMode(run, modeKey));
+  const byName = new Map();
+
+  for (const run of runs) {
+    const player = getFastLeaderboardPlayer(run?.name);
+    const nameKey = normalizeNickname(player.nickname).toLowerCase();
+    if (!nameKey) continue;
+    const kills = Math.max(0, Number(run?.kills) || 0);
+    const score = Math.max(0, Number(run?.score) || 0);
+    const durationSec = Math.max(1, Number(run?.durationSec) || 1);
+    const details = parseLeaderboardRunDetails(run?.runDetails);
+    const pvpKills = extractPvpKillsFromRunDetails(details);
+    let entry = byName.get(nameKey);
+    if (!entry) {
+      entry = {
+        playerId: player.playerId,
+        nickname: player.nickname,
+        value: 0,
+        runs: 0,
+        bestKills: 0,
+        bestScore: 0,
+        bestDurationSec: 0,
+        at: 0,
+        replayRun: null,
+      };
+      byName.set(nameKey, entry);
+    }
+
+    entry.runs += 1;
+    entry.bestKills = Math.max(entry.bestKills, kills);
+    entry.bestScore = Math.max(entry.bestScore, score);
+    entry.bestDurationSec = Math.max(entry.bestDurationSec, durationSec);
+    entry.at = Math.max(entry.at, Math.max(0, Number(run?.at) || 0));
+
+    const dps = durationSec > 0 ? score / durationSec : 0;
+    let candidateValue = 0;
+    if (categoryKey === 'best_kills_run') candidateValue = kills;
+    else if (categoryKey === 'best_score_run') candidateValue = score;
+    else if (categoryKey === 'best_dps_run') candidateValue = dps;
+    else if (categoryKey === 'best_time_run') candidateValue = durationSec;
+    else if (categoryKey === 'best_pvp_kills_run') candidateValue = pvpKills;
+    else if (categoryKey === 'total_pts') {
+      entry.value += score;
+      if (!entry.replayRun || Number(run?.at || 0) > Number(entry.replayRun?.at || 0)) entry.replayRun = makeLeaderboardReplayRun(run);
+      continue;
+    } else if (categoryKey === 'total_kills') {
+      entry.value += kills;
+      if (!entry.replayRun || Number(run?.at || 0) > Number(entry.replayRun?.at || 0)) entry.replayRun = makeLeaderboardReplayRun(run);
+      continue;
+    } else if (categoryKey === 'runs_count') {
+      entry.value = entry.runs;
+      if (!entry.replayRun || Number(run?.at || 0) > Number(entry.replayRun?.at || 0)) entry.replayRun = makeLeaderboardReplayRun(run);
+      continue;
+    } else {
+      continue;
+    }
+
+    if (candidateValue > entry.value || (candidateValue === entry.value && Number(run?.at || 0) > Number(entry.replayRun?.at || 0))) {
+      entry.value = candidateValue;
+      entry.replayRun = makeLeaderboardReplayRun(run);
+    }
+  }
+
+  const items = Array.from(byName.values())
+    .filter((item) => Math.max(0, Number(item.value) || 0) > 0)
+    .sort((a, b) => (b.value - a.value) || (b.at - a.at))
+    .map((item) => ({
+      ...item,
+      value: Math.round(Math.max(0, Number(item.value) || 0) * 100) / 100,
+      replayRunId: Math.max(0, Number(item.replayRun?.id) || 0),
+    }));
+  return paginateLeaderboardItems(items, page, pageSize);
+}
+
+function listAccountLeaderboardRowsFast(categoryKey, page, pageSize) {
+  const progressions = typeof accountProgressionStore.listCachedProgressions === 'function'
+    ? accountProgressionStore.listCachedProgressions()
+    : [];
+  const items = progressions.map((progression) => {
+    const account = playerAuthStore.getAccountById(progression.playerId);
+    const heroesUnlocked = Array.isArray(progression.unlockedHeroes) ? progression.unlockedHeroes.length : 0;
+    return {
+      playerId: Math.max(0, Number(progression.playerId) || 0),
+      nickname: String(account?.nickname || 'Unknown').slice(0, 18),
+      value: categoryKey === 'profile_level'
+        ? Math.max(1, Number(progression.accountLevel) || 1)
+        : categoryKey === 'runs_count'
+          ? Math.max(0, Number(progression.totalRuns) || 0)
+          : categoryKey === 'shards_balance'
+            ? Math.max(0, Number(progression.shards) || 0)
+            : heroesUnlocked,
+      accountLevel: Math.max(1, Number(progression.accountLevel) || 1),
+      accountXp: Math.max(0, Number(progression.accountXp) || 0),
+      totalRuns: Math.max(0, Number(progression.totalRuns) || 0),
+      shards: Math.max(0, Number(progression.shards) || 0),
+      heroesUnlocked,
+      at: Math.max(0, Number(progression.updatedAt) || 0),
+    };
+  }).filter((item) => item.playerId > 0);
+
+  items.sort((a, b) => {
+    if (categoryKey === 'profile_level') return (b.accountLevel - a.accountLevel) || (b.accountXp - a.accountXp) || (b.at - a.at);
+    return (b.value - a.value) || (b.accountLevel - a.accountLevel) || (b.at - a.at);
+  });
+  return paginateLeaderboardItems(items, page, pageSize);
+}
+
+function listLeaderboardRowsFast(category, page, pageSize, modeKey) {
+  if (category?.source === 'account') return listAccountLeaderboardRowsFast(category.key, page, pageSize);
+  return listRunLeaderboardRowsFast(category?.key || 'best_kills_run', page, pageSize, modeKey);
+}
+
 
 function sanitizeHeroId(rawHeroId) {
   const id = (rawHeroId || '').toString().trim();
@@ -2445,7 +2607,7 @@ app.get('/api/leaderboard', (req, res) => {
   const pageSize = Math.max(1, Math.min(30, Number(req.query.page_size) || 10));
   const cacheKey = [category.key, modeKey, page, pageSize].join('|');
   const cached = leaderboardResponseCache.get(cacheKey);
-  if (cached && Date.now() - cached.at < LEADERBOARD_RESPONSE_CACHE_MS) {
+  if (cached && (USE_MYSQL_STORE || Date.now() - cached.at < LEADERBOARD_RESPONSE_CACHE_MS)) {
     res.json({ ...cached.payload, now: Date.now() });
     return;
   }
@@ -2467,7 +2629,9 @@ app.get('/api/leaderboard', (req, res) => {
     return;
   }
   try {
-    const payload = category.source === 'account'
+    const payload = USE_MYSQL_STORE
+      ? listLeaderboardRowsFast(category, page, pageSize, modeKey)
+      : category.source === 'account'
       ? listAccountLeaderboardRows(category.key, page, pageSize)
       : listRunLeaderboardRows(category.key, page, pageSize, modeKey);
     const responsePayload = {
