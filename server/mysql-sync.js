@@ -83,6 +83,7 @@ function createDefaultsFile(config) {
     `password=${cleanMysqlOption(config.password)}`,
     `database=${cleanMysqlOption(config.database)}`,
     'default-character-set=utf8mb4',
+    'max_allowed_packet=256M',
     '',
   ].join('\n');
   fs.writeFileSync(defaultsPath, contents, { encoding: 'utf8', mode: 0o600 });
