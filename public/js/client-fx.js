@@ -729,6 +729,7 @@ function processStateFx(nextState) {
       aimX: Number(p.aimX) || Number(p.x) || 0,
       aimY: Number(p.aimY) || Number(p.y) || 0,
       weaponKey: String(p.weaponKey || 'pistol').toLowerCase(),
+      magazineAmmo: Math.max(0, Number(p.magazineAmmo) || 0),
       reloadLeftMs: Math.max(0, Number(p.reloadLeftMs) || 0),
       reloadTotalMs: Math.max(0, Number(p.reloadTotalMs) || 0),
       isCompanion: Boolean(p.isCompanion),
@@ -800,8 +801,10 @@ function processStateFx(nextState) {
     const prevDodgeUntil = Number(prev?.dodgeInvulnUntil) || 0;
     const nextDodgeUntil = Number(p?.dodgeInvulnUntil) || 0;
     if (nextDodgeUntil > prevDodgeUntil + 80) {
-      const startX = Number(prev?.x) || Number(p.x) || 0;
-      const startY = Number(prev?.y) || Number(p.y) || 0;
+      const spectatorSmoothing = typeof isSpectatorSmoothingView === 'function' && isSpectatorSmoothingView();
+      const renderPos = spectatorSmoothing && typeof getPlayerRenderPos === 'function' ? getPlayerRenderPos(p) : null;
+      const startX = spectatorSmoothing ? (Number(renderPos?.x) || Number(prev?.x) || Number(p.x) || 0) : (Number(prev?.x) || Number(p.x) || 0);
+      const startY = spectatorSmoothing ? (Number(renderPos?.y) || Number(prev?.y) || Number(p.y) || 0) : (Number(prev?.y) || Number(p.y) || 0);
       const endX = Number(p.x) || startX;
       const endY = Number(p.y) || startY;
 
@@ -833,7 +836,8 @@ function processStateFx(nextState) {
         dirX,
         dirY,
         isMe,
-        delay: 0.045,
+        followPlayerId: spectatorSmoothing ? p.id : '',
+        delay: spectatorSmoothing ? 0.16 : 0.045,
       });
       if (visuals.dodgeWindScheduled.length > 80) {
         visuals.dodgeWindScheduled.splice(0, visuals.dodgeWindScheduled.length - 80);
@@ -841,6 +845,12 @@ function processStateFx(nextState) {
     }
   }
   visuals.playerPrev = nextPlayerMap;
+
+  if (typeof spawnSpectatorShotEventFx === 'function') {
+    for (const event of nextState.shotEvents || []) {
+      spawnSpectatorShotEventFx(event, nextState);
+    }
+  }
 
   const nextRocketMap = new Map();
   const rocketTrailLastAt = visuals.rocketTrailLastAt instanceof Map ? visuals.rocketTrailLastAt : new Map();
@@ -986,7 +996,8 @@ function processStateFx(nextState) {
         const a = Math.atan2(dy, dx || 1);
         const isCompanionShot = Boolean(owner.isCompanion) || bulletShooterType === 'companion';
         const weaponKey = String(b.weaponKey || owner.weaponKey || '').toLowerCase();
-        if (game.bulletTracersEnabled) {
+        const spectatorSmoothing = typeof isSpectatorSmoothingView === 'function' && isSpectatorSmoothingView();
+        if (game.bulletTracersEnabled && !spectatorSmoothing) {
           visuals.muzzle.push({ x: owner.x + Math.cos(a) * 20, y: owner.y + Math.sin(a) * 20, a, c: b.color || '#ffd166', life: 0.05, ttl: 0.05 });
           visuals.muzzleGroundFlashes.push({
             x: owner.x + Math.cos(a) * 23,
@@ -1218,7 +1229,16 @@ function updateFx(dt) {
     const s = visuals.dodgeWindScheduled[i];
     s.delay -= dt;
     if (s.delay <= 0) {
-      spawnDodgeWindFx(s.x, s.y, s.dirX, s.dirY, s.isMe);
+      let fxX = s.x;
+      let fxY = s.y;
+      if (s.followPlayerId && typeof isSpectatorSmoothingView === 'function' && isSpectatorSmoothingView()) {
+        const renderPos = game.renderPlayers?.get(s.followPlayerId);
+        if (renderPos) {
+          fxX = Number(renderPos.x) || fxX;
+          fxY = Number(renderPos.y) || fxY;
+        }
+      }
+      spawnDodgeWindFx(fxX, fxY, s.dirX, s.dirY, s.isMe);
       visuals.dodgeWindScheduled.splice(i, 1);
     }
   }

@@ -210,6 +210,8 @@ const QUALITY = {
 const input = { up: false, down: false, left: false, right: false, shooting: false, jumpQueued: false, pointerX: 0, pointerY: 0 };
 const CLIENT_CAMERA_FOLLOW_RATE = 14;
 const CLIENT_CAMERA_SNAP_DIST = 140;
+const SPECTATOR_RENDER_DELAY_MIN_MS = 170;
+const SPECTATOR_ENTITY_INTERP_RATE = 10;
 const mobile = {
   enabled: ('ontouchstart' in window) || (navigator.maxTouchPoints > 0),
   moveId: null,
@@ -355,6 +357,7 @@ const visuals = {
   bossPortalPrev: new Map(),
   dropPrev: new Map(),
   bulletIds: new Set(),
+  spectatorMuzzleBulletIds: new Set(),
   xpOrbPrev: new Map(),
   prevBossAlive: false,
   groundTileCanvas: null,
@@ -660,6 +663,20 @@ const ROOM_SYNC_PRESETS = {
 
 const roomSync = { ...ROOM_SYNC_PRESETS.normal };
 let inputSendIntervalId = null;
+
+function isSpectatorSmoothingView() {
+  return Boolean(game?.spectating);
+}
+
+function getEffectiveNetRenderDelayMs() {
+  const base = Math.max(0, Number(roomSync.netRenderDelayMs) || ROOM_SYNC_PRESETS.normal.netRenderDelayMs);
+  return isSpectatorSmoothingView() ? Math.max(base, SPECTATOR_RENDER_DELAY_MIN_MS) : base;
+}
+
+function getEffectiveEntityInterpRate() {
+  const base = Math.max(1, Number(roomSync.entityInterpRate) || ROOM_SYNC_PRESETS.normal.entityInterpRate);
+  return isSpectatorSmoothingView() ? Math.min(base, SPECTATOR_ENTITY_INTERP_RATE) : base;
+}
 
 const NET_PING_INTERVAL_MS = 1000;
 const NET_PING_TIMEOUT_MS = 4000;
@@ -2146,7 +2163,7 @@ function updateStateDelayEstimate() {
   const stalenessMs = Math.max(0, nowPerf - netStats.lastStateAt);
   const expectedTickMs = 1000 / Math.max(1, roomSync.tickRate || 45);
   const backlogMs = Math.max(0, stalenessMs - expectedTickMs * 1.2);
-  netStats.stateDelayMs = roomSync.netRenderDelayMs + backlogMs;
+  netStats.stateDelayMs = getEffectiveNetRenderDelayMs() + backlogMs;
 }
 
 function formatBytesTotal(bytes) {
@@ -2163,7 +2180,7 @@ function updateNetMetaUi() {
 
   const delivered = netStats.recvPings + netStats.lostPings;
   const lossPct = delivered > 0 ? (netStats.lostPings * 100) / delivered : 0;
-  const interpMs = game.netSnapshots.length > 0 ? roomSync.netRenderDelayMs : 0;
+  const interpMs = game.netSnapshots.length > 0 ? getEffectiveNetRenderDelayMs() : 0;
 
   const netLine1 = 'NET: ping ' + Math.round(netStats.rttMs) + 'ms | jitter ' + Math.round(netStats.jitterMs) + 'ms | loss ' + lossPct.toFixed(1) + '%';
   const netLine2 = 'state ' + netStats.stateHz.toFixed(1) + 'Hz | delay ' + Math.round(netStats.stateDelayMs) + 'ms | interp ' + interpMs + 'ms | rx ' + netStats.rxKBps.toFixed(1) + 'KB/s (' + formatBytesTotal(netStats.rxTotalBytes) + ') | tx ' + netStats.txKBps.toFixed(1) + 'KB/s (' + formatBytesTotal(netStats.txTotalBytes) + ')';

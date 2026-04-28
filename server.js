@@ -3148,6 +3148,7 @@ function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode, reques
       spectators: new Map(),
       companions: [],
       bullets: [],
+      shotEvents: [],
       enemies: [],
       drops: [],
       xpOrbs: [],
@@ -3161,6 +3162,7 @@ function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode, reques
       nextEnemyId: 1,
       nextCompanionId: 1,
       nextBulletId: 1,
+      nextShotEventId: 1,
       nextDropId: 1,
       nextXpOrbId: 1,
       nextSkillOrbId: 1,
@@ -3182,6 +3184,20 @@ function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode, reques
 function sendTo(ws, payload) {
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(payload));
+  }
+}
+
+function pushRoomShotEvent(room, event) {
+  if (!room || !event) return;
+  if (!Array.isArray(room.shotEvents)) room.shotEvents = [];
+  if (!Number.isFinite(Number(room.nextShotEventId))) room.nextShotEventId = 1;
+  room.shotEvents.push({
+    id: room.nextShotEventId++,
+    at: Date.now(),
+    ...event,
+  });
+  if (room.shotEvents.length > 96) {
+    room.shotEvents.splice(0, room.shotEvents.length - 96);
   }
 }
 
@@ -3414,6 +3430,21 @@ function fireCompanionWeapon(room, companion, owner, now) {
   const baseAngle = Math.atan2(dy, dx);
   const damageMul = Math.max(0.2, Number(owner?.damageMul) || 1);
   const fireRateMul = Math.max(0.2, Number(owner?.fireRateMul) || 1);
+  const firstBulletId = room.nextBulletId;
+  const eventSpeed = Math.max(120, Number(weapon.bulletSpeed) || 920);
+  pushRoomShotEvent(room, {
+    bulletId: firstBulletId,
+    ownerId: companion.id,
+    ownerPlayerId: owner?.id || companion.ownerId,
+    shooterType: 'companion',
+    weaponKey: String(companion.weaponKey || 'pistol').toLowerCase(),
+    x: companion.x,
+    y: companion.y,
+    vx: Math.cos(baseAngle) * eventSpeed,
+    vy: Math.sin(baseAngle) * eventSpeed,
+    color: weapon.color || '#f59e0b',
+    radius: Math.max(2, Number(weapon.radius) || BULLET_RADIUS),
+  });
 
   for (let i = 0; i < weapon.pellets; i += 1) {
     const spread = (Math.random() - 0.5) * (weapon.spreadDeg * Math.PI / 180);
@@ -3967,6 +3998,21 @@ function serializeRoom(room) {
       fromEnemy: Boolean(b.fromEnemy),
       shooterType: b.shooterType || (b.fromEnemy ? 'enemy' : ''),
     })),
+    shotEvents: (Array.isArray(room.shotEvents) ? room.shotEvents : []).map((event) => ({
+      id: event.id,
+      bulletId: event.bulletId,
+      ownerId: event.ownerId || '',
+      ownerPlayerId: event.ownerPlayerId || '',
+      shooterType: event.shooterType || 'player',
+      weaponKey: event.weaponKey || 'pistol',
+      x: event.x,
+      y: event.y,
+      vx: event.vx,
+      vy: event.vy,
+      color: event.color || '#f59e0b',
+      radius: Math.max(2, Number(event.radius) || BULLET_RADIUS),
+      at: Math.max(0, Number(event.at) || 0),
+    })),
     enemies: room.enemies.map((e) => ({
       id: e.id,
       type: e.type || 'normal',
@@ -4360,7 +4406,7 @@ function updatePlayerReload(player, dtMs) {
   fallbackToPistolIfOut(player);
 }
 
-function fireFromPlayer(room, player) {
+function fireFromPlayer(room, player, now = Date.now()) {
   const weapon = WEAPONS[player.weaponKey] || WEAPONS.pistol;
   if (Number(player.weaponReloadLeftMs) > 0) return;
   if (Math.max(0, Math.floor(Number(player.weaponMagazine) || 0)) <= 0) {
@@ -4375,6 +4421,22 @@ function fireFromPlayer(room, player) {
 
   const damageMul = Math.max(0.2, Number(player.damageMul) || 1);
   const fireRateMul = Math.max(0.2, Number(player.fireRateMul) || 1);
+  const firstBulletId = room.nextBulletId;
+  const eventSpeed = Math.max(120, Number(activeWeapon.bulletSpeed) || 920);
+  pushRoomShotEvent(room, {
+    bulletId: firstBulletId,
+    ownerId: player.id,
+    ownerPlayerId: player.ownerId || '',
+    shooterType: player.isCompanion ? 'companion' : 'player',
+    weaponKey: String(player.weaponKey || 'pistol').toLowerCase(),
+    x: player.x,
+    y: player.y,
+    vx: Math.cos(baseAngle) * eventSpeed,
+    vy: Math.sin(baseAngle) * eventSpeed,
+    color: activeWeapon.color || '#f59e0b',
+    radius: Math.max(2, Number(activeWeapon.radius) || BULLET_RADIUS),
+    at: now,
+  });
 
   for (let i = 0; i < activeWeapon.pellets; i += 1) {
     const spread = (Math.random() - 0.5) * (activeWeapon.spreadDeg * Math.PI / 180);
@@ -6335,7 +6397,7 @@ function tickRoom(room, dtSec, now) {
     p.fireCooldownLeft = Math.max(0, p.fireCooldownLeft - dtMs);
 
     if (p.shooting && p.fireCooldownLeft <= 0) {
-      fireFromPlayer(room, p);
+      fireFromPlayer(room, p, now);
     }
 
     tickPlayerSkills(room, p, dtSec, now);
@@ -6758,7 +6820,9 @@ setInterval(() => {
     const stateIntervalMs = room.stateIntervalMs || (1000 / DEFAULT_ROOM_SYNC.stateSendHz);
     if (room.players.size > 0 && room.stateAccumulatorMs >= stateIntervalMs) {
       room.stateAccumulatorMs %= stateIntervalMs;
-      broadcastRoom(room, { type: 'state', payload: serializeRoom(room) });
+      const payload = serializeRoom(room);
+      broadcastRoom(room, { type: 'state', payload });
+      room.shotEvents = [];
     }
   }
 }, MAIN_LOOP_MS);

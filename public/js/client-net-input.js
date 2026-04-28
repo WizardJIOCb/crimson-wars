@@ -4821,6 +4821,7 @@ function seekReplayGame(elapsedMs, { keepPaused = null } = {}) {
   visuals.playerPrev = new Map();
   visuals.rocketPrev = new Map();
   visuals.bulletIds = new Set();
+  visuals.spectatorMuzzleBulletIds = new Set();
   visuals.skillCdPrev = new Map();
   visuals.skillOfferPrev = new Map();
   visuals.dropPrev = new Map();
@@ -5385,6 +5386,7 @@ function startReplayGame(payload, record) {
   visuals.playerPrev = new Map();
   visuals.rocketPrev = new Map();
   visuals.bulletIds = new Set();
+  visuals.spectatorMuzzleBulletIds = new Set();
   visuals.blood = [];
   visuals.bloodPuddles = [];
   visuals.gore = [];
@@ -6090,7 +6092,8 @@ function updatePlayerInterpolation(dt) {
   if (game.myId && liveMap.has(game.myId)) {
     targetMap.set(game.myId, liveMap.get(game.myId));
   }
-  const alpha = 1 - Math.exp(-roomSync.entityInterpRate * dt);
+  const alpha = 1 - Math.exp(-getEffectiveEntityInterpRate() * dt);
+  const spectatorSmoothing = isSpectatorSmoothingView();
   const alive = new Set();
 
   for (const [id, p] of targetMap.entries()) {
@@ -6126,8 +6129,10 @@ function updatePlayerInterpolation(dt) {
       r.y = targetY;
     } else {
       const isLocalPlayer = Boolean(game.myId) && String(id) === String(game.myId);
-      // For remote players: keep regular motion responsive, but make dodge/jump movement smoother.
-      const alphaRemote = dodgeActive ? Math.max(alpha, 0.26) : Math.max(alpha, 0.52);
+      // Spectator/live views prefer stability over input responsiveness: every player is remote there.
+      const alphaRemote = spectatorSmoothing
+        ? (dodgeActive ? Math.max(alpha, 0.32) : Math.max(alpha, 0.48))
+        : (dodgeActive ? Math.max(alpha, 0.26) : Math.max(alpha, 0.52));
       const alphaPlayer = isLocalPlayer ? alpha : alphaRemote;
       const nx = r.x + (targetX - r.x) * alphaPlayer;
       const ny = r.y + (targetY - r.y) * alphaPlayer;
@@ -6147,6 +6152,150 @@ function updatePlayerInterpolation(dt) {
 
 function getPlayerRenderPos(player) {
   return game.renderPlayers.get(player.id) || player;
+}
+
+function getSpectatorBulletSpawnAnchor(bullet) {
+  if (!isSpectatorSmoothingView() || replayGame.active) return null;
+  const ownerId = String(bullet?.ownerId || bullet?.ownerPlayerId || '');
+  if (!ownerId) return null;
+  const owner = (game.state?.players || []).find((p) => String(p?.id || '') === ownerId);
+  if (!owner) return null;
+  const ownerRender = getPlayerRenderPos(owner);
+  const vx = Number(bullet?.vx) || 0;
+  const vy = Number(bullet?.vy) || 0;
+  const speed = Math.hypot(vx, vy);
+  const dirX = speed > 0.001 ? vx / speed : 1;
+  const dirY = speed > 0.001 ? vy / speed : 0;
+  return {
+    x: (Number(ownerRender.x) || Number(owner.x) || 0) + dirX * 20,
+    y: (Number(ownerRender.y) || Number(owner.y) || 0) + dirY * 20,
+    a: Math.atan2(dirY, dirX || 1),
+    owner,
+  };
+}
+
+function getSpectatorBulletVisualTarget(bullet) {
+  if (!isSpectatorSmoothingView() || replayGame.active) return null;
+  const ownerId = String(bullet?.ownerId || bullet?.ownerPlayerId || '');
+  if (!ownerId) return null;
+  const ownerLive = (game.state?.players || []).find((p) => String(p?.id || '') === ownerId);
+  const ownerTarget = game.sampledNet?.players?.get(ownerId) || ownerLive;
+  if (!ownerTarget) return null;
+  const ownerRender = getPlayerRenderPos(ownerTarget);
+  const ownerTargetX = Number(ownerTarget.x) || 0;
+  const ownerTargetY = Number(ownerTarget.y) || 0;
+  const dxFromOwner = (Number(bullet?.x) || 0) - ownerTargetX;
+  const dyFromOwner = (Number(bullet?.y) || 0) - ownerTargetY;
+  const distFromOwner = Math.hypot(dxFromOwner, dyFromOwner);
+  const follow = Math.max(0, Math.min(1, (520 - distFromOwner) / 340));
+  if (follow <= 0) return null;
+  const offsetX = ((Number(ownerRender.x) || ownerTargetX) - ownerTargetX) * follow;
+  const offsetY = ((Number(ownerRender.y) || ownerTargetY) - ownerTargetY) * follow;
+  return {
+    x: (Number(bullet?.x) || 0) + offsetX,
+    y: (Number(bullet?.y) || 0) + offsetY,
+  };
+}
+
+function spawnSpectatorBulletMuzzleFx(bullet, anchor) {
+  if (!game.bulletTracersEnabled || !anchor) return;
+  const bulletId = bullet?.id;
+  if (bulletId !== undefined && bulletId !== null) {
+    if (visuals.spectatorMuzzleBulletIds.has(bulletId)) return;
+    visuals.spectatorMuzzleBulletIds.add(bulletId);
+  }
+  const weaponKey = String(bullet?.weaponKey || anchor.owner?.weaponKey || '').toLowerCase();
+  const isCompanionShot = Boolean(anchor.owner?.isCompanion) || String(bullet?.shooterType || '').toLowerCase() === 'companion';
+  const flashColor = '#facc15';
+  const flashEdgeColor = '#fb923c';
+  visuals.muzzle.push({
+    x: anchor.x,
+    y: anchor.y,
+    a: anchor.a,
+    c: flashColor,
+    life: 0.05,
+    ttl: 0.05,
+  });
+  visuals.muzzleGroundFlashes.push({
+    x: anchor.x + Math.cos(anchor.a) * 3,
+    y: anchor.y + Math.sin(anchor.a) * 3 + 8,
+    a: anchor.a,
+    c1: flashColor,
+    c2: flashEdgeColor,
+    life: 0.13,
+    ttl: 0.13,
+    size: isCompanionShot ? 0.9 : (weaponKey === 'shotgun' ? 1.72 : (weaponKey === 'sniper' ? 1.55 : 1)),
+    intensity: isCompanionShot ? 0.62 : (weaponKey === 'shotgun' ? 0.46 : 1),
+  });
+}
+
+function spawnSpectatorShotEventFx(event, state) {
+  if (!isSpectatorSmoothingView() || replayGame.active || !event) return;
+  const eventId = event.id ?? `${event.ownerId || event.ownerPlayerId || 'shot'}:${event.at || Date.now()}`;
+  const ownerId = String(event.ownerId || event.ownerPlayerId || '');
+  const owner = (state?.players || game.state?.players || []).find((p) => String(p?.id || '') === ownerId) || {
+    id: ownerId,
+    x: Number(event.x) || 0,
+    y: Number(event.y) || 0,
+    weaponKey: event.weaponKey || 'pistol',
+    isCompanion: String(event.shooterType || '').toLowerCase() === 'companion',
+    ownerId: event.ownerPlayerId || '',
+  };
+  const weaponKey = String(event.weaponKey || owner.weaponKey || 'pistol').toLowerCase();
+  let dirX = Number(event.vx) || 1;
+  let dirY = Number(event.vy) || 0;
+  const speed = Math.max(120, Math.hypot(dirX, dirY) || (weaponKey === 'sniper' ? 3050 : 920));
+  dirX /= speed;
+  dirY /= speed;
+  const ownerRender = getPlayerRenderPos(owner);
+  const anchor = {
+    x: (Number(ownerRender?.x) || Number(event.x) || 0) + dirX * 20,
+    y: (Number(ownerRender?.y) || Number(event.y) || 0) + dirY * 20,
+    a: Math.atan2(dirY, dirX || 1),
+    owner,
+  };
+  const fakeBullet = {
+    id: `shot-event:${eventId}`,
+    ownerId,
+    ownerPlayerId: event.ownerPlayerId || '',
+    weaponKey,
+    shooterType: event.shooterType || 'player',
+    color: event.color || '#facc15',
+    x: Number(event.x) || anchor.x,
+    y: Number(event.y) || anchor.y,
+    vx: dirX * speed,
+    vy: dirY * speed,
+    radius: Math.max(2, Number(event.radius) || 3),
+  };
+  spawnSpectatorBulletMuzzleFx(fakeBullet, anchor);
+
+  const bulletId = event.bulletId;
+  const hasRealBullet = bulletId !== undefined && bulletId !== null && (
+    game.renderBullets.has(bulletId)
+    || (state?.bullets || []).some((b) => String(b?.id) === String(bulletId))
+  );
+  if (hasRealBullet) return;
+
+  const syntheticId = `synthetic-shot:${eventId}`;
+  if (game.renderBullets.has(syntheticId)) return;
+  game.renderBullets.set(syntheticId, {
+    id: syntheticId,
+    x: anchor.x + dirX * 8,
+    y: anchor.y + dirY * 8,
+    serverX: anchor.x + dirX * 120,
+    serverY: anchor.y + dirY * 120,
+    ownerId,
+    ownerPlayerId: event.ownerPlayerId || '',
+    vx: dirX * Math.min(speed, weaponKey === 'sniper' ? 1500 : 920),
+    vy: dirY * Math.min(speed, weaponKey === 'sniper' ? 1500 : 920),
+    color: event.color || '#facc15',
+    kind: 'bullet',
+    radius: Math.max(2, Number(event.radius) || 3),
+    shooterType: event.shooterType || 'player',
+    weaponKey,
+    syntheticShot: true,
+    syntheticExpiresAt: performance.now() + (weaponKey === 'sniper' ? 115 : 95),
+  });
 }
 
 function updateEnemyInterpolation(dt) {
@@ -6180,6 +6329,7 @@ function updateEnemyInterpolation(dt) {
 }
 
 function syncBulletsFromState(nextState) {
+  if (isSpectatorSmoothingView() && !replayGame.active) return;
   const alive = new Set();
 
   for (const b of nextState.bullets) {
@@ -6189,7 +6339,9 @@ function syncBulletsFromState(nextState) {
 
     let r = game.renderBullets.get(id);
     if (!r) {
+      if (isSpectatorSmoothingView() && !replayGame.active) continue;
       r = {
+        id,
         x: b.x,
         y: b.y,
         serverX: b.x,
@@ -6208,6 +6360,7 @@ function syncBulletsFromState(nextState) {
       continue;
     }
 
+    r.id = id;
     r.serverX = b.x;
     r.serverY = b.y;
     r.ownerId = b.ownerId || '';
@@ -6236,11 +6389,14 @@ function updateBulletInterpolation(dt) {
 
     let r = game.renderBullets.get(id);
     if (!r) {
+      const spawnAnchor = getSpectatorBulletSpawnAnchor(tb);
+      const visualTarget = getSpectatorBulletVisualTarget(tb);
       r = {
-        x: tb.x,
-        y: tb.y,
-        serverX: tb.x,
-        serverY: tb.y,
+        id,
+        x: spawnAnchor?.x ?? tb.x,
+        y: spawnAnchor?.y ?? tb.y,
+        serverX: visualTarget?.x ?? tb.x,
+        serverY: visualTarget?.y ?? tb.y,
         ownerId: tb.ownerId || '',
         ownerPlayerId: tb.ownerPlayerId || '',
         vx: tb.vx || 0,
@@ -6255,8 +6411,10 @@ function updateBulletInterpolation(dt) {
       continue;
     }
 
-    r.serverX = tb.x;
-    r.serverY = tb.y;
+    r.id = id;
+    const visualTarget = getSpectatorBulletVisualTarget(tb);
+    r.serverX = visualTarget?.x ?? tb.x;
+    r.serverY = visualTarget?.y ?? tb.y;
     r.ownerId = tb.ownerId || '';
     r.ownerPlayerId = tb.ownerPlayerId || '';
     const isRocket = String(tb.kind || r.kind || '').toLowerCase() === 'rocket';
@@ -6305,7 +6463,14 @@ function updateBulletInterpolation(dt) {
   }
 
   for (const id of Array.from(game.renderBullets.keys())) {
-    if (!alive.has(id)) game.renderBullets.delete(id);
+    if (alive.has(id)) continue;
+    const r = game.renderBullets.get(id);
+    if (r?.syntheticShot && Number(r.syntheticExpiresAt) > performance.now()) {
+      r.x += (Number(r.vx) || 0) * dt;
+      r.y += (Number(r.vy) || 0) * dt;
+      continue;
+    }
+    game.renderBullets.delete(id);
   }
 }
 
@@ -6344,7 +6509,17 @@ function getEnemyRenderPos(enemy) {
 
 function getBulletRenderPos(bullet) {
   const id = bullet.id;
-  return (id && game.renderBullets.get(id)) || bullet;
+  const rendered = id && game.renderBullets.get(id);
+  if (rendered) return rendered;
+  if (isSpectatorSmoothingView() && !replayGame.active) return null;
+  return bullet;
+}
+
+function getBulletsForRender() {
+  if (isSpectatorSmoothingView() && !replayGame.active) {
+    return Array.from(game.renderBullets.values());
+  }
+  return game.state?.bullets || [];
 }
 function pushNetSnapshot(state) {
   const snap = {
@@ -6388,7 +6563,7 @@ function sampleBufferedState() {
   const snaps = game.netSnapshots;
   if (snaps.length === 0) return null;
 
-  const target = performance.now() - roomSync.netRenderDelayMs;
+  const target = performance.now() - getEffectiveNetRenderDelayMs();
   let a = snaps[0];
   let b = snaps[snaps.length - 1];
 
@@ -7433,6 +7608,7 @@ message: (ev) => {
     visuals.skillCdPrev = new Map();
     visuals.skillOfferPrev = new Map();
     visuals.rocketPrev = new Map();
+    visuals.spectatorMuzzleBulletIds = new Set();
     visuals.dropPrev = new Map();
     visuals.xpOrbPrev = new Map();
     visuals.prevBossAlive = false;

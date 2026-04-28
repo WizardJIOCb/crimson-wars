@@ -1431,8 +1431,9 @@ function render(ts) {
     ctx.fillStyle = blink ? '#ef4444' : glow;
     ctx.fill();
   }
-  for (const b of game.state.bullets) {
+  for (const b of getBulletsForRender()) {
     const rb = getBulletRenderPos(b);
+    if (!rb) continue;
     const bulletRadius = Math.max(2, Number(rb.radius) || Number(b.radius) || 3);
     const isRocket = String(rb.kind || b.kind || '').toLowerCase() === 'rocket';
     if (!isVisibleWorld(rb.x, rb.y, isRocket ? 24 : 12)) continue;
