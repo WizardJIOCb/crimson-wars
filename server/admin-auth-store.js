@@ -4,6 +4,9 @@ const Database = require('better-sqlite3');
 const { createMysqlSyncClient, escapeSql, jsonObjectSql } = require('./mysql-sync');
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 14;
+const SESSION_CACHE_TTL_MS = 30000;
+const SESSION_TOUCH_INTERVAL_MS = 1000 * 60 * 5;
+const SESSION_PRUNE_INTERVAL_MS = 1000 * 60;
 
 function nowMs() {
   return Date.now();
@@ -57,6 +60,8 @@ function parseAdminRow(row) {
 
 function createMysqlAdminAuthStore({ bootstrapLogin, bootstrapPassword, isProd, mysql }) {
   const client = createMysqlSyncClient(mysql);
+  const sessionCache = new Map();
+  let lastPruneAt = 0;
   const adminJson = jsonObjectSql({
     id: 'id',
     login: 'login',
@@ -95,7 +100,24 @@ function createMysqlAdminAuthStore({ bootstrapLogin, bootstrapPassword, isProd, 
   });
 
   function pruneExpiredSessions() {
+    const now = nowMs();
+    if (now - lastPruneAt < SESSION_PRUNE_INTERVAL_MS) return;
+    lastPruneAt = now;
     client.execute(`DELETE FROM admin_sessions WHERE expires_at < ${escapeSql(nowMs())}`);
+  }
+
+  function cacheSession(tokenHash, row) {
+    const now = nowMs();
+    const session = {
+      sessionId: row.session_id,
+      user: parseAdminRow(row),
+    };
+    sessionCache.set(tokenHash, {
+      session,
+      expiresAt: Math.max(0, Number(row.session_expires_at) || 0),
+      cacheUntil: now + SESSION_CACHE_TTL_MS,
+    });
+    return session;
   }
 
   function getUserRowByLoginKey(loginKey, withSecret = false) {
@@ -157,8 +179,13 @@ function createMysqlAdminAuthStore({ bootstrapLogin, bootstrapPassword, isProd, 
 
   function getSession(token) {
     if (!token) return null;
-    pruneExpiredSessions();
     const tokenHash = hashSessionToken(token);
+    const now = nowMs();
+    const cached = sessionCache.get(tokenHash);
+    if (cached && cached.cacheUntil > now && cached.expiresAt > now) {
+      return cached.session;
+    }
+    pruneExpiredSessions();
     const row = client.queryJsonOne([
       `SELECT ${sessionJson}`,
       'FROM admin_sessions s',
@@ -168,24 +195,28 @@ function createMysqlAdminAuthStore({ bootstrapLogin, bootstrapPassword, isProd, 
     ].join('\n'));
     if (!row) return null;
     if (!row.is_active) {
+      sessionCache.delete(tokenHash);
       client.execute(`DELETE FROM admin_sessions WHERE user_id = ${escapeSql(row.session_user_id)}`);
       return null;
     }
-    const now = nowMs();
     if (Number(row.session_expires_at) < now) {
+      sessionCache.delete(tokenHash);
       client.execute(`DELETE FROM admin_sessions WHERE token_hash = ${escapeSql(tokenHash)}`);
       return null;
     }
-    client.execute(`UPDATE admin_sessions SET last_seen_at = ${escapeSql(now)}, expires_at = ${escapeSql(now + SESSION_TTL_MS)} WHERE id = ${escapeSql(row.session_id)}`);
-    return {
-      sessionId: row.session_id,
-      user: parseAdminRow(row),
-    };
+    if (now - Math.max(0, Number(row.session_last_seen_at) || 0) > SESSION_TOUCH_INTERVAL_MS) {
+      client.execute(`UPDATE admin_sessions SET last_seen_at = ${escapeSql(now)}, expires_at = ${escapeSql(now + SESSION_TTL_MS)} WHERE id = ${escapeSql(row.session_id)}`);
+      row.session_last_seen_at = now;
+      row.session_expires_at = now + SESSION_TTL_MS;
+    }
+    return cacheSession(tokenHash, row);
   }
 
   function deleteSession(token) {
     if (!token) return;
-    client.execute(`DELETE FROM admin_sessions WHERE token_hash = ${escapeSql(hashSessionToken(token))}`);
+    const tokenHash = hashSessionToken(token);
+    sessionCache.delete(tokenHash);
+    client.execute(`DELETE FROM admin_sessions WHERE token_hash = ${escapeSql(tokenHash)}`);
   }
 
   function authenticate(login, password) {

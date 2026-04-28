@@ -4,6 +4,10 @@ const Database = require('better-sqlite3');
 const { createMysqlSyncClient, escapeSql, jsonObjectSql } = require('./mysql-sync');
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
+const SESSION_CACHE_TTL_MS = 30000;
+const SESSION_TOUCH_INTERVAL_MS = 1000 * 60 * 5;
+const SESSION_PRUNE_INTERVAL_MS = 1000 * 60;
+const ACCOUNT_COUNT_CACHE_MS = 15000;
 const NICKNAME_MIN_LENGTH = 2;
 const NICKNAME_MAX_LENGTH = 18;
 const PASSWORD_MIN_LENGTH = 6;
@@ -99,6 +103,10 @@ function sanitizeNicknameSeed(value, fallback = 'Player') {
 
 function createMysqlPlayerAuthStore({ mysql }) {
   const client = createMysqlSyncClient(mysql);
+  const sessionCache = new Map();
+  let lastPruneAt = 0;
+  let cachedAccountCount = null;
+  let cachedAccountCountUntil = 0;
   const playerJson = jsonObjectSql({
     id: 'id',
     nickname: 'nickname',
@@ -142,7 +150,31 @@ function createMysqlPlayerAuthStore({ mysql }) {
   });
 
   function pruneExpiredSessions() {
+    const now = nowMs();
+    if (now - lastPruneAt < SESSION_PRUNE_INTERVAL_MS) return;
+    lastPruneAt = now;
     client.execute(`DELETE FROM player_sessions WHERE expires_at < ${escapeSql(nowMs())}`);
+  }
+
+  function cacheSession(tokenHash, row, identities) {
+    const now = nowMs();
+    const session = {
+      sessionId: row.session_id,
+      player: parsePlayerRow(row),
+      identities,
+    };
+    sessionCache.set(tokenHash, {
+      session,
+      expiresAt: Math.max(0, Number(row.session_expires_at) || 0),
+      lastSeenAt: Math.max(0, Number(row.session_last_seen_at) || 0),
+      cacheUntil: now + SESSION_CACHE_TTL_MS,
+    });
+    return session;
+  }
+
+  function invalidateAccountCount() {
+    cachedAccountCount = null;
+    cachedAccountCountUntil = 0;
   }
 
   function getAccountRowByNicknameKey(nicknameKey, withSecret = false) {
@@ -201,8 +233,13 @@ function createMysqlPlayerAuthStore({ mysql }) {
 
   function getSession(token) {
     if (!token) return null;
-    pruneExpiredSessions();
     const tokenHash = hashSessionToken(token);
+    const now = nowMs();
+    const cached = sessionCache.get(tokenHash);
+    if (cached && cached.cacheUntil > now && cached.expiresAt > now) {
+      return cached.session;
+    }
+    pruneExpiredSessions();
     const row = client.queryJsonOne([
       `SELECT ${sessionJson}`,
       'FROM player_sessions s',
@@ -212,25 +249,28 @@ function createMysqlPlayerAuthStore({ mysql }) {
     ].join('\n'));
     if (!row) return null;
     if (!row.is_active) {
+      sessionCache.delete(tokenHash);
       client.execute(`DELETE FROM player_sessions WHERE player_id = ${escapeSql(row.session_player_id)}`);
       return null;
     }
-    const now = nowMs();
     if (Number(row.session_expires_at) < now) {
+      sessionCache.delete(tokenHash);
       client.execute(`DELETE FROM player_sessions WHERE token_hash = ${escapeSql(tokenHash)}`);
       return null;
     }
-    client.execute(`UPDATE player_sessions SET last_seen_at = ${escapeSql(now)}, expires_at = ${escapeSql(now + SESSION_TTL_MS)} WHERE id = ${escapeSql(row.session_id)}`);
-    return {
-      sessionId: row.session_id,
-      player: parsePlayerRow(row),
-      identities: listIdentities(row.id),
-    };
+    if (now - Math.max(0, Number(row.session_last_seen_at) || 0) > SESSION_TOUCH_INTERVAL_MS) {
+      client.execute(`UPDATE player_sessions SET last_seen_at = ${escapeSql(now)}, expires_at = ${escapeSql(now + SESSION_TTL_MS)} WHERE id = ${escapeSql(row.session_id)}`);
+      row.session_last_seen_at = now;
+      row.session_expires_at = now + SESSION_TTL_MS;
+    }
+    return cacheSession(tokenHash, row, listIdentities(row.id));
   }
 
   function deleteSession(token) {
     if (!token) return;
-    client.execute(`DELETE FROM player_sessions WHERE token_hash = ${escapeSql(hashSessionToken(token))}`);
+    const tokenHash = hashSessionToken(token);
+    sessionCache.delete(tokenHash);
+    client.execute(`DELETE FROM player_sessions WHERE token_hash = ${escapeSql(tokenHash)}`);
   }
 
   function register(nickname, password) {
@@ -248,6 +288,7 @@ function createMysqlPlayerAuthStore({ mysql }) {
       'INSERT INTO player_accounts (nickname, nickname_key, password_hash, is_active, created_at, updated_at, last_login_at)',
       `VALUES (${escapeSql(validation.nickname)}, ${escapeSql(validation.nicknameKey)}, ${escapeSql(hashPassword(normalizedPassword))}, 1, ${escapeSql(now)}, ${escapeSql(now)}, 0)`,
     ].join('\n'));
+    invalidateAccountCount();
     const account = getAccountById(id);
     const token = createSession(account.id);
     return { ok: true, player: account, token, identities: [] };
@@ -308,8 +349,12 @@ function createMysqlPlayerAuthStore({ mysql }) {
   }
 
   function countAccounts() {
+    const now = nowMs();
+    if (cachedAccountCount !== null && cachedAccountCountUntil > now) return cachedAccountCount;
     const row = client.queryOne('SELECT COUNT(*) AS total FROM player_accounts WHERE is_active = 1');
-    return Math.max(0, Number(row?.total) || 0);
+    cachedAccountCount = Math.max(0, Number(row?.total) || 0);
+    cachedAccountCountUntil = now + ACCOUNT_COUNT_CACHE_MS;
+    return cachedAccountCount;
   }
 
   function createProviderPlaceholder(playerId, provider, providerUserId, providerEmail = '') {
@@ -431,6 +476,7 @@ function createMysqlPlayerAuthStore({ mysql }) {
         'INSERT INTO player_accounts (nickname, nickname_key, password_hash, is_active, created_at, updated_at, last_login_at)',
         `VALUES (${escapeSql(validation.nickname)}, ${escapeSql(validation.nicknameKey)}, ${escapeSql(hashPassword(randomToken(24)))}, 1, ${escapeSql(now)}, ${escapeSql(now)}, 0)`,
       ].join('\n'));
+      invalidateAccountCount();
       client.execute([
         'INSERT INTO player_identities (player_account_id, provider, provider_user_id, provider_email, created_at)',
         `VALUES (${escapeSql(playerId)}, ${escapeSql(normalizedProvider)}, ${escapeSql(externalUserId)}, ${escapeSql(externalEmail)}, ${escapeSql(now)})`,

@@ -80,6 +80,8 @@ function createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql 
   const PLAYER_RUN_HISTORY_LIMIT = 50000;
   const PLAYER_RUN_HISTORY_PAGE_SIZE = 20;
   const MEMORY_RUN_HISTORY_LIMIT = 300;
+  const RUN_LIST_CACHE_MS = 10000;
+  const latestRunsCache = new Map();
   const recordSummaryJson = jsonObjectSql({
     id: 'id',
     name: 'name',
@@ -145,7 +147,6 @@ function createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql 
   }
 
   function listRecordsForLobby(page = 1, pageSize = leaderboardPageSize) {
-    loadRecordsFromDb();
     const total = records.length;
     const size = Math.max(1, Math.min(50, Math.floor(pageSize) || leaderboardPageSize));
     const totalPages = Math.max(1, Math.ceil(total / size));
@@ -157,6 +158,7 @@ function createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql 
 
   function pushRecord(entry) {
     const normalized = normalizeRecordEntry(entry);
+    latestRunsCache.clear();
     runHistory.unshift(normalized);
     if (runHistory.length > MEMORY_RUN_HISTORY_LIMIT) runHistory.length = MEMORY_RUN_HISTORY_LIMIT;
 
@@ -237,6 +239,11 @@ function createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql 
 
   function listLatestPlayerRuns(page = 1, pageSize = PLAYER_RUN_HISTORY_PAGE_SIZE) {
     const size = Math.max(1, Math.min(50, Math.floor(pageSize) || PLAYER_RUN_HISTORY_PAGE_SIZE));
+    const cacheKey = `${Math.max(1, Math.floor(page) || 1)}:${size}`;
+    const cached = latestRunsCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < RUN_LIST_CACHE_MS) {
+      return JSON.parse(JSON.stringify(cached.payload));
+    }
     const total = Math.max(0, Number(client.queryOne('SELECT COUNT(1) AS total FROM player_runs')?.total) || 0);
     const totalPages = Math.max(1, Math.ceil(total / size));
     const currentPage = Math.max(1, Math.min(totalPages, Math.floor(page) || 1));
@@ -247,7 +254,10 @@ function createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql 
       'ORDER BY at DESC',
       `LIMIT ${size} OFFSET ${offset}`,
     ].join('\n'));
-    return { page: currentPage, pageSize: size, total, totalPages, items: rows.map((row) => publicRecordEntry(row)) };
+    const payload = { page: currentPage, pageSize: size, total, totalPages, items: rows.map((row) => publicRecordEntry(row)) };
+    latestRunsCache.set(cacheKey, { at: Date.now(), payload });
+    if (latestRunsCache.size > 20) latestRunsCache.delete(latestRunsCache.keys().next().value);
+    return JSON.parse(JSON.stringify(payload));
   }
 
   function getPlayerRunReplayByNameAndId(name, runId) {

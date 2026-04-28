@@ -120,9 +120,22 @@ function createNewsStore({ dataDir, filePath, mysql }) {
   if (!useMysql) fs.mkdirSync(dataDir, { recursive: true });
   const fullPath = filePath || path.join(dataDir, 'news.json');
   const docKey = 'news';
+  let cachedItems = null;
+  let lastViewPersistAt = 0;
+
+  function normalizeStoredItems(items) {
+    return (Array.isArray(items) ? items : [])
+      .map((item) => normalizeNewsItem(item))
+      .filter((item) => item.title || item.summary || item.items.length > 0);
+  }
+
+  function cloneItems(items) {
+    return JSON.parse(JSON.stringify(Array.isArray(items) ? items : []));
+  }
 
   function readAll() {
     if (useMysql) {
+      if (cachedItems) return cloneItems(cachedItems);
       const row = mysqlClient.queryOne(`SELECT content_json FROM app_documents WHERE doc_key = ${escapeSql(docKey)} LIMIT 1`);
       if (!row) {
         const seeded = seedDefaultNews();
@@ -131,8 +144,8 @@ function createNewsStore({ dataDir, filePath, mysql }) {
       }
       try {
         const parsed = JSON.parse(row.content_json || '[]');
-        const arr = Array.isArray(parsed) ? parsed : [];
-        return arr.map((item) => normalizeNewsItem(item)).filter((item) => item.title || item.summary || item.items.length > 0);
+        cachedItems = normalizeStoredItems(parsed);
+        return cloneItems(cachedItems);
       } catch {
         const seeded = seedDefaultNews();
         writeAll(seeded);
@@ -147,8 +160,8 @@ function createNewsStore({ dataDir, filePath, mysql }) {
     try {
       const raw = fs.readFileSync(fullPath, 'utf8');
       const parsed = JSON.parse(raw);
-      const arr = Array.isArray(parsed) ? parsed : [];
-      return arr.map((item) => normalizeNewsItem(item)).filter((item) => item.title || item.summary || item.items.length > 0);
+      const arr = normalizeStoredItems(parsed);
+      return arr;
     } catch {
       const seeded = seedDefaultNews();
       writeAll(seeded);
@@ -157,15 +170,17 @@ function createNewsStore({ dataDir, filePath, mysql }) {
   }
 
   function writeAll(items) {
+    const normalizedItems = normalizeStoredItems(items);
+    if (useMysql) cachedItems = cloneItems(normalizedItems);
     if (useMysql) {
       mysqlClient.execute([
         'INSERT INTO app_documents (doc_key, content_json, updated_at)',
-        `VALUES (${escapeSql(docKey)}, ${escapeSql(JSON.stringify(items))}, ${escapeSql(nowMs())})`,
+        `VALUES (${escapeSql(docKey)}, ${escapeSql(JSON.stringify(normalizedItems))}, ${escapeSql(nowMs())})`,
         'ON DUPLICATE KEY UPDATE content_json=VALUES(content_json), updated_at=VALUES(updated_at)',
       ].join('\n'));
       return;
     }
-    fs.writeFileSync(fullPath, JSON.stringify(items, null, 2), 'utf8');
+    fs.writeFileSync(fullPath, JSON.stringify(normalizedItems, null, 2), 'utf8');
   }
 
   function tryWriteAll(items) {
@@ -210,8 +225,12 @@ function createNewsStore({ dataDir, filePath, mysql }) {
     if (incrementView) {
       all[idx].views = clampInt(all[idx].views, 0) + 1;
       all[idx].updatedAt = nowMs();
-      // View counter must never break article opening even if file is read-only.
-      tryWriteAll(all);
+      if (useMysql) cachedItems = normalizeStoredItems(all);
+      // View counters are intentionally throttled so opening an article does not block the UI.
+      if (!useMysql || Date.now() - lastViewPersistAt > 15000) {
+        lastViewPersistAt = Date.now();
+        tryWriteAll(all);
+      }
     }
     const current = normalizeNewsItem(all[idx], all[idx]);
     return {

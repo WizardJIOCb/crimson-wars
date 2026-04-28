@@ -486,6 +486,9 @@ const LEADERBOARD_MODES = {
   pvp: { key: 'pvp', title: 'PvP' },
 };
 
+const LEADERBOARD_RESPONSE_CACHE_MS = 10000;
+const leaderboardResponseCache = new Map();
+
 let leaderboardAuthDb = null;
 let leaderboardRecordsDb = null;
 let leaderboardMysqlDb = null;
@@ -2357,11 +2360,17 @@ app.get('/api/leaderboard', (req, res) => {
   const category = availableCategories.find((x) => x.key === categoryKey) || fallbackCategory;
   const page = Math.max(1, Number(req.query.page) || 1);
   const pageSize = Math.max(1, Math.min(30, Number(req.query.page_size) || 10));
+  const cacheKey = [category.key, modeKey, page, pageSize].join('|');
+  const cached = leaderboardResponseCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < LEADERBOARD_RESPONSE_CACHE_MS) {
+    res.json({ ...cached.payload, now: Date.now() });
+    return;
+  }
   try {
     const payload = category.source === 'account'
       ? listAccountLeaderboardRows(category.key, page, pageSize)
       : listRunLeaderboardRows(category.key, page, pageSize, modeKey);
-    res.json({
+    const responsePayload = {
       ok: true,
       category: { key: category.key, title: category.title, source: category.source, unit: category.unit },
       mode: LEADERBOARD_MODES[modeKey] || LEADERBOARD_MODES.all,
@@ -2372,8 +2381,13 @@ app.get('/api/leaderboard', (req, res) => {
       pageSize: payload.pageSize,
       total: payload.total,
       totalPages: payload.totalPages,
-      now: Date.now(),
-    });
+    };
+    leaderboardResponseCache.set(cacheKey, { at: Date.now(), payload: responsePayload });
+    if (leaderboardResponseCache.size > 80) {
+      const oldestKey = leaderboardResponseCache.keys().next().value;
+      if (oldestKey) leaderboardResponseCache.delete(oldestKey);
+    }
+    res.json({ ...responsePayload, now: Date.now() });
   } catch (err) {
     console.error('Leaderboard API failed:', err?.message || err);
     res.status(500).json({ ok: false, message: 'Failed to load leaderboard' });

@@ -1,9 +1,10 @@
 const fs = require('fs');
 const Database = require('better-sqlite3');
-const { createMysqlSyncClient, escapeSql, jsonObjectSql } = require('./mysql-sync');
+const { createMysqlSyncClient, escapeSql } = require('./mysql-sync');
 
 const INSTANCE_STALE_MS = 15000;
 const ROOM_STALE_MS = 15000;
+const MYSQL_RUNTIME_PERSIST_INTERVAL_MS = 15000;
 
 function nowMs() {
   return Date.now();
@@ -40,27 +41,11 @@ function parseInstanceRow(row) {
 
 function createMysqlRuntimeRegistryStore({ instanceId, mysql }) {
   const client = createMysqlSyncClient(mysql);
-  const roomJson = jsonObjectSql({
-    room_code: 'r.room_code',
-    instance_id: 'r.instance_id',
-    player_count: 'r.player_count',
-    max_players: 'r.max_players',
-    started_at: 'r.started_at',
-    updated_at: 'r.updated_at',
-    is_shutting_down: 'r.is_shutting_down',
-    public_base_url: 'r.public_base_url',
-  });
-  const instanceJson = jsonObjectSql({
-    instance_id: 'instance_id',
-    started_at: 'started_at',
-    heartbeat_at: 'heartbeat_at',
-    is_shutting_down: 'is_shutting_down',
-    online_sockets: 'online_sockets',
-    in_game_players: 'in_game_players',
-    in_menu_sockets: 'in_menu_sockets',
-    room_count: 'room_count',
-    public_base_url: 'public_base_url',
-  });
+  let localInstance = null;
+  let localRooms = [];
+  let lastPersistAt = 0;
+  let lastPruneAt = 0;
+  let lastPersistErrorAt = 0;
 
   function pruneStale() {
     const now = nowMs();
@@ -70,34 +55,50 @@ function createMysqlRuntimeRegistryStore({ instanceId, mysql }) {
   }
 
   function publishInstance(payload) {
-    pruneStale();
     const now = nowMs();
-    client.execute([
+    localInstance = {
+      instanceId,
+      startedAt: Math.max(0, Number(payload.startedAt) || 0),
+      heartbeatAt: now,
+      isShuttingDown: !!payload.isShuttingDown,
+      onlineSockets: Math.max(0, Number(payload.onlineSockets) || 0),
+      inGamePlayers: Math.max(0, Number(payload.inGamePlayers) || 0),
+      inMenuSockets: Math.max(0, Number(payload.inMenuSockets) || 0),
+      roomCount: Math.max(0, Number(payload.roomCount) || 0),
+      publicBaseUrl: String(payload.publicBaseUrl || '').trim(),
+    };
+  }
+
+  function buildPersistSql(now) {
+    if (!localInstance) return '';
+    const sql = [];
+    if (now - lastPruneAt >= INSTANCE_STALE_MS) {
+      lastPruneAt = now;
+      sql.push(`DELETE FROM room_registry WHERE instance_id IN (SELECT instance_id FROM instance_registry WHERE heartbeat_at < ${escapeSql(now - INSTANCE_STALE_MS)})`);
+      sql.push(`DELETE FROM instance_registry WHERE heartbeat_at < ${escapeSql(now - INSTANCE_STALE_MS)}`);
+      sql.push(`DELETE FROM room_registry WHERE updated_at < ${escapeSql(now - ROOM_STALE_MS)}`);
+    }
+    sql.push([
       'INSERT INTO instance_registry (instance_id, started_at, heartbeat_at, is_shutting_down, online_sockets, in_game_players, in_menu_sockets, room_count, public_base_url)',
       `VALUES (${[
         instanceId,
-        Math.max(0, Number(payload.startedAt) || 0),
-        now,
-        payload.isShuttingDown ? 1 : 0,
-        Math.max(0, Number(payload.onlineSockets) || 0),
-        Math.max(0, Number(payload.inGamePlayers) || 0),
-        Math.max(0, Number(payload.inMenuSockets) || 0),
-        Math.max(0, Number(payload.roomCount) || 0),
-        String(payload.publicBaseUrl || '').trim(),
+        localInstance.startedAt,
+        localInstance.heartbeatAt,
+        localInstance.isShuttingDown ? 1 : 0,
+        localInstance.onlineSockets,
+        localInstance.inGamePlayers,
+        localInstance.inMenuSockets,
+        localRooms.length,
+        localInstance.publicBaseUrl,
       ].map(escapeSql).join(', ')})`,
       'ON DUPLICATE KEY UPDATE',
       'started_at=VALUES(started_at), heartbeat_at=VALUES(heartbeat_at), is_shutting_down=VALUES(is_shutting_down),',
       'online_sockets=VALUES(online_sockets), in_game_players=VALUES(in_game_players), in_menu_sockets=VALUES(in_menu_sockets),',
       'room_count=VALUES(room_count), public_base_url=VALUES(public_base_url)',
     ].join('\n'));
-  }
-
-  function publishRooms(rooms, { isShuttingDown = false, publicBaseUrl = '' } = {}) {
-    pruneStale();
-    client.execute(`DELETE FROM room_registry WHERE instance_id = ${escapeSql(instanceId)}`);
-    const updatedAt = nowMs();
-    for (const room of Array.isArray(rooms) ? rooms : []) {
-      client.execute([
+    sql.push(`DELETE FROM room_registry WHERE instance_id = ${escapeSql(instanceId)}`);
+    for (const room of localRooms) {
+      sql.push([
         'INSERT INTO room_registry (room_code, instance_id, player_count, max_players, started_at, updated_at, is_shutting_down, public_base_url)',
         `VALUES (${[
           room.code,
@@ -105,52 +106,75 @@ function createMysqlRuntimeRegistryStore({ instanceId, mysql }) {
           Math.max(0, Number(room.players) || 0),
           Math.max(0, Number(room.maxPlayers) || 0),
           Math.max(0, Number(room.startedAt) || 0),
-          updatedAt,
-          isShuttingDown ? 1 : 0,
-          String(publicBaseUrl || '').trim(),
+          Math.max(0, Number(room.updatedAt) || now),
+          room.isShuttingDown ? 1 : 0,
+          room.publicBaseUrl || localInstance.publicBaseUrl || '',
         ].map(escapeSql).join(', ')})`,
-        'ON DUPLICATE KEY UPDATE',
-        'instance_id=VALUES(instance_id), player_count=VALUES(player_count), max_players=VALUES(max_players),',
-        'started_at=VALUES(started_at), updated_at=VALUES(updated_at), is_shutting_down=VALUES(is_shutting_down), public_base_url=VALUES(public_base_url)',
       ].join('\n'));
+    }
+    return sql.join(';\n');
+  }
+
+  function persistRuntimeRegistry({ force = false } = {}) {
+    const now = nowMs();
+    if (!force && now - lastPersistAt < MYSQL_RUNTIME_PERSIST_INTERVAL_MS) return;
+    lastPersistAt = now;
+    const sql = buildPersistSql(now);
+    if (!sql) return;
+    try {
+      client.execute(sql);
+    } catch (err) {
+      if (now - lastPersistErrorAt > 30000) {
+        lastPersistErrorAt = now;
+        console.error('Runtime registry MySQL persist failed:', err?.message || err);
+      }
     }
   }
 
+  function publishRooms(rooms, { isShuttingDown = false, publicBaseUrl = '' } = {}) {
+    const updatedAt = nowMs();
+    localRooms = (Array.isArray(rooms) ? rooms : []).map((room) => parseRoomRow({
+      room_code: room.code,
+      instance_id: instanceId,
+      player_count: Math.max(0, Number(room.players) || 0),
+      max_players: Math.max(0, Number(room.maxPlayers) || 0),
+      started_at: Math.max(0, Number(room.startedAt) || 0),
+      updated_at: updatedAt,
+      is_shutting_down: isShuttingDown ? 1 : 0,
+      public_base_url: String(publicBaseUrl || '').trim(),
+    })).filter(Boolean);
+    persistRuntimeRegistry({ force: isShuttingDown });
+  }
+
+  function getLiveInstances() {
+    const now = nowMs();
+    if (!localInstance || localInstance.heartbeatAt < now - INSTANCE_STALE_MS) return [];
+    return [{ ...localInstance, roomCount: localRooms.length }];
+  }
+
+  function getLiveRooms() {
+    const now = nowMs();
+    const liveInstances = getLiveInstances();
+    if (liveInstances.length === 0) return [];
+    return localRooms
+      .filter((room) => room.updatedAt >= now - ROOM_STALE_MS)
+      .sort((a, b) => (b.players - a.players) || a.code.localeCompare(b.code))
+      .slice(0, 40)
+      .map((room) => ({ ...room }));
+  }
+
   function listRooms() {
-    pruneStale();
-    const threshold = nowMs() - ROOM_STALE_MS;
-    const instanceThreshold = nowMs() - INSTANCE_STALE_MS;
-    return client.queryJsonRows([
-      `SELECT ${roomJson}`,
-      'FROM room_registry r',
-      'JOIN instance_registry i ON i.instance_id = r.instance_id',
-      `WHERE r.updated_at >= ${escapeSql(threshold)} AND i.heartbeat_at >= ${escapeSql(instanceThreshold)}`,
-      'ORDER BY r.player_count DESC, r.room_code ASC',
-      'LIMIT 40',
-    ].join('\n')).map(parseRoomRow);
+    return getLiveRooms();
   }
 
   function listInstances() {
-    pruneStale();
-    return client.queryJsonRows([
-      `SELECT ${instanceJson}`,
-      'FROM instance_registry',
-      `WHERE heartbeat_at >= ${escapeSql(nowMs() - INSTANCE_STALE_MS)}`,
-      'ORDER BY instance_id ASC',
-    ].join('\n')).map(parseInstanceRow);
+    return getLiveInstances();
   }
 
   function getRoomByCode(roomCode) {
     const code = (roomCode || '').toString().trim().toUpperCase();
     if (!code) return null;
-    pruneStale();
-    return parseRoomRow(client.queryJsonOne([
-      `SELECT ${roomJson}`,
-      'FROM room_registry r',
-      'JOIN instance_registry i ON i.instance_id = r.instance_id',
-      `WHERE r.room_code = ${escapeSql(code)} AND r.updated_at >= ${escapeSql(nowMs() - ROOM_STALE_MS)} AND i.heartbeat_at >= ${escapeSql(nowMs() - INSTANCE_STALE_MS)}`,
-      'LIMIT 1',
-    ].join('\n')));
+    return getLiveRooms().find((room) => room.code === code) || null;
   }
 
   function chooseTargetInstance() {
@@ -166,17 +190,7 @@ function createMysqlRuntimeRegistryStore({ instanceId, mysql }) {
       instance.roomCount === first.roomCount
       && instance.inGamePlayers === first.inGamePlayers
       && instance.onlineSockets === first.onlineSockets);
-    if (candidatePool.length === 1) return candidatePool[0];
-    const key = 'create_room_cursor';
-    const row = client.queryOne(`SELECT value_integer FROM placement_state WHERE state_key = ${escapeSql(key)} LIMIT 1`);
-    const nextIndex = Math.max(0, Number(row?.value_integer) || 0);
-    const picked = candidatePool[nextIndex % candidatePool.length];
-    client.execute([
-      'INSERT INTO placement_state (state_key, value_integer)',
-      `VALUES (${escapeSql(key)}, ${escapeSql(nextIndex + 1)})`,
-      'ON DUPLICATE KEY UPDATE value_integer=VALUES(value_integer)',
-    ].join('\n'));
-    return picked;
+    return candidatePool[0];
   }
 
   function getPresence() {
@@ -190,8 +204,14 @@ function createMysqlRuntimeRegistryStore({ instanceId, mysql }) {
   }
 
   function unregisterInstance() {
-    client.execute(`DELETE FROM room_registry WHERE instance_id = ${escapeSql(instanceId)}`);
-    client.execute(`DELETE FROM instance_registry WHERE instance_id = ${escapeSql(instanceId)}`);
+    localRooms = [];
+    if (localInstance) localInstance = { ...localInstance, isShuttingDown: true, heartbeatAt: nowMs(), roomCount: 0 };
+    try {
+      client.execute([
+        `DELETE FROM room_registry WHERE instance_id = ${escapeSql(instanceId)}`,
+        `DELETE FROM instance_registry WHERE instance_id = ${escapeSql(instanceId)}`,
+      ].join(';\n'));
+    } catch {}
   }
 
   return {
