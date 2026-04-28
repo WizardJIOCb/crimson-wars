@@ -302,6 +302,7 @@ const game = {
   nextBossAtKills: 50,
   nextBossSpawnAt: 0,
   bossAlive: false,
+  spectatorCount: 0,
   roomDifficulty: { level: 1, hpMul: 1, speedMul: 1, damageMul: 1, attackRateMul: 1, spawnIntervalMs: 760 },
   skillCatalog: {},
   mySkillChoices: [],
@@ -1487,10 +1488,11 @@ void refreshPlayerAuthSession({ silent: true });
 
 function updateTopCenterHud(nowMs = Date.now()) {
   if (!matchTimerEl || !bossProgressEl || !difficultyMetaEl) return;
+  const viewersLabel = trCore('ui.hud.viewers', 'Viewers');
   if (!game.state) {
     matchTimerEl.textContent = `${trCore('ui.hud.time', 'Time')} 00:00`;
     bossProgressEl.textContent = `${trCore('ui.hud.boss_in', 'Boss in')} -- kills`;
-    difficultyMetaEl.textContent = `${trCore('ui.hud.threat', 'Threat')} Lv1`;
+    difficultyMetaEl.textContent = `${trCore('ui.hud.threat', 'Threat')} Lv1 | ${viewersLabel}: 0`;
     if (bossSpawnAlertEl) bossSpawnAlertEl.classList.add('hidden');
     return;
   }
@@ -1506,7 +1508,7 @@ function updateTopCenterHud(nowMs = Date.now()) {
     const alivePlayers = Array.isArray(game.state?.players)
       ? game.state.players.filter((p) => !p.isCompanion && p.alive).length
       : 0;
-    difficultyMetaEl.textContent = `${trCore('ui.scoreboard.players', 'Players')}: ${alivePlayers}`;
+    difficultyMetaEl.textContent = `${trCore('ui.scoreboard.players', 'Players')}: ${alivePlayers} | ${viewersLabel}: ${Math.max(0, Number(game.spectatorCount) || 0)}`;
     if (bossSpawnAlertEl) bossSpawnAlertEl.classList.add('hidden');
     return;
   }
@@ -1525,7 +1527,7 @@ function updateTopCenterHud(nowMs = Date.now()) {
   const diff = game.roomDifficulty || {};
   const level = Math.max(1, Number(diff.level) || 1);
   const hpMul = Math.max(1, Number(diff.hpMul) || 1);
-  difficultyMetaEl.textContent = `${trCore('ui.hud.threat', 'Threat')} Lv${level} x${hpMul.toFixed(2)}`;
+  difficultyMetaEl.textContent = `${trCore('ui.hud.threat', 'Threat')} Lv${level} x${hpMul.toFixed(2)} | ${viewersLabel}: ${Math.max(0, Number(game.spectatorCount) || 0)}`;
 
   if (bossSpawnAlertEl) {
     const portals = Array.isArray(game.state?.bossPortals) ? game.state.bossPortals : [];

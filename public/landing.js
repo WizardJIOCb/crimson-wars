@@ -33,6 +33,7 @@ const liveKills = document.getElementById('landing-live-kills');
 const liveUpdated = document.getElementById('landing-live-updated');
 const liveCommentatorTitle = document.getElementById('landing-live-commentator-title');
 const liveCommentatorText = document.getElementById('landing-live-commentator-text');
+const liveNavViewers = document.getElementById('landing-nav-live-viewers');
 const revealNodes = Array.from(document.querySelectorAll('.reveal'));
 const navLinks = Array.from(document.querySelectorAll('.site-nav a'));
 const navSectionTargets = navLinks
@@ -1564,6 +1565,21 @@ function setLiveStatusPill(state, label) {
   liveStatusPill.textContent = label;
 }
 
+function formatLiveViewersLabel(count, compact = false) {
+  const value = Math.max(0, Number(count) || 0);
+  if (compact) return value > 0 ? `${value} смотрят` : '0 смотрят';
+  return `${value} зрителей`;
+}
+
+function updateLandingLiveViewerBadges(count, isLive = false) {
+  const value = Math.max(0, Number(count) || 0);
+  if (liveNavViewers) {
+    liveNavViewers.textContent = formatLiveViewersLabel(value, true);
+    liveNavViewers.classList.toggle('is-live', Boolean(isLive && value > 0));
+  }
+  if (liveViewers) liveViewers.textContent = isLive ? formatLiveViewersLabel(value) : '--';
+}
+
 function getLandingLiveEffectiveVolume() {
   return landingLiveMuted ? 0 : Math.max(0, Math.min(1, Number(landingLiveVolume) || 0));
 }
@@ -1906,6 +1922,8 @@ window.addEventListener('message', (event) => {
     return;
   }
   if (payload.status === 'ready') {
+    updateLandingLiveViewerBadges(Math.max(0, Number(payload.spectators) || 0), true);
+    if (liveStatusPill) setLiveStatusPill('live', `live • ${formatLiveViewersLabel(Math.max(0, Number(payload.spectators) || 0), true)}`);
     forceLiveIframeReady();
     return;
   }
@@ -2175,6 +2193,7 @@ function renderLandingLive(payload) {
   renderLandingLiveSwitcher(payload, featuredRun);
 
   if (featuredRun?.preview) {
+    const viewerCount = Math.max(0, Number(featuredRun.spectators) || 0);
     setLandingLiveFallbackArt(false);
     if (liveEmpty) liveEmpty.classList.add('is-hidden');
     if (liveKicker) liveKicker.textContent = 'Longest live run';
@@ -2188,7 +2207,7 @@ function renderLandingLive(payload) {
     if (liveThreat) liveThreat.textContent = `Угроза: Lv${Math.max(1, Number(featuredRun.roomDifficulty?.level) || 1)}`;
     if (liveBoss) liveBoss.textContent = featuredRun.bossAlive ? 'Босс: в игре' : 'Босс: на подходе';
     if (liveFootline) liveFootline.textContent = featuredRun.bossAlive ? 'На карте уже есть живой босс' : 'Комната наращивает давление до следующего босса';
-    if (liveViewers) liveViewers.textContent = `${Math.max(0, Number(featuredRun.spectators) || 0)} зрителей`;
+    updateLandingLiveViewerBadges(viewerCount, true);
     if (liveKills) liveKills.textContent = `${Math.max(0, Number(featuredRun.totalEnemyKills) || 0)} киллов`;
     if (livePrimaryLink) {
       livePrimaryLink.href = buildLiveSpectatorUrl(featuredRun.code);
@@ -2206,7 +2225,7 @@ function renderLandingLive(payload) {
     }
     if (livePrimaryLink) livePrimaryLink.textContent = 'В новом окне';
     if (liveSecondaryLink) liveSecondaryLink.textContent = 'На весь экран';
-    setLiveStatusPill('live', 'live');
+    setLiveStatusPill('live', `live • ${formatLiveViewersLabel(viewerCount, true)}`);
     if (!updateLiveIframe(featuredRun.code)) {
       drawLivePreview(featuredRun.preview);
     }
@@ -2245,7 +2264,7 @@ function renderLandingLive(payload) {
   if (livePlayers) livePlayers.textContent = 'Игроки: --';
   if (liveThreat) liveThreat.textContent = activeRuns > 0 ? `Локально: ${localActiveRuns}` : 'Угроза: --';
   if (liveBoss) liveBoss.textContent = fallbackRun ? `Повтор: ${Math.max(0, Number(fallbackRun.kills) || 0)} киллов` : 'Босс: --';
-  if (liveViewers) liveViewers.textContent = activeRuns > 0 ? '0 зрителей' : '--';
+  updateLandingLiveViewerBadges(0, activeRuns > 0);
   if (liveFootline) {
     liveFootline.textContent = fallbackRun
       ? `Свежий повтор от ${String(fallbackRun.name || 'игрока')}`
@@ -2267,7 +2286,7 @@ function renderLandingLive(payload) {
   }
   if (livePrimaryLink) livePrimaryLink.textContent = 'В новом окне';
   if (liveSecondaryLink) liveSecondaryLink.textContent = 'На весь экран';
-  setLiveStatusPill('waiting', activeRuns > 0 ? 'remote' : 'offline');
+  setLiveStatusPill('waiting', activeRuns > 0 ? 'remote • 0 смотрят' : 'offline');
 }
 
 async function loadLandingLive() {
@@ -2295,6 +2314,7 @@ async function loadLandingLive() {
       livePrimaryLink.href = '/play';
       livePrimaryLink.textContent = 'Открыть игру';
     }
+    updateLandingLiveViewerBadges(0, false);
     setLiveStatusPill('waiting', 'error');
   }
 }

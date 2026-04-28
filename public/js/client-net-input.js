@@ -7146,6 +7146,7 @@ function clearLocalSessionState() {
   game.nextBossAtKills = 50;
   game.nextBossSpawnAt = 0;
   game.bossAlive = false;
+  game.spectatorCount = 0;
   game.roomDifficulty = { level: 1, hpMul: 1, speedMul: 1, damageMul: 1, attackRateMul: 1, spawnIntervalMs: 760 };
   game.mySkillChoices = [];
   prevMyAlive = null;
@@ -7385,6 +7386,7 @@ message: (ev) => {
     clearJoinFeedback();
     game.spectating = Boolean(msg.spectator);
     game.myId = msg.id || null;
+    game.spectatorCount = Math.max(0, Number(msg.spectators ?? msg.spectatorCount) || 0);
     game.runtimeInstance.instanceId = String(msg.instanceId || '');
     game.runtimeInstance.publicBaseUrl = currentWorkerOrigin || APP_ORIGIN;
     renderInstanceMeta();
@@ -7585,6 +7587,7 @@ message: (ev) => {
         roomCode: String(s?.roomCode || game.roomCode || ''),
         players: Array.isArray(s?.players) ? s.players.filter((p) => p && !p.isCompanion).length : 0,
         enemies: Array.isArray(s?.enemies) ? s.enemies.length : 0,
+        spectators: Math.max(0, Number(s?.spectators ?? s?.spectatorCount) || 0),
       }, window.location.origin);
     }
     onStateNetSample(s.now);
@@ -7597,6 +7600,7 @@ message: (ev) => {
     game.nextBossAtKills = Number(s.nextBossAtKills) || game.nextBossAtKills || 50;
     game.nextBossSpawnAt = Number(s.nextBossSpawnAt) || 0;
     game.bossAlive = Boolean(s.bossAlive);
+    game.spectatorCount = Math.max(0, Number(s.spectators ?? s.spectatorCount) || 0);
     game.roomDifficulty = s.roomDifficulty || game.roomDifficulty;
     pushNetSnapshot(s);
     syncBulletsFromState(s);
