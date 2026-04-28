@@ -1,4 +1,7 @@
 const { execFileSync } = require('child_process');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
 function isMysqlStoreEnabled() {
   const raw = (process.env.DATA_STORE || process.env.STORAGE_BACKEND || process.env.MYSQL_ENABLED || '').toString().trim().toLowerCase();
@@ -62,28 +65,55 @@ function parseTsv(raw) {
   });
 }
 
+function cleanMysqlOption(value) {
+  return String(value ?? '').replace(/[\r\n]/g, '');
+}
+
+function createDefaultsFile(config) {
+  const defaultsPath = path.join(
+    os.tmpdir(),
+    `cw-mysql-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.cnf`,
+  );
+  const contents = [
+    '[client]',
+    'protocol=TCP',
+    `host=${cleanMysqlOption(config.host)}`,
+    `port=${cleanMysqlOption(config.port)}`,
+    `user=${cleanMysqlOption(config.user)}`,
+    `password=${cleanMysqlOption(config.password)}`,
+    `database=${cleanMysqlOption(config.database)}`,
+    'default-character-set=utf8mb4',
+    '',
+  ].join('\n');
+  fs.writeFileSync(defaultsPath, contents, { encoding: 'utf8', mode: 0o600 });
+  return defaultsPath;
+}
+
 function createMysqlSyncClient(overrides = {}) {
   const config = getMysqlConfig(overrides);
-  const baseArgs = [
-    '--protocol=TCP',
-    `--host=${config.host}`,
-    `--port=${config.port}`,
-    `--user=${config.user}`,
-    `--database=${config.database}`,
-    '--default-character-set=utf8mb4',
-    '--batch',
-    '--raw',
-  ];
-  const baseEnv = { ...process.env, MYSQL_PWD: config.password };
 
   function run(sql, { columnNames = false } = {}) {
+    const defaultsPath = createDefaultsFile(config);
+    const baseArgs = [
+      `--defaults-extra-file=${defaultsPath}`,
+      '--batch',
+      '--raw',
+    ];
     const args = columnNames ? baseArgs : baseArgs.concat(['--skip-column-names']);
-    return execFileSync(config.command, args, {
-      input: `${String(sql || '').trim()};\n`,
-      encoding: 'utf8',
-      env: baseEnv,
-      maxBuffer: 1024 * 1024 * 64,
-    });
+    try {
+      return execFileSync(config.command, args, {
+        input: `${String(sql || '').trim()};\n`,
+        encoding: 'utf8',
+        env: process.env,
+        maxBuffer: 1024 * 1024 * 64,
+      });
+    } finally {
+      try {
+        fs.unlinkSync(defaultsPath);
+      } catch (_) {
+        // The query result is more important than cleanup failures in temp.
+      }
+    }
   }
 
   function execute(sql) {
