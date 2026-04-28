@@ -350,6 +350,7 @@ const visuals = {
   enemyPrev: new Map(),
   playerPrev: new Map(),
   rocketPrev: new Map(),
+  rocketTrailLastAt: new Map(),
   bossPortalPrev: new Map(),
   dropPrev: new Map(),
   bulletIds: new Set(),
@@ -398,6 +399,9 @@ let sessionStartedAt = 0;
 let waitingForFirstState = false;
 let waitingForFirstStateSince = 0;
 let lastScoreboardHtml = '';
+let lastScoreboardUpdateAt = 0;
+let lastStatsPanelHtml = '';
+let lastStatsPanelUpdateAt = 0;
 let lastLevelupHtml = '';
 let skillTooltipEl = null;
 let skillTooltipChip = null;
@@ -1877,6 +1881,9 @@ function setStatsPanelOpen(open) {
   localStorage.setItem('cw:statsPanelOpen', statsPanelOpen ? '1' : '0');
   if (statsPanelEl) statsPanelEl.classList.toggle('hidden', !statsPanelOpen);
   if (statsToggleBtn) statsToggleBtn.setAttribute('aria-expanded', statsPanelOpen ? 'true' : 'false');
+  if (statsPanelOpen && game.state?.players) {
+    updateStatsPanel(game.state.players.find((p) => p.id === game.myId), { force: true });
+  }
 }
 
 function setScoreboardMinimized(minimized) {
@@ -1891,12 +1898,19 @@ function fmtStatNum(v, digits = 1) {
   return Number(n.toFixed(digits)).toString();
 }
 
-function updateStatsPanel(me) {
+function updateStatsPanel(me, options = {}) {
   if (!statsContentEl) return;
   if (!me) {
-    statsContentEl.innerHTML = 'No data yet.';
+    const emptyHtml = 'No data yet.';
+    if (lastStatsPanelHtml !== emptyHtml) {
+      lastStatsPanelHtml = emptyHtml;
+      statsContentEl.innerHTML = emptyHtml;
+    }
     return;
   }
+  if (!options.force && (!statsPanelOpen || statsPanelEl?.classList.contains('hidden'))) return;
+  const nowMs = performance.now();
+  if (!options.force && nowMs - lastStatsPanelUpdateAt < 250) return;
 
   const shotIntervalMs = Math.max(1, Number(me.shotIntervalMs) || 1);
   const shotsPerSec = 1000 / shotIntervalMs;
@@ -1912,7 +1926,7 @@ function updateStatsPanel(me) {
   const enemyKills = Math.max(0, Number(me.enemyKills) || 0);
   const bossKills = Math.max(0, Number(me.bossKills) || 0);
 
-  statsContentEl.innerHTML = [
+  const nextHtml = [
     `<div class="stats-row"><span>Monsters killed</span><b>${enemyKills}</b></div>`,
     `<div class="stats-row"><span>Bosses killed</span><b>${bossKills}</b></div>`,
     `<div class="stats-row"><span>HP</span><b>${Math.round(hp)} / ${Math.round(maxHp)}</b></div>`,
@@ -1926,6 +1940,10 @@ function updateStatsPanel(me) {
     `<div class="stats-row"><span>Fire-rate multiplier</span><b>x${fmtStatNum(fireRateMul, 2)}</b></div>`,
     `<div class="stats-row"><span>Speed multiplier</span><b>x${fmtStatNum(moveSpeedMul, 2)}</b></div>`,
   ].join('');
+  lastStatsPanelUpdateAt = nowMs;
+  if (nextHtml === lastStatsPanelHtml) return;
+  lastStatsPanelHtml = nextHtml;
+  statsContentEl.innerHTML = nextHtml;
 }
 
 statsToggleBtn?.addEventListener('click', () => {

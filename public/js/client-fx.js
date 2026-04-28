@@ -843,13 +843,20 @@ function processStateFx(nextState) {
   visuals.playerPrev = nextPlayerMap;
 
   const nextRocketMap = new Map();
+  const rocketTrailLastAt = visuals.rocketTrailLastAt instanceof Map ? visuals.rocketTrailLastAt : new Map();
+  visuals.rocketTrailLastAt = rocketTrailLastAt;
   for (const bullet of nextState.bullets || []) {
     if (String(bullet.kind || '').toLowerCase() !== 'rocket') continue;
     const prevRocket = visuals.rocketPrev.get(bullet.id);
     const fxX = prevRocket ? prevRocket.x : bullet.x;
     const fxY = prevRocket ? prevRocket.y : bullet.y;
     nextRocketMap.set(bullet.id, { x: bullet.x, y: bullet.y });
-    spawnRocketTrailFx(fxX, fxY, bullet.vx, bullet.vy, bullet.color || '#fb923c');
+    const trailVisible = typeof isVisibleWorld !== 'function' || isVisibleWorld(fxX, fxY, 160);
+    const lastTrailAt = Math.max(0, Number(rocketTrailLastAt.get(bullet.id)) || 0);
+    if (trailVisible && nowMs - lastTrailAt >= 70) {
+      rocketTrailLastAt.set(bullet.id, nowMs);
+      spawnRocketTrailFx(fxX, fxY, bullet.vx, bullet.vy, bullet.color || '#fb923c');
+    }
   }
   for (const [id, prev] of visuals.rocketPrev.entries()) {
     if (!nextRocketMap.has(id)) {
@@ -872,6 +879,9 @@ function processStateFx(nextState) {
         volume: 1.18,
       });
     }
+  }
+  for (const id of Array.from(rocketTrailLastAt.keys())) {
+    if (!nextRocketMap.has(id)) rocketTrailLastAt.delete(id);
   }
   visuals.rocketPrev = nextRocketMap;
 

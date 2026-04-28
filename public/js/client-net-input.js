@@ -6539,6 +6539,9 @@ function updateTabScoreboard(players) {
 
 function updateScoreboard(players) {
   updateTabScoreboard(players);
+  const nowMs = performance.now();
+  if (!scoreboardMinimized && nowMs - lastScoreboardUpdateAt < 250) return;
+  lastScoreboardUpdateAt = nowMs;
   const sorted = [...players].filter((p) => !p.isCompanion).sort((a, b) => b.score - a.score);
   const titleBase = tr('ui.scoreboard.players');
   const titleText = scoreboardMinimized ? `${titleBase}: ${sorted.length}` : titleBase;
@@ -7612,7 +7615,12 @@ message: (ev) => {
     roomMetaEl.textContent = `Room: ${s.roomCode}`;
     updateInGameCommentatorFromState(s);
 
-    game.sortedTrees = (s.decor?.trees || []).slice().sort((a, b) => a.y - b.y);
+    const nextTrees = s.decor?.trees || [];
+    if (game.sortedTreesRoomCode !== s.roomCode || game.sortedTreesSourceCount !== nextTrees.length) {
+      game.sortedTrees = nextTrees.slice().sort((a, b) => a.y - b.y);
+      game.sortedTreesRoomCode = s.roomCode;
+      game.sortedTreesSourceCount = nextTrees.length;
+    }
     updateScoreboard(s.players);
 
     const seenAliveIds = new Set();

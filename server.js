@@ -203,9 +203,10 @@ let isShuttingDown = false;
 let shutdownStartedAt = 0;
 let forceShutdownTimer = null;
 const processStartedAt = Date.now();
-const REPLAY_CAPTURE_INTERVAL_MS = 100;
+const REPLAY_CAPTURE_INTERVAL_MS = Math.max(100, Number(process.env.REPLAY_CAPTURE_INTERVAL_MS) || 350);
 const REPLAY_FRAME_LIMIT = 14400;
 const REPLAY_CHAT_LIMIT = 240;
+const COMPANION_SYNC_INTERVAL_MS = Math.max(80, Number(process.env.COMPANION_SYNC_INTERVAL_MS) || 220);
 const XP_SURGE_DURATION_MS = 3200;
 const XP_SURGE_PULL_MIN_MUL = 0.22;
 const XP_SURGE_PULL_MAX_MUL = 3.9;
@@ -2877,6 +2878,7 @@ function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode, reques
       totalBossKills: 0,
       nextBossAtKills: BOSS_KILL_INTERVAL,
       lastEnemySpawnAt: 0,
+      lastCompanionSyncAt: 0,
       startedAt,
       trees: generateTrees(),
     });
@@ -3028,18 +3030,18 @@ function syncRoomCompanions(room) {
     }
   }
 
-  const used = new Set();
+  const existingByKey = new Map();
+  for (const companion of room.companions || []) {
+    const key = `${companion.ownerId || ''}:${companion.skillId || ''}:${Math.max(0, Number(companion.ordinal) || 0)}`;
+    if (!existingByKey.has(key)) existingByKey.set(key, companion);
+  }
+
   const nextCompanions = [];
   for (const entry of desired) {
-    const matchIndex = room.companions.findIndex((companion, index) => {
-      if (used.has(index)) return false;
-      return companion.ownerId === entry.ownerId
-        && companion.skillId === entry.skillId
-        && companion.ordinal === entry.ordinal;
-    });
-    if (matchIndex >= 0) {
-      used.add(matchIndex);
-      const companion = room.companions[matchIndex];
+    const key = `${entry.ownerId || ''}:${entry.skillId || ''}:${Math.max(0, Number(entry.ordinal) || 0)}`;
+    const companion = existingByKey.get(key);
+    if (companion) {
+      existingByKey.delete(key);
       const nextWeaponKey = String(entry.def.companionWeaponKey || companion.weaponKey || 'pistol').toLowerCase();
       if (companion.weaponKey !== nextWeaponKey) {
         companion.weaponKey = nextWeaponKey;
@@ -4922,6 +4924,10 @@ function playerSelectSkill(room, player, skillId, now = Date.now()) {
   player.unspentLevelUps = Math.max(0, (Number(player.unspentLevelUps) || 0) - 1);
   if (player.unspentLevelUps > 0) ensureSkillOffer(room, player, now);
   rebuildPlayerDerivedStats(player);
+  if (isBuddySkillDef(def)) {
+    syncRoomCompanions(room);
+    room.lastCompanionSyncAt = now;
+  }
   return true;
 }
 
@@ -5957,7 +5963,10 @@ function tickRoom(room, dtSec, now) {
     }
   }
 
-  syncRoomCompanions(room);
+  if (!room.lastCompanionSyncAt || now - room.lastCompanionSyncAt >= COMPANION_SYNC_INTERVAL_MS) {
+    syncRoomCompanions(room);
+    room.lastCompanionSyncAt = now;
+  }
   const roomDifficulty = getRoomDifficulty(room, now);
   const dtMs = dtSec * 1000;
   if (!room.pvpMatchEnded && room.players.size > 0 && now - room.lastEnemySpawnAt >= roomDifficulty.spawnIntervalMs) {
