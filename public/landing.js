@@ -50,7 +50,6 @@ const profileBody = document.getElementById('landing-profile-body');
 const profileTitle = document.getElementById('landing-profile-title');
 const profileCloseBtn = document.getElementById('landing-profile-close');
 const hubFrame = document.getElementById('battle-hub-frame');
-const hubLoading = document.getElementById('battle-hub-loading');
 const hubTabTitle = document.getElementById('hub-tab-title');
 const hubTabDescription = document.getElementById('hub-tab-description');
 const HUB_TABS = new Set(['play', 'characters', 'skills', 'profile', 'rating', 'news']);
@@ -461,7 +460,6 @@ function setActiveHubTab(tabId, { updateFrame = true, scrollIntoView = false } =
     const nextUrl = getHubUrl(nextTab);
     const currentUrl = String(hubFrame.getAttribute('src') || '').trim();
     if (currentUrl !== nextUrl) {
-      hubLoading?.classList.remove('is-hidden');
       hubFrame.setAttribute('src', nextUrl);
     }
   }
@@ -481,7 +479,6 @@ document.addEventListener('click', (event) => {
 });
 
 hubFrame?.addEventListener('load', () => {
-  hubLoading?.classList.add('is-hidden');
   bindBattleHubFrameAutosize();
   syncBattleHubFrameSize();
 });

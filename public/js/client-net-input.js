@@ -1,4 +1,4 @@
-function resetMobileStick(kind) {
+﻿function resetMobileStick(kind) {
   if (kind === 'move') {
     mobile.moveId = null;
     mobile.moveX = 0;
@@ -220,7 +220,7 @@ function applyMenuButtonGlyph(buttonEl) {
   if (!(buttonEl instanceof HTMLElement)) return;
   const burger = buttonEl.querySelector('.menu-burger');
   const label = buttonEl.querySelector('.menu-label');
-  if (burger) burger.textContent = '☰';
+  if (burger) burger.textContent = 'в°';
   if (label) label.textContent = tr('ui.menu');
   buttonEl.setAttribute('aria-label', tr('ui.show_menu')); 
   buttonEl.title = tr('ui.show_menu');
@@ -308,6 +308,7 @@ const hitScreenOverlayEl = document.getElementById('hit-screen-overlay');
 const mainMenuTabButtons = Array.from(document.querySelectorAll('#main-menu-tabs .main-menu-tab'));
 const mainMenuPanels = Array.from(document.querySelectorAll('#join-form [data-menu-panel]'));
 let heroFocusId = selectedPlayerClass;
+let selectedInventoryFilterKey = 'all';
 let currentMainMenuTab = 'play';
 let tabScoreboardVisible = false;
 let heroEquipModalEl = null;
@@ -337,10 +338,36 @@ const infoPanelQualityRowEl = qualitySelect?.closest('p') || null;
 const infoPanelTogglesEl = infoPanelEl?.querySelector('.settings-toggles') || null;
 
 function localizeSettingsMenuControls() {
+  const currentLang = typeof window.cwI18nGetLanguage === 'function' ? window.cwI18nGetLanguage() : 'ru';
+  const isRu = currentLang === 'ru';
+  const settingsText = {
+    graphicsQuality: isRu ? 'Уровень графики' : 'Graphics quality',
+    qualityLow: isRu ? 'Низкое' : 'Low',
+    qualityMedium: isRu ? 'Среднее' : 'Medium',
+    qualityHigh: isRu ? 'Высокое' : 'High',
+    shadows: isRu ? 'Тени' : 'Shadows',
+    minimap: isRu ? 'Показывать миникарту' : 'Show minimap',
+    tracers: isRu ? 'Трассеры пуль' : 'Bullet tracers',
+    enemyHp: isRu ? 'HP врагов' : 'Enemy HP Bars',
+    extraBlood: isRu ? 'Больше крови' : 'Extra blood',
+    hitEffects: isRu ? 'Эффекты попаданий' : 'Hit effects',
+    autoFire: isRu ? 'Авто-огонь' : 'Auto fire',
+    dynamicSticks: isRu ? 'Динамические стики' : 'Dynamic sticks',
+    aimStick: isRu ? 'Показывать стик прицеливания' : 'Show aim stick',
+    connIndicator: isRu ? 'Индикатор соединения' : 'Connection indicator',
+    showFps: isRu ? 'Показывать FPS' : 'Show FPS',
+    showChat: isRu ? 'Показывать чат' : 'Show chat',
+    gameSounds: isRu ? 'Звуки игры' : 'Game sounds',
+    commentator: isRu ? 'Комментатор арены' : 'Arena commentator',
+    commentatorVoice: isRu ? 'Озвучивать комментатора' : 'Voice commentator',
+    replayPlayer: isRu ? 'Показывать плеер повтора' : 'Show replay player',
+    soundVolume: isRu ? 'Громкость звука' : 'Sound volume',
+  };
+
   if (infoPanelQualityRowEl && qualitySelect) {
     const qualityLabelEl = infoPanelQualityRowEl.querySelector('.cw-settings-inline-label') || document.createElement('span');
     qualityLabelEl.className = 'cw-settings-inline-label';
-    qualityLabelEl.textContent = 'Уровень графики';
+    qualityLabelEl.textContent = settingsText.graphicsQuality;
     if (qualityLabelEl.parentElement !== infoPanelQualityRowEl) {
       infoPanelQualityRowEl.insertBefore(qualityLabelEl, qualitySelect);
     }
@@ -350,9 +377,9 @@ function localizeSettingsMenuControls() {
       }
     }
     const optionMap = {
-      low: 'Низкое',
-      medium: 'Среднее',
-      high: 'Высокое',
+      low: settingsText.qualityLow,
+      medium: settingsText.qualityMedium,
+      high: settingsText.qualityHigh,
     };
     for (const option of Array.from(qualitySelect.options)) {
       const nextLabel = optionMap[String(option.value || '').toLowerCase()];
@@ -361,22 +388,22 @@ function localizeSettingsMenuControls() {
   }
 
   const toggleLabelMap = {
-    'shadow-toggle': 'Тени',
-    'show-minimap-toggle': 'Показывать миникарту',
-    'bullet-tracers-toggle': 'Трассеры пуль',
-    'enemy-hp-toggle': 'Полосы HP врагов',
-    'extra-blood-toggle': 'Больше крови',
-    'hit-effects-toggle': 'Эффекты попаданий',
-    'auto-fire-toggle': 'Авто-огонь',
-    'dynamic-sticks-toggle': 'Динамические стики',
-    'show-aim-stick-toggle': 'Показывать стик прицеливания',
-    'conn-indicator-toggle': 'Индикатор соединения',
-    'show-fps-toggle': 'Показывать FPS',
-    'show-chat-toggle': 'Показывать чат',
-    'game-sfx-toggle': 'Звуки игры',
-    'show-commentator-toggle': 'Комментатор арены',
-    'commentator-voice-setting-toggle': 'Озвучивать комментатора',
-    'replay-player-toggle': 'Показывать плеер повтора',
+    'shadow-toggle': settingsText.shadows,
+    'show-minimap-toggle': settingsText.minimap,
+    'bullet-tracers-toggle': settingsText.tracers,
+    'enemy-hp-toggle': settingsText.enemyHp,
+    'extra-blood-toggle': settingsText.extraBlood,
+    'hit-effects-toggle': settingsText.hitEffects,
+    'auto-fire-toggle': settingsText.autoFire,
+    'dynamic-sticks-toggle': settingsText.dynamicSticks,
+    'show-aim-stick-toggle': settingsText.aimStick,
+    'conn-indicator-toggle': settingsText.connIndicator,
+    'show-fps-toggle': settingsText.showFps,
+    'show-chat-toggle': settingsText.showChat,
+    'game-sfx-toggle': settingsText.gameSounds,
+    'show-commentator-toggle': settingsText.commentator,
+    'commentator-voice-setting-toggle': settingsText.commentatorVoice,
+    'replay-player-toggle': settingsText.replayPlayer,
   };
 
   for (const [id, label] of Object.entries(toggleLabelMap)) {
@@ -395,7 +422,7 @@ function localizeSettingsMenuControls() {
   const volumeLabel = document.querySelector('label[for="game-sfx-volume"]');
   if (volumeLabel) {
     const valueEl = document.getElementById('game-sfx-volume-value');
-    volumeLabel.textContent = 'Громкость звука';
+    volumeLabel.textContent = settingsText.soundVolume;
     if (valueEl) volumeLabel.appendChild(valueEl);
   }
 }
@@ -526,11 +553,11 @@ function renderGameVersionHistory() {
   }).join('');
 
   const inventoryGroupOrder = [
-    ['consumable', trWithFallback('ui.inventory.group_consumables', 'Расходники')],
-    ['armor', trWithFallback('ui.inventory.group_armor', 'Броня')],
-    ['hands', trWithFallback('ui.inventory.group_hands', 'Руки и оружие')],
-    ['rings', trWithFallback('ui.inventory.group_rings', 'Кольца')],
-    ['other', trWithFallback('ui.inventory.group_other', 'Прочее')],
+    ['consumable', trWithFallback('ui.inventory.group_consumables', 'Р Р°СЃС…РѕРґРЅРёРєРё')],
+    ['armor', trWithFallback('ui.inventory.group_armor', 'Р‘СЂРѕРЅСЏ')],
+    ['hands', trWithFallback('ui.inventory.group_hands', 'Р СѓРєРё Рё РѕСЂСѓР¶РёРµ')],
+    ['rings', trWithFallback('ui.inventory.group_rings', 'РљРѕР»СЊС†Р°')],
+    ['other', trWithFallback('ui.inventory.group_other', 'РџСЂРѕС‡РµРµ')],
   ];
 
   const getInventoryGroupKey = (itemDef, equipTargets) => {
@@ -547,15 +574,17 @@ function renderGameVersionHistory() {
     const itemDef = itemMap[item.itemId] || {};
     const quantity = Math.max(1, Number(item.quantity) || 1);
     const equipTargets = getInventorySlotTargets(catalog, itemDef);
+    const iconMeta = getInventoryItemIconMeta(itemDef, equipTargets);
     const equippedIn = Object.keys(equippedItems).filter((slotKey) => equippedItems[slotKey]?.uid === item.uid);
     const upgradeCost = Math.max(0, Number(item.upgradeCost) || 0);
     const canUpgradeItem = !itemDef.combatUse && Math.max(1, Number(item.level) || 1) < 10 && salvage >= upgradeCost;
-    const equipButtons = equipTargets.map((slot) => `<button type="button" class="inventory-mini-btn${equippedIn.includes(slot.key) ? ' active' : ''}" data-item-equip="${escapeHtml(item.uid)}" data-slot-key="${escapeHtml(slot.key)}">${escapeHtml(getItemSlotLabel(slot))}</button>`).join('');
+    const equipButtons = equipTargets.map((slot, slotIndex) => `<button type="button" class="inventory-mini-btn inventory-text-action${equippedIn.includes(slot.key) ? ' active' : ''}" data-item-equip="${escapeHtml(item.uid)}" data-slot-key="${escapeHtml(slot.key)}" title="${escapeHtml(`${trWithFallback('ui.inventory.equip_to_slot', 'Снарядить в слот')}: ${getItemSlotLabel(slot)}`)}" aria-label="${escapeHtml(`${trWithFallback('ui.inventory.equip_to_slot', 'Снарядить в слот')}: ${getItemSlotLabel(slot)}`)}">${escapeHtml(`${trWithFallback('ui.inventory.slot_short', 'Slot')} ${slotIndex + 1}`)}</button>`).join('');
     const categoryLabel = getItemCategoryLabel(itemDef.slotCategory);
     const equippedMeta = equippedIn.length
       ? `<div class="inventory-item-chip inventory-item-chip-eq">${escapeHtml(equippedIn.map((slotKey) => getItemSlotLabel((catalog.itemSlots || []).find((slot) => slot.key === slotKey) || { key: slotKey })).join(', '))}</div>`
       : '';
-    const cardHtml = `<div class="inventory-item-card inventory-item-card-compact rarity-${escapeHtml(String(itemDef.rarity || 'common').toLowerCase())}"><div class="inventory-item-name">${escapeHtml(getItemDisplayName(itemDef))}</div><div class="inventory-item-meta">${escapeHtml(getItemRarityLabel(itemDef.rarity))} • ${escapeHtml(categoryLabel)}</div><div class="inventory-item-chip-row"><div class="inventory-item-chip">Lv ${Math.max(1, Number(item.level) || 1)}</div>${quantity > 1 ? `<div class="inventory-item-chip">x${quantity}</div>` : ''}<div class="inventory-item-chip">${escapeHtml(trWithFallback('ui.inventory.sell_value_short', 'Продажа'))}: ${Math.max(0, Number(item.sellValue) || 0)}</div>${equippedMeta}</div>${equipButtons ? `<div class="inventory-item-actions-line">${equipButtons}</div>` : ''}<div class="inventory-item-actions-line">${!itemDef.combatUse ? `<button type="button" class="inventory-mini-btn${canUpgradeItem ? '' : ' disabled-like'}" data-item-upgrade="${escapeHtml(item.uid)}">${escapeHtml(`Улучшить • ${upgradeCost}`)}</button>` : `<span class="inventory-item-consumable">${escapeHtml(trWithFallback('ui.inventory.consumable_hint_keys', 'Клавиши 4/5/6 в бою'))}</span>`}<button type="button" class="inventory-mini-btn danger" data-item-sell="${escapeHtml(item.uid)}">${escapeHtml(`Продать • ${Math.max(0, Number(item.sellValue) || 0)}`)}</button></div></div>`;
+    const actionButtonsHtml = `${equipButtons || ''}${!itemDef.combatUse ? `<button type="button" class="inventory-mini-btn inventory-text-action upgrade${canUpgradeItem ? '' : ' disabled-like'}" data-item-upgrade="${escapeHtml(item.uid)}" title="${escapeHtml(`Улучшить • ${upgradeCost}`)}" aria-label="${escapeHtml(`Улучшить • ${upgradeCost}`)}">${escapeHtml(trWithFallback('ui.inventory.action_upgrade', 'Upgrade'))}</button>` : ''}<button type="button" class="inventory-mini-btn inventory-text-action danger" data-item-sell="${escapeHtml(item.uid)}" title="${escapeHtml(`Продать • ${Math.max(0, Number(item.sellValue) || 0)}`)}" aria-label="${escapeHtml(`Продать • ${Math.max(0, Number(item.sellValue) || 0)}`)}">${escapeHtml(trWithFallback('ui.inventory.action_sell', 'Sell'))}</button>`;
+    const cardHtml = `<div class="inventory-item-card inventory-item-card-compact rarity-${escapeHtml(String(itemDef.rarity || 'common').toLowerCase())}"><div class="inventory-item-layout"><div class="inventory-item-icon inventory-item-icon-${escapeHtml(iconMeta.className)}">${escapeHtml(iconMeta.glyph)}</div><div class="inventory-item-main"><div class="inventory-item-name">${escapeHtml(getItemDisplayName(itemDef))}</div><div class="inventory-item-meta">${escapeHtml(getItemRarityLabel(itemDef.rarity))} • ${escapeHtml(categoryLabel)}</div><div class="inventory-item-chip-row"><div class="inventory-item-chip">Lv ${Math.max(1, Number(item.level) || 1)}</div>${quantity > 1 ? `<div class="inventory-item-chip">x${quantity}</div>` : ''}<div class="inventory-item-chip">${escapeHtml(trWithFallback('ui.inventory.sell_value_short', 'Продажа'))}: ${Math.max(0, Number(item.sellValue) || 0)}</div>${equippedMeta}</div>${itemDef.combatUse ? `<div class="inventory-item-consumable">${escapeHtml(trWithFallback('ui.inventory.consumable_hint_keys', 'Клавиши 4/5/6 в бою'))}</div>` : ''}<div class="inventory-item-actions-line inventory-item-actions-inline">${actionButtonsHtml}</div></div></div></div>`;
     const groupKey = getInventoryGroupKey(itemDef, equipTargets);
     inventoryCardsByGroup.get(groupKey)?.push(cardHtml);
   }
@@ -764,29 +793,29 @@ function pluralizeRussianSeconds(value) {
   const n = Math.max(0, Math.abs(Number(value) || 0));
   const mod10 = n % 10;
   const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return 'секунда';
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'секунды';
-  return 'секунд';
+  if (mod10 === 1 && mod100 !== 11) return 'СЃРµРєСѓРЅРґР°';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'СЃРµРєСѓРЅРґС‹';
+  return 'СЃРµРєСѓРЅРґ';
 }
 
 function expandCommentarySpeechText(value) {
   return String(value || '')
-    .replace(/(\d+)\s*с\b/gi, (_, raw) => `${raw} ${pluralizeRussianSeconds(raw)}`)
+    .replace(/(\d+)\s*СЃ\b/gi, (_, raw) => `${raw} ${pluralizeRussianSeconds(raw)}`)
     .replace(/(\d+)\s*sec\b/gi, (_, raw) => `${raw} ${pluralizeRussianSeconds(raw)}`)
-    .replace(/Lv\s*(\d+)/gi, 'уровень $1');
+    .replace(/Lv\s*(\d+)/gi, 'СѓСЂРѕРІРµРЅСЊ $1');
 }
 
 function buildSkillPickCommentaryVariants(skillLabel) {
-  const name = String(skillLabel || 'Навык').trim() || 'Навык';
+  const name = String(skillLabel || 'РќР°РІС‹Рє').trim() || 'РќР°РІС‹Рє';
   return [
-    { title: `Взяли навык: ${name}.`, text: 'Отлично. Билд только что стал либо сильнее, либо гораздо смешнее. Скоро увидим, какой именно вариант выпал.' },
-    { title: `${name} добавлен в арсенал.`, text: 'Очень люблю этот момент: игрок делает серьёзное лицо и выбирает себе новый способ превращать арену в проблему для окружающих.' },
-    { title: `${name} официально в билде.`, text: 'Стратегия становится всё умнее на бумаге и всё безумнее в реальном эфире. Именно так и рождаются красивые катастрофы.' },
-    { title: `Прокачка ушла в сторону: ${name}.`, text: 'Герой снова сделал выбор между осторожностью и шоу. Судя по атмосфере, шоу победило без особой борьбы.' },
-    { title: `${name} выбрали без права на отмену.`, text: 'Комментатор уважает смелость. Психотерапевт этой комнаты, наверное, уважает её чуть меньше.' },
-    { title: `Новый трюк в кармане: ${name}.`, text: 'Теперь можно ошибаться ещё техничнее, эффектнее и с гораздо более уверенным выражением лица.' },
-    { title: `${name} включён в программу насилия.`, text: 'Билд набирает форму как стендап после третьего эспрессо: громко, резко и с лёгкой угрозой для мебели.' },
-    { title: `Скилл-пик зафиксирован: ${name}.`, text: 'Публика делает вид, что это был взвешенный выбор. Мы с вами знаем правду: хотелось просто сделать ещё мощнее и ещё веселее.' },
+    { title: `Р’Р·СЏР»Рё РЅР°РІС‹Рє: ${name}.`, text: 'РћС‚Р»РёС‡РЅРѕ. Р‘РёР»Рґ С‚РѕР»СЊРєРѕ С‡С‚Рѕ СЃС‚Р°Р» Р»РёР±Рѕ СЃРёР»СЊРЅРµРµ, Р»РёР±Рѕ РіРѕСЂР°Р·РґРѕ СЃРјРµС€РЅРµРµ. РЎРєРѕСЂРѕ СѓРІРёРґРёРј, РєР°РєРѕР№ РёРјРµРЅРЅРѕ РІР°СЂРёР°РЅС‚ РІС‹РїР°Р».' },
+    { title: `${name} РґРѕР±Р°РІР»РµРЅ РІ Р°СЂСЃРµРЅР°Р».`, text: 'РћС‡РµРЅСЊ Р»СЋР±Р»СЋ СЌС‚РѕС‚ РјРѕРјРµРЅС‚: РёРіСЂРѕРє РґРµР»Р°РµС‚ СЃРµСЂСЊС‘Р·РЅРѕРµ Р»РёС†Рѕ Рё РІС‹Р±РёСЂР°РµС‚ СЃРµР±Рµ РЅРѕРІС‹Р№ СЃРїРѕСЃРѕР± РїСЂРµРІСЂР°С‰Р°С‚СЊ Р°СЂРµРЅСѓ РІ РїСЂРѕР±Р»РµРјСѓ РґР»СЏ РѕРєСЂСѓР¶Р°СЋС‰РёС….' },
+    { title: `${name} РѕС„РёС†РёР°Р»СЊРЅРѕ РІ Р±РёР»РґРµ.`, text: 'РЎС‚СЂР°С‚РµРіРёСЏ СЃС‚Р°РЅРѕРІРёС‚СЃСЏ РІСЃС‘ СѓРјРЅРµРµ РЅР° Р±СѓРјР°РіРµ Рё РІСЃС‘ Р±РµР·СѓРјРЅРµРµ РІ СЂРµР°Р»СЊРЅРѕРј СЌС„РёСЂРµ. РРјРµРЅРЅРѕ С‚Р°Рє Рё СЂРѕР¶РґР°СЋС‚СЃСЏ РєСЂР°СЃРёРІС‹Рµ РєР°С‚Р°СЃС‚СЂРѕС„С‹.' },
+    { title: `РџСЂРѕРєР°С‡РєР° СѓС€Р»Р° РІ СЃС‚РѕСЂРѕРЅСѓ: ${name}.`, text: 'Р“РµСЂРѕР№ СЃРЅРѕРІР° СЃРґРµР»Р°Р» РІС‹Р±РѕСЂ РјРµР¶РґСѓ РѕСЃС‚РѕСЂРѕР¶РЅРѕСЃС‚СЊСЋ Рё С€РѕСѓ. РЎСѓРґСЏ РїРѕ Р°С‚РјРѕСЃС„РµСЂРµ, С€РѕСѓ РїРѕР±РµРґРёР»Рѕ Р±РµР· РѕСЃРѕР±РѕР№ Р±РѕСЂСЊР±С‹.' },
+    { title: `${name} РІС‹Р±СЂР°Р»Рё Р±РµР· РїСЂР°РІР° РЅР° РѕС‚РјРµРЅСѓ.`, text: 'РљРѕРјРјРµРЅС‚Р°С‚РѕСЂ СѓРІР°Р¶Р°РµС‚ СЃРјРµР»РѕСЃС‚СЊ. РџСЃРёС…РѕС‚РµСЂР°РїРµРІС‚ СЌС‚РѕР№ РєРѕРјРЅР°С‚С‹, РЅР°РІРµСЂРЅРѕРµ, СѓРІР°Р¶Р°РµС‚ РµС‘ С‡СѓС‚СЊ РјРµРЅСЊС€Рµ.' },
+    { title: `РќРѕРІС‹Р№ С‚СЂСЋРє РІ РєР°СЂРјР°РЅРµ: ${name}.`, text: 'РўРµРїРµСЂСЊ РјРѕР¶РЅРѕ РѕС€РёР±Р°С‚СЊСЃСЏ РµС‰С‘ С‚РµС…РЅРёС‡РЅРµРµ, СЌС„С„РµРєС‚РЅРµРµ Рё СЃ РіРѕСЂР°Р·РґРѕ Р±РѕР»РµРµ СѓРІРµСЂРµРЅРЅС‹Рј РІС‹СЂР°Р¶РµРЅРёРµРј Р»РёС†Р°.' },
+    { title: `${name} РІРєР»СЋС‡С‘РЅ РІ РїСЂРѕРіСЂР°РјРјСѓ РЅР°СЃРёР»РёСЏ.`, text: 'Р‘РёР»Рґ РЅР°Р±РёСЂР°РµС‚ С„РѕСЂРјСѓ РєР°Рє СЃС‚РµРЅРґР°Рї РїРѕСЃР»Рµ С‚СЂРµС‚СЊРµРіРѕ СЌСЃРїСЂРµСЃСЃРѕ: РіСЂРѕРјРєРѕ, СЂРµР·РєРѕ Рё СЃ Р»С‘РіРєРѕР№ СѓРіСЂРѕР·РѕР№ РґР»СЏ РјРµР±РµР»Рё.' },
+    { title: `РЎРєРёР»Р»-РїРёРє Р·Р°С„РёРєСЃРёСЂРѕРІР°РЅ: ${name}.`, text: 'РџСѓР±Р»РёРєР° РґРµР»Р°РµС‚ РІРёРґ, С‡С‚Рѕ СЌС‚Рѕ Р±С‹Р» РІР·РІРµС€РµРЅРЅС‹Р№ РІС‹Р±РѕСЂ. РњС‹ СЃ РІР°РјРё Р·РЅР°РµРј РїСЂР°РІРґСѓ: С…РѕС‚РµР»РѕСЃСЊ РїСЂРѕСЃС‚Рѕ СЃРґРµР»Р°С‚СЊ РµС‰С‘ РјРѕС‰РЅРµРµ Рё РµС‰С‘ РІРµСЃРµР»РµРµ.' },
   ];
 }
 
@@ -801,7 +830,7 @@ function pluralizeRussianSeconds(value) {
 
 function expandCommentarySpeechText(value) {
   return String(value || '')
-    .replace(/(\d+)\s*[сc](?=[\s.,!?;:)]|$)/giu, (_, raw) => `${raw} ${pluralizeRussianSeconds(raw)}`)
+    .replace(/(\d+)\s*[СЃc](?=[\s.,!?;:)]|$)/giu, (_, raw) => `${raw} ${pluralizeRussianSeconds(raw)}`)
     .replace(/(\d+)\s*sec\b/gi, (_, raw) => `${raw} ${pluralizeRussianSeconds(raw)}`)
     .replace(/Lv\s*(\d+)/gi, '\u0443\u0440\u043e\u0432\u0435\u043d\u044c $1');
 }
@@ -809,40 +838,40 @@ function expandCommentarySpeechText(value) {
 function buildSkillPickCommentaryVariants(skillLabel) {
   const name = String(skillLabel || '\u043d\u0430\u0432\u044b\u043a').trim() || '\u043d\u0430\u0432\u044b\u043a';
   return [
-    { title: `Взяли навык: ${name}.`, text: 'Отлично. Билд только что стал либо сильнее, либо гораздо смешнее. Скоро увидим, какой именно вариант выпал.' },
-    { title: `${name} добавлен в арсенал.`, text: 'Игрок делает серьёзное лицо и выбирает себе новый способ превращать арену в проблему для окружающих.' },
-    { title: `${name} официально в билде.`, text: 'Стратегия становится умнее на бумаге и безумнее в прямом эфире. Красивые катастрофы так и рождаются.' },
-    { title: `Прокачка ушла в сторону: ${name}.`, text: 'Герой снова выбирал между осторожностью и шоу. Судя по атмосфере, шоу победило без особой борьбы.' },
-    { title: `${name} выбрали без права на отмену.`, text: 'Комментатор уважает смелость. Психотерапевт этой комнаты, наверное, уважает её чуть меньше.' },
-    { title: `Новый трюк в кармане: ${name}.`, text: 'Теперь можно ошибаться техничнее, эффектнее и с гораздо более уверенным выражением лица.' },
-    { title: `${name} включён в программу хаоса.`, text: 'Билд набирает форму как стендап после третьего эспрессо: громко, резко и с лёгкой угрозой для мебели.' },
-    { title: `Скилл-пик зафиксирован: ${name}.`, text: 'Публика делает вид, что это был взвешенный выбор. Мы с вами знаем правду: хотелось ещё мощнее и ещё веселее.' },
-    { title: `Навык ${name} заехал в билд.`, text: 'Теперь у героя есть ещё один повод говорить, что всё было рассчитано. Особенно если через пять секунд начнётся импровизация.' },
-    { title: `${name} выбран с лицом профессора хаоса.`, text: 'Серьёзный выбор, серьёзные последствия и абсолютно несерьёзная надежда, что дальше станет спокойнее.' },
-    { title: `Берём ${name}.`, text: 'План прост: добавить мощности, сделать вид, что это стратегия, и не смотреть слишком долго на полоску здоровья.' },
-    { title: `${name} теперь часть характера.`, text: 'Билд становится похож на резюме человека, который умеет решать проблемы, но предпочитает сначала создать пару новых.' },
-    { title: `Плюс один трюк: ${name}.`, text: 'Арена просила осторожности, игрок выбрал спецэффекты. Очень честный диалог поколений.' },
-    { title: `${name} принят в команду.`, text: 'Если навык сработает, это гений. Если нет, назовём это экспериментом и быстро сменим тему.' },
-    { title: `В меню прокачки победил ${name}.`, text: 'Другие варианты смотрят вслед и делают вид, что не обиделись. Комментатор, конечно, всё видел.' },
-    { title: `${name} добавлен в личную коллекцию плохих идей.`, text: 'Плохих в хорошем смысле: громких, полезных и способных устроить на экране маленький пожар.' },
+    { title: `Р’Р·СЏР»Рё РЅР°РІС‹Рє: ${name}.`, text: 'РћС‚Р»РёС‡РЅРѕ. Р‘РёР»Рґ С‚РѕР»СЊРєРѕ С‡С‚Рѕ СЃС‚Р°Р» Р»РёР±Рѕ СЃРёР»СЊРЅРµРµ, Р»РёР±Рѕ РіРѕСЂР°Р·РґРѕ СЃРјРµС€РЅРµРµ. РЎРєРѕСЂРѕ СѓРІРёРґРёРј, РєР°РєРѕР№ РёРјРµРЅРЅРѕ РІР°СЂРёР°РЅС‚ РІС‹РїР°Р».' },
+    { title: `${name} РґРѕР±Р°РІР»РµРЅ РІ Р°СЂСЃРµРЅР°Р».`, text: 'РРіСЂРѕРє РґРµР»Р°РµС‚ СЃРµСЂСЊС‘Р·РЅРѕРµ Р»РёС†Рѕ Рё РІС‹Р±РёСЂР°РµС‚ СЃРµР±Рµ РЅРѕРІС‹Р№ СЃРїРѕСЃРѕР± РїСЂРµРІСЂР°С‰Р°С‚СЊ Р°СЂРµРЅСѓ РІ РїСЂРѕР±Р»РµРјСѓ РґР»СЏ РѕРєСЂСѓР¶Р°СЋС‰РёС….' },
+    { title: `${name} РѕС„РёС†РёР°Р»СЊРЅРѕ РІ Р±РёР»РґРµ.`, text: 'РЎС‚СЂР°С‚РµРіРёСЏ СЃС‚Р°РЅРѕРІРёС‚СЃСЏ СѓРјРЅРµРµ РЅР° Р±СѓРјР°РіРµ Рё Р±РµР·СѓРјРЅРµРµ РІ РїСЂСЏРјРѕРј СЌС„РёСЂРµ. РљСЂР°СЃРёРІС‹Рµ РєР°С‚Р°СЃС‚СЂРѕС„С‹ С‚Р°Рє Рё СЂРѕР¶РґР°СЋС‚СЃСЏ.' },
+    { title: `РџСЂРѕРєР°С‡РєР° СѓС€Р»Р° РІ СЃС‚РѕСЂРѕРЅСѓ: ${name}.`, text: 'Р“РµСЂРѕР№ СЃРЅРѕРІР° РІС‹Р±РёСЂР°Р» РјРµР¶РґСѓ РѕСЃС‚РѕСЂРѕР¶РЅРѕСЃС‚СЊСЋ Рё С€РѕСѓ. РЎСѓРґСЏ РїРѕ Р°С‚РјРѕСЃС„РµСЂРµ, С€РѕСѓ РїРѕР±РµРґРёР»Рѕ Р±РµР· РѕСЃРѕР±РѕР№ Р±РѕСЂСЊР±С‹.' },
+    { title: `${name} РІС‹Р±СЂР°Р»Рё Р±РµР· РїСЂР°РІР° РЅР° РѕС‚РјРµРЅСѓ.`, text: 'РљРѕРјРјРµРЅС‚Р°С‚РѕСЂ СѓРІР°Р¶Р°РµС‚ СЃРјРµР»РѕСЃС‚СЊ. РџСЃРёС…РѕС‚РµСЂР°РїРµРІС‚ СЌС‚РѕР№ РєРѕРјРЅР°С‚С‹, РЅР°РІРµСЂРЅРѕРµ, СѓРІР°Р¶Р°РµС‚ РµС‘ С‡СѓС‚СЊ РјРµРЅСЊС€Рµ.' },
+    { title: `РќРѕРІС‹Р№ С‚СЂСЋРє РІ РєР°СЂРјР°РЅРµ: ${name}.`, text: 'РўРµРїРµСЂСЊ РјРѕР¶РЅРѕ РѕС€РёР±Р°С‚СЊСЃСЏ С‚РµС…РЅРёС‡РЅРµРµ, СЌС„С„РµРєС‚РЅРµРµ Рё СЃ РіРѕСЂР°Р·РґРѕ Р±РѕР»РµРµ СѓРІРµСЂРµРЅРЅС‹Рј РІС‹СЂР°Р¶РµРЅРёРµРј Р»РёС†Р°.' },
+    { title: `${name} РІРєР»СЋС‡С‘РЅ РІ РїСЂРѕРіСЂР°РјРјСѓ С…Р°РѕСЃР°.`, text: 'Р‘РёР»Рґ РЅР°Р±РёСЂР°РµС‚ С„РѕСЂРјСѓ РєР°Рє СЃС‚РµРЅРґР°Рї РїРѕСЃР»Рµ С‚СЂРµС‚СЊРµРіРѕ СЌСЃРїСЂРµСЃСЃРѕ: РіСЂРѕРјРєРѕ, СЂРµР·РєРѕ Рё СЃ Р»С‘РіРєРѕР№ СѓРіСЂРѕР·РѕР№ РґР»СЏ РјРµР±РµР»Рё.' },
+    { title: `РЎРєРёР»Р»-РїРёРє Р·Р°С„РёРєСЃРёСЂРѕРІР°РЅ: ${name}.`, text: 'РџСѓР±Р»РёРєР° РґРµР»Р°РµС‚ РІРёРґ, С‡С‚Рѕ СЌС‚Рѕ Р±С‹Р» РІР·РІРµС€РµРЅРЅС‹Р№ РІС‹Р±РѕСЂ. РњС‹ СЃ РІР°РјРё Р·РЅР°РµРј РїСЂР°РІРґСѓ: С…РѕС‚РµР»РѕСЃСЊ РµС‰С‘ РјРѕС‰РЅРµРµ Рё РµС‰С‘ РІРµСЃРµР»РµРµ.' },
+    { title: `РќР°РІС‹Рє ${name} Р·Р°РµС…Р°Р» РІ Р±РёР»Рґ.`, text: 'РўРµРїРµСЂСЊ Сѓ РіРµСЂРѕСЏ РµСЃС‚СЊ РµС‰С‘ РѕРґРёРЅ РїРѕРІРѕРґ РіРѕРІРѕСЂРёС‚СЊ, С‡С‚Рѕ РІСЃС‘ Р±С‹Р»Рѕ СЂР°СЃСЃС‡РёС‚Р°РЅРѕ. РћСЃРѕР±РµРЅРЅРѕ РµСЃР»Рё С‡РµСЂРµР· РїСЏС‚СЊ СЃРµРєСѓРЅРґ РЅР°С‡РЅС‘С‚СЃСЏ РёРјРїСЂРѕРІРёР·Р°С†РёСЏ.' },
+    { title: `${name} РІС‹Р±СЂР°РЅ СЃ Р»РёС†РѕРј РїСЂРѕС„РµСЃСЃРѕСЂР° С…Р°РѕСЃР°.`, text: 'РЎРµСЂСЊС‘Р·РЅС‹Р№ РІС‹Р±РѕСЂ, СЃРµСЂСЊС‘Р·РЅС‹Рµ РїРѕСЃР»РµРґСЃС‚РІРёСЏ Рё Р°Р±СЃРѕР»СЋС‚РЅРѕ РЅРµСЃРµСЂСЊС‘Р·РЅР°СЏ РЅР°РґРµР¶РґР°, С‡С‚Рѕ РґР°Р»СЊС€Рµ СЃС‚Р°РЅРµС‚ СЃРїРѕРєРѕР№РЅРµРµ.' },
+    { title: `Р‘РµСЂС‘Рј ${name}.`, text: 'РџР»Р°РЅ РїСЂРѕСЃС‚: РґРѕР±Р°РІРёС‚СЊ РјРѕС‰РЅРѕСЃС‚Рё, СЃРґРµР»Р°С‚СЊ РІРёРґ, С‡С‚Рѕ СЌС‚Рѕ СЃС‚СЂР°С‚РµРіРёСЏ, Рё РЅРµ СЃРјРѕС‚СЂРµС‚СЊ СЃР»РёС€РєРѕРј РґРѕР»РіРѕ РЅР° РїРѕР»РѕСЃРєСѓ Р·РґРѕСЂРѕРІСЊСЏ.' },
+    { title: `${name} С‚РµРїРµСЂСЊ С‡Р°СЃС‚СЊ С…Р°СЂР°РєС‚РµСЂР°.`, text: 'Р‘РёР»Рґ СЃС‚Р°РЅРѕРІРёС‚СЃСЏ РїРѕС…РѕР¶ РЅР° СЂРµР·СЋРјРµ С‡РµР»РѕРІРµРєР°, РєРѕС‚РѕСЂС‹Р№ СѓРјРµРµС‚ СЂРµС€Р°С‚СЊ РїСЂРѕР±Р»РµРјС‹, РЅРѕ РїСЂРµРґРїРѕС‡РёС‚Р°РµС‚ СЃРЅР°С‡Р°Р»Р° СЃРѕР·РґР°С‚СЊ РїР°СЂСѓ РЅРѕРІС‹С….' },
+    { title: `РџР»СЋСЃ РѕРґРёРЅ С‚СЂСЋРє: ${name}.`, text: 'РђСЂРµРЅР° РїСЂРѕСЃРёР»Р° РѕСЃС‚РѕСЂРѕР¶РЅРѕСЃС‚Рё, РёРіСЂРѕРє РІС‹Р±СЂР°Р» СЃРїРµС†СЌС„С„РµРєС‚С‹. РћС‡РµРЅСЊ С‡РµСЃС‚РЅС‹Р№ РґРёР°Р»РѕРі РїРѕРєРѕР»РµРЅРёР№.' },
+    { title: `${name} РїСЂРёРЅСЏС‚ РІ РєРѕРјР°РЅРґСѓ.`, text: 'Р•СЃР»Рё РЅР°РІС‹Рє СЃСЂР°Р±РѕС‚Р°РµС‚, СЌС‚Рѕ РіРµРЅРёР№. Р•СЃР»Рё РЅРµС‚, РЅР°Р·РѕРІС‘Рј СЌС‚Рѕ СЌРєСЃРїРµСЂРёРјРµРЅС‚РѕРј Рё Р±С‹СЃС‚СЂРѕ СЃРјРµРЅРёРј С‚РµРјСѓ.' },
+    { title: `Р’ РјРµРЅСЋ РїСЂРѕРєР°С‡РєРё РїРѕР±РµРґРёР» ${name}.`, text: 'Р”СЂСѓРіРёРµ РІР°СЂРёР°РЅС‚С‹ СЃРјРѕС‚СЂСЏС‚ РІСЃР»РµРґ Рё РґРµР»Р°СЋС‚ РІРёРґ, С‡С‚Рѕ РЅРµ РѕР±РёРґРµР»РёСЃСЊ. РљРѕРјРјРµРЅС‚Р°С‚РѕСЂ, РєРѕРЅРµС‡РЅРѕ, РІСЃС‘ РІРёРґРµР».' },
+    { title: `${name} РґРѕР±Р°РІР»РµРЅ РІ Р»РёС‡РЅСѓСЋ РєРѕР»Р»РµРєС†РёСЋ РїР»РѕС…РёС… РёРґРµР№.`, text: 'РџР»РѕС…РёС… РІ С…РѕСЂРѕС€РµРј СЃРјС‹СЃР»Рµ: РіСЂРѕРјРєРёС…, РїРѕР»РµР·РЅС‹С… Рё СЃРїРѕСЃРѕР±РЅС‹С… СѓСЃС‚СЂРѕРёС‚СЊ РЅР° СЌРєСЂР°РЅРµ РјР°Р»РµРЅСЊРєРёР№ РїРѕР¶Р°СЂ.' },
   ];
 }
 
 function buildSpectatorSkillPickCommentaryVariants(playerName, skillLabel, level) {
-  const who = String(playerName || 'Игрок').trim() || 'Игрок';
-  const name = String(skillLabel || 'навык').trim() || 'навык';
+  const who = String(playerName || 'РРіСЂРѕРє').trim() || 'РРіСЂРѕРє';
+  const name = String(skillLabel || 'РЅР°РІС‹Рє').trim() || 'РЅР°РІС‹Рє';
   const lvl = Math.max(1, Number(level) || 1);
   return [
-    { title: `${who} берёт ${name}.`, text: `Уровень ${lvl}. Билд делает шаг вперёд, а здравый смысл аккуратно отходит к стеночке.` },
-    { title: `${who} прокачал ${name}.`, text: `Теперь хаос будет не просто хаосом, а хаосом с подписью и уровнем ${lvl}.` },
-    { title: `${name} у ${who} усиливается.`, text: `Уровень ${lvl}. Арена делает вид, что не нервничает, но мы-то слышим этот скрип половиц.` },
-    { title: `${who} выбирает ${name}.`, text: 'Классический момент: игрок нажимает кнопку, а комментатор уже представляет, как это красиво выйдет из-под контроля.' },
-    { title: `Навык ${name} ушёл к ${who}.`, text: `Уровень ${lvl}. Если это был план, то он стал острее. Если это была импровизация, то она стала дороже.` },
-    { title: `${who} добавляет ${name} в рецепт.`, text: 'Получается блюдо под названием “выживание с перцем”. Подавать горячим, желательно не лицом в пол.' },
-    { title: `${name} теперь работает на ${who}.`, text: 'Контракт подписан опытом, нервами и лёгкой паникой в глазах ближайших врагов.' },
-    { title: `${who} усилил билд через ${name}.`, text: 'Люблю прокачку: пять секунд тишины в меню, и вот уже вся арена звучит как плохая идея с хорошим бюджетом.' },
-    { title: `${name} выбран, ${who} доволен.`, text: 'По крайней мере, сейчас доволен. Следующие входящие удары могут внести правки в настроение.' },
-    { title: `${who} нажал на ${name}.`, text: `Уровень ${lvl}. Звучит как техническое решение, выглядит как приглашение к шоу.` },
+    { title: `${who} Р±РµСЂС‘С‚ ${name}.`, text: `РЈСЂРѕРІРµРЅСЊ ${lvl}. Р‘РёР»Рґ РґРµР»Р°РµС‚ С€Р°Рі РІРїРµСЂС‘Рґ, Р° Р·РґСЂР°РІС‹Р№ СЃРјС‹СЃР» Р°РєРєСѓСЂР°С‚РЅРѕ РѕС‚С…РѕРґРёС‚ Рє СЃС‚РµРЅРѕС‡РєРµ.` },
+    { title: `${who} РїСЂРѕРєР°С‡Р°Р» ${name}.`, text: `РўРµРїРµСЂСЊ С…Р°РѕСЃ Р±СѓРґРµС‚ РЅРµ РїСЂРѕСЃС‚Рѕ С…Р°РѕСЃРѕРј, Р° С…Р°РѕСЃРѕРј СЃ РїРѕРґРїРёСЃСЊСЋ Рё СѓСЂРѕРІРЅРµРј ${lvl}.` },
+    { title: `${name} Сѓ ${who} СѓСЃРёР»РёРІР°РµС‚СЃСЏ.`, text: `РЈСЂРѕРІРµРЅСЊ ${lvl}. РђСЂРµРЅР° РґРµР»Р°РµС‚ РІРёРґ, С‡С‚Рѕ РЅРµ РЅРµСЂРІРЅРёС‡Р°РµС‚, РЅРѕ РјС‹-С‚Рѕ СЃР»С‹С€РёРј СЌС‚РѕС‚ СЃРєСЂРёРї РїРѕР»РѕРІРёС†.` },
+    { title: `${who} РІС‹Р±РёСЂР°РµС‚ ${name}.`, text: 'РљР»Р°СЃСЃРёС‡РµСЃРєРёР№ РјРѕРјРµРЅС‚: РёРіСЂРѕРє РЅР°Р¶РёРјР°РµС‚ РєРЅРѕРїРєСѓ, Р° РєРѕРјРјРµРЅС‚Р°С‚РѕСЂ СѓР¶Рµ РїСЂРµРґСЃС‚Р°РІР»СЏРµС‚, РєР°Рє СЌС‚Рѕ РєСЂР°СЃРёРІРѕ РІС‹Р№РґРµС‚ РёР·-РїРѕРґ РєРѕРЅС‚СЂРѕР»СЏ.' },
+    { title: `РќР°РІС‹Рє ${name} СѓС€С‘Р» Рє ${who}.`, text: `РЈСЂРѕРІРµРЅСЊ ${lvl}. Р•СЃР»Рё СЌС‚Рѕ Р±С‹Р» РїР»Р°РЅ, С‚Рѕ РѕРЅ СЃС‚Р°Р» РѕСЃС‚СЂРµРµ. Р•СЃР»Рё СЌС‚Рѕ Р±С‹Р»Р° РёРјРїСЂРѕРІРёР·Р°С†РёСЏ, С‚Рѕ РѕРЅР° СЃС‚Р°Р»Р° РґРѕСЂРѕР¶Рµ.` },
+    { title: `${who} РґРѕР±Р°РІР»СЏРµС‚ ${name} РІ СЂРµС†РµРїС‚.`, text: 'РџРѕР»СѓС‡Р°РµС‚СЃСЏ Р±Р»СЋРґРѕ РїРѕРґ РЅР°Р·РІР°РЅРёРµРј вЂњРІС‹Р¶РёРІР°РЅРёРµ СЃ РїРµСЂС†РµРјвЂќ. РџРѕРґР°РІР°С‚СЊ РіРѕСЂСЏС‡РёРј, Р¶РµР»Р°С‚РµР»СЊРЅРѕ РЅРµ Р»РёС†РѕРј РІ РїРѕР».' },
+    { title: `${name} С‚РµРїРµСЂСЊ СЂР°Р±РѕС‚Р°РµС‚ РЅР° ${who}.`, text: 'РљРѕРЅС‚СЂР°РєС‚ РїРѕРґРїРёСЃР°РЅ РѕРїС‹С‚РѕРј, РЅРµСЂРІР°РјРё Рё Р»С‘РіРєРѕР№ РїР°РЅРёРєРѕР№ РІ РіР»Р°Р·Р°С… Р±Р»РёР¶Р°Р№С€РёС… РІСЂР°РіРѕРІ.' },
+    { title: `${who} СѓСЃРёР»РёР» Р±РёР»Рґ С‡РµСЂРµР· ${name}.`, text: 'Р›СЋР±Р»СЋ РїСЂРѕРєР°С‡РєСѓ: РїСЏС‚СЊ СЃРµРєСѓРЅРґ С‚РёС€РёРЅС‹ РІ РјРµРЅСЋ, Рё РІРѕС‚ СѓР¶Рµ РІСЃСЏ Р°СЂРµРЅР° Р·РІСѓС‡РёС‚ РєР°Рє РїР»РѕС…Р°СЏ РёРґРµСЏ СЃ С…РѕСЂРѕС€РёРј Р±СЋРґР¶РµС‚РѕРј.' },
+    { title: `${name} РІС‹Р±СЂР°РЅ, ${who} РґРѕРІРѕР»РµРЅ.`, text: 'РџРѕ РєСЂР°Р№РЅРµР№ РјРµСЂРµ, СЃРµР№С‡Р°СЃ РґРѕРІРѕР»РµРЅ. РЎР»РµРґСѓСЋС‰РёРµ РІС…РѕРґСЏС‰РёРµ СѓРґР°СЂС‹ РјРѕРіСѓС‚ РІРЅРµСЃС‚Рё РїСЂР°РІРєРё РІ РЅР°СЃС‚СЂРѕРµРЅРёРµ.' },
+    { title: `${who} РЅР°Р¶Р°Р» РЅР° ${name}.`, text: `РЈСЂРѕРІРµРЅСЊ ${lvl}. Р—РІСѓС‡РёС‚ РєР°Рє С‚РµС…РЅРёС‡РµСЃРєРѕРµ СЂРµС€РµРЅРёРµ, РІС‹РіР»СЏРґРёС‚ РєР°Рє РїСЂРёРіР»Р°С€РµРЅРёРµ Рє С€РѕСѓ.` },
   ];
 }
 
@@ -850,7 +879,7 @@ function getCommentatorVoice() {
   if (!commentatorSpeech.supported) return null;
   const voices = Array.isArray(window.speechSynthesis?.getVoices?.()) ? window.speechSynthesis.getVoices() : [];
   if (!voices.length) return null;
-  const maleNamePattern = /(pavel|aleks|alex|dmit|denis|ivan|nikol|maks|maxim|serg|mikhail|mihail|yuri|юр|иван|павел|дмит|алекс|серг|миха)/i;
+  const maleNamePattern = /(pavel|aleks|alex|dmit|denis|ivan|nikol|maks|maxim|serg|mikhail|mihail|yuri|СЋСЂ|РёРІР°РЅ|РїР°РІРµР»|РґРјРёС‚|Р°Р»РµРєСЃ|СЃРµСЂРі|РјРёС…Р°)/i;
   return voices.find((voice) => /^ru(-|_|$)/i.test(String(voice.lang || '')) && maleNamePattern.test(String(voice.name || '')))
     || voices.find((voice) => /russian/i.test(String(voice.name || '')) && maleNamePattern.test(String(voice.name || '')))
     || voices.find((voice) => /^ru(-|_|$)/i.test(String(voice.lang || '')))
@@ -863,7 +892,7 @@ function renderCommentatorVoiceUi() {
   if (commentatorVoiceToggleEl) {
     commentatorVoiceToggleEl.disabled = !commentatorSpeech.supported;
     commentatorVoiceToggleEl.classList.toggle('is-active', commentatorSpeech.supported && commentatorSpeech.enabled);
-    commentatorVoiceToggleEl.textContent = commentatorSpeech.supported && commentatorSpeech.enabled ? 'Озвучка: вкл' : 'Озвучка: выкл';
+    commentatorVoiceToggleEl.textContent = commentatorSpeech.supported && commentatorSpeech.enabled ? 'РћР·РІСѓС‡РєР°: РІРєР»' : 'РћР·РІСѓС‡РєР°: РІС‹РєР»';
   }
   if (typeof window.syncCommentatorVoiceSettingToggle === 'function') {
     window.syncCommentatorVoiceSettingToggle(
@@ -873,8 +902,8 @@ function renderCommentatorVoiceUi() {
   }
   if (commentatorVoiceStatusEl) {
     commentatorVoiceStatusEl.textContent = !commentatorSpeech.supported
-      ? 'Браузер не дал speech synthesis для озвучки.'
-      : (commentatorSpeech.enabled ? 'Комментатор теперь говорит вслух.' : 'Нажми, чтобы комментатор начал говорить вслух.');
+      ? 'Р‘СЂР°СѓР·РµСЂ РЅРµ РґР°Р» speech synthesis РґР»СЏ РѕР·РІСѓС‡РєРё.'
+      : (commentatorSpeech.enabled ? 'РљРѕРјРјРµРЅС‚Р°С‚РѕСЂ С‚РµРїРµСЂСЊ РіРѕРІРѕСЂРёС‚ РІСЃР»СѓС….' : 'РќР°Р¶РјРё, С‡С‚РѕР±С‹ РєРѕРјРјРµРЅС‚Р°С‚РѕСЂ РЅР°С‡Р°Р» РіРѕРІРѕСЂРёС‚СЊ РІСЃР»СѓС….');
   }
 }
 
@@ -915,7 +944,7 @@ function normalizeCommentarySpeechKeyPart(value) {
 
 function isCommentaryUrgent(key, spokenText) {
   const sample = `${String(key || '')} ${String(spokenText || '')}`.toLowerCase();
-  return /final_death|player_final_death|death|boss|downed|respawn_wait|respawn|critical|low hp|нокаут|нокдаун|умер|смерт|босс/.test(sample);
+  return /final_death|player_final_death|death|boss|downed|respawn_wait|respawn|critical|low hp|РЅРѕРєР°СѓС‚|РЅРѕРєРґР°СѓРЅ|СѓРјРµСЂ|СЃРјРµСЂС‚|Р±РѕСЃСЃ/.test(sample);
 }
 
 function flushCommentarySpeechQueue() {
@@ -1036,291 +1065,291 @@ function maybeSpeakCommentary(title, text, eventKey) {
 function getExtraCommentaryVariants(eventKey = 'generic') {
   const key = String(eventKey || 'generic').toLowerCase();
   if (key.includes('weapon_pick')) {
-    const weaponName = key.replace(/^.*weapon_pick_/, '').replace(/[_-]+/g, ' ').trim() || 'оружие';
-    const isSmg = /\bsmg\b|пп|пистолет.?пулем/.test(weaponName);
-    const isShotgun = /shotgun|дроб/.test(weaponName);
-    const isSniper = /sniper|снайпер/.test(weaponName);
-    const isPistol = /pistol|пистолет/.test(weaponName);
+    const weaponName = key.replace(/^.*weapon_pick_/, '').replace(/[_-]+/g, ' ').trim() || 'РѕСЂСѓР¶РёРµ';
+    const isSmg = /\bsmg\b|РїРї|РїРёСЃС‚РѕР»РµС‚.?РїСѓР»РµРј/.test(weaponName);
+    const isShotgun = /shotgun|РґСЂРѕР±/.test(weaponName);
+    const isSniper = /sniper|СЃРЅР°Р№РїРµСЂ/.test(weaponName);
+    const isPistol = /pistol|РїРёСЃС‚РѕР»РµС‚/.test(weaponName);
     if (isSmg) return [
-      { title: 'SMG пошёл в руки.', text: 'Теперь точность становится философским вопросом, зато темп звучит как спор на повышенных оборотах.' },
-      { title: 'Пистолет-пулемёт в эфире.', text: 'Герой выбрал режим “много маленьких аргументов подряд”. Монстрам рекомендуется не перебивать.' },
-      { title: 'SMG включил скороговорку.', text: 'Ствол говорит быстро, герой двигается быстрее, здравый смысл просит субтитры.' },
-      { title: 'Скорострельность прибыла.', text: 'Если не попадём первым выстрелом, у нас есть ещё двадцать попыток объяснить позицию.' },
-      { title: 'SMG делает атмосферу нервнее.', text: 'Очень деловой инструмент для тех, кто хочет промахиваться статистически убедительно.' },
-      { title: 'Пулемётный режим открыт.', text: 'Арена получает аудиодорожку из паники, металла и маленьких быстрых решений.' },
-      { title: 'SMG взял микрофон.', text: 'Теперь комментатору придётся говорить быстрее, чтобы не отставать от количества выстрелов.' },
-      { title: 'Скорость важнее пафоса.', text: 'SMG напоминает: иногда стиль это просто очень много пуль за короткий срок.' },
-      { title: 'Герой нашёл кнопку “часто”.', text: 'Нажимать её будет приятно. Контролировать последствия будет уже отдельным жанром.' },
-      { title: 'SMG в деле.', text: 'Монстры ещё не поняли, что началось, но уже получили первые тезисы доклада.' },
+      { title: 'SMG РїРѕС€С‘Р» РІ СЂСѓРєРё.', text: 'РўРµРїРµСЂСЊ С‚РѕС‡РЅРѕСЃС‚СЊ СЃС‚Р°РЅРѕРІРёС‚СЃСЏ С„РёР»РѕСЃРѕС„СЃРєРёРј РІРѕРїСЂРѕСЃРѕРј, Р·Р°С‚Рѕ С‚РµРјРї Р·РІСѓС‡РёС‚ РєР°Рє СЃРїРѕСЂ РЅР° РїРѕРІС‹С€РµРЅРЅС‹С… РѕР±РѕСЂРѕС‚Р°С….' },
+      { title: 'РџРёСЃС‚РѕР»РµС‚-РїСѓР»РµРјС‘С‚ РІ СЌС„РёСЂРµ.', text: 'Р“РµСЂРѕР№ РІС‹Р±СЂР°Р» СЂРµР¶РёРј вЂњРјРЅРѕРіРѕ РјР°Р»РµРЅСЊРєРёС… Р°СЂРіСѓРјРµРЅС‚РѕРІ РїРѕРґСЂСЏРґвЂќ. РњРѕРЅСЃС‚СЂР°Рј СЂРµРєРѕРјРµРЅРґСѓРµС‚СЃСЏ РЅРµ РїРµСЂРµР±РёРІР°С‚СЊ.' },
+      { title: 'SMG РІРєР»СЋС‡РёР» СЃРєРѕСЂРѕРіРѕРІРѕСЂРєСѓ.', text: 'РЎС‚РІРѕР» РіРѕРІРѕСЂРёС‚ Р±С‹СЃС‚СЂРѕ, РіРµСЂРѕР№ РґРІРёРіР°РµС‚СЃСЏ Р±С‹СЃС‚СЂРµРµ, Р·РґСЂР°РІС‹Р№ СЃРјС‹СЃР» РїСЂРѕСЃРёС‚ СЃСѓР±С‚РёС‚СЂС‹.' },
+      { title: 'РЎРєРѕСЂРѕСЃС‚СЂРµР»СЊРЅРѕСЃС‚СЊ РїСЂРёР±С‹Р»Р°.', text: 'Р•СЃР»Рё РЅРµ РїРѕРїР°РґС‘Рј РїРµСЂРІС‹Рј РІС‹СЃС‚СЂРµР»РѕРј, Сѓ РЅР°СЃ РµСЃС‚СЊ РµС‰С‘ РґРІР°РґС†Р°С‚СЊ РїРѕРїС‹С‚РѕРє РѕР±СЉСЏСЃРЅРёС‚СЊ РїРѕР·РёС†РёСЋ.' },
+      { title: 'SMG РґРµР»Р°РµС‚ Р°С‚РјРѕСЃС„РµСЂСѓ РЅРµСЂРІРЅРµРµ.', text: 'РћС‡РµРЅСЊ РґРµР»РѕРІРѕР№ РёРЅСЃС‚СЂСѓРјРµРЅС‚ РґР»СЏ С‚РµС…, РєС‚Рѕ С…РѕС‡РµС‚ РїСЂРѕРјР°С…РёРІР°С‚СЊСЃСЏ СЃС‚Р°С‚РёСЃС‚РёС‡РµСЃРєРё СѓР±РµРґРёС‚РµР»СЊРЅРѕ.' },
+      { title: 'РџСѓР»РµРјС‘С‚РЅС‹Р№ СЂРµР¶РёРј РѕС‚РєСЂС‹С‚.', text: 'РђСЂРµРЅР° РїРѕР»СѓС‡Р°РµС‚ Р°СѓРґРёРѕРґРѕСЂРѕР¶РєСѓ РёР· РїР°РЅРёРєРё, РјРµС‚Р°Р»Р»Р° Рё РјР°Р»РµРЅСЊРєРёС… Р±С‹СЃС‚СЂС‹С… СЂРµС€РµРЅРёР№.' },
+      { title: 'SMG РІР·СЏР» РјРёРєСЂРѕС„РѕРЅ.', text: 'РўРµРїРµСЂСЊ РєРѕРјРјРµРЅС‚Р°С‚РѕСЂСѓ РїСЂРёРґС‘С‚СЃСЏ РіРѕРІРѕСЂРёС‚СЊ Р±С‹СЃС‚СЂРµРµ, С‡С‚РѕР±С‹ РЅРµ РѕС‚СЃС‚Р°РІР°С‚СЊ РѕС‚ РєРѕР»РёС‡РµСЃС‚РІР° РІС‹СЃС‚СЂРµР»РѕРІ.' },
+      { title: 'РЎРєРѕСЂРѕСЃС‚СЊ РІР°Р¶РЅРµРµ РїР°С„РѕСЃР°.', text: 'SMG РЅР°РїРѕРјРёРЅР°РµС‚: РёРЅРѕРіРґР° СЃС‚РёР»СЊ СЌС‚Рѕ РїСЂРѕСЃС‚Рѕ РѕС‡РµРЅСЊ РјРЅРѕРіРѕ РїСѓР»СЊ Р·Р° РєРѕСЂРѕС‚РєРёР№ СЃСЂРѕРє.' },
+      { title: 'Р“РµСЂРѕР№ РЅР°С€С‘Р» РєРЅРѕРїРєСѓ вЂњС‡Р°СЃС‚РѕвЂќ.', text: 'РќР°Р¶РёРјР°С‚СЊ РµС‘ Р±СѓРґРµС‚ РїСЂРёСЏС‚РЅРѕ. РљРѕРЅС‚СЂРѕР»РёСЂРѕРІР°С‚СЊ РїРѕСЃР»РµРґСЃС‚РІРёСЏ Р±СѓРґРµС‚ СѓР¶Рµ РѕС‚РґРµР»СЊРЅС‹Рј Р¶Р°РЅСЂРѕРј.' },
+      { title: 'SMG РІ РґРµР»Рµ.', text: 'РњРѕРЅСЃС‚СЂС‹ РµС‰С‘ РЅРµ РїРѕРЅСЏР»Рё, С‡С‚Рѕ РЅР°С‡Р°Р»РѕСЃСЊ, РЅРѕ СѓР¶Рµ РїРѕР»СѓС‡РёР»Рё РїРµСЂРІС‹Рµ С‚РµР·РёСЃС‹ РґРѕРєР»Р°РґР°.' },
     ];
     if (isShotgun) return [
-      { title: 'Дробовик вышел на близкий разговор.', text: 'Это оружие не спорит издалека. Оно подходит и говорит всё сразу, крупным шрифтом.' },
-      { title: 'Shotgun принят в семью.', text: 'Теперь каждый промах будет громким, а каждое попадание будет звучать как закрытая дверь.' },
-      { title: 'Дробовик любит личные границы.', text: 'Точнее, любит их нарушать. Очень громко и с убедительным разлётом аргументов.' },
-      { title: 'Ближний бой стал громче.', text: 'Монстрам лучше держать дистанцию. Они, конечно, не будут, поэтому будет красиво.' },
-      { title: 'Герой нашёл дробовик.', text: 'Это тот редкий момент, когда “подойти поближе” звучит как угроза и план одновременно.' },
-      { title: 'Shotgun заряжен настроением.', text: 'Настроение у него простое: все вопросы решать одним широким жестом.' },
-      { title: 'Дробь пошла в эфир.', text: 'Комментатор слышит уверенность, арена слышит шум, враги слышат плохие новости.' },
-      { title: 'Дробовик добавил драму.', text: 'Теперь каждый коридор выглядит как приглашение к неприятному диалогу.' },
-      { title: 'Большой хлопок в маленьком радиусе.', text: 'Идеально для ситуаций, где тактика закончилась, а эмоции только начались.' },
-      { title: 'Shotgun говорит коротко.', text: 'Но так громко, что даже статистика делает шаг назад.' },
+      { title: 'Р”СЂРѕР±РѕРІРёРє РІС‹С€РµР» РЅР° Р±Р»РёР·РєРёР№ СЂР°Р·РіРѕРІРѕСЂ.', text: 'Р­С‚Рѕ РѕСЂСѓР¶РёРµ РЅРµ СЃРїРѕСЂРёС‚ РёР·РґР°Р»РµРєР°. РћРЅРѕ РїРѕРґС…РѕРґРёС‚ Рё РіРѕРІРѕСЂРёС‚ РІСЃС‘ СЃСЂР°Р·Сѓ, РєСЂСѓРїРЅС‹Рј С€СЂРёС„С‚РѕРј.' },
+      { title: 'Shotgun РїСЂРёРЅСЏС‚ РІ СЃРµРјСЊСЋ.', text: 'РўРµРїРµСЂСЊ РєР°Р¶РґС‹Р№ РїСЂРѕРјР°С… Р±СѓРґРµС‚ РіСЂРѕРјРєРёРј, Р° РєР°Р¶РґРѕРµ РїРѕРїР°РґР°РЅРёРµ Р±СѓРґРµС‚ Р·РІСѓС‡Р°С‚СЊ РєР°Рє Р·Р°РєСЂС‹С‚Р°СЏ РґРІРµСЂСЊ.' },
+      { title: 'Р”СЂРѕР±РѕРІРёРє Р»СЋР±РёС‚ Р»РёС‡РЅС‹Рµ РіСЂР°РЅРёС†С‹.', text: 'РўРѕС‡РЅРµРµ, Р»СЋР±РёС‚ РёС… РЅР°СЂСѓС€Р°С‚СЊ. РћС‡РµРЅСЊ РіСЂРѕРјРєРѕ Рё СЃ СѓР±РµРґРёС‚РµР»СЊРЅС‹Рј СЂР°Р·Р»С‘С‚РѕРј Р°СЂРіСѓРјРµРЅС‚РѕРІ.' },
+      { title: 'Р‘Р»РёР¶РЅРёР№ Р±РѕР№ СЃС‚Р°Р» РіСЂРѕРјС‡Рµ.', text: 'РњРѕРЅСЃС‚СЂР°Рј Р»СѓС‡С€Рµ РґРµСЂР¶Р°С‚СЊ РґРёСЃС‚Р°РЅС†РёСЋ. РћРЅРё, РєРѕРЅРµС‡РЅРѕ, РЅРµ Р±СѓРґСѓС‚, РїРѕСЌС‚РѕРјСѓ Р±СѓРґРµС‚ РєСЂР°СЃРёРІРѕ.' },
+      { title: 'Р“РµСЂРѕР№ РЅР°С€С‘Р» РґСЂРѕР±РѕРІРёРє.', text: 'Р­С‚Рѕ С‚РѕС‚ СЂРµРґРєРёР№ РјРѕРјРµРЅС‚, РєРѕРіРґР° вЂњРїРѕРґРѕР№С‚Рё РїРѕР±Р»РёР¶РµвЂќ Р·РІСѓС‡РёС‚ РєР°Рє СѓРіСЂРѕР·Р° Рё РїР»Р°РЅ РѕРґРЅРѕРІСЂРµРјРµРЅРЅРѕ.' },
+      { title: 'Shotgun Р·Р°СЂСЏР¶РµРЅ РЅР°СЃС‚СЂРѕРµРЅРёРµРј.', text: 'РќР°СЃС‚СЂРѕРµРЅРёРµ Сѓ РЅРµРіРѕ РїСЂРѕСЃС‚РѕРµ: РІСЃРµ РІРѕРїСЂРѕСЃС‹ СЂРµС€Р°С‚СЊ РѕРґРЅРёРј С€РёСЂРѕРєРёРј Р¶РµСЃС‚РѕРј.' },
+      { title: 'Р”СЂРѕР±СЊ РїРѕС€Р»Р° РІ СЌС„РёСЂ.', text: 'РљРѕРјРјРµРЅС‚Р°С‚РѕСЂ СЃР»С‹С€РёС‚ СѓРІРµСЂРµРЅРЅРѕСЃС‚СЊ, Р°СЂРµРЅР° СЃР»С‹С€РёС‚ С€СѓРј, РІСЂР°РіРё СЃР»С‹С€Р°С‚ РїР»РѕС…РёРµ РЅРѕРІРѕСЃС‚Рё.' },
+      { title: 'Р”СЂРѕР±РѕРІРёРє РґРѕР±Р°РІРёР» РґСЂР°РјСѓ.', text: 'РўРµРїРµСЂСЊ РєР°Р¶РґС‹Р№ РєРѕСЂРёРґРѕСЂ РІС‹РіР»СЏРґРёС‚ РєР°Рє РїСЂРёРіР»Р°С€РµРЅРёРµ Рє РЅРµРїСЂРёСЏС‚РЅРѕРјСѓ РґРёР°Р»РѕРіСѓ.' },
+      { title: 'Р‘РѕР»СЊС€РѕР№ С…Р»РѕРїРѕРє РІ РјР°Р»РµРЅСЊРєРѕРј СЂР°РґРёСѓСЃРµ.', text: 'РРґРµР°Р»СЊРЅРѕ РґР»СЏ СЃРёС‚СѓР°С†РёР№, РіРґРµ С‚Р°РєС‚РёРєР° Р·Р°РєРѕРЅС‡РёР»Р°СЃСЊ, Р° СЌРјРѕС†РёРё С‚РѕР»СЊРєРѕ РЅР°С‡Р°Р»РёСЃСЊ.' },
+      { title: 'Shotgun РіРѕРІРѕСЂРёС‚ РєРѕСЂРѕС‚РєРѕ.', text: 'РќРѕ С‚Р°Рє РіСЂРѕРјРєРѕ, С‡С‚Рѕ РґР°Р¶Рµ СЃС‚Р°С‚РёСЃС‚РёРєР° РґРµР»Р°РµС‚ С€Р°Рі РЅР°Р·Р°Рґ.' },
     ];
     if (isSniper) return [
-      { title: 'Снайперка в руках.', text: 'Теперь можно решать проблемы с такого расстояния, где совесть уже плохо добивает.' },
-      { title: 'Sniper добавлен в эфир.', text: 'Герой выбрал стиль “одно мнение, но очень убедительное”.' },
-      { title: 'Дальняя дистанция открыта.', text: 'Монстры ещё идут, а у них уже есть неприятное предчувствие в районе головы.' },
-      { title: 'Снайперский аргумент найден.', text: 'Редкий случай, когда пауза перед выстрелом звучит страшнее самой стрельбы.' },
-      { title: 'Sniper просит тишины.', text: 'Арена, конечно, не даст. Но самоуверенность красивая.' },
-      { title: 'Один выстрел, много смысла.', text: 'Снайперка напоминает: иногда минимализм тоже может быть грубым.' },
-      { title: 'Герой взял длинную мысль.', text: 'Она летит далеко, бьёт больно и плохо воспринимает критику.' },
-      { title: 'Снайперский режим активен.', text: 'Теперь промахи будут редкими, заметными и эмоционально дорогими.' },
-      { title: 'Sniper смотрит вдаль.', text: 'И даль, если честно, уже немного нервничает.' },
-      { title: 'Точность получила микрофон.', text: 'Если попадёт, будет красиво. Если нет, сделаем вид, что это был предупредительный.' },
+      { title: 'РЎРЅР°Р№РїРµСЂРєР° РІ СЂСѓРєР°С….', text: 'РўРµРїРµСЂСЊ РјРѕР¶РЅРѕ СЂРµС€Р°С‚СЊ РїСЂРѕР±Р»РµРјС‹ СЃ С‚Р°РєРѕРіРѕ СЂР°СЃСЃС‚РѕСЏРЅРёСЏ, РіРґРµ СЃРѕРІРµСЃС‚СЊ СѓР¶Рµ РїР»РѕС…Рѕ РґРѕР±РёРІР°РµС‚.' },
+      { title: 'Sniper РґРѕР±Р°РІР»РµРЅ РІ СЌС„РёСЂ.', text: 'Р“РµСЂРѕР№ РІС‹Р±СЂР°Р» СЃС‚РёР»СЊ вЂњРѕРґРЅРѕ РјРЅРµРЅРёРµ, РЅРѕ РѕС‡РµРЅСЊ СѓР±РµРґРёС‚РµР»СЊРЅРѕРµвЂќ.' },
+      { title: 'Р”Р°Р»СЊРЅСЏСЏ РґРёСЃС‚Р°РЅС†РёСЏ РѕС‚РєСЂС‹С‚Р°.', text: 'РњРѕРЅСЃС‚СЂС‹ РµС‰С‘ РёРґСѓС‚, Р° Сѓ РЅРёС… СѓР¶Рµ РµСЃС‚СЊ РЅРµРїСЂРёСЏС‚РЅРѕРµ РїСЂРµРґС‡СѓРІСЃС‚РІРёРµ РІ СЂР°Р№РѕРЅРµ РіРѕР»РѕРІС‹.' },
+      { title: 'РЎРЅР°Р№РїРµСЂСЃРєРёР№ Р°СЂРіСѓРјРµРЅС‚ РЅР°Р№РґРµРЅ.', text: 'Р РµРґРєРёР№ СЃР»СѓС‡Р°Р№, РєРѕРіРґР° РїР°СѓР·Р° РїРµСЂРµРґ РІС‹СЃС‚СЂРµР»РѕРј Р·РІСѓС‡РёС‚ СЃС‚СЂР°С€РЅРµРµ СЃР°РјРѕР№ СЃС‚СЂРµР»СЊР±С‹.' },
+      { title: 'Sniper РїСЂРѕСЃРёС‚ С‚РёС€РёРЅС‹.', text: 'РђСЂРµРЅР°, РєРѕРЅРµС‡РЅРѕ, РЅРµ РґР°СЃС‚. РќРѕ СЃР°РјРѕСѓРІРµСЂРµРЅРЅРѕСЃС‚СЊ РєСЂР°СЃРёРІР°СЏ.' },
+      { title: 'РћРґРёРЅ РІС‹СЃС‚СЂРµР», РјРЅРѕРіРѕ СЃРјС‹СЃР»Р°.', text: 'РЎРЅР°Р№РїРµСЂРєР° РЅР°РїРѕРјРёРЅР°РµС‚: РёРЅРѕРіРґР° РјРёРЅРёРјР°Р»РёР·Рј С‚РѕР¶Рµ РјРѕР¶РµС‚ Р±С‹С‚СЊ РіСЂСѓР±С‹Рј.' },
+      { title: 'Р“РµСЂРѕР№ РІР·СЏР» РґР»РёРЅРЅСѓСЋ РјС‹СЃР»СЊ.', text: 'РћРЅР° Р»РµС‚РёС‚ РґР°Р»РµРєРѕ, Р±СЊС‘С‚ Р±РѕР»СЊРЅРѕ Рё РїР»РѕС…Рѕ РІРѕСЃРїСЂРёРЅРёРјР°РµС‚ РєСЂРёС‚РёРєСѓ.' },
+      { title: 'РЎРЅР°Р№РїРµСЂСЃРєРёР№ СЂРµР¶РёРј Р°РєС‚РёРІРµРЅ.', text: 'РўРµРїРµСЂСЊ РїСЂРѕРјР°С…Рё Р±СѓРґСѓС‚ СЂРµРґРєРёРјРё, Р·Р°РјРµС‚РЅС‹РјРё Рё СЌРјРѕС†РёРѕРЅР°Р»СЊРЅРѕ РґРѕСЂРѕРіРёРјРё.' },
+      { title: 'Sniper СЃРјРѕС‚СЂРёС‚ РІРґР°Р»СЊ.', text: 'Р РґР°Р»СЊ, РµСЃР»Рё С‡РµСЃС‚РЅРѕ, СѓР¶Рµ РЅРµРјРЅРѕРіРѕ РЅРµСЂРІРЅРёС‡Р°РµС‚.' },
+      { title: 'РўРѕС‡РЅРѕСЃС‚СЊ РїРѕР»СѓС‡РёР»Р° РјРёРєСЂРѕС„РѕРЅ.', text: 'Р•СЃР»Рё РїРѕРїР°РґС‘С‚, Р±СѓРґРµС‚ РєСЂР°СЃРёРІРѕ. Р•СЃР»Рё РЅРµС‚, СЃРґРµР»Р°РµРј РІРёРґ, С‡С‚Рѕ СЌС‚Рѕ Р±С‹Р» РїСЂРµРґСѓРїСЂРµРґРёС‚РµР»СЊРЅС‹Р№.' },
     ];
     if (isPistol) return [
-      { title: 'Пистолет снова в кадре.', text: 'Скромно, честно, без лишнего пафоса. Как бутерброд в мире боевой кулинарии.' },
-      { title: 'Pistol держит базу.', text: 'Не самый громкий инструмент, зато всегда рядом, когда дорогие игрушки заканчивают патроны.' },
-      { title: 'Пистолет выбран.', text: 'Классика жанра: маленький ствол, большие надежды, средняя тревожность.' },
-      { title: 'Базовый аргумент готов.', text: 'Пистолет не обещает чудес. Он просто приходит на работу и делает “пиф”.' },
-      { title: 'Pistol без лишнего шоу.', text: 'Иногда выживание начинается с простого: нажимать, отходить, не спорить с толпой лицом.' },
-      { title: 'Пистолет звучит спокойно.', text: 'Это спокойствие, правда, держится ровно до первого окружения.' },
-      { title: 'Герой вернулся к классике.', text: 'Когда всё сложное закончилось, остаётся честная маленькая машинка для проблем.' },
-      { title: 'Pistol показывает характер.', text: 'С виду скромный, но в хороших руках способен испортить день очень многим.' },
-      { title: 'Пистолет в деле.', text: 'Не роскошь, не фейерверк, зато понятный язык для разговора с ближайшими неприятностями.' },
-      { title: 'Базовый набор выживания активен.', text: 'Пистолет, ноги и надежда. Комплект сомнительный, но исторически рабочий.' },
+      { title: 'РџРёСЃС‚РѕР»РµС‚ СЃРЅРѕРІР° РІ РєР°РґСЂРµ.', text: 'РЎРєСЂРѕРјРЅРѕ, С‡РµСЃС‚РЅРѕ, Р±РµР· Р»РёС€РЅРµРіРѕ РїР°С„РѕСЃР°. РљР°Рє Р±СѓС‚РµСЂР±СЂРѕРґ РІ РјРёСЂРµ Р±РѕРµРІРѕР№ РєСѓР»РёРЅР°СЂРёРё.' },
+      { title: 'Pistol РґРµСЂР¶РёС‚ Р±Р°Р·Сѓ.', text: 'РќРµ СЃР°РјС‹Р№ РіСЂРѕРјРєРёР№ РёРЅСЃС‚СЂСѓРјРµРЅС‚, Р·Р°С‚Рѕ РІСЃРµРіРґР° СЂСЏРґРѕРј, РєРѕРіРґР° РґРѕСЂРѕРіРёРµ РёРіСЂСѓС€РєРё Р·Р°РєР°РЅС‡РёРІР°СЋС‚ РїР°С‚СЂРѕРЅС‹.' },
+      { title: 'РџРёСЃС‚РѕР»РµС‚ РІС‹Р±СЂР°РЅ.', text: 'РљР»Р°СЃСЃРёРєР° Р¶Р°РЅСЂР°: РјР°Р»РµРЅСЊРєРёР№ СЃС‚РІРѕР», Р±РѕР»СЊС€РёРµ РЅР°РґРµР¶РґС‹, СЃСЂРµРґРЅСЏСЏ С‚СЂРµРІРѕР¶РЅРѕСЃС‚СЊ.' },
+      { title: 'Р‘Р°Р·РѕРІС‹Р№ Р°СЂРіСѓРјРµРЅС‚ РіРѕС‚РѕРІ.', text: 'РџРёСЃС‚РѕР»РµС‚ РЅРµ РѕР±РµС‰Р°РµС‚ С‡СѓРґРµСЃ. РћРЅ РїСЂРѕСЃС‚Рѕ РїСЂРёС…РѕРґРёС‚ РЅР° СЂР°Р±РѕС‚Сѓ Рё РґРµР»Р°РµС‚ вЂњРїРёС„вЂќ.' },
+      { title: 'Pistol Р±РµР· Р»РёС€РЅРµРіРѕ С€РѕСѓ.', text: 'РРЅРѕРіРґР° РІС‹Р¶РёРІР°РЅРёРµ РЅР°С‡РёРЅР°РµС‚СЃСЏ СЃ РїСЂРѕСЃС‚РѕРіРѕ: РЅР°Р¶РёРјР°С‚СЊ, РѕС‚С…РѕРґРёС‚СЊ, РЅРµ СЃРїРѕСЂРёС‚СЊ СЃ С‚РѕР»РїРѕР№ Р»РёС†РѕРј.' },
+      { title: 'РџРёСЃС‚РѕР»РµС‚ Р·РІСѓС‡РёС‚ СЃРїРѕРєРѕР№РЅРѕ.', text: 'Р­С‚Рѕ СЃРїРѕРєРѕР№СЃС‚РІРёРµ, РїСЂР°РІРґР°, РґРµСЂР¶РёС‚СЃСЏ СЂРѕРІРЅРѕ РґРѕ РїРµСЂРІРѕРіРѕ РѕРєСЂСѓР¶РµРЅРёСЏ.' },
+      { title: 'Р“РµСЂРѕР№ РІРµСЂРЅСѓР»СЃСЏ Рє РєР»Р°СЃСЃРёРєРµ.', text: 'РљРѕРіРґР° РІСЃС‘ СЃР»РѕР¶РЅРѕРµ Р·Р°РєРѕРЅС‡РёР»РѕСЃСЊ, РѕСЃС‚Р°С‘С‚СЃСЏ С‡РµСЃС‚РЅР°СЏ РјР°Р»РµРЅСЊРєР°СЏ РјР°С€РёРЅРєР° РґР»СЏ РїСЂРѕР±Р»РµРј.' },
+      { title: 'Pistol РїРѕРєР°Р·С‹РІР°РµС‚ С…Р°СЂР°РєС‚РµСЂ.', text: 'РЎ РІРёРґСѓ СЃРєСЂРѕРјРЅС‹Р№, РЅРѕ РІ С…РѕСЂРѕС€РёС… СЂСѓРєР°С… СЃРїРѕСЃРѕР±РµРЅ РёСЃРїРѕСЂС‚РёС‚СЊ РґРµРЅСЊ РѕС‡РµРЅСЊ РјРЅРѕРіРёРј.' },
+      { title: 'РџРёСЃС‚РѕР»РµС‚ РІ РґРµР»Рµ.', text: 'РќРµ СЂРѕСЃРєРѕС€СЊ, РЅРµ С„РµР№РµСЂРІРµСЂРє, Р·Р°С‚Рѕ РїРѕРЅСЏС‚РЅС‹Р№ СЏР·С‹Рє РґР»СЏ СЂР°Р·РіРѕРІРѕСЂР° СЃ Р±Р»РёР¶Р°Р№С€РёРјРё РЅРµРїСЂРёСЏС‚РЅРѕСЃС‚СЏРјРё.' },
+      { title: 'Р‘Р°Р·РѕРІС‹Р№ РЅР°Р±РѕСЂ РІС‹Р¶РёРІР°РЅРёСЏ Р°РєС‚РёРІРµРЅ.', text: 'РџРёСЃС‚РѕР»РµС‚, РЅРѕРіРё Рё РЅР°РґРµР¶РґР°. РљРѕРјРїР»РµРєС‚ СЃРѕРјРЅРёС‚РµР»СЊРЅС‹Р№, РЅРѕ РёСЃС‚РѕСЂРёС‡РµСЃРєРё СЂР°Р±РѕС‡РёР№.' },
     ];
     return [
-      { title: 'Новое оружие в руках.', text: 'Арена выдала инструмент, герой выдал уверенность, последствия уже оформляют заявку.' },
-      { title: 'Ствол найден.', text: 'Это всегда приятно: ещё одна железка, которая может превратить план в шум.' },
-      { title: 'Оружие вступает в эфир.', text: 'Публика ждёт тест, враги ждут плохо, комментатор ждёт материал для сарказма.' },
-      { title: 'Лут дал новый аргумент.', text: 'Главное теперь не перепутать аргумент с самоуверенностью. Хотя кто нас остановит.' },
-      { title: 'Герой обновил комплект боли.', text: 'Старые ошибки теперь можно совершать новым способом. Прогресс, как ни крути.' },
-      { title: 'Новая железка принята.', text: 'Она пока блестит и молчит. Скоро будет блестеть, шуметь и делать вид, что так надо.' },
-      { title: 'Оружейный слот оживился.', text: 'Надежда стала тяжелее, громче и потенциально опаснее для всех рядом.' },
-      { title: 'Арсенал стал интереснее.', text: 'Интереснее не значит безопаснее. Но мы же тут не за безопасностью.' },
+      { title: 'РќРѕРІРѕРµ РѕСЂСѓР¶РёРµ РІ СЂСѓРєР°С….', text: 'РђСЂРµРЅР° РІС‹РґР°Р»Р° РёРЅСЃС‚СЂСѓРјРµРЅС‚, РіРµСЂРѕР№ РІС‹РґР°Р» СѓРІРµСЂРµРЅРЅРѕСЃС‚СЊ, РїРѕСЃР»РµРґСЃС‚РІРёСЏ СѓР¶Рµ РѕС„РѕСЂРјР»СЏСЋС‚ Р·Р°СЏРІРєСѓ.' },
+      { title: 'РЎС‚РІРѕР» РЅР°Р№РґРµРЅ.', text: 'Р­С‚Рѕ РІСЃРµРіРґР° РїСЂРёСЏС‚РЅРѕ: РµС‰С‘ РѕРґРЅР° Р¶РµР»РµР·РєР°, РєРѕС‚РѕСЂР°СЏ РјРѕР¶РµС‚ РїСЂРµРІСЂР°С‚РёС‚СЊ РїР»Р°РЅ РІ С€СѓРј.' },
+      { title: 'РћСЂСѓР¶РёРµ РІСЃС‚СѓРїР°РµС‚ РІ СЌС„РёСЂ.', text: 'РџСѓР±Р»РёРєР° Р¶РґС‘С‚ С‚РµСЃС‚, РІСЂР°РіРё Р¶РґСѓС‚ РїР»РѕС…Рѕ, РєРѕРјРјРµРЅС‚Р°С‚РѕСЂ Р¶РґС‘С‚ РјР°С‚РµСЂРёР°Р» РґР»СЏ СЃР°СЂРєР°Р·РјР°.' },
+      { title: 'Р›СѓС‚ РґР°Р» РЅРѕРІС‹Р№ Р°СЂРіСѓРјРµРЅС‚.', text: 'Р“Р»Р°РІРЅРѕРµ С‚РµРїРµСЂСЊ РЅРµ РїРµСЂРµРїСѓС‚Р°С‚СЊ Р°СЂРіСѓРјРµРЅС‚ СЃ СЃР°РјРѕСѓРІРµСЂРµРЅРЅРѕСЃС‚СЊСЋ. РҐРѕС‚СЏ РєС‚Рѕ РЅР°СЃ РѕСЃС‚Р°РЅРѕРІРёС‚.' },
+      { title: 'Р“РµСЂРѕР№ РѕР±РЅРѕРІРёР» РєРѕРјРїР»РµРєС‚ Р±РѕР»Рё.', text: 'РЎС‚Р°СЂС‹Рµ РѕС€РёР±РєРё С‚РµРїРµСЂСЊ РјРѕР¶РЅРѕ СЃРѕРІРµСЂС€Р°С‚СЊ РЅРѕРІС‹Рј СЃРїРѕСЃРѕР±РѕРј. РџСЂРѕРіСЂРµСЃСЃ, РєР°Рє РЅРё РєСЂСѓС‚Рё.' },
+      { title: 'РќРѕРІР°СЏ Р¶РµР»РµР·РєР° РїСЂРёРЅСЏС‚Р°.', text: 'РћРЅР° РїРѕРєР° Р±Р»РµСЃС‚РёС‚ Рё РјРѕР»С‡РёС‚. РЎРєРѕСЂРѕ Р±СѓРґРµС‚ Р±Р»РµСЃС‚РµС‚СЊ, С€СѓРјРµС‚СЊ Рё РґРµР»Р°С‚СЊ РІРёРґ, С‡С‚Рѕ С‚Р°Рє РЅР°РґРѕ.' },
+      { title: 'РћСЂСѓР¶РµР№РЅС‹Р№ СЃР»РѕС‚ РѕР¶РёРІРёР»СЃСЏ.', text: 'РќР°РґРµР¶РґР° СЃС‚Р°Р»Р° С‚СЏР¶РµР»РµРµ, РіСЂРѕРјС‡Рµ Рё РїРѕС‚РµРЅС†РёР°Р»СЊРЅРѕ РѕРїР°СЃРЅРµРµ РґР»СЏ РІСЃРµС… СЂСЏРґРѕРј.' },
+      { title: 'РђСЂСЃРµРЅР°Р» СЃС‚Р°Р» РёРЅС‚РµСЂРµСЃРЅРµРµ.', text: 'РРЅС‚РµСЂРµСЃРЅРµРµ РЅРµ Р·РЅР°С‡РёС‚ Р±РµР·РѕРїР°СЃРЅРµРµ. РќРѕ РјС‹ Р¶Рµ С‚СѓС‚ РЅРµ Р·Р° Р±РµР·РѕРїР°СЃРЅРѕСЃС‚СЊСЋ.' },
     ];
   }
   if (key.startsWith('boss_countdown')) return [
-    { title: 'Босс уже почти на пороге.', text: 'Последние секунды спокойствия. Можно собраться, можно драматично моргнуть в камеру.' },
-    { title: 'Начальство скоро выйдет в зал.', text: 'Если у кого-то был план, сейчас самое время вспомнить хотя бы его название.' },
-    { title: 'Отсчёт пахнет проблемами.', text: 'Арена аккуратно подаёт сигнал: дальше будет не фарм, а собеседование на выживание.' },
-    { title: 'До босса осталось совсем немного.', text: 'Комментатор рекомендует глубокий вдох. Арена рекомендует не рассчитывать на рекомендации.' },
-    { title: 'Большая встреча уже рядом.', text: 'Все делают вид, что готовы. Особенно те, кто не готов вообще.' },
+    { title: 'Р‘РѕСЃСЃ СѓР¶Рµ РїРѕС‡С‚Рё РЅР° РїРѕСЂРѕРіРµ.', text: 'РџРѕСЃР»РµРґРЅРёРµ СЃРµРєСѓРЅРґС‹ СЃРїРѕРєРѕР№СЃС‚РІРёСЏ. РњРѕР¶РЅРѕ СЃРѕР±СЂР°С‚СЊСЃСЏ, РјРѕР¶РЅРѕ РґСЂР°РјР°С‚РёС‡РЅРѕ РјРѕСЂРіРЅСѓС‚СЊ РІ РєР°РјРµСЂСѓ.' },
+    { title: 'РќР°С‡Р°Р»СЊСЃС‚РІРѕ СЃРєРѕСЂРѕ РІС‹Р№РґРµС‚ РІ Р·Р°Р».', text: 'Р•СЃР»Рё Сѓ РєРѕРіРѕ-С‚Рѕ Р±С‹Р» РїР»Р°РЅ, СЃРµР№С‡Р°СЃ СЃР°РјРѕРµ РІСЂРµРјСЏ РІСЃРїРѕРјРЅРёС‚СЊ С…РѕС‚СЏ Р±С‹ РµРіРѕ РЅР°Р·РІР°РЅРёРµ.' },
+    { title: 'РћС‚СЃС‡С‘С‚ РїР°С…РЅРµС‚ РїСЂРѕР±Р»РµРјР°РјРё.', text: 'РђСЂРµРЅР° Р°РєРєСѓСЂР°С‚РЅРѕ РїРѕРґР°С‘С‚ СЃРёРіРЅР°Р»: РґР°Р»СЊС€Рµ Р±СѓРґРµС‚ РЅРµ С„Р°СЂРј, Р° СЃРѕР±РµСЃРµРґРѕРІР°РЅРёРµ РЅР° РІС‹Р¶РёРІР°РЅРёРµ.' },
+    { title: 'Р”Рѕ Р±РѕСЃСЃР° РѕСЃС‚Р°Р»РѕСЃСЊ СЃРѕРІСЃРµРј РЅРµРјРЅРѕРіРѕ.', text: 'РљРѕРјРјРµРЅС‚Р°С‚РѕСЂ СЂРµРєРѕРјРµРЅРґСѓРµС‚ РіР»СѓР±РѕРєРёР№ РІРґРѕС…. РђСЂРµРЅР° СЂРµРєРѕРјРµРЅРґСѓРµС‚ РЅРµ СЂР°СЃСЃС‡РёС‚С‹РІР°С‚СЊ РЅР° СЂРµРєРѕРјРµРЅРґР°С†РёРё.' },
+    { title: 'Р‘РѕР»СЊС€Р°СЏ РІСЃС‚СЂРµС‡Р° СѓР¶Рµ СЂСЏРґРѕРј.', text: 'Р’СЃРµ РґРµР»Р°СЋС‚ РІРёРґ, С‡С‚Рѕ РіРѕС‚РѕРІС‹. РћСЃРѕР±РµРЅРЅРѕ С‚Рµ, РєС‚Рѕ РЅРµ РіРѕС‚РѕРІ РІРѕРѕР±С‰Рµ.' },
   ];
   if (key.includes('skill_pick')) return [
-    { title: 'Навык подобран, самооценка выросла.', text: 'Теперь билд выглядит умнее, чем пять секунд назад. Правда, враги это тоже заметили и уже пишут жалобу.' },
-    { title: 'Герой нашёл новую кнопку надежды.', text: 'Очень полезно: нажимаешь, становится веселее, опаснее и почему-то громче.' },
-    { title: 'Прокачка зашла в организм.', text: 'Арена сделала вид, что не испугалась, но где-то в коде у врагов дрогнуло колено.' },
-    { title: 'Новый навык в кармане.', text: 'Карман теперь важничает, герой строит планы, баланс нервно проверяет страховку.' },
-    { title: 'Билд получил свежий соус.', text: 'Было остро, стало ещё острее. Где-то рядом враг уже пожалел, что умеет ходить.' },
-    { title: 'Герой апгрейднулся без лишней скромности.', text: 'Правильный настрой: если уж выживать, то с эффектами и ощущением незаконного преимущества.' },
-    { title: 'Меню умений снова принесло характер.', text: 'Игрок выбрал кнопку, а судьба уже открыла блокнот для замечаний.' },
-    { title: 'Прокачка делает шоу толще.', text: 'Теперь у забега больше механик, больше надежды и больше способов красиво ошибиться.' },
-    { title: 'Навык принят без лишних вопросов.', text: 'Вопросы появятся позже, когда вся эта красота начнёт работать рядом с лицом героя.' },
-    { title: 'Билд получил новую специю.', text: 'Если станет вкусно, скажем “так и планировали”. Если остро, тоже скажем “так и планировали”.' },
-    { title: 'Выбор умения засчитан.', text: 'Это тот момент, когда стратегия надевает солнечные очки и делает вид, что контролирует хаос.' },
+    { title: 'РќР°РІС‹Рє РїРѕРґРѕР±СЂР°РЅ, СЃР°РјРѕРѕС†РµРЅРєР° РІС‹СЂРѕСЃР»Р°.', text: 'РўРµРїРµСЂСЊ Р±РёР»Рґ РІС‹РіР»СЏРґРёС‚ СѓРјРЅРµРµ, С‡РµРј РїСЏС‚СЊ СЃРµРєСѓРЅРґ РЅР°Р·Р°Рґ. РџСЂР°РІРґР°, РІСЂР°РіРё СЌС‚Рѕ С‚РѕР¶Рµ Р·Р°РјРµС‚РёР»Рё Рё СѓР¶Рµ РїРёС€СѓС‚ Р¶Р°Р»РѕР±Сѓ.' },
+    { title: 'Р“РµСЂРѕР№ РЅР°С€С‘Р» РЅРѕРІСѓСЋ РєРЅРѕРїРєСѓ РЅР°РґРµР¶РґС‹.', text: 'РћС‡РµРЅСЊ РїРѕР»РµР·РЅРѕ: РЅР°Р¶РёРјР°РµС€СЊ, СЃС‚Р°РЅРѕРІРёС‚СЃСЏ РІРµСЃРµР»РµРµ, РѕРїР°СЃРЅРµРµ Рё РїРѕС‡РµРјСѓ-С‚Рѕ РіСЂРѕРјС‡Рµ.' },
+    { title: 'РџСЂРѕРєР°С‡РєР° Р·Р°С€Р»Р° РІ РѕСЂРіР°РЅРёР·Рј.', text: 'РђСЂРµРЅР° СЃРґРµР»Р°Р»Р° РІРёРґ, С‡С‚Рѕ РЅРµ РёСЃРїСѓРіР°Р»Р°СЃСЊ, РЅРѕ РіРґРµ-С‚Рѕ РІ РєРѕРґРµ Сѓ РІСЂР°РіРѕРІ РґСЂРѕРіРЅСѓР»Рѕ РєРѕР»РµРЅРѕ.' },
+    { title: 'РќРѕРІС‹Р№ РЅР°РІС‹Рє РІ РєР°СЂРјР°РЅРµ.', text: 'РљР°СЂРјР°РЅ С‚РµРїРµСЂСЊ РІР°Р¶РЅРёС‡Р°РµС‚, РіРµСЂРѕР№ СЃС‚СЂРѕРёС‚ РїР»Р°РЅС‹, Р±Р°Р»Р°РЅСЃ РЅРµСЂРІРЅРѕ РїСЂРѕРІРµСЂСЏРµС‚ СЃС‚СЂР°С…РѕРІРєСѓ.' },
+    { title: 'Р‘РёР»Рґ РїРѕР»СѓС‡РёР» СЃРІРµР¶РёР№ СЃРѕСѓСЃ.', text: 'Р‘С‹Р»Рѕ РѕСЃС‚СЂРѕ, СЃС‚Р°Р»Рѕ РµС‰С‘ РѕСЃС‚СЂРµРµ. Р“РґРµ-С‚Рѕ СЂСЏРґРѕРј РІСЂР°Рі СѓР¶Рµ РїРѕР¶Р°Р»РµР», С‡С‚Рѕ СѓРјРµРµС‚ С…РѕРґРёС‚СЊ.' },
+    { title: 'Р“РµСЂРѕР№ Р°РїРіСЂРµР№РґРЅСѓР»СЃСЏ Р±РµР· Р»РёС€РЅРµР№ СЃРєСЂРѕРјРЅРѕСЃС‚Рё.', text: 'РџСЂР°РІРёР»СЊРЅС‹Р№ РЅР°СЃС‚СЂРѕР№: РµСЃР»Рё СѓР¶ РІС‹Р¶РёРІР°С‚СЊ, С‚Рѕ СЃ СЌС„С„РµРєС‚Р°РјРё Рё РѕС‰СѓС‰РµРЅРёРµРј РЅРµР·Р°РєРѕРЅРЅРѕРіРѕ РїСЂРµРёРјСѓС‰РµСЃС‚РІР°.' },
+    { title: 'РњРµРЅСЋ СѓРјРµРЅРёР№ СЃРЅРѕРІР° РїСЂРёРЅРµСЃР»Рѕ С…Р°СЂР°РєС‚РµСЂ.', text: 'РРіСЂРѕРє РІС‹Р±СЂР°Р» РєРЅРѕРїРєСѓ, Р° СЃСѓРґСЊР±Р° СѓР¶Рµ РѕС‚РєСЂС‹Р»Р° Р±Р»РѕРєРЅРѕС‚ РґР»СЏ Р·Р°РјРµС‡Р°РЅРёР№.' },
+    { title: 'РџСЂРѕРєР°С‡РєР° РґРµР»Р°РµС‚ С€РѕСѓ С‚РѕР»С‰Рµ.', text: 'РўРµРїРµСЂСЊ Сѓ Р·Р°Р±РµРіР° Р±РѕР»СЊС€Рµ РјРµС…Р°РЅРёРє, Р±РѕР»СЊС€Рµ РЅР°РґРµР¶РґС‹ Рё Р±РѕР»СЊС€Рµ СЃРїРѕСЃРѕР±РѕРІ РєСЂР°СЃРёРІРѕ РѕС€РёР±РёС‚СЊСЃСЏ.' },
+    { title: 'РќР°РІС‹Рє РїСЂРёРЅСЏС‚ Р±РµР· Р»РёС€РЅРёС… РІРѕРїСЂРѕСЃРѕРІ.', text: 'Р’РѕРїСЂРѕСЃС‹ РїРѕСЏРІСЏС‚СЃСЏ РїРѕР·Р¶Рµ, РєРѕРіРґР° РІСЃСЏ СЌС‚Р° РєСЂР°СЃРѕС‚Р° РЅР°С‡РЅС‘С‚ СЂР°Р±РѕС‚Р°С‚СЊ СЂСЏРґРѕРј СЃ Р»РёС†РѕРј РіРµСЂРѕСЏ.' },
+    { title: 'Р‘РёР»Рґ РїРѕР»СѓС‡РёР» РЅРѕРІСѓСЋ СЃРїРµС†РёСЋ.', text: 'Р•СЃР»Рё СЃС‚Р°РЅРµС‚ РІРєСѓСЃРЅРѕ, СЃРєР°Р¶РµРј вЂњС‚Р°Рє Рё РїР»Р°РЅРёСЂРѕРІР°Р»РёвЂќ. Р•СЃР»Рё РѕСЃС‚СЂРѕ, С‚РѕР¶Рµ СЃРєР°Р¶РµРј вЂњС‚Р°Рє Рё РїР»Р°РЅРёСЂРѕРІР°Р»РёвЂќ.' },
+    { title: 'Р’С‹Р±РѕСЂ СѓРјРµРЅРёСЏ Р·Р°СЃС‡РёС‚Р°РЅ.', text: 'Р­С‚Рѕ С‚РѕС‚ РјРѕРјРµРЅС‚, РєРѕРіРґР° СЃС‚СЂР°С‚РµРіРёСЏ РЅР°РґРµРІР°РµС‚ СЃРѕР»РЅРµС‡РЅС‹Рµ РѕС‡РєРё Рё РґРµР»Р°РµС‚ РІРёРґ, С‡С‚Рѕ РєРѕРЅС‚СЂРѕР»РёСЂСѓРµС‚ С…Р°РѕСЃ.' },
   ];
   if (key.includes('kill_milestone') || key.startsWith('kills_')) return [
-    { title: 'Счётчик врагов бодро разгоняется.', text: 'На арене снова минус пачка проблем и плюс пачка самоуверенности.' },
-    { title: 'Убийства идут плотным графиком.', text: 'Если бы у хаоса был бухгалтер, он бы сейчас нервно обновлял таблицу.' },
-    { title: 'Темп мясорубки приличный.', text: 'Герой не просто выживает, он ещё и делает это с производственным планом.' },
-    { title: 'Враги исчезают с подозрительной регулярностью.', text: 'Очень бодрый забег. Очень плохой день для всего, что решило подойти ближе.' },
-    { title: 'Арена считает потери и делает вид, что всё нормально.', text: 'Мы тоже делаем вид. Получается примерно одинаково убедительно.' },
+    { title: 'РЎС‡С‘С‚С‡РёРє РІСЂР°РіРѕРІ Р±РѕРґСЂРѕ СЂР°Р·РіРѕРЅСЏРµС‚СЃСЏ.', text: 'РќР° Р°СЂРµРЅРµ СЃРЅРѕРІР° РјРёРЅСѓСЃ РїР°С‡РєР° РїСЂРѕР±Р»РµРј Рё РїР»СЋСЃ РїР°С‡РєР° СЃР°РјРѕСѓРІРµСЂРµРЅРЅРѕСЃС‚Рё.' },
+    { title: 'РЈР±РёР№СЃС‚РІР° РёРґСѓС‚ РїР»РѕС‚РЅС‹Рј РіСЂР°С„РёРєРѕРј.', text: 'Р•СЃР»Рё Р±С‹ Сѓ С…Р°РѕСЃР° Р±С‹Р» Р±СѓС…РіР°Р»С‚РµСЂ, РѕРЅ Р±С‹ СЃРµР№С‡Р°СЃ РЅРµСЂРІРЅРѕ РѕР±РЅРѕРІР»СЏР» С‚Р°Р±Р»РёС†Сѓ.' },
+    { title: 'РўРµРјРї РјСЏСЃРѕСЂСѓР±РєРё РїСЂРёР»РёС‡РЅС‹Р№.', text: 'Р“РµСЂРѕР№ РЅРµ РїСЂРѕСЃС‚Рѕ РІС‹Р¶РёРІР°РµС‚, РѕРЅ РµС‰С‘ Рё РґРµР»Р°РµС‚ СЌС‚Рѕ СЃ РїСЂРѕРёР·РІРѕРґСЃС‚РІРµРЅРЅС‹Рј РїР»Р°РЅРѕРј.' },
+    { title: 'Р’СЂР°РіРё РёСЃС‡РµР·Р°СЋС‚ СЃ РїРѕРґРѕР·СЂРёС‚РµР»СЊРЅРѕР№ СЂРµРіСѓР»СЏСЂРЅРѕСЃС‚СЊСЋ.', text: 'РћС‡РµРЅСЊ Р±РѕРґСЂС‹Р№ Р·Р°Р±РµРі. РћС‡РµРЅСЊ РїР»РѕС…РѕР№ РґРµРЅСЊ РґР»СЏ РІСЃРµРіРѕ, С‡С‚Рѕ СЂРµС€РёР»Рѕ РїРѕРґРѕР№С‚Рё Р±Р»РёР¶Рµ.' },
+    { title: 'РђСЂРµРЅР° СЃС‡РёС‚Р°РµС‚ РїРѕС‚РµСЂРё Рё РґРµР»Р°РµС‚ РІРёРґ, С‡С‚Рѕ РІСЃС‘ РЅРѕСЂРјР°Р»СЊРЅРѕ.', text: 'РњС‹ С‚РѕР¶Рµ РґРµР»Р°РµРј РІРёРґ. РџРѕР»СѓС‡Р°РµС‚СЃСЏ РїСЂРёРјРµСЂРЅРѕ РѕРґРёРЅР°РєРѕРІРѕ СѓР±РµРґРёС‚РµР»СЊРЅРѕ.' },
   ];
   if (key.includes('match_pulse')) return [
-    { title: 'Матч продолжает делать вид, что всё под контролем.', text: 'Контроль, правда, бегает где-то за кадром, тяжело дышит и просит аптечку.' },
-    { title: 'Темп забега держится бодро.', text: 'Это уже не прогулка, это кардио с юридически сомнительной мотивацией.' },
-    { title: 'Арена не отпускает зрителей.', text: 'Кажется, этот забег подписал контракт на драму и мелким шрифтом добавил “ещё немного боли”.' },
-    { title: 'Эфир живее некоторых планов игроков.', text: 'Планы, конечно, были красивые. Потом пришли враги и провели редактуру.' },
-    { title: 'Забег набирает характер.', text: 'Характер нервный, шумный и явно воспитанный в плохом районе.' },
-    { title: 'Матч затянулся и обрёл характер.', text: 'Это уже не просто забег, это спор с ареной на повышенных тонах.' },
-    { title: 'Эфир держится бодро.', text: 'Где-то между паникой и мастерством родился стиль. Неровный, зато свой.' },
-    { title: 'Забег всё ещё жив.', text: 'Комментатор проверил пульс: у матча он есть, у здравого смысла данные противоречивые.' },
-    { title: 'Время идёт, проблемы не заканчиваются.', text: 'Редкая стабильность в мире, где всё остальное пытается укусить героя за расписание.' },
-    { title: 'Упрямство вышло на первый план.', text: 'Игроки уже достаточно долго в эфире, чтобы арена начала воспринимать это лично.' },
+    { title: 'РњР°С‚С‡ РїСЂРѕРґРѕР»Р¶Р°РµС‚ РґРµР»Р°С‚СЊ РІРёРґ, С‡С‚Рѕ РІСЃС‘ РїРѕРґ РєРѕРЅС‚СЂРѕР»РµРј.', text: 'РљРѕРЅС‚СЂРѕР»СЊ, РїСЂР°РІРґР°, Р±РµРіР°РµС‚ РіРґРµ-С‚Рѕ Р·Р° РєР°РґСЂРѕРј, С‚СЏР¶РµР»Рѕ РґС‹С€РёС‚ Рё РїСЂРѕСЃРёС‚ Р°РїС‚РµС‡РєСѓ.' },
+    { title: 'РўРµРјРї Р·Р°Р±РµРіР° РґРµСЂР¶РёС‚СЃСЏ Р±РѕРґСЂРѕ.', text: 'Р­С‚Рѕ СѓР¶Рµ РЅРµ РїСЂРѕРіСѓР»РєР°, СЌС‚Рѕ РєР°СЂРґРёРѕ СЃ СЋСЂРёРґРёС‡РµСЃРєРё СЃРѕРјРЅРёС‚РµР»СЊРЅРѕР№ РјРѕС‚РёРІР°С†РёРµР№.' },
+    { title: 'РђСЂРµРЅР° РЅРµ РѕС‚РїСѓСЃРєР°РµС‚ Р·СЂРёС‚РµР»РµР№.', text: 'РљР°Р¶РµС‚СЃСЏ, СЌС‚РѕС‚ Р·Р°Р±РµРі РїРѕРґРїРёСЃР°Р» РєРѕРЅС‚СЂР°РєС‚ РЅР° РґСЂР°РјСѓ Рё РјРµР»РєРёРј С€СЂРёС„С‚РѕРј РґРѕР±Р°РІРёР» вЂњРµС‰С‘ РЅРµРјРЅРѕРіРѕ Р±РѕР»РёвЂќ.' },
+    { title: 'Р­С„РёСЂ Р¶РёРІРµРµ РЅРµРєРѕС‚РѕСЂС‹С… РїР»Р°РЅРѕРІ РёРіСЂРѕРєРѕРІ.', text: 'РџР»Р°РЅС‹, РєРѕРЅРµС‡РЅРѕ, Р±С‹Р»Рё РєСЂР°СЃРёРІС‹Рµ. РџРѕС‚РѕРј РїСЂРёС€Р»Рё РІСЂР°РіРё Рё РїСЂРѕРІРµР»Рё СЂРµРґР°РєС‚СѓСЂСѓ.' },
+    { title: 'Р—Р°Р±РµРі РЅР°Р±РёСЂР°РµС‚ С…Р°СЂР°РєС‚РµСЂ.', text: 'РҐР°СЂР°РєС‚РµСЂ РЅРµСЂРІРЅС‹Р№, С€СѓРјРЅС‹Р№ Рё СЏРІРЅРѕ РІРѕСЃРїРёС‚Р°РЅРЅС‹Р№ РІ РїР»РѕС…РѕРј СЂР°Р№РѕРЅРµ.' },
+    { title: 'РњР°С‚С‡ Р·Р°С‚СЏРЅСѓР»СЃСЏ Рё РѕР±СЂС‘Р» С…Р°СЂР°РєС‚РµСЂ.', text: 'Р­С‚Рѕ СѓР¶Рµ РЅРµ РїСЂРѕСЃС‚Рѕ Р·Р°Р±РµРі, СЌС‚Рѕ СЃРїРѕСЂ СЃ Р°СЂРµРЅРѕР№ РЅР° РїРѕРІС‹С€РµРЅРЅС‹С… С‚РѕРЅР°С….' },
+    { title: 'Р­С„РёСЂ РґРµСЂР¶РёС‚СЃСЏ Р±РѕРґСЂРѕ.', text: 'Р“РґРµ-С‚Рѕ РјРµР¶РґСѓ РїР°РЅРёРєРѕР№ Рё РјР°СЃС‚РµСЂСЃС‚РІРѕРј СЂРѕРґРёР»СЃСЏ СЃС‚РёР»СЊ. РќРµСЂРѕРІРЅС‹Р№, Р·Р°С‚Рѕ СЃРІРѕР№.' },
+    { title: 'Р—Р°Р±РµРі РІСЃС‘ РµС‰С‘ Р¶РёРІ.', text: 'РљРѕРјРјРµРЅС‚Р°С‚РѕСЂ РїСЂРѕРІРµСЂРёР» РїСѓР»СЊСЃ: Сѓ РјР°С‚С‡Р° РѕРЅ РµСЃС‚СЊ, Сѓ Р·РґСЂР°РІРѕРіРѕ СЃРјС‹СЃР»Р° РґР°РЅРЅС‹Рµ РїСЂРѕС‚РёРІРѕСЂРµС‡РёРІС‹Рµ.' },
+    { title: 'Р’СЂРµРјСЏ РёРґС‘С‚, РїСЂРѕР±Р»РµРјС‹ РЅРµ Р·Р°РєР°РЅС‡РёРІР°СЋС‚СЃСЏ.', text: 'Р РµРґРєР°СЏ СЃС‚Р°Р±РёР»СЊРЅРѕСЃС‚СЊ РІ РјРёСЂРµ, РіРґРµ РІСЃС‘ РѕСЃС‚Р°Р»СЊРЅРѕРµ РїС‹С‚Р°РµС‚СЃСЏ СѓРєСѓСЃРёС‚СЊ РіРµСЂРѕСЏ Р·Р° СЂР°СЃРїРёСЃР°РЅРёРµ.' },
+    { title: 'РЈРїСЂСЏРјСЃС‚РІРѕ РІС‹С€Р»Рѕ РЅР° РїРµСЂРІС‹Р№ РїР»Р°РЅ.', text: 'РРіСЂРѕРєРё СѓР¶Рµ РґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РґРѕР»РіРѕ РІ СЌС„РёСЂРµ, С‡С‚РѕР±С‹ Р°СЂРµРЅР° РЅР°С‡Р°Р»Р° РІРѕСЃРїСЂРёРЅРёРјР°С‚СЊ СЌС‚Рѕ Р»РёС‡РЅРѕ.' },
   ];
   if (key.includes('threat_up')) return [
-    { title: 'Угроза снова подкрутила ручку.', text: 'Кто-то на арене посмотрел на хаос и сказал: “А можно погромче?”. Можно. Уже сделали.' },
-    { title: 'Сложность выросла без спроса.', text: 'Очень по-взрослому: никаких предупреждений, только новые проблемы и старый оптимизм.' },
-    { title: 'Арена добавила перца.', text: 'Теперь каждый манёвр пахнет героизмом, паникой и слегка подгоревшей уверенностью.' },
-    { title: 'Давление поднимается как плохие новости.', text: 'Медленно, неизбежно и с таким выражением, будто это ещё только разминка.' },
-    { title: 'Уровень угрозы полез вверх.', text: 'Игрокам пора делать вид, что именно этого они и хотели от вечера.' },
-    { title: 'Угроза поднялась и не извинилась.', text: 'Враги стали злее, воздух гуще, а права на расслабление опять отозвали.' },
-    { title: 'Сложность прибавила газу.', text: 'Теперь каждая ошибка стоит дороже, зато выглядит значительно кинематографичнее.' },
-    { title: 'Арена повысила температуру.', text: 'Все, кто хотел спокойный фарм, могут написать жалобу прямо на входящий урон.' },
-    { title: 'Давление растёт.', text: 'Матч решил, что участникам слишком комфортно. Смелое заявление, конечно.' },
-    { title: 'Уровень угрозы снова полез вверх.', text: 'Герои держатся, но арена явно пытается выиграть спор аргументами потяжелее.' },
+    { title: 'РЈРіСЂРѕР·Р° СЃРЅРѕРІР° РїРѕРґРєСЂСѓС‚РёР»Р° СЂСѓС‡РєСѓ.', text: 'РљС‚Рѕ-С‚Рѕ РЅР° Р°СЂРµРЅРµ РїРѕСЃРјРѕС‚СЂРµР» РЅР° С…Р°РѕСЃ Рё СЃРєР°Р·Р°Р»: вЂњРђ РјРѕР¶РЅРѕ РїРѕРіСЂРѕРјС‡Рµ?вЂќ. РњРѕР¶РЅРѕ. РЈР¶Рµ СЃРґРµР»Р°Р»Рё.' },
+    { title: 'РЎР»РѕР¶РЅРѕСЃС‚СЊ РІС‹СЂРѕСЃР»Р° Р±РµР· СЃРїСЂРѕСЃР°.', text: 'РћС‡РµРЅСЊ РїРѕ-РІР·СЂРѕСЃР»РѕРјСѓ: РЅРёРєР°РєРёС… РїСЂРµРґСѓРїСЂРµР¶РґРµРЅРёР№, С‚РѕР»СЊРєРѕ РЅРѕРІС‹Рµ РїСЂРѕР±Р»РµРјС‹ Рё СЃС‚Р°СЂС‹Р№ РѕРїС‚РёРјРёР·Рј.' },
+    { title: 'РђСЂРµРЅР° РґРѕР±Р°РІРёР»Р° РїРµСЂС†Р°.', text: 'РўРµРїРµСЂСЊ РєР°Р¶РґС‹Р№ РјР°РЅС‘РІСЂ РїР°С…РЅРµС‚ РіРµСЂРѕРёР·РјРѕРј, РїР°РЅРёРєРѕР№ Рё СЃР»РµРіРєР° РїРѕРґРіРѕСЂРµРІС€РµР№ СѓРІРµСЂРµРЅРЅРѕСЃС‚СЊСЋ.' },
+    { title: 'Р”Р°РІР»РµРЅРёРµ РїРѕРґРЅРёРјР°РµС‚СЃСЏ РєР°Рє РїР»РѕС…РёРµ РЅРѕРІРѕСЃС‚Рё.', text: 'РњРµРґР»РµРЅРЅРѕ, РЅРµРёР·Р±РµР¶РЅРѕ Рё СЃ С‚Р°РєРёРј РІС‹СЂР°Р¶РµРЅРёРµРј, Р±СѓРґС‚Рѕ СЌС‚Рѕ РµС‰С‘ С‚РѕР»СЊРєРѕ СЂР°Р·РјРёРЅРєР°.' },
+    { title: 'РЈСЂРѕРІРµРЅСЊ СѓРіСЂРѕР·С‹ РїРѕР»РµР· РІРІРµСЂС….', text: 'РРіСЂРѕРєР°Рј РїРѕСЂР° РґРµР»Р°С‚СЊ РІРёРґ, С‡С‚Рѕ РёРјРµРЅРЅРѕ СЌС‚РѕРіРѕ РѕРЅРё Рё С…РѕС‚РµР»Рё РѕС‚ РІРµС‡РµСЂР°.' },
+    { title: 'РЈРіСЂРѕР·Р° РїРѕРґРЅСЏР»Р°СЃСЊ Рё РЅРµ РёР·РІРёРЅРёР»Р°СЃСЊ.', text: 'Р’СЂР°РіРё СЃС‚Р°Р»Рё Р·Р»РµРµ, РІРѕР·РґСѓС… РіСѓС‰Рµ, Р° РїСЂР°РІР° РЅР° СЂР°СЃСЃР»Р°Р±Р»РµРЅРёРµ РѕРїСЏС‚СЊ РѕС‚РѕР·РІР°Р»Рё.' },
+    { title: 'РЎР»РѕР¶РЅРѕСЃС‚СЊ РїСЂРёР±Р°РІРёР»Р° РіР°Р·Сѓ.', text: 'РўРµРїРµСЂСЊ РєР°Р¶РґР°СЏ РѕС€РёР±РєР° СЃС‚РѕРёС‚ РґРѕСЂРѕР¶Рµ, Р·Р°С‚Рѕ РІС‹РіР»СЏРґРёС‚ Р·РЅР°С‡РёС‚РµР»СЊРЅРѕ РєРёРЅРµРјР°С‚РѕРіСЂР°С„РёС‡РЅРµРµ.' },
+    { title: 'РђСЂРµРЅР° РїРѕРІС‹СЃРёР»Р° С‚РµРјРїРµСЂР°С‚СѓСЂСѓ.', text: 'Р’СЃРµ, РєС‚Рѕ С…РѕС‚РµР» СЃРїРѕРєРѕР№РЅС‹Р№ С„Р°СЂРј, РјРѕРіСѓС‚ РЅР°РїРёСЃР°С‚СЊ Р¶Р°Р»РѕР±Сѓ РїСЂСЏРјРѕ РЅР° РІС…РѕРґСЏС‰РёР№ СѓСЂРѕРЅ.' },
+    { title: 'Р”Р°РІР»РµРЅРёРµ СЂР°СЃС‚С‘С‚.', text: 'РњР°С‚С‡ СЂРµС€РёР», С‡С‚Рѕ СѓС‡Р°СЃС‚РЅРёРєР°Рј СЃР»РёС€РєРѕРј РєРѕРјС„РѕСЂС‚РЅРѕ. РЎРјРµР»РѕРµ Р·Р°СЏРІР»РµРЅРёРµ, РєРѕРЅРµС‡РЅРѕ.' },
+    { title: 'РЈСЂРѕРІРµРЅСЊ СѓРіСЂРѕР·С‹ СЃРЅРѕРІР° РїРѕР»РµР· РІРІРµСЂС….', text: 'Р“РµСЂРѕРё РґРµСЂР¶Р°С‚СЃСЏ, РЅРѕ Р°СЂРµРЅР° СЏРІРЅРѕ РїС‹С‚Р°РµС‚СЃСЏ РІС‹РёРіСЂР°С‚СЊ СЃРїРѕСЂ Р°СЂРіСѓРјРµРЅС‚Р°РјРё РїРѕС‚СЏР¶РµР»РµРµ.' },
   ];
   if (key.includes('low_hp')) return [
-    { title: 'HP стало декоративным.', text: 'Полоска здоровья ещё есть, но уже скорее для атмосферы, чем для уверенности.' },
-    { title: 'Герой играет на тоненького.', text: 'Настолько тоненького, что комментатор боится дышать в сторону монитора.' },
-    { title: 'Здоровье ушло в режим экономии.', text: 'Каждый пиксель HP сейчас работает за троих и просит премию.' },
-    { title: 'Красная зона машет рукой.', text: 'Не дружелюбно. Скорее как человек, который уже забронировал место в некрологе.' },
-    { title: 'Полоска HP стала философской.', text: 'Она задаёт вечный вопрос: “А точно надо было заходить именно сюда?”.' },
-    { title: 'Здоровье выглядит как тонкая шутка.', text: 'Полоска HP стала такой скромной, что её уже хочется поддержать морально.' },
-    { title: 'Герой живёт на честном слове.', text: 'Честное слово, правда, немного дрожит и просит аптечку.' },
-    { title: 'HP ушло в минимализм.', text: 'Красиво, тревожно и совершенно не то направление, куда хотелось бы развивать билд.' },
-    { title: 'На экране запахло осторожностью.', text: 'Редкое чувство для этой арены. Надеюсь, игрок хотя бы узнает его в лицо.' },
-    { title: 'Полоска здоровья проводит забастовку.', text: 'Она ещё есть, но уже явно недовольна условиями труда.' },
+    { title: 'HP СЃС‚Р°Р»Рѕ РґРµРєРѕСЂР°С‚РёРІРЅС‹Рј.', text: 'РџРѕР»РѕСЃРєР° Р·РґРѕСЂРѕРІСЊСЏ РµС‰С‘ РµСЃС‚СЊ, РЅРѕ СѓР¶Рµ СЃРєРѕСЂРµРµ РґР»СЏ Р°С‚РјРѕСЃС„РµСЂС‹, С‡РµРј РґР»СЏ СѓРІРµСЂРµРЅРЅРѕСЃС‚Рё.' },
+    { title: 'Р“РµСЂРѕР№ РёРіСЂР°РµС‚ РЅР° С‚РѕРЅРµРЅСЊРєРѕРіРѕ.', text: 'РќР°СЃС‚РѕР»СЊРєРѕ С‚РѕРЅРµРЅСЊРєРѕРіРѕ, С‡С‚Рѕ РєРѕРјРјРµРЅС‚Р°С‚РѕСЂ Р±РѕРёС‚СЃСЏ РґС‹С€Р°С‚СЊ РІ СЃС‚РѕСЂРѕРЅСѓ РјРѕРЅРёС‚РѕСЂР°.' },
+    { title: 'Р—РґРѕСЂРѕРІСЊРµ СѓС€Р»Рѕ РІ СЂРµР¶РёРј СЌРєРѕРЅРѕРјРёРё.', text: 'РљР°Р¶РґС‹Р№ РїРёРєСЃРµР»СЊ HP СЃРµР№С‡Р°СЃ СЂР°Р±РѕС‚Р°РµС‚ Р·Р° С‚СЂРѕРёС… Рё РїСЂРѕСЃРёС‚ РїСЂРµРјРёСЋ.' },
+    { title: 'РљСЂР°СЃРЅР°СЏ Р·РѕРЅР° РјР°С€РµС‚ СЂСѓРєРѕР№.', text: 'РќРµ РґСЂСѓР¶РµР»СЋР±РЅРѕ. РЎРєРѕСЂРµРµ РєР°Рє С‡РµР»РѕРІРµРє, РєРѕС‚РѕСЂС‹Р№ СѓР¶Рµ Р·Р°Р±СЂРѕРЅРёСЂРѕРІР°Р» РјРµСЃС‚Рѕ РІ РЅРµРєСЂРѕР»РѕРіРµ.' },
+    { title: 'РџРѕР»РѕСЃРєР° HP СЃС‚Р°Р»Р° С„РёР»РѕСЃРѕС„СЃРєРѕР№.', text: 'РћРЅР° Р·Р°РґР°С‘С‚ РІРµС‡РЅС‹Р№ РІРѕРїСЂРѕСЃ: вЂњРђ С‚РѕС‡РЅРѕ РЅР°РґРѕ Р±С‹Р»Рѕ Р·Р°С…РѕРґРёС‚СЊ РёРјРµРЅРЅРѕ СЃСЋРґР°?вЂќ.' },
+    { title: 'Р—РґРѕСЂРѕРІСЊРµ РІС‹РіР»СЏРґРёС‚ РєР°Рє С‚РѕРЅРєР°СЏ С€СѓС‚РєР°.', text: 'РџРѕР»РѕСЃРєР° HP СЃС‚Р°Р»Р° С‚Р°РєРѕР№ СЃРєСЂРѕРјРЅРѕР№, С‡С‚Рѕ РµС‘ СѓР¶Рµ С…РѕС‡РµС‚СЃСЏ РїРѕРґРґРµСЂР¶Р°С‚СЊ РјРѕСЂР°Р»СЊРЅРѕ.' },
+    { title: 'Р“РµСЂРѕР№ Р¶РёРІС‘С‚ РЅР° С‡РµСЃС‚РЅРѕРј СЃР»РѕРІРµ.', text: 'Р§РµСЃС‚РЅРѕРµ СЃР»РѕРІРѕ, РїСЂР°РІРґР°, РЅРµРјРЅРѕРіРѕ РґСЂРѕР¶РёС‚ Рё РїСЂРѕСЃРёС‚ Р°РїС‚РµС‡РєСѓ.' },
+    { title: 'HP СѓС€Р»Рѕ РІ РјРёРЅРёРјР°Р»РёР·Рј.', text: 'РљСЂР°СЃРёРІРѕ, С‚СЂРµРІРѕР¶РЅРѕ Рё СЃРѕРІРµСЂС€РµРЅРЅРѕ РЅРµ С‚Рѕ РЅР°РїСЂР°РІР»РµРЅРёРµ, РєСѓРґР° С…РѕС‚РµР»РѕСЃСЊ Р±С‹ СЂР°Р·РІРёРІР°С‚СЊ Р±РёР»Рґ.' },
+    { title: 'РќР° СЌРєСЂР°РЅРµ Р·Р°РїР°С…Р»Рѕ РѕСЃС‚РѕСЂРѕР¶РЅРѕСЃС‚СЊСЋ.', text: 'Р РµРґРєРѕРµ С‡СѓРІСЃС‚РІРѕ РґР»СЏ СЌС‚РѕР№ Р°СЂРµРЅС‹. РќР°РґРµСЋСЃСЊ, РёРіСЂРѕРє С…РѕС‚СЏ Р±С‹ СѓР·РЅР°РµС‚ РµРіРѕ РІ Р»РёС†Рѕ.' },
+    { title: 'РџРѕР»РѕСЃРєР° Р·РґРѕСЂРѕРІСЊСЏ РїСЂРѕРІРѕРґРёС‚ Р·Р°Р±Р°СЃС‚РѕРІРєСѓ.', text: 'РћРЅР° РµС‰С‘ РµСЃС‚СЊ, РЅРѕ СѓР¶Рµ СЏРІРЅРѕ РЅРµРґРѕРІРѕР»СЊРЅР° СѓСЃР»РѕРІРёСЏРјРё С‚СЂСѓРґР°.' },
   ];
   if (key.includes('boss_down')) return [
-    { title: 'Босс сложился как плохой план.', text: 'Шёл уверенно, шумел дорого, а закончил как баг-репорт: резко, грустно и с пометкой “не воспроизводится”.' },
-    { title: 'Начальник арены получил увольнительную.', text: 'Причина простая: слишком много пафоса, слишком мало уклонения от входящего свинца.' },
-    { title: 'Босс упал и сделал вид, что так задумано.', text: 'Классическая тактика большого злодея: сначала давить авторитетом, потом лежать и переосмысливать карьеру.' },
-    { title: 'Крупная туша покинула чат.', text: 'Игроки подписали заявление на победу всем, что было в инвентаре, включая нервы и сомнительные решения.' },
-    { title: 'Босс проиграл спор с реальностью.', text: 'Реальность пришла в виде урона, критов и команды, которая внезапно вспомнила, где кнопка “стрелять”.' },
-    { title: 'Минус один ходячий кризис.', text: 'Арена на секунду выдохнула. Потом вспомнила, что это Crimson Wars, и снова начала готовить гадости.' },
-    { title: 'Боссу выдали финальные титры.', text: 'Без оваций, зато с лутом. В этом жанре это примерно одно и то же.' },
-    { title: 'Большой страшный аргумент закончился.', text: 'Оказалось, если достаточно долго объяснять босса дробью, он начинает соглашаться.' },
-    { title: 'Начальство больше не отвечает.', text: 'Вероятно, занято горизонтальным менеджментом и пересмотром политики личного пространства.' },
-    { title: 'Босс пал, зрители делают вид, что верили с самого начала.', text: 'Комментатор тоже верил. Просто очень тихо, чтобы не сглазить и не получить по лицу.' },
-    { title: 'Босс получил объяснение.', text: 'Короткое, громкое и, судя по результату, довольно убедительное.' },
-    { title: 'Начальство снято с должности.', text: 'Редкий случай, когда совещание закончилось хорошо для команды и плохо для босса.' },
-    { title: 'Большая проблема легла.', text: 'Комментатор фиксирует: иногда насилие всё-таки решает организационные вопросы.' },
-    { title: 'Босс больше не спорит.', text: 'Возможно, потому что аргументы игроков оказались слишком громкими.' },
-    { title: 'Главный пункт повестки закрыт.', text: 'Босс пришёл с амбициями, ушёл с выводами. Выводы, правда, уже не озвучит.' },
-    { title: 'Крупная цель официально отменена.', text: 'Команда подписала протокол победы пулями, навыками и нервной координацией.' },
-    { title: 'Боссу объяснили правила эфира.', text: 'Правила простые: пришёл красиво, упал громко, оставил лут и неприятные воспоминания.' },
+    { title: 'Р‘РѕСЃСЃ СЃР»РѕР¶РёР»СЃСЏ РєР°Рє РїР»РѕС…РѕР№ РїР»Р°РЅ.', text: 'РЁС‘Р» СѓРІРµСЂРµРЅРЅРѕ, С€СѓРјРµР» РґРѕСЂРѕРіРѕ, Р° Р·Р°РєРѕРЅС‡РёР» РєР°Рє Р±Р°Рі-СЂРµРїРѕСЂС‚: СЂРµР·РєРѕ, РіСЂСѓСЃС‚РЅРѕ Рё СЃ РїРѕРјРµС‚РєРѕР№ вЂњРЅРµ РІРѕСЃРїСЂРѕРёР·РІРѕРґРёС‚СЃСЏвЂќ.' },
+    { title: 'РќР°С‡Р°Р»СЊРЅРёРє Р°СЂРµРЅС‹ РїРѕР»СѓС‡РёР» СѓРІРѕР»СЊРЅРёС‚РµР»СЊРЅСѓСЋ.', text: 'РџСЂРёС‡РёРЅР° РїСЂРѕСЃС‚Р°СЏ: СЃР»РёС€РєРѕРј РјРЅРѕРіРѕ РїР°С„РѕСЃР°, СЃР»РёС€РєРѕРј РјР°Р»Рѕ СѓРєР»РѕРЅРµРЅРёСЏ РѕС‚ РІС…РѕРґСЏС‰РµРіРѕ СЃРІРёРЅС†Р°.' },
+    { title: 'Р‘РѕСЃСЃ СѓРїР°Р» Рё СЃРґРµР»Р°Р» РІРёРґ, С‡С‚Рѕ С‚Р°Рє Р·Р°РґСѓРјР°РЅРѕ.', text: 'РљР»Р°СЃСЃРёС‡РµСЃРєР°СЏ С‚Р°РєС‚РёРєР° Р±РѕР»СЊС€РѕРіРѕ Р·Р»РѕРґРµСЏ: СЃРЅР°С‡Р°Р»Р° РґР°РІРёС‚СЊ Р°РІС‚РѕСЂРёС‚РµС‚РѕРј, РїРѕС‚РѕРј Р»РµР¶Р°С‚СЊ Рё РїРµСЂРµРѕСЃРјС‹СЃР»РёРІР°С‚СЊ РєР°СЂСЊРµСЂСѓ.' },
+    { title: 'РљСЂСѓРїРЅР°СЏ С‚СѓС€Р° РїРѕРєРёРЅСѓР»Р° С‡Р°С‚.', text: 'РРіСЂРѕРєРё РїРѕРґРїРёСЃР°Р»Рё Р·Р°СЏРІР»РµРЅРёРµ РЅР° РїРѕР±РµРґСѓ РІСЃРµРј, С‡С‚Рѕ Р±С‹Р»Рѕ РІ РёРЅРІРµРЅС‚Р°СЂРµ, РІРєР»СЋС‡Р°СЏ РЅРµСЂРІС‹ Рё СЃРѕРјРЅРёС‚РµР»СЊРЅС‹Рµ СЂРµС€РµРЅРёСЏ.' },
+    { title: 'Р‘РѕСЃСЃ РїСЂРѕРёРіСЂР°Р» СЃРїРѕСЂ СЃ СЂРµР°Р»СЊРЅРѕСЃС‚СЊСЋ.', text: 'Р РµР°Р»СЊРЅРѕСЃС‚СЊ РїСЂРёС€Р»Р° РІ РІРёРґРµ СѓСЂРѕРЅР°, РєСЂРёС‚РѕРІ Рё РєРѕРјР°РЅРґС‹, РєРѕС‚РѕСЂР°СЏ РІРЅРµР·Р°РїРЅРѕ РІСЃРїРѕРјРЅРёР»Р°, РіРґРµ РєРЅРѕРїРєР° вЂњСЃС‚СЂРµР»СЏС‚СЊвЂќ.' },
+    { title: 'РњРёРЅСѓСЃ РѕРґРёРЅ С…РѕРґСЏС‡РёР№ РєСЂРёР·РёСЃ.', text: 'РђСЂРµРЅР° РЅР° СЃРµРєСѓРЅРґСѓ РІС‹РґРѕС…РЅСѓР»Р°. РџРѕС‚РѕРј РІСЃРїРѕРјРЅРёР»Р°, С‡С‚Рѕ СЌС‚Рѕ Crimson Wars, Рё СЃРЅРѕРІР° РЅР°С‡Р°Р»Р° РіРѕС‚РѕРІРёС‚СЊ РіР°РґРѕСЃС‚Рё.' },
+    { title: 'Р‘РѕСЃСЃСѓ РІС‹РґР°Р»Рё С„РёРЅР°Р»СЊРЅС‹Рµ С‚РёС‚СЂС‹.', text: 'Р‘РµР· РѕРІР°С†РёР№, Р·Р°С‚Рѕ СЃ Р»СѓС‚РѕРј. Р’ СЌС‚РѕРј Р¶Р°РЅСЂРµ СЌС‚Рѕ РїСЂРёРјРµСЂРЅРѕ РѕРґРЅРѕ Рё С‚Рѕ Р¶Рµ.' },
+    { title: 'Р‘РѕР»СЊС€РѕР№ СЃС‚СЂР°С€РЅС‹Р№ Р°СЂРіСѓРјРµРЅС‚ Р·Р°РєРѕРЅС‡РёР»СЃСЏ.', text: 'РћРєР°Р·Р°Р»РѕСЃСЊ, РµСЃР»Рё РґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РґРѕР»РіРѕ РѕР±СЉСЏСЃРЅСЏС‚СЊ Р±РѕСЃСЃР° РґСЂРѕР±СЊСЋ, РѕРЅ РЅР°С‡РёРЅР°РµС‚ СЃРѕРіР»Р°С€Р°С‚СЊСЃСЏ.' },
+    { title: 'РќР°С‡Р°Р»СЊСЃС‚РІРѕ Р±РѕР»СЊС€Рµ РЅРµ РѕС‚РІРµС‡Р°РµС‚.', text: 'Р’РµСЂРѕСЏС‚РЅРѕ, Р·Р°РЅСЏС‚Рѕ РіРѕСЂРёР·РѕРЅС‚Р°Р»СЊРЅС‹Рј РјРµРЅРµРґР¶РјРµРЅС‚РѕРј Рё РїРµСЂРµСЃРјРѕС‚СЂРѕРј РїРѕР»РёС‚РёРєРё Р»РёС‡РЅРѕРіРѕ РїСЂРѕСЃС‚СЂР°РЅСЃС‚РІР°.' },
+    { title: 'Р‘РѕСЃСЃ РїР°Р», Р·СЂРёС‚РµР»Рё РґРµР»Р°СЋС‚ РІРёРґ, С‡С‚Рѕ РІРµСЂРёР»Рё СЃ СЃР°РјРѕРіРѕ РЅР°С‡Р°Р»Р°.', text: 'РљРѕРјРјРµРЅС‚Р°С‚РѕСЂ С‚РѕР¶Рµ РІРµСЂРёР». РџСЂРѕСЃС‚Рѕ РѕС‡РµРЅСЊ С‚РёС…Рѕ, С‡С‚РѕР±С‹ РЅРµ СЃРіР»Р°Р·РёС‚СЊ Рё РЅРµ РїРѕР»СѓС‡РёС‚СЊ РїРѕ Р»РёС†Сѓ.' },
+    { title: 'Р‘РѕСЃСЃ РїРѕР»СѓС‡РёР» РѕР±СЉСЏСЃРЅРµРЅРёРµ.', text: 'РљРѕСЂРѕС‚РєРѕРµ, РіСЂРѕРјРєРѕРµ Рё, СЃСѓРґСЏ РїРѕ СЂРµР·СѓР»СЊС‚Р°С‚Сѓ, РґРѕРІРѕР»СЊРЅРѕ СѓР±РµРґРёС‚РµР»СЊРЅРѕРµ.' },
+    { title: 'РќР°С‡Р°Р»СЊСЃС‚РІРѕ СЃРЅСЏС‚Рѕ СЃ РґРѕР»Р¶РЅРѕСЃС‚Рё.', text: 'Р РµРґРєРёР№ СЃР»СѓС‡Р°Р№, РєРѕРіРґР° СЃРѕРІРµС‰Р°РЅРёРµ Р·Р°РєРѕРЅС‡РёР»РѕСЃСЊ С…РѕСЂРѕС€Рѕ РґР»СЏ РєРѕРјР°РЅРґС‹ Рё РїР»РѕС…Рѕ РґР»СЏ Р±РѕСЃСЃР°.' },
+    { title: 'Р‘РѕР»СЊС€Р°СЏ РїСЂРѕР±Р»РµРјР° Р»РµРіР»Р°.', text: 'РљРѕРјРјРµРЅС‚Р°С‚РѕСЂ С„РёРєСЃРёСЂСѓРµС‚: РёРЅРѕРіРґР° РЅР°СЃРёР»РёРµ РІСЃС‘-С‚Р°РєРё СЂРµС€Р°РµС‚ РѕСЂРіР°РЅРёР·Р°С†РёРѕРЅРЅС‹Рµ РІРѕРїСЂРѕСЃС‹.' },
+    { title: 'Р‘РѕСЃСЃ Р±РѕР»СЊС€Рµ РЅРµ СЃРїРѕСЂРёС‚.', text: 'Р’РѕР·РјРѕР¶РЅРѕ, РїРѕС‚РѕРјСѓ С‡С‚Рѕ Р°СЂРіСѓРјРµРЅС‚С‹ РёРіСЂРѕРєРѕРІ РѕРєР°Р·Р°Р»РёСЃСЊ СЃР»РёС€РєРѕРј РіСЂРѕРјРєРёРјРё.' },
+    { title: 'Р“Р»Р°РІРЅС‹Р№ РїСѓРЅРєС‚ РїРѕРІРµСЃС‚РєРё Р·Р°РєСЂС‹С‚.', text: 'Р‘РѕСЃСЃ РїСЂРёС€С‘Р» СЃ Р°РјР±РёС†РёСЏРјРё, СѓС€С‘Р» СЃ РІС‹РІРѕРґР°РјРё. Р’С‹РІРѕРґС‹, РїСЂР°РІРґР°, СѓР¶Рµ РЅРµ РѕР·РІСѓС‡РёС‚.' },
+    { title: 'РљСЂСѓРїРЅР°СЏ С†РµР»СЊ РѕС„РёС†РёР°Р»СЊРЅРѕ РѕС‚РјРµРЅРµРЅР°.', text: 'РљРѕРјР°РЅРґР° РїРѕРґРїРёСЃР°Р»Р° РїСЂРѕС‚РѕРєРѕР» РїРѕР±РµРґС‹ РїСѓР»СЏРјРё, РЅР°РІС‹РєР°РјРё Рё РЅРµСЂРІРЅРѕР№ РєРѕРѕСЂРґРёРЅР°С†РёРµР№.' },
+    { title: 'Р‘РѕСЃСЃСѓ РѕР±СЉСЏСЃРЅРёР»Рё РїСЂР°РІРёР»Р° СЌС„РёСЂР°.', text: 'РџСЂР°РІРёР»Р° РїСЂРѕСЃС‚С‹Рµ: РїСЂРёС€С‘Р» РєСЂР°СЃРёРІРѕ, СѓРїР°Р» РіСЂРѕРјРєРѕ, РѕСЃС‚Р°РІРёР» Р»СѓС‚ Рё РЅРµРїСЂРёСЏС‚РЅС‹Рµ РІРѕСЃРїРѕРјРёРЅР°РЅРёСЏ.' },
   ];
   if (key.includes('join_room') || key.includes('players_up')) return [
-    { title: 'На арену зашёл новый оптимист.', text: 'Всегда приятно видеть человека, который пока ещё верит в аккуратный забег.' },
-    { title: 'Состав стал плотнее.', text: 'Больше игроков, больше планов и больше людей, которые будут говорить “я прикрывал”.' },
-    { title: 'В эфир добавили свежую пару рук.', text: 'Арена уже улыбается так, будто приготовила для них отдельную форму отчёта о боли.' },
-    { title: 'Подкрепление прибыло.', text: 'Теперь у хаоса появилась командная версия, с синхронными ошибками и общим энтузиазмом.' },
-    { title: 'Комната стала люднее.', text: 'Это повышает шансы на спасение и на коллективное “а кто это сделал?”.' },
-    { title: 'Новый игрок в кадре.', text: 'Пока выглядит уверенно. Подождём первый плотный контакт с реальностью.' },
-    { title: 'В мясорубку вошёл ещё один доброволец.', text: 'Юридически это смелость, эмоционально это очень интересный выбор.' },
-    { title: 'Аудитория получила нового героя.', text: 'Герой пока не знает, насколько буквально арена воспринимает слово “испытание”.' },
+    { title: 'РќР° Р°СЂРµРЅСѓ Р·Р°С€С‘Р» РЅРѕРІС‹Р№ РѕРїС‚РёРјРёСЃС‚.', text: 'Р’СЃРµРіРґР° РїСЂРёСЏС‚РЅРѕ РІРёРґРµС‚СЊ С‡РµР»РѕРІРµРєР°, РєРѕС‚РѕСЂС‹Р№ РїРѕРєР° РµС‰С‘ РІРµСЂРёС‚ РІ Р°РєРєСѓСЂР°С‚РЅС‹Р№ Р·Р°Р±РµРі.' },
+    { title: 'РЎРѕСЃС‚Р°РІ СЃС‚Р°Р» РїР»РѕС‚РЅРµРµ.', text: 'Р‘РѕР»СЊС€Рµ РёРіСЂРѕРєРѕРІ, Р±РѕР»СЊС€Рµ РїР»Р°РЅРѕРІ Рё Р±РѕР»СЊС€Рµ Р»СЋРґРµР№, РєРѕС‚РѕСЂС‹Рµ Р±СѓРґСѓС‚ РіРѕРІРѕСЂРёС‚СЊ вЂњСЏ РїСЂРёРєСЂС‹РІР°Р»вЂќ.' },
+    { title: 'Р’ СЌС„РёСЂ РґРѕР±Р°РІРёР»Рё СЃРІРµР¶СѓСЋ РїР°СЂСѓ СЂСѓРє.', text: 'РђСЂРµРЅР° СѓР¶Рµ СѓР»С‹Р±Р°РµС‚СЃСЏ С‚Р°Рє, Р±СѓРґС‚Рѕ РїСЂРёРіРѕС‚РѕРІРёР»Р° РґР»СЏ РЅРёС… РѕС‚РґРµР»СЊРЅСѓСЋ С„РѕСЂРјСѓ РѕС‚С‡С‘С‚Р° Рѕ Р±РѕР»Рё.' },
+    { title: 'РџРѕРґРєСЂРµРїР»РµРЅРёРµ РїСЂРёР±С‹Р»Рѕ.', text: 'РўРµРїРµСЂСЊ Сѓ С…Р°РѕСЃР° РїРѕСЏРІРёР»Р°СЃСЊ РєРѕРјР°РЅРґРЅР°СЏ РІРµСЂСЃРёСЏ, СЃ СЃРёРЅС…СЂРѕРЅРЅС‹РјРё РѕС€РёР±РєР°РјРё Рё РѕР±С‰РёРј СЌРЅС‚СѓР·РёР°Р·РјРѕРј.' },
+    { title: 'РљРѕРјРЅР°С‚Р° СЃС‚Р°Р»Р° Р»СЋРґРЅРµРµ.', text: 'Р­С‚Рѕ РїРѕРІС‹С€Р°РµС‚ С€Р°РЅСЃС‹ РЅР° СЃРїР°СЃРµРЅРёРµ Рё РЅР° РєРѕР»Р»РµРєС‚РёРІРЅРѕРµ вЂњР° РєС‚Рѕ СЌС‚Рѕ СЃРґРµР»Р°Р»?вЂќ.' },
+    { title: 'РќРѕРІС‹Р№ РёРіСЂРѕРє РІ РєР°РґСЂРµ.', text: 'РџРѕРєР° РІС‹РіР»СЏРґРёС‚ СѓРІРµСЂРµРЅРЅРѕ. РџРѕРґРѕР¶РґС‘Рј РїРµСЂРІС‹Р№ РїР»РѕС‚РЅС‹Р№ РєРѕРЅС‚Р°РєС‚ СЃ СЂРµР°Р»СЊРЅРѕСЃС‚СЊСЋ.' },
+    { title: 'Р’ РјСЏСЃРѕСЂСѓР±РєСѓ РІРѕС€С‘Р» РµС‰С‘ РѕРґРёРЅ РґРѕР±СЂРѕРІРѕР»РµС†.', text: 'Р®СЂРёРґРёС‡РµСЃРєРё СЌС‚Рѕ СЃРјРµР»РѕСЃС‚СЊ, СЌРјРѕС†РёРѕРЅР°Р»СЊРЅРѕ СЌС‚Рѕ РѕС‡РµРЅСЊ РёРЅС‚РµСЂРµСЃРЅС‹Р№ РІС‹Р±РѕСЂ.' },
+    { title: 'РђСѓРґРёС‚РѕСЂРёСЏ РїРѕР»СѓС‡РёР»Р° РЅРѕРІРѕРіРѕ РіРµСЂРѕСЏ.', text: 'Р“РµСЂРѕР№ РїРѕРєР° РЅРµ Р·РЅР°РµС‚, РЅР°СЃРєРѕР»СЊРєРѕ Р±СѓРєРІР°Р»СЊРЅРѕ Р°СЂРµРЅР° РІРѕСЃРїСЂРёРЅРёРјР°РµС‚ СЃР»РѕРІРѕ вЂњРёСЃРїС‹С‚Р°РЅРёРµвЂќ.' },
   ];
   if (key.includes('leave_room') || key.includes('players_down')) return [
-    { title: 'Состав поредел.', text: 'Кто-то решил, что жизнь вне арены тоже имеет неплохой геймплей.' },
-    { title: 'Один участник покинул шоу.', text: 'Комментатор не осуждает. Комментатор просто делает паузу ровно такой длины, чтобы всё было понятно.' },
-    { title: 'Комната стала тише.', text: 'Не безопаснее, конечно. Просто тише. Это разные жанры самообмана.' },
-    { title: 'Минус один голос в общем плане.', text: 'План от этого не стал хуже. Он и до этого был, скажем мягко, гибким.' },
-    { title: 'Игрок ушёл из эфира.', text: 'Редкий случай, когда горизонтальное положение удалось предотвратить заранее.' },
-    { title: 'Добровольная эвакуация зафиксирована.', text: 'Арена слегка обиделась, но быстро найдёт, на ком выместить чувства.' },
-    { title: 'Один билет наружу использован.', text: 'Остальные продолжают аттракцион под названием “зато опыт капает”.' },
+    { title: 'РЎРѕСЃС‚Р°РІ РїРѕСЂРµРґРµР».', text: 'РљС‚Рѕ-С‚Рѕ СЂРµС€РёР», С‡С‚Рѕ Р¶РёР·РЅСЊ РІРЅРµ Р°СЂРµРЅС‹ С‚РѕР¶Рµ РёРјРµРµС‚ РЅРµРїР»РѕС…РѕР№ РіРµР№РјРїР»РµР№.' },
+    { title: 'РћРґРёРЅ СѓС‡Р°СЃС‚РЅРёРє РїРѕРєРёРЅСѓР» С€РѕСѓ.', text: 'РљРѕРјРјРµРЅС‚Р°С‚РѕСЂ РЅРµ РѕСЃСѓР¶РґР°РµС‚. РљРѕРјРјРµРЅС‚Р°С‚РѕСЂ РїСЂРѕСЃС‚Рѕ РґРµР»Р°РµС‚ РїР°СѓР·Сѓ СЂРѕРІРЅРѕ С‚Р°РєРѕР№ РґР»РёРЅС‹, С‡С‚РѕР±С‹ РІСЃС‘ Р±С‹Р»Рѕ РїРѕРЅСЏС‚РЅРѕ.' },
+    { title: 'РљРѕРјРЅР°С‚Р° СЃС‚Р°Р»Р° С‚РёС€Рµ.', text: 'РќРµ Р±РµР·РѕРїР°СЃРЅРµРµ, РєРѕРЅРµС‡РЅРѕ. РџСЂРѕСЃС‚Рѕ С‚РёС€Рµ. Р­С‚Рѕ СЂР°Р·РЅС‹Рµ Р¶Р°РЅСЂС‹ СЃР°РјРѕРѕР±РјР°РЅР°.' },
+    { title: 'РњРёРЅСѓСЃ РѕРґРёРЅ РіРѕР»РѕСЃ РІ РѕР±С‰РµРј РїР»Р°РЅРµ.', text: 'РџР»Р°РЅ РѕС‚ СЌС‚РѕРіРѕ РЅРµ СЃС‚Р°Р» С…СѓР¶Рµ. РћРЅ Рё РґРѕ СЌС‚РѕРіРѕ Р±С‹Р», СЃРєР°Р¶РµРј РјСЏРіРєРѕ, РіРёР±РєРёРј.' },
+    { title: 'РРіСЂРѕРє СѓС€С‘Р» РёР· СЌС„РёСЂР°.', text: 'Р РµРґРєРёР№ СЃР»СѓС‡Р°Р№, РєРѕРіРґР° РіРѕСЂРёР·РѕРЅС‚Р°Р»СЊРЅРѕРµ РїРѕР»РѕР¶РµРЅРёРµ СѓРґР°Р»РѕСЃСЊ РїСЂРµРґРѕС‚РІСЂР°С‚РёС‚СЊ Р·Р°СЂР°РЅРµРµ.' },
+    { title: 'Р”РѕР±СЂРѕРІРѕР»СЊРЅР°СЏ СЌРІР°РєСѓР°С†РёСЏ Р·Р°С„РёРєСЃРёСЂРѕРІР°РЅР°.', text: 'РђСЂРµРЅР° СЃР»РµРіРєР° РѕР±РёРґРµР»Р°СЃСЊ, РЅРѕ Р±С‹СЃС‚СЂРѕ РЅР°Р№РґС‘С‚, РЅР° РєРѕРј РІС‹РјРµСЃС‚РёС‚СЊ С‡СѓРІСЃС‚РІР°.' },
+    { title: 'РћРґРёРЅ Р±РёР»РµС‚ РЅР°СЂСѓР¶Сѓ РёСЃРїРѕР»СЊР·РѕРІР°РЅ.', text: 'РћСЃС‚Р°Р»СЊРЅС‹Рµ РїСЂРѕРґРѕР»Р¶Р°СЋС‚ Р°С‚С‚СЂР°РєС†РёРѕРЅ РїРѕРґ РЅР°Р·РІР°РЅРёРµРј вЂњР·Р°С‚Рѕ РѕРїС‹С‚ РєР°РїР°РµС‚вЂќ.' },
   ];
   if (key.includes('boss_portal')) return [
-    { title: 'Портал босса открылся и сразу пожалел всех.', text: 'Это тот самый дверной звонок, после которого дом делает вид, что его нет дома.' },
-    { title: 'На карте появилась дырка в спокойствии.', text: 'Из неё, по традиции жанра, выйдет не доставка пиццы, а корпоративная претензия с полоской здоровья.' },
-    { title: 'Портал мигает как предупреждение от судьбы.', text: 'Судьба обычно не мигает просто так. Она мигает, когда уже принесла босса и ищет розетку.' },
-    { title: 'Арене стало мало обычных проблем.', text: 'Открыт портал для проблемы премиум-класса: больше рост, хуже характер, громче шаги.' },
-    { title: 'Боссу включили навигатор.', text: 'Маршрут построен: через панику, мимо аптечек, прямо в центр коллективного “ой”.' },
-    { title: 'Портал светится как плохая идея.', text: 'Но очень красивая плохая идея. Игроки, конечно, сейчас попробуют её потрогать лицом.' },
-    { title: 'Вход для большого гостя готов.', text: 'Ковровой дорожки нет, зато есть пули, страх и несколько героев с завышенной самооценкой.' },
-    { title: 'Портал открылся с выражением “ну всё”.', text: 'Редкий случай, когда геометрия на карте выглядит более угрожающе, чем налоговая проверка.' },
-    { title: 'Портал босса открылся.', text: 'Это не декорация. Это дверь, за которой у баланса начинается тяжёлый характер.' },
-    { title: 'Большая проблема уже на подходе.', text: 'Игроки ещё могут сделать вид, что это часть плана. Очень короткое окно, но могут.' },
-    { title: 'Арена открыла служебный вход для босса.', text: 'Сервис, конечно, сомнительный, но пунктуальность пугающе хорошая.' },
-    { title: 'Портал светится недобрыми намерениями.', text: 'В такие моменты даже лут лежит как-то напряжённо.' },
-    { title: 'Босс получил приглашение.', text: 'К сожалению, RSVP у него всегда “иду и порчу вечер”.' },
-    { title: 'Открылась дверь в крупные неприятности.', text: 'Теперь фарм выглядит не как подготовка, а как последняя попытка не паниковать.' },
-    { title: 'На карте включился портал.', text: 'Это арена вежливо сообщает, что разминка закончилась без согласования с игроками.' },
+    { title: 'РџРѕСЂС‚Р°Р» Р±РѕСЃСЃР° РѕС‚РєСЂС‹Р»СЃСЏ Рё СЃСЂР°Р·Сѓ РїРѕР¶Р°Р»РµР» РІСЃРµС….', text: 'Р­С‚Рѕ С‚РѕС‚ СЃР°РјС‹Р№ РґРІРµСЂРЅРѕР№ Р·РІРѕРЅРѕРє, РїРѕСЃР»Рµ РєРѕС‚РѕСЂРѕРіРѕ РґРѕРј РґРµР»Р°РµС‚ РІРёРґ, С‡С‚Рѕ РµРіРѕ РЅРµС‚ РґРѕРјР°.' },
+    { title: 'РќР° РєР°СЂС‚Рµ РїРѕСЏРІРёР»Р°СЃСЊ РґС‹СЂРєР° РІ СЃРїРѕРєРѕР№СЃС‚РІРёРё.', text: 'РР· РЅРµС‘, РїРѕ С‚СЂР°РґРёС†РёРё Р¶Р°РЅСЂР°, РІС‹Р№РґРµС‚ РЅРµ РґРѕСЃС‚Р°РІРєР° РїРёС†С†С‹, Р° РєРѕСЂРїРѕСЂР°С‚РёРІРЅР°СЏ РїСЂРµС‚РµРЅР·РёСЏ СЃ РїРѕР»РѕСЃРєРѕР№ Р·РґРѕСЂРѕРІСЊСЏ.' },
+    { title: 'РџРѕСЂС‚Р°Р» РјРёРіР°РµС‚ РєР°Рє РїСЂРµРґСѓРїСЂРµР¶РґРµРЅРёРµ РѕС‚ СЃСѓРґСЊР±С‹.', text: 'РЎСѓРґСЊР±Р° РѕР±С‹С‡РЅРѕ РЅРµ РјРёРіР°РµС‚ РїСЂРѕСЃС‚Рѕ С‚Р°Рє. РћРЅР° РјРёРіР°РµС‚, РєРѕРіРґР° СѓР¶Рµ РїСЂРёРЅРµСЃР»Р° Р±РѕСЃСЃР° Рё РёС‰РµС‚ СЂРѕР·РµС‚РєСѓ.' },
+    { title: 'РђСЂРµРЅРµ СЃС‚Р°Р»Рѕ РјР°Р»Рѕ РѕР±С‹С‡РЅС‹С… РїСЂРѕР±Р»РµРј.', text: 'РћС‚РєСЂС‹С‚ РїРѕСЂС‚Р°Р» РґР»СЏ РїСЂРѕР±Р»РµРјС‹ РїСЂРµРјРёСѓРј-РєР»Р°СЃСЃР°: Р±РѕР»СЊС€Рµ СЂРѕСЃС‚, С…СѓР¶Рµ С…Р°СЂР°РєС‚РµСЂ, РіСЂРѕРјС‡Рµ С€Р°РіРё.' },
+    { title: 'Р‘РѕСЃСЃСѓ РІРєР»СЋС‡РёР»Рё РЅР°РІРёРіР°С‚РѕСЂ.', text: 'РњР°СЂС€СЂСѓС‚ РїРѕСЃС‚СЂРѕРµРЅ: С‡РµСЂРµР· РїР°РЅРёРєСѓ, РјРёРјРѕ Р°РїС‚РµС‡РµРє, РїСЂСЏРјРѕ РІ С†РµРЅС‚СЂ РєРѕР»Р»РµРєС‚РёРІРЅРѕРіРѕ вЂњРѕР№вЂќ.' },
+    { title: 'РџРѕСЂС‚Р°Р» СЃРІРµС‚РёС‚СЃСЏ РєР°Рє РїР»РѕС…Р°СЏ РёРґРµСЏ.', text: 'РќРѕ РѕС‡РµРЅСЊ РєСЂР°СЃРёРІР°СЏ РїР»РѕС…Р°СЏ РёРґРµСЏ. РРіСЂРѕРєРё, РєРѕРЅРµС‡РЅРѕ, СЃРµР№С‡Р°СЃ РїРѕРїСЂРѕР±СѓСЋС‚ РµС‘ РїРѕС‚СЂРѕРіР°С‚СЊ Р»РёС†РѕРј.' },
+    { title: 'Р’С…РѕРґ РґР»СЏ Р±РѕР»СЊС€РѕРіРѕ РіРѕСЃС‚СЏ РіРѕС‚РѕРІ.', text: 'РљРѕРІСЂРѕРІРѕР№ РґРѕСЂРѕР¶РєРё РЅРµС‚, Р·Р°С‚Рѕ РµСЃС‚СЊ РїСѓР»Рё, СЃС‚СЂР°С… Рё РЅРµСЃРєРѕР»СЊРєРѕ РіРµСЂРѕРµРІ СЃ Р·Р°РІС‹С€РµРЅРЅРѕР№ СЃР°РјРѕРѕС†РµРЅРєРѕР№.' },
+    { title: 'РџРѕСЂС‚Р°Р» РѕС‚РєСЂС‹Р»СЃСЏ СЃ РІС‹СЂР°Р¶РµРЅРёРµРј вЂњРЅСѓ РІСЃС‘вЂќ.', text: 'Р РµРґРєРёР№ СЃР»СѓС‡Р°Р№, РєРѕРіРґР° РіРµРѕРјРµС‚СЂРёСЏ РЅР° РєР°СЂС‚Рµ РІС‹РіР»СЏРґРёС‚ Р±РѕР»РµРµ СѓРіСЂРѕР¶Р°СЋС‰Рµ, С‡РµРј РЅР°Р»РѕРіРѕРІР°СЏ РїСЂРѕРІРµСЂРєР°.' },
+    { title: 'РџРѕСЂС‚Р°Р» Р±РѕСЃСЃР° РѕС‚РєСЂС‹Р»СЃСЏ.', text: 'Р­С‚Рѕ РЅРµ РґРµРєРѕСЂР°С†РёСЏ. Р­С‚Рѕ РґРІРµСЂСЊ, Р·Р° РєРѕС‚РѕСЂРѕР№ Сѓ Р±Р°Р»Р°РЅСЃР° РЅР°С‡РёРЅР°РµС‚СЃСЏ С‚СЏР¶С‘Р»С‹Р№ С…Р°СЂР°РєС‚РµСЂ.' },
+    { title: 'Р‘РѕР»СЊС€Р°СЏ РїСЂРѕР±Р»РµРјР° СѓР¶Рµ РЅР° РїРѕРґС…РѕРґРµ.', text: 'РРіСЂРѕРєРё РµС‰С‘ РјРѕРіСѓС‚ СЃРґРµР»Р°С‚СЊ РІРёРґ, С‡С‚Рѕ СЌС‚Рѕ С‡Р°СЃС‚СЊ РїР»Р°РЅР°. РћС‡РµРЅСЊ РєРѕСЂРѕС‚РєРѕРµ РѕРєРЅРѕ, РЅРѕ РјРѕРіСѓС‚.' },
+    { title: 'РђСЂРµРЅР° РѕС‚РєСЂС‹Р»Р° СЃР»СѓР¶РµР±РЅС‹Р№ РІС…РѕРґ РґР»СЏ Р±РѕСЃСЃР°.', text: 'РЎРµСЂРІРёСЃ, РєРѕРЅРµС‡РЅРѕ, СЃРѕРјРЅРёС‚РµР»СЊРЅС‹Р№, РЅРѕ РїСѓРЅРєС‚СѓР°Р»СЊРЅРѕСЃС‚СЊ РїСѓРіР°СЋС‰Рµ С…РѕСЂРѕС€Р°СЏ.' },
+    { title: 'РџРѕСЂС‚Р°Р» СЃРІРµС‚РёС‚СЃСЏ РЅРµРґРѕР±СЂС‹РјРё РЅР°РјРµСЂРµРЅРёСЏРјРё.', text: 'Р’ С‚Р°РєРёРµ РјРѕРјРµРЅС‚С‹ РґР°Р¶Рµ Р»СѓС‚ Р»РµР¶РёС‚ РєР°Рє-С‚Рѕ РЅР°РїСЂСЏР¶С‘РЅРЅРѕ.' },
+    { title: 'Р‘РѕСЃСЃ РїРѕР»СѓС‡РёР» РїСЂРёРіР»Р°С€РµРЅРёРµ.', text: 'Рљ СЃРѕР¶Р°Р»РµРЅРёСЋ, RSVP Сѓ РЅРµРіРѕ РІСЃРµРіРґР° вЂњРёРґСѓ Рё РїРѕСЂС‡Сѓ РІРµС‡РµСЂвЂќ.' },
+    { title: 'РћС‚РєСЂС‹Р»Р°СЃСЊ РґРІРµСЂСЊ РІ РєСЂСѓРїРЅС‹Рµ РЅРµРїСЂРёСЏС‚РЅРѕСЃС‚Рё.', text: 'РўРµРїРµСЂСЊ С„Р°СЂРј РІС‹РіР»СЏРґРёС‚ РЅРµ РєР°Рє РїРѕРґРіРѕС‚РѕРІРєР°, Р° РєР°Рє РїРѕСЃР»РµРґРЅСЏСЏ РїРѕРїС‹С‚РєР° РЅРµ РїР°РЅРёРєРѕРІР°С‚СЊ.' },
+    { title: 'РќР° РєР°СЂС‚Рµ РІРєР»СЋС‡РёР»СЃСЏ РїРѕСЂС‚Р°Р».', text: 'Р­С‚Рѕ Р°СЂРµРЅР° РІРµР¶Р»РёРІРѕ СЃРѕРѕР±С‰Р°РµС‚, С‡С‚Рѕ СЂР°Р·РјРёРЅРєР° Р·Р°РєРѕРЅС‡РёР»Р°СЃСЊ Р±РµР· СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ СЃ РёРіСЂРѕРєР°РјРё.' },
   ];
   if (key.includes('boss_spawn') || key.includes('boss_arrived')) return [
-    { title: 'Босс материализовался с претензией.', text: 'Вид у него такой, будто он пришёл не драться, а закрывать квартальный план по унижению игроков.' },
-    { title: 'Главная проблема вечера вышла на смену.', text: 'Большая, злая и явно без уважения к личному пространству, графику сна и медицинской страховке.' },
-    { title: 'Босс в кадре, всем пристегнуть эмоции.', text: 'Сейчас начнётся часть забега, где даже уверенные игроки вспоминают слово “мама”.' },
-    { title: 'На арену зашёл владелец плохого настроения.', text: 'Он не представился, но полоска здоровья намекает: знакомство будет долгим и громким.' },
-    { title: 'Появился босс, атмосфера резко стала дороже.', text: 'Бюджет на спецэффекты вырос, бюджет на спокойствие игроков был украден ещё на входе.' },
-    { title: 'Начальство прибыло без записи.', text: 'Очень невежливо, очень опасно и, чего уж там, довольно эффектно для прямого эфира.' },
-    { title: 'Босс вышел как финальный аргумент.', text: 'Теперь у игроков два варианта: красиво победить или очень познавательно бегать кругами.' },
-    { title: 'Крупная неприятность вступила в переговоры.', text: 'Переговоры, судя по позе, будут вестись ударами, рывками и полным отсутствием дипломатии.' },
-    { title: 'Вот и он, ходячий дедлайн.', text: 'Только вместо писем от менеджера у него лапы, ярость и неприлично длинная полоска здоровья.' },
-    { title: 'Босс пришёл проверить, кто тут слишком хорошо живёт.', text: 'Спойлер: по мнению босса, слишком хорошо живут вообще все, кто ещё вертикален.' },
-    { title: 'Босс вышел в эфир.', text: 'Зал просит зрелища, игроки просят дистанцию, босс не принимает заявки.' },
-    { title: 'Главный гость вечера прибыл.', text: 'Очень уверенная походка для того, кто ещё не видел весь список навыков игроков.' },
-    { title: 'На сцене крупная неприятность.', text: 'Сейчас станет ясно, кто качался, а кто просто коллекционировал красивые кнопки.' },
-    { title: 'Босс на карте.', text: 'Всем сохранять спокойствие. Особенно тем, кто уже начал бегать кругами.' },
-    { title: 'Начальство пришло лично.', text: 'Сразу видно управленческий стиль: мало слов, много входящего урона.' },
-    { title: 'Большой силуэт в кадре.', text: 'Комментатор проверил регламент: да, сейчас разрешено нервничать.' },
-    { title: 'Босс прибыл без опоздания.', text: 'Пунктуальность отличная, характер отвратительный, драматургия великолепная.' },
-    { title: 'Арена выпустила тяжёлую артиллерию.', text: 'Если до этого был хаос, то теперь у хаоса появился менеджер.' },
+    { title: 'Р‘РѕСЃСЃ РјР°С‚РµСЂРёР°Р»РёР·РѕРІР°Р»СЃСЏ СЃ РїСЂРµС‚РµРЅР·РёРµР№.', text: 'Р’РёРґ Сѓ РЅРµРіРѕ С‚Р°РєРѕР№, Р±СѓРґС‚Рѕ РѕРЅ РїСЂРёС€С‘Р» РЅРµ РґСЂР°С‚СЊСЃСЏ, Р° Р·Р°РєСЂС‹РІР°С‚СЊ РєРІР°СЂС‚Р°Р»СЊРЅС‹Р№ РїР»Р°РЅ РїРѕ СѓРЅРёР¶РµРЅРёСЋ РёРіСЂРѕРєРѕРІ.' },
+    { title: 'Р“Р»Р°РІРЅР°СЏ РїСЂРѕР±Р»РµРјР° РІРµС‡РµСЂР° РІС‹С€Р»Р° РЅР° СЃРјРµРЅСѓ.', text: 'Р‘РѕР»СЊС€Р°СЏ, Р·Р»Р°СЏ Рё СЏРІРЅРѕ Р±РµР· СѓРІР°Р¶РµРЅРёСЏ Рє Р»РёС‡РЅРѕРјСѓ РїСЂРѕСЃС‚СЂР°РЅСЃС‚РІСѓ, РіСЂР°С„РёРєСѓ СЃРЅР° Рё РјРµРґРёС†РёРЅСЃРєРѕР№ СЃС‚СЂР°С…РѕРІРєРµ.' },
+    { title: 'Р‘РѕСЃСЃ РІ РєР°РґСЂРµ, РІСЃРµРј РїСЂРёСЃС‚РµРіРЅСѓС‚СЊ СЌРјРѕС†РёРё.', text: 'РЎРµР№С‡Р°СЃ РЅР°С‡РЅС‘С‚СЃСЏ С‡Р°СЃС‚СЊ Р·Р°Р±РµРіР°, РіРґРµ РґР°Р¶Рµ СѓРІРµСЂРµРЅРЅС‹Рµ РёРіСЂРѕРєРё РІСЃРїРѕРјРёРЅР°СЋС‚ СЃР»РѕРІРѕ вЂњРјР°РјР°вЂќ.' },
+    { title: 'РќР° Р°СЂРµРЅСѓ Р·Р°С€С‘Р» РІР»Р°РґРµР»РµС† РїР»РѕС…РѕРіРѕ РЅР°СЃС‚СЂРѕРµРЅРёСЏ.', text: 'РћРЅ РЅРµ РїСЂРµРґСЃС‚Р°РІРёР»СЃСЏ, РЅРѕ РїРѕР»РѕСЃРєР° Р·РґРѕСЂРѕРІСЊСЏ РЅР°РјРµРєР°РµС‚: Р·РЅР°РєРѕРјСЃС‚РІРѕ Р±СѓРґРµС‚ РґРѕР»РіРёРј Рё РіСЂРѕРјРєРёРј.' },
+    { title: 'РџРѕСЏРІРёР»СЃСЏ Р±РѕСЃСЃ, Р°С‚РјРѕСЃС„РµСЂР° СЂРµР·РєРѕ СЃС‚Р°Р»Р° РґРѕСЂРѕР¶Рµ.', text: 'Р‘СЋРґР¶РµС‚ РЅР° СЃРїРµС†СЌС„С„РµРєС‚С‹ РІС‹СЂРѕСЃ, Р±СЋРґР¶РµС‚ РЅР° СЃРїРѕРєРѕР№СЃС‚РІРёРµ РёРіСЂРѕРєРѕРІ Р±С‹Р» СѓРєСЂР°РґРµРЅ РµС‰С‘ РЅР° РІС…РѕРґРµ.' },
+    { title: 'РќР°С‡Р°Р»СЊСЃС‚РІРѕ РїСЂРёР±С‹Р»Рѕ Р±РµР· Р·Р°РїРёСЃРё.', text: 'РћС‡РµРЅСЊ РЅРµРІРµР¶Р»РёРІРѕ, РѕС‡РµРЅСЊ РѕРїР°СЃРЅРѕ Рё, С‡РµРіРѕ СѓР¶ С‚Р°Рј, РґРѕРІРѕР»СЊРЅРѕ СЌС„С„РµРєС‚РЅРѕ РґР»СЏ РїСЂСЏРјРѕРіРѕ СЌС„РёСЂР°.' },
+    { title: 'Р‘РѕСЃСЃ РІС‹С€РµР» РєР°Рє С„РёРЅР°Р»СЊРЅС‹Р№ Р°СЂРіСѓРјРµРЅС‚.', text: 'РўРµРїРµСЂСЊ Сѓ РёРіСЂРѕРєРѕРІ РґРІР° РІР°СЂРёР°РЅС‚Р°: РєСЂР°СЃРёРІРѕ РїРѕР±РµРґРёС‚СЊ РёР»Рё РѕС‡РµРЅСЊ РїРѕР·РЅР°РІР°С‚РµР»СЊРЅРѕ Р±РµРіР°С‚СЊ РєСЂСѓРіР°РјРё.' },
+    { title: 'РљСЂСѓРїРЅР°СЏ РЅРµРїСЂРёСЏС‚РЅРѕСЃС‚СЊ РІСЃС‚СѓРїРёР»Р° РІ РїРµСЂРµРіРѕРІРѕСЂС‹.', text: 'РџРµСЂРµРіРѕРІРѕСЂС‹, СЃСѓРґСЏ РїРѕ РїРѕР·Рµ, Р±СѓРґСѓС‚ РІРµСЃС‚РёСЃСЊ СѓРґР°СЂР°РјРё, СЂС‹РІРєР°РјРё Рё РїРѕР»РЅС‹Рј РѕС‚СЃСѓС‚СЃС‚РІРёРµРј РґРёРїР»РѕРјР°С‚РёРё.' },
+    { title: 'Р’РѕС‚ Рё РѕРЅ, С…РѕРґСЏС‡РёР№ РґРµРґР»Р°Р№РЅ.', text: 'РўРѕР»СЊРєРѕ РІРјРµСЃС‚Рѕ РїРёСЃРµРј РѕС‚ РјРµРЅРµРґР¶РµСЂР° Сѓ РЅРµРіРѕ Р»Р°РїС‹, СЏСЂРѕСЃС‚СЊ Рё РЅРµРїСЂРёР»РёС‡РЅРѕ РґР»РёРЅРЅР°СЏ РїРѕР»РѕСЃРєР° Р·РґРѕСЂРѕРІСЊСЏ.' },
+    { title: 'Р‘РѕСЃСЃ РїСЂРёС€С‘Р» РїСЂРѕРІРµСЂРёС‚СЊ, РєС‚Рѕ С‚СѓС‚ СЃР»РёС€РєРѕРј С…РѕСЂРѕС€Рѕ Р¶РёРІС‘С‚.', text: 'РЎРїРѕР№Р»РµСЂ: РїРѕ РјРЅРµРЅРёСЋ Р±РѕСЃСЃР°, СЃР»РёС€РєРѕРј С…РѕСЂРѕС€Рѕ Р¶РёРІСѓС‚ РІРѕРѕР±С‰Рµ РІСЃРµ, РєС‚Рѕ РµС‰С‘ РІРµСЂС‚РёРєР°Р»РµРЅ.' },
+    { title: 'Р‘РѕСЃСЃ РІС‹С€РµР» РІ СЌС„РёСЂ.', text: 'Р—Р°Р» РїСЂРѕСЃРёС‚ Р·СЂРµР»РёС‰Р°, РёРіСЂРѕРєРё РїСЂРѕСЃСЏС‚ РґРёСЃС‚Р°РЅС†РёСЋ, Р±РѕСЃСЃ РЅРµ РїСЂРёРЅРёРјР°РµС‚ Р·Р°СЏРІРєРё.' },
+    { title: 'Р“Р»Р°РІРЅС‹Р№ РіРѕСЃС‚СЊ РІРµС‡РµСЂР° РїСЂРёР±С‹Р».', text: 'РћС‡РµРЅСЊ СѓРІРµСЂРµРЅРЅР°СЏ РїРѕС…РѕРґРєР° РґР»СЏ С‚РѕРіРѕ, РєС‚Рѕ РµС‰С‘ РЅРµ РІРёРґРµР» РІРµСЃСЊ СЃРїРёСЃРѕРє РЅР°РІС‹РєРѕРІ РёРіСЂРѕРєРѕРІ.' },
+    { title: 'РќР° СЃС†РµРЅРµ РєСЂСѓРїРЅР°СЏ РЅРµРїСЂРёСЏС‚РЅРѕСЃС‚СЊ.', text: 'РЎРµР№С‡Р°СЃ СЃС‚Р°РЅРµС‚ СЏСЃРЅРѕ, РєС‚Рѕ РєР°С‡Р°Р»СЃСЏ, Р° РєС‚Рѕ РїСЂРѕСЃС‚Рѕ РєРѕР»Р»РµРєС†РёРѕРЅРёСЂРѕРІР°Р» РєСЂР°СЃРёРІС‹Рµ РєРЅРѕРїРєРё.' },
+    { title: 'Р‘РѕСЃСЃ РЅР° РєР°СЂС‚Рµ.', text: 'Р’СЃРµРј СЃРѕС…СЂР°РЅСЏС‚СЊ СЃРїРѕРєРѕР№СЃС‚РІРёРµ. РћСЃРѕР±РµРЅРЅРѕ С‚РµРј, РєС‚Рѕ СѓР¶Рµ РЅР°С‡Р°Р» Р±РµРіР°С‚СЊ РєСЂСѓРіР°РјРё.' },
+    { title: 'РќР°С‡Р°Р»СЊСЃС‚РІРѕ РїСЂРёС€Р»Рѕ Р»РёС‡РЅРѕ.', text: 'РЎСЂР°Р·Сѓ РІРёРґРЅРѕ СѓРїСЂР°РІР»РµРЅС‡РµСЃРєРёР№ СЃС‚РёР»СЊ: РјР°Р»Рѕ СЃР»РѕРІ, РјРЅРѕРіРѕ РІС…РѕРґСЏС‰РµРіРѕ СѓСЂРѕРЅР°.' },
+    { title: 'Р‘РѕР»СЊС€РѕР№ СЃРёР»СѓСЌС‚ РІ РєР°РґСЂРµ.', text: 'РљРѕРјРјРµРЅС‚Р°С‚РѕСЂ РїСЂРѕРІРµСЂРёР» СЂРµРіР»Р°РјРµРЅС‚: РґР°, СЃРµР№С‡Р°СЃ СЂР°Р·СЂРµС€РµРЅРѕ РЅРµСЂРІРЅРёС‡Р°С‚СЊ.' },
+    { title: 'Р‘РѕСЃСЃ РїСЂРёР±С‹Р» Р±РµР· РѕРїРѕР·РґР°РЅРёСЏ.', text: 'РџСѓРЅРєС‚СѓР°Р»СЊРЅРѕСЃС‚СЊ РѕС‚Р»РёС‡РЅР°СЏ, С…Р°СЂР°РєС‚РµСЂ РѕС‚РІСЂР°С‚РёС‚РµР»СЊРЅС‹Р№, РґСЂР°РјР°С‚СѓСЂРіРёСЏ РІРµР»РёРєРѕР»РµРїРЅР°СЏ.' },
+    { title: 'РђСЂРµРЅР° РІС‹РїСѓСЃС‚РёР»Р° С‚СЏР¶С‘Р»СѓСЋ Р°СЂС‚РёР»Р»РµСЂРёСЋ.', text: 'Р•СЃР»Рё РґРѕ СЌС‚РѕРіРѕ Р±С‹Р» С…Р°РѕСЃ, С‚Рѕ С‚РµРїРµСЂСЊ Сѓ С…Р°РѕСЃР° РїРѕСЏРІРёР»СЃСЏ РјРµРЅРµРґР¶РµСЂ.' },
   ];
   if (key.includes('pvp_elimination')) return [
-    { title: 'PvP сказало своё резкое слово.', text: 'Слово было коротким, громким и почему-то сразу отправило одного участника подумать о жизни.' },
-    { title: 'На арене минус один спорщик.', text: 'Дискуссия закончилась аргументом, который летел быстрее, чем сожаление.' },
-    { title: 'Фраг оформлен с характером.', text: 'Не то чтобы аккуратно, зато убедительно. В этой игре это почти комплимент.' },
-    { title: 'Кто-то получил экспресс-перерыв.', text: 'Быстрый, болезненный и с образовательной программой “не стой там больше”.' },
-    { title: 'PvP снова напомнило про дистанцию.', text: 'Дистанция была важна. Особенно та, которую игрок уже не успел создать.' },
-    { title: 'Фраг оформлен.', text: 'Кто-то проиграл короткую дискуссию с чужим уроном и теперь ждёт следующую попытку.' },
-    { title: 'PvP снова объяснило правила.', text: 'Правило первое: если стоишь красиво, это ещё не значит, что стоишь долго.' },
-    { title: 'Минус один участник вертикального движения.', text: 'Респавн скоро, самооценка чуть позже.' },
-    { title: 'На арене случился аргумент посильнее.', text: 'Очень убедительно, очень быстро и почти без места для возражений.' },
-    { title: 'Фраг ушёл в статистику.', text: 'Статистика довольна. Игрок, которого туда записали, вероятно, меньше.' },
-    { title: 'Кто-то отправлен на паузу.', text: 'Не трагедия, а образовательный момент с таймером возвращения.' },
-    { title: 'PvP-линия стала острее.', text: 'Один точный момент, и чья-то стратегия превратилась в ожидание респавна.' },
+    { title: 'PvP СЃРєР°Р·Р°Р»Рѕ СЃРІРѕС‘ СЂРµР·РєРѕРµ СЃР»РѕРІРѕ.', text: 'РЎР»РѕРІРѕ Р±С‹Р»Рѕ РєРѕСЂРѕС‚РєРёРј, РіСЂРѕРјРєРёРј Рё РїРѕС‡РµРјСѓ-С‚Рѕ СЃСЂР°Р·Сѓ РѕС‚РїСЂР°РІРёР»Рѕ РѕРґРЅРѕРіРѕ СѓС‡Р°СЃС‚РЅРёРєР° РїРѕРґСѓРјР°С‚СЊ Рѕ Р¶РёР·РЅРё.' },
+    { title: 'РќР° Р°СЂРµРЅРµ РјРёРЅСѓСЃ РѕРґРёРЅ СЃРїРѕСЂС‰РёРє.', text: 'Р”РёСЃРєСѓСЃСЃРёСЏ Р·Р°РєРѕРЅС‡РёР»Р°СЃСЊ Р°СЂРіСѓРјРµРЅС‚РѕРј, РєРѕС‚РѕСЂС‹Р№ Р»РµС‚РµР» Р±С‹СЃС‚СЂРµРµ, С‡РµРј СЃРѕР¶Р°Р»РµРЅРёРµ.' },
+    { title: 'Р¤СЂР°Рі РѕС„РѕСЂРјР»РµРЅ СЃ С…Р°СЂР°РєС‚РµСЂРѕРј.', text: 'РќРµ С‚Рѕ С‡С‚РѕР±С‹ Р°РєРєСѓСЂР°С‚РЅРѕ, Р·Р°С‚Рѕ СѓР±РµРґРёС‚РµР»СЊРЅРѕ. Р’ СЌС‚РѕР№ РёРіСЂРµ СЌС‚Рѕ РїРѕС‡С‚Рё РєРѕРјРїР»РёРјРµРЅС‚.' },
+    { title: 'РљС‚Рѕ-С‚Рѕ РїРѕР»СѓС‡РёР» СЌРєСЃРїСЂРµСЃСЃ-РїРµСЂРµСЂС‹РІ.', text: 'Р‘С‹СЃС‚СЂС‹Р№, Р±РѕР»РµР·РЅРµРЅРЅС‹Р№ Рё СЃ РѕР±СЂР°Р·РѕРІР°С‚РµР»СЊРЅРѕР№ РїСЂРѕРіСЂР°РјРјРѕР№ вЂњРЅРµ СЃС‚РѕР№ С‚Р°Рј Р±РѕР»СЊС€РµвЂќ.' },
+    { title: 'PvP СЃРЅРѕРІР° РЅР°РїРѕРјРЅРёР»Рѕ РїСЂРѕ РґРёСЃС‚Р°РЅС†РёСЋ.', text: 'Р”РёСЃС‚Р°РЅС†РёСЏ Р±С‹Р»Р° РІР°Р¶РЅР°. РћСЃРѕР±РµРЅРЅРѕ С‚Р°, РєРѕС‚РѕСЂСѓСЋ РёРіСЂРѕРє СѓР¶Рµ РЅРµ СѓСЃРїРµР» СЃРѕР·РґР°С‚СЊ.' },
+    { title: 'Р¤СЂР°Рі РѕС„РѕСЂРјР»РµРЅ.', text: 'РљС‚Рѕ-С‚Рѕ РїСЂРѕРёРіСЂР°Р» РєРѕСЂРѕС‚РєСѓСЋ РґРёСЃРєСѓСЃСЃРёСЋ СЃ С‡СѓР¶РёРј СѓСЂРѕРЅРѕРј Рё С‚РµРїРµСЂСЊ Р¶РґС‘С‚ СЃР»РµРґСѓСЋС‰СѓСЋ РїРѕРїС‹С‚РєСѓ.' },
+    { title: 'PvP СЃРЅРѕРІР° РѕР±СЉСЏСЃРЅРёР»Рѕ РїСЂР°РІРёР»Р°.', text: 'РџСЂР°РІРёР»Рѕ РїРµСЂРІРѕРµ: РµСЃР»Рё СЃС‚РѕРёС€СЊ РєСЂР°СЃРёРІРѕ, СЌС‚Рѕ РµС‰С‘ РЅРµ Р·РЅР°С‡РёС‚, С‡С‚Рѕ СЃС‚РѕРёС€СЊ РґРѕР»РіРѕ.' },
+    { title: 'РњРёРЅСѓСЃ РѕРґРёРЅ СѓС‡Р°СЃС‚РЅРёРє РІРµСЂС‚РёРєР°Р»СЊРЅРѕРіРѕ РґРІРёР¶РµРЅРёСЏ.', text: 'Р РµСЃРїР°РІРЅ СЃРєРѕСЂРѕ, СЃР°РјРѕРѕС†РµРЅРєР° С‡СѓС‚СЊ РїРѕР·Р¶Рµ.' },
+    { title: 'РќР° Р°СЂРµРЅРµ СЃР»СѓС‡РёР»СЃСЏ Р°СЂРіСѓРјРµРЅС‚ РїРѕСЃРёР»СЊРЅРµРµ.', text: 'РћС‡РµРЅСЊ СѓР±РµРґРёС‚РµР»СЊРЅРѕ, РѕС‡РµРЅСЊ Р±С‹СЃС‚СЂРѕ Рё РїРѕС‡С‚Рё Р±РµР· РјРµСЃС‚Р° РґР»СЏ РІРѕР·СЂР°Р¶РµРЅРёР№.' },
+    { title: 'Р¤СЂР°Рі СѓС€С‘Р» РІ СЃС‚Р°С‚РёСЃС‚РёРєСѓ.', text: 'РЎС‚Р°С‚РёСЃС‚РёРєР° РґРѕРІРѕР»СЊРЅР°. РРіСЂРѕРє, РєРѕС‚РѕСЂРѕРіРѕ С‚СѓРґР° Р·Р°РїРёСЃР°Р»Рё, РІРµСЂРѕСЏС‚РЅРѕ, РјРµРЅСЊС€Рµ.' },
+    { title: 'РљС‚Рѕ-С‚Рѕ РѕС‚РїСЂР°РІР»РµРЅ РЅР° РїР°СѓР·Сѓ.', text: 'РќРµ С‚СЂР°РіРµРґРёСЏ, Р° РѕР±СЂР°Р·РѕРІР°С‚РµР»СЊРЅС‹Р№ РјРѕРјРµРЅС‚ СЃ С‚Р°Р№РјРµСЂРѕРј РІРѕР·РІСЂР°С‰РµРЅРёСЏ.' },
+    { title: 'PvP-Р»РёРЅРёСЏ СЃС‚Р°Р»Р° РѕСЃС‚СЂРµРµ.', text: 'РћРґРёРЅ С‚РѕС‡РЅС‹Р№ РјРѕРјРµРЅС‚, Рё С‡СЊСЏ-С‚Рѕ СЃС‚СЂР°С‚РµРіРёСЏ РїСЂРµРІСЂР°С‚РёР»Р°СЃСЊ РІ РѕР¶РёРґР°РЅРёРµ СЂРµСЃРїР°РІРЅР°.' },
   ];
   if (key.includes('player_count')) return [
-    { title: 'Состав матча изменился.', text: 'Арена любит динамику: кто-то приходит за славой, кто-то уходит за спокойствием.' },
-    { title: 'Команда снова пересобирается.', text: 'Тактика слегка дрожит, зато шоу получает новые вводные.' },
-    { title: 'Количество участников поменялось.', text: 'Это всегда добавляет интриги и немного портит все предыдущие планы.' },
-    { title: 'В комнате переставили людей.', text: 'Не мебель, конечно, но эффект для хаоса примерно такой же.' },
-    { title: 'Состав арены обновился.', text: 'Каждый новый расклад звучит как шанс. Или как предупреждение, если быть честнее.' },
+    { title: 'РЎРѕСЃС‚Р°РІ РјР°С‚С‡Р° РёР·РјРµРЅРёР»СЃСЏ.', text: 'РђСЂРµРЅР° Р»СЋР±РёС‚ РґРёРЅР°РјРёРєСѓ: РєС‚Рѕ-С‚Рѕ РїСЂРёС…РѕРґРёС‚ Р·Р° СЃР»Р°РІРѕР№, РєС‚Рѕ-С‚Рѕ СѓС…РѕРґРёС‚ Р·Р° СЃРїРѕРєРѕР№СЃС‚РІРёРµРј.' },
+    { title: 'РљРѕРјР°РЅРґР° СЃРЅРѕРІР° РїРµСЂРµСЃРѕР±РёСЂР°РµС‚СЃСЏ.', text: 'РўР°РєС‚РёРєР° СЃР»РµРіРєР° РґСЂРѕР¶РёС‚, Р·Р°С‚Рѕ С€РѕСѓ РїРѕР»СѓС‡Р°РµС‚ РЅРѕРІС‹Рµ РІРІРѕРґРЅС‹Рµ.' },
+    { title: 'РљРѕР»РёС‡РµСЃС‚РІРѕ СѓС‡Р°СЃС‚РЅРёРєРѕРІ РїРѕРјРµРЅСЏР»РѕСЃСЊ.', text: 'Р­С‚Рѕ РІСЃРµРіРґР° РґРѕР±Р°РІР»СЏРµС‚ РёРЅС‚СЂРёРіРё Рё РЅРµРјРЅРѕРіРѕ РїРѕСЂС‚РёС‚ РІСЃРµ РїСЂРµРґС‹РґСѓС‰РёРµ РїР»Р°РЅС‹.' },
+    { title: 'Р’ РєРѕРјРЅР°С‚Рµ РїРµСЂРµСЃС‚Р°РІРёР»Рё Р»СЋРґРµР№.', text: 'РќРµ РјРµР±РµР»СЊ, РєРѕРЅРµС‡РЅРѕ, РЅРѕ СЌС„С„РµРєС‚ РґР»СЏ С…Р°РѕСЃР° РїСЂРёРјРµСЂРЅРѕ С‚Р°РєРѕР№ Р¶Рµ.' },
+    { title: 'РЎРѕСЃС‚Р°РІ Р°СЂРµРЅС‹ РѕР±РЅРѕРІРёР»СЃСЏ.', text: 'РљР°Р¶РґС‹Р№ РЅРѕРІС‹Р№ СЂР°СЃРєР»Р°Рґ Р·РІСѓС‡РёС‚ РєР°Рє С€Р°РЅСЃ. РР»Рё РєР°Рє РїСЂРµРґСѓРїСЂРµР¶РґРµРЅРёРµ, РµСЃР»Рё Р±С‹С‚СЊ С‡РµСЃС‚РЅРµРµ.' },
   ];
   if (key.includes('hp_recovered')) return [
-    { title: 'Здоровье вернулось из командировки.', text: 'Пришло не всё, но достаточно, чтобы герой снова начал принимать сомнительные решения.' },
-    { title: 'HP снова выглядит как аргумент.', text: 'Не железобетонный, конечно, но уже не бумажная салфетка под дождём.' },
-    { title: 'Полоска здоровья подросла.', text: 'Комментатор рад, некролог временно закрыт без сохранения.' },
-    { title: 'Герой отлип от края пропасти.', text: 'Не ушёл далеко, просто сделал шаг назад и сказал: “Я всё контролирую”.' },
-    { title: 'Лечение сработало, самооценка тоже.', text: 'Самое опасное сочетание: чуть больше HP и сразу планы как у бессмертного.' },
-    { title: 'Здоровье вернулось к разговору.', text: 'Полоска HP снова похожа на ресурс, а не на тонкую красную подпись к трагедии.' },
-    { title: 'Герой выбрался из красной зоны.', text: 'Драма отложена, но не отменена. Арена такие заявки хранит бережно.' },
-    { title: 'HP снова выглядит прилично.', text: 'Комментатор почти поверил в стабильность. Почти. Мы же взрослые люди.' },
-    { title: 'Состояние стабилизировалось.', text: 'Ещё минуту назад пахло катастрофой, теперь пахнет самоуверенностью. Прогресс.' },
-    { title: 'Полоска здоровья ожила.', text: 'Редкий приятный момент: герой восстановился раньше, чем комментатор успел написать некролог.' },
-    { title: 'Красная зона отпустила.', text: 'Ненадолго или надолго, узнаем по следующему неудачному манёвру.' },
+    { title: 'Р—РґРѕСЂРѕРІСЊРµ РІРµСЂРЅСѓР»РѕСЃСЊ РёР· РєРѕРјР°РЅРґРёСЂРѕРІРєРё.', text: 'РџСЂРёС€Р»Рѕ РЅРµ РІСЃС‘, РЅРѕ РґРѕСЃС‚Р°С‚РѕС‡РЅРѕ, С‡С‚РѕР±С‹ РіРµСЂРѕР№ СЃРЅРѕРІР° РЅР°С‡Р°Р» РїСЂРёРЅРёРјР°С‚СЊ СЃРѕРјРЅРёС‚РµР»СЊРЅС‹Рµ СЂРµС€РµРЅРёСЏ.' },
+    { title: 'HP СЃРЅРѕРІР° РІС‹РіР»СЏРґРёС‚ РєР°Рє Р°СЂРіСѓРјРµРЅС‚.', text: 'РќРµ Р¶РµР»РµР·РѕР±РµС‚РѕРЅРЅС‹Р№, РєРѕРЅРµС‡РЅРѕ, РЅРѕ СѓР¶Рµ РЅРµ Р±СѓРјР°Р¶РЅР°СЏ СЃР°Р»С„РµС‚РєР° РїРѕРґ РґРѕР¶РґС‘Рј.' },
+    { title: 'РџРѕР»РѕСЃРєР° Р·РґРѕСЂРѕРІСЊСЏ РїРѕРґСЂРѕСЃР»Р°.', text: 'РљРѕРјРјРµРЅС‚Р°С‚РѕСЂ СЂР°Рґ, РЅРµРєСЂРѕР»РѕРі РІСЂРµРјРµРЅРЅРѕ Р·Р°РєСЂС‹С‚ Р±РµР· СЃРѕС…СЂР°РЅРµРЅРёСЏ.' },
+    { title: 'Р“РµСЂРѕР№ РѕС‚Р»РёРї РѕС‚ РєСЂР°СЏ РїСЂРѕРїР°СЃС‚Рё.', text: 'РќРµ СѓС€С‘Р» РґР°Р»РµРєРѕ, РїСЂРѕСЃС‚Рѕ СЃРґРµР»Р°Р» С€Р°Рі РЅР°Р·Р°Рґ Рё СЃРєР°Р·Р°Р»: вЂњРЇ РІСЃС‘ РєРѕРЅС‚СЂРѕР»РёСЂСѓСЋвЂќ.' },
+    { title: 'Р›РµС‡РµРЅРёРµ СЃСЂР°Р±РѕС‚Р°Р»Рѕ, СЃР°РјРѕРѕС†РµРЅРєР° С‚РѕР¶Рµ.', text: 'РЎР°РјРѕРµ РѕРїР°СЃРЅРѕРµ СЃРѕС‡РµС‚Р°РЅРёРµ: С‡СѓС‚СЊ Р±РѕР»СЊС€Рµ HP Рё СЃСЂР°Р·Сѓ РїР»Р°РЅС‹ РєР°Рє Сѓ Р±РµСЃСЃРјРµСЂС‚РЅРѕРіРѕ.' },
+    { title: 'Р—РґРѕСЂРѕРІСЊРµ РІРµСЂРЅСѓР»РѕСЃСЊ Рє СЂР°Р·РіРѕРІРѕСЂСѓ.', text: 'РџРѕР»РѕСЃРєР° HP СЃРЅРѕРІР° РїРѕС…РѕР¶Р° РЅР° СЂРµСЃСѓСЂСЃ, Р° РЅРµ РЅР° С‚РѕРЅРєСѓСЋ РєСЂР°СЃРЅСѓСЋ РїРѕРґРїРёСЃСЊ Рє С‚СЂР°РіРµРґРёРё.' },
+    { title: 'Р“РµСЂРѕР№ РІС‹Р±СЂР°Р»СЃСЏ РёР· РєСЂР°СЃРЅРѕР№ Р·РѕРЅС‹.', text: 'Р”СЂР°РјР° РѕС‚Р»РѕР¶РµРЅР°, РЅРѕ РЅРµ РѕС‚РјРµРЅРµРЅР°. РђСЂРµРЅР° С‚Р°РєРёРµ Р·Р°СЏРІРєРё С…СЂР°РЅРёС‚ Р±РµСЂРµР¶РЅРѕ.' },
+    { title: 'HP СЃРЅРѕРІР° РІС‹РіР»СЏРґРёС‚ РїСЂРёР»РёС‡РЅРѕ.', text: 'РљРѕРјРјРµРЅС‚Р°С‚РѕСЂ РїРѕС‡С‚Рё РїРѕРІРµСЂРёР» РІ СЃС‚Р°Р±РёР»СЊРЅРѕСЃС‚СЊ. РџРѕС‡С‚Рё. РњС‹ Р¶Рµ РІР·СЂРѕСЃР»С‹Рµ Р»СЋРґРё.' },
+    { title: 'РЎРѕСЃС‚РѕСЏРЅРёРµ СЃС‚Р°Р±РёР»РёР·РёСЂРѕРІР°Р»РѕСЃСЊ.', text: 'Р•С‰С‘ РјРёРЅСѓС‚Сѓ РЅР°Р·Р°Рґ РїР°С…Р»Рѕ РєР°С‚Р°СЃС‚СЂРѕС„РѕР№, С‚РµРїРµСЂСЊ РїР°С…РЅРµС‚ СЃР°РјРѕСѓРІРµСЂРµРЅРЅРѕСЃС‚СЊСЋ. РџСЂРѕРіСЂРµСЃСЃ.' },
+    { title: 'РџРѕР»РѕСЃРєР° Р·РґРѕСЂРѕРІСЊСЏ РѕР¶РёР»Р°.', text: 'Р РµРґРєРёР№ РїСЂРёСЏС‚РЅС‹Р№ РјРѕРјРµРЅС‚: РіРµСЂРѕР№ РІРѕСЃСЃС‚Р°РЅРѕРІРёР»СЃСЏ СЂР°РЅСЊС€Рµ, С‡РµРј РєРѕРјРјРµРЅС‚Р°С‚РѕСЂ СѓСЃРїРµР» РЅР°РїРёСЃР°С‚СЊ РЅРµРєСЂРѕР»РѕРі.' },
+    { title: 'РљСЂР°СЃРЅР°СЏ Р·РѕРЅР° РѕС‚РїСѓСЃС‚РёР»Р°.', text: 'РќРµРЅР°РґРѕР»РіРѕ РёР»Рё РЅР°РґРѕР»РіРѕ, СѓР·РЅР°РµРј РїРѕ СЃР»РµРґСѓСЋС‰РµРјСѓ РЅРµСѓРґР°С‡РЅРѕРјСѓ РјР°РЅС‘РІСЂСѓ.' },
   ];
   if (key.includes('pvp_leader')) return [
-    { title: 'В PvP появился лидер.', text: 'Остальным пора либо догонять, либо готовить убедительную лекцию про “я играл на макро”.' },
-    { title: 'Кто-то вырвался вперёд.', text: 'Таблица уважает цифры, а проигрывающие обычно уважают оправдания.' },
-    { title: 'Лидерство сменило владельца.', text: 'PvP любит такие моменты: секунду назад был хаос, теперь хаос с табличкой “первое место”.' },
-    { title: 'На табло появился фаворит.', text: 'Это не корона, конечно, но попасть по ней теперь захотят все.' },
-    { title: 'Один игрок забрал темп.', text: 'Остальные получили бесплатный курс “как срочно перестать отставать”.' },
+    { title: 'Р’ PvP РїРѕСЏРІРёР»СЃСЏ Р»РёРґРµСЂ.', text: 'РћСЃС‚Р°Р»СЊРЅС‹Рј РїРѕСЂР° Р»РёР±Рѕ РґРѕРіРѕРЅСЏС‚СЊ, Р»РёР±Рѕ РіРѕС‚РѕРІРёС‚СЊ СѓР±РµРґРёС‚РµР»СЊРЅСѓСЋ Р»РµРєС†РёСЋ РїСЂРѕ вЂњСЏ РёРіСЂР°Р» РЅР° РјР°РєСЂРѕвЂќ.' },
+    { title: 'РљС‚Рѕ-С‚Рѕ РІС‹СЂРІР°Р»СЃСЏ РІРїРµСЂС‘Рґ.', text: 'РўР°Р±Р»РёС†Р° СѓРІР°Р¶Р°РµС‚ С†РёС„СЂС‹, Р° РїСЂРѕРёРіСЂС‹РІР°СЋС‰РёРµ РѕР±С‹С‡РЅРѕ СѓРІР°Р¶Р°СЋС‚ РѕРїСЂР°РІРґР°РЅРёСЏ.' },
+    { title: 'Р›РёРґРµСЂСЃС‚РІРѕ СЃРјРµРЅРёР»Рѕ РІР»Р°РґРµР»СЊС†Р°.', text: 'PvP Р»СЋР±РёС‚ С‚Р°РєРёРµ РјРѕРјРµРЅС‚С‹: СЃРµРєСѓРЅРґСѓ РЅР°Р·Р°Рґ Р±С‹Р» С…Р°РѕСЃ, С‚РµРїРµСЂСЊ С…Р°РѕСЃ СЃ С‚Р°Р±Р»РёС‡РєРѕР№ вЂњРїРµСЂРІРѕРµ РјРµСЃС‚РѕвЂќ.' },
+    { title: 'РќР° С‚Р°Р±Р»Рѕ РїРѕСЏРІРёР»СЃСЏ С„Р°РІРѕСЂРёС‚.', text: 'Р­С‚Рѕ РЅРµ РєРѕСЂРѕРЅР°, РєРѕРЅРµС‡РЅРѕ, РЅРѕ РїРѕРїР°СЃС‚СЊ РїРѕ РЅРµР№ С‚РµРїРµСЂСЊ Р·Р°С…РѕС‚СЏС‚ РІСЃРµ.' },
+    { title: 'РћРґРёРЅ РёРіСЂРѕРє Р·Р°Р±СЂР°Р» С‚РµРјРї.', text: 'РћСЃС‚Р°Р»СЊРЅС‹Рµ РїРѕР»СѓС‡РёР»Рё Р±РµСЃРїР»Р°С‚РЅС‹Р№ РєСѓСЂСЃ вЂњРєР°Рє СЃСЂРѕС‡РЅРѕ РїРµСЂРµСЃС‚Р°С‚СЊ РѕС‚СЃС‚Р°РІР°С‚СЊвЂќ.' },
   ];
   if (key.includes('solo_survivor')) return [
-    { title: 'Остался один герой и много вопросов.', text: 'Главный вопрос: это стратегия, трагедия или просто командная работа закончилась раньше времени?' },
-    { title: 'Соло-режим включился без предупреждения.', text: 'Теперь всё внимание, весь урон и все плохие решения принадлежат одному человеку.' },
-    { title: 'На арене одинокий финалист.', text: 'Звучит гордо, пока не смотришь на количество врагов и выражение лица судьбы.' },
-    { title: 'Команда стала компактной.', text: 'Настолько компактной, что помещается в одного очень занятого героя.' },
-    { title: 'Один против всех.', text: 'Классика жанра: красиво на постере, заметно хуже в бухгалтерии здоровья.' },
-    { title: 'На сцене остался один.', text: 'Весь лут, весь страх и вся ответственность теперь смотрят на него одновременно.' },
-    { title: 'Соло-режим включился сам.', text: 'Командная работа закончилась. Началась личная переписка с судьбой.' },
-    { title: 'Один герой против расписания боли.', text: 'Красиво звучит, пока не вспоминаешь, что расписание обычно пунктуальное.' },
-    { title: 'Финальный одиночный номер.', text: 'Публика любит такие моменты. Игроки обычно любят их уже после победы.' },
-    { title: 'Остался один доброволец.', text: 'Теперь каждое решение звучит громче, потому что обвинить больше некого.' },
+    { title: 'РћСЃС‚Р°Р»СЃСЏ РѕРґРёРЅ РіРµСЂРѕР№ Рё РјРЅРѕРіРѕ РІРѕРїСЂРѕСЃРѕРІ.', text: 'Р“Р»Р°РІРЅС‹Р№ РІРѕРїСЂРѕСЃ: СЌС‚Рѕ СЃС‚СЂР°С‚РµРіРёСЏ, С‚СЂР°РіРµРґРёСЏ РёР»Рё РїСЂРѕСЃС‚Рѕ РєРѕРјР°РЅРґРЅР°СЏ СЂР°Р±РѕС‚Р° Р·Р°РєРѕРЅС‡РёР»Р°СЃСЊ СЂР°РЅСЊС€Рµ РІСЂРµРјРµРЅРё?' },
+    { title: 'РЎРѕР»Рѕ-СЂРµР¶РёРј РІРєР»СЋС‡РёР»СЃСЏ Р±РµР· РїСЂРµРґСѓРїСЂРµР¶РґРµРЅРёСЏ.', text: 'РўРµРїРµСЂСЊ РІСЃС‘ РІРЅРёРјР°РЅРёРµ, РІРµСЃСЊ СѓСЂРѕРЅ Рё РІСЃРµ РїР»РѕС…РёРµ СЂРµС€РµРЅРёСЏ РїСЂРёРЅР°РґР»РµР¶Р°С‚ РѕРґРЅРѕРјСѓ С‡РµР»РѕРІРµРєСѓ.' },
+    { title: 'РќР° Р°СЂРµРЅРµ РѕРґРёРЅРѕРєРёР№ С„РёРЅР°Р»РёСЃС‚.', text: 'Р—РІСѓС‡РёС‚ РіРѕСЂРґРѕ, РїРѕРєР° РЅРµ СЃРјРѕС‚СЂРёС€СЊ РЅР° РєРѕР»РёС‡РµСЃС‚РІРѕ РІСЂР°РіРѕРІ Рё РІС‹СЂР°Р¶РµРЅРёРµ Р»РёС†Р° СЃСѓРґСЊР±С‹.' },
+    { title: 'РљРѕРјР°РЅРґР° СЃС‚Р°Р»Р° РєРѕРјРїР°РєС‚РЅРѕР№.', text: 'РќР°СЃС‚РѕР»СЊРєРѕ РєРѕРјРїР°РєС‚РЅРѕР№, С‡С‚Рѕ РїРѕРјРµС‰Р°РµС‚СЃСЏ РІ РѕРґРЅРѕРіРѕ РѕС‡РµРЅСЊ Р·Р°РЅСЏС‚РѕРіРѕ РіРµСЂРѕСЏ.' },
+    { title: 'РћРґРёРЅ РїСЂРѕС‚РёРІ РІСЃРµС….', text: 'РљР»Р°СЃСЃРёРєР° Р¶Р°РЅСЂР°: РєСЂР°СЃРёРІРѕ РЅР° РїРѕСЃС‚РµСЂРµ, Р·Р°РјРµС‚РЅРѕ С…СѓР¶Рµ РІ Р±СѓС…РіР°Р»С‚РµСЂРёРё Р·РґРѕСЂРѕРІСЊСЏ.' },
+    { title: 'РќР° СЃС†РµРЅРµ РѕСЃС‚Р°Р»СЃСЏ РѕРґРёРЅ.', text: 'Р’РµСЃСЊ Р»СѓС‚, РІРµСЃСЊ СЃС‚СЂР°С… Рё РІСЃСЏ РѕС‚РІРµС‚СЃС‚РІРµРЅРЅРѕСЃС‚СЊ С‚РµРїРµСЂСЊ СЃРјРѕС‚СЂСЏС‚ РЅР° РЅРµРіРѕ РѕРґРЅРѕРІСЂРµРјРµРЅРЅРѕ.' },
+    { title: 'РЎРѕР»Рѕ-СЂРµР¶РёРј РІРєР»СЋС‡РёР»СЃСЏ СЃР°Рј.', text: 'РљРѕРјР°РЅРґРЅР°СЏ СЂР°Р±РѕС‚Р° Р·Р°РєРѕРЅС‡РёР»Р°СЃСЊ. РќР°С‡Р°Р»Р°СЃСЊ Р»РёС‡РЅР°СЏ РїРµСЂРµРїРёСЃРєР° СЃ СЃСѓРґСЊР±РѕР№.' },
+    { title: 'РћРґРёРЅ РіРµСЂРѕР№ РїСЂРѕС‚РёРІ СЂР°СЃРїРёСЃР°РЅРёСЏ Р±РѕР»Рё.', text: 'РљСЂР°СЃРёРІРѕ Р·РІСѓС‡РёС‚, РїРѕРєР° РЅРµ РІСЃРїРѕРјРёРЅР°РµС€СЊ, С‡С‚Рѕ СЂР°СЃРїРёСЃР°РЅРёРµ РѕР±С‹С‡РЅРѕ РїСѓРЅРєС‚СѓР°Р»СЊРЅРѕРµ.' },
+    { title: 'Р¤РёРЅР°Р»СЊРЅС‹Р№ РѕРґРёРЅРѕС‡РЅС‹Р№ РЅРѕРјРµСЂ.', text: 'РџСѓР±Р»РёРєР° Р»СЋР±РёС‚ С‚Р°РєРёРµ РјРѕРјРµРЅС‚С‹. РРіСЂРѕРєРё РѕР±С‹С‡РЅРѕ Р»СЋР±СЏС‚ РёС… СѓР¶Рµ РїРѕСЃР»Рµ РїРѕР±РµРґС‹.' },
+    { title: 'РћСЃС‚Р°Р»СЃСЏ РѕРґРёРЅ РґРѕР±СЂРѕРІРѕР»РµС†.', text: 'РўРµРїРµСЂСЊ РєР°Р¶РґРѕРµ СЂРµС€РµРЅРёРµ Р·РІСѓС‡РёС‚ РіСЂРѕРјС‡Рµ, РїРѕС‚РѕРјСѓ С‡С‚Рѕ РѕР±РІРёРЅРёС‚СЊ Р±РѕР»СЊС€Рµ РЅРµРєРѕРіРѕ.' },
   ];
   if (key.includes('respawn_wait') || key.includes('downed')) return [
-    { title: 'Герой временно изучает пол.', text: 'Пол, кстати, выполнен качественно. Жаль, обзор слишком близкий и по неприятной причине.' },
-    { title: 'Пауза на горизонтальное мышление.', text: 'Иногда стратегия требует лечь. Иногда стратегия просто не успела увернуться.' },
-    { title: 'Игрок ушёл в режим ожидания.', text: 'Сейчас главное не паниковать. Паниковать можно будет красиво после респавна.' },
-    { title: 'Небольшая техническая смерть.', text: 'Не финал, а рекламная пауза для самолюбия и проверка терпения команды.' },
-    { title: 'Герой прилёг не по плану.', text: 'Но с таким выражением, будто это часть сложной тактики, которую никто не просил.' },
-    { title: 'Нокдаун в прямом эфире.', text: 'Герой временно изучает пол и пересматривает отношения с входящим уроном.' },
-    { title: 'Вертикальность отменена.', text: 'Ненадолго, но достаточно, чтобы комментатор успел сделать неприятно точный вывод.' },
-    { title: 'Игрок прилёг без романтики.', text: 'Респавн скоро, а пока можно насладиться образовательной паузой.' },
-    { title: 'На арене минус один стоящий аргумент.', text: 'Лежачий аргумент тоже аргумент, просто менее мобильный.' },
-    { title: 'Нокдаун засчитан.', text: 'Очень честная обратная связь от игры: “так делать было больно”.' },
-    { title: 'Герой временно в режиме ковра.', text: 'Не самый гордый режим, зато даёт пару секунд подумать о выборе маршрута.' },
+    { title: 'Р“РµСЂРѕР№ РІСЂРµРјРµРЅРЅРѕ РёР·СѓС‡Р°РµС‚ РїРѕР».', text: 'РџРѕР», РєСЃС‚Р°С‚Рё, РІС‹РїРѕР»РЅРµРЅ РєР°С‡РµСЃС‚РІРµРЅРЅРѕ. Р–Р°Р»СЊ, РѕР±Р·РѕСЂ СЃР»РёС€РєРѕРј Р±Р»РёР·РєРёР№ Рё РїРѕ РЅРµРїСЂРёСЏС‚РЅРѕР№ РїСЂРёС‡РёРЅРµ.' },
+    { title: 'РџР°СѓР·Р° РЅР° РіРѕСЂРёР·РѕРЅС‚Р°Р»СЊРЅРѕРµ РјС‹С€Р»РµРЅРёРµ.', text: 'РРЅРѕРіРґР° СЃС‚СЂР°С‚РµРіРёСЏ С‚СЂРµР±СѓРµС‚ Р»РµС‡СЊ. РРЅРѕРіРґР° СЃС‚СЂР°С‚РµРіРёСЏ РїСЂРѕСЃС‚Рѕ РЅРµ СѓСЃРїРµР»Р° СѓРІРµСЂРЅСѓС‚СЊСЃСЏ.' },
+    { title: 'РРіСЂРѕРє СѓС€С‘Р» РІ СЂРµР¶РёРј РѕР¶РёРґР°РЅРёСЏ.', text: 'РЎРµР№С‡Р°СЃ РіР»Р°РІРЅРѕРµ РЅРµ РїР°РЅРёРєРѕРІР°С‚СЊ. РџР°РЅРёРєРѕРІР°С‚СЊ РјРѕР¶РЅРѕ Р±СѓРґРµС‚ РєСЂР°СЃРёРІРѕ РїРѕСЃР»Рµ СЂРµСЃРїР°РІРЅР°.' },
+    { title: 'РќРµР±РѕР»СЊС€Р°СЏ С‚РµС…РЅРёС‡РµСЃРєР°СЏ СЃРјРµСЂС‚СЊ.', text: 'РќРµ С„РёРЅР°Р», Р° СЂРµРєР»Р°РјРЅР°СЏ РїР°СѓР·Р° РґР»СЏ СЃР°РјРѕР»СЋР±РёСЏ Рё РїСЂРѕРІРµСЂРєР° С‚РµСЂРїРµРЅРёСЏ РєРѕРјР°РЅРґС‹.' },
+    { title: 'Р“РµСЂРѕР№ РїСЂРёР»С‘Рі РЅРµ РїРѕ РїР»Р°РЅСѓ.', text: 'РќРѕ СЃ С‚Р°РєРёРј РІС‹СЂР°Р¶РµРЅРёРµРј, Р±СѓРґС‚Рѕ СЌС‚Рѕ С‡Р°СЃС‚СЊ СЃР»РѕР¶РЅРѕР№ С‚Р°РєС‚РёРєРё, РєРѕС‚РѕСЂСѓСЋ РЅРёРєС‚Рѕ РЅРµ РїСЂРѕСЃРёР».' },
+    { title: 'РќРѕРєРґР°СѓРЅ РІ РїСЂСЏРјРѕРј СЌС„РёСЂРµ.', text: 'Р“РµСЂРѕР№ РІСЂРµРјРµРЅРЅРѕ РёР·СѓС‡Р°РµС‚ РїРѕР» Рё РїРµСЂРµСЃРјР°С‚СЂРёРІР°РµС‚ РѕС‚РЅРѕС€РµРЅРёСЏ СЃ РІС…РѕРґСЏС‰РёРј СѓСЂРѕРЅРѕРј.' },
+    { title: 'Р’РµСЂС‚РёРєР°Р»СЊРЅРѕСЃС‚СЊ РѕС‚РјРµРЅРµРЅР°.', text: 'РќРµРЅР°РґРѕР»РіРѕ, РЅРѕ РґРѕСЃС‚Р°С‚РѕС‡РЅРѕ, С‡С‚РѕР±С‹ РєРѕРјРјРµРЅС‚Р°С‚РѕСЂ СѓСЃРїРµР» СЃРґРµР»Р°С‚СЊ РЅРµРїСЂРёСЏС‚РЅРѕ С‚РѕС‡РЅС‹Р№ РІС‹РІРѕРґ.' },
+    { title: 'РРіСЂРѕРє РїСЂРёР»С‘Рі Р±РµР· СЂРѕРјР°РЅС‚РёРєРё.', text: 'Р РµСЃРїР°РІРЅ СЃРєРѕСЂРѕ, Р° РїРѕРєР° РјРѕР¶РЅРѕ РЅР°СЃР»Р°РґРёС‚СЊСЃСЏ РѕР±СЂР°Р·РѕРІР°С‚РµР»СЊРЅРѕР№ РїР°СѓР·РѕР№.' },
+    { title: 'РќР° Р°СЂРµРЅРµ РјРёРЅСѓСЃ РѕРґРёРЅ СЃС‚РѕСЏС‰РёР№ Р°СЂРіСѓРјРµРЅС‚.', text: 'Р›РµР¶Р°С‡РёР№ Р°СЂРіСѓРјРµРЅС‚ С‚РѕР¶Рµ Р°СЂРіСѓРјРµРЅС‚, РїСЂРѕСЃС‚Рѕ РјРµРЅРµРµ РјРѕР±РёР»СЊРЅС‹Р№.' },
+    { title: 'РќРѕРєРґР°СѓРЅ Р·Р°СЃС‡РёС‚Р°РЅ.', text: 'РћС‡РµРЅСЊ С‡РµСЃС‚РЅР°СЏ РѕР±СЂР°С‚РЅР°СЏ СЃРІСЏР·СЊ РѕС‚ РёРіСЂС‹: вЂњС‚Р°Рє РґРµР»Р°С‚СЊ Р±С‹Р»Рѕ Р±РѕР»СЊРЅРѕвЂќ.' },
+    { title: 'Р“РµСЂРѕР№ РІСЂРµРјРµРЅРЅРѕ РІ СЂРµР¶РёРјРµ РєРѕРІСЂР°.', text: 'РќРµ СЃР°РјС‹Р№ РіРѕСЂРґС‹Р№ СЂРµР¶РёРј, Р·Р°С‚Рѕ РґР°С‘С‚ РїР°СЂСѓ СЃРµРєСѓРЅРґ РїРѕРґСѓРјР°С‚СЊ Рѕ РІС‹Р±РѕСЂРµ РјР°СЂС€СЂСѓС‚Р°.' },
   ];
   if (key.includes('final_death') || key.includes('player_final_death') || key.includes('death')) return [
-    { title: 'Герой закончил забег с драматичным шлепком.', text: 'Арена благодарит за участие, нервы, патроны и уверенность, которая держалась дольше HP.' },
-    { title: 'Финальная смерть пришла без стука.', text: 'Очень грубо, очень эффектно и совершенно не по расписанию героя.' },
-    { title: 'Игрок выбыл, но оставил легенду.', text: 'Легенда короткая: “я почти вывез”. В этой игре это уже литературный жанр.' },
-    { title: 'Забег для героя закончился.', text: 'Комментатор снимает шляпу, потом надевает обратно, потому что вокруг всё ещё летают проблемы.' },
-    { title: 'Герой пал, арена сделала вид, что ей не грустно.', text: 'Мы ей не верим. Но и спорить с ареной сейчас как-то не хочется.' },
-    { title: 'Последний HP ушёл в закат.', text: 'Красиво, трагично и с лёгким ароматом “надо было брать другой навык”.' },
-    { title: 'Финальный экран почти слышно.', text: 'Он тихо говорит: “Ну что, ещё разок?”. И это, конечно, ловушка.' },
-    { title: 'Герой отправился в зал славы ошибок.', text: 'Там уютно, многолюдно и все начинают рассказ со слов “да я просто не заметил”.' },
-    { title: 'Забег подписал заявление на финал.', text: 'Герой держался достойно, но арена сегодня была бухгалтером: всё посчитала и списала.' },
-    { title: 'Финальная точка поставлена.', text: 'Публика выдохнула, монстры довольны, комментатор делает вид, что не привязался.' },
-    { title: 'Герой вышел из чата жизни.', text: 'Красиво боролся, шумно падал, оставил после себя опыт и лёгкую неловкость.' },
-    { title: 'Арена забрала своё.', text: 'Сурово, без лишней лирики и с отвратительно хорошим таймингом.' },
-    { title: 'Это был последний аргумент героя.', text: 'Дальше говорят только статистика, экран смерти и тихое “ну ещё один забег”.' },
-    { title: 'Финальный поклон состоялся.', text: 'Не совсем добровольный, зато очень убедительный с точки зрения физики.' },
-    { title: 'Герой закончил смену.', text: 'Рабочий день был насыщенный: бег, стрельба, паника и внезапный отпуск в меню.' },
-    { title: 'Забег завершён с характером.', text: 'Не победа, но и не скучно. А это, будем честны, уже половина шоу.' },
+    { title: 'Р“РµСЂРѕР№ Р·Р°РєРѕРЅС‡РёР» Р·Р°Р±РµРі СЃ РґСЂР°РјР°С‚РёС‡РЅС‹Рј С€Р»РµРїРєРѕРј.', text: 'РђСЂРµРЅР° Р±Р»Р°РіРѕРґР°СЂРёС‚ Р·Р° СѓС‡Р°СЃС‚РёРµ, РЅРµСЂРІС‹, РїР°С‚СЂРѕРЅС‹ Рё СѓРІРµСЂРµРЅРЅРѕСЃС‚СЊ, РєРѕС‚РѕСЂР°СЏ РґРµСЂР¶Р°Р»Р°СЃСЊ РґРѕР»СЊС€Рµ HP.' },
+    { title: 'Р¤РёРЅР°Р»СЊРЅР°СЏ СЃРјРµСЂС‚СЊ РїСЂРёС€Р»Р° Р±РµР· СЃС‚СѓРєР°.', text: 'РћС‡РµРЅСЊ РіСЂСѓР±Рѕ, РѕС‡РµРЅСЊ СЌС„С„РµРєС‚РЅРѕ Рё СЃРѕРІРµСЂС€РµРЅРЅРѕ РЅРµ РїРѕ СЂР°СЃРїРёСЃР°РЅРёСЋ РіРµСЂРѕСЏ.' },
+    { title: 'РРіСЂРѕРє РІС‹Р±С‹Р», РЅРѕ РѕСЃС‚Р°РІРёР» Р»РµРіРµРЅРґСѓ.', text: 'Р›РµРіРµРЅРґР° РєРѕСЂРѕС‚РєР°СЏ: вЂњСЏ РїРѕС‡С‚Рё РІС‹РІРµР·вЂќ. Р’ СЌС‚РѕР№ РёРіСЂРµ СЌС‚Рѕ СѓР¶Рµ Р»РёС‚РµСЂР°С‚СѓСЂРЅС‹Р№ Р¶Р°РЅСЂ.' },
+    { title: 'Р—Р°Р±РµРі РґР»СЏ РіРµСЂРѕСЏ Р·Р°РєРѕРЅС‡РёР»СЃСЏ.', text: 'РљРѕРјРјРµРЅС‚Р°С‚РѕСЂ СЃРЅРёРјР°РµС‚ С€Р»СЏРїСѓ, РїРѕС‚РѕРј РЅР°РґРµРІР°РµС‚ РѕР±СЂР°С‚РЅРѕ, РїРѕС‚РѕРјСѓ С‡С‚Рѕ РІРѕРєСЂСѓРі РІСЃС‘ РµС‰С‘ Р»РµС‚Р°СЋС‚ РїСЂРѕР±Р»РµРјС‹.' },
+    { title: 'Р“РµСЂРѕР№ РїР°Р», Р°СЂРµРЅР° СЃРґРµР»Р°Р»Р° РІРёРґ, С‡С‚Рѕ РµР№ РЅРµ РіСЂСѓСЃС‚РЅРѕ.', text: 'РњС‹ РµР№ РЅРµ РІРµСЂРёРј. РќРѕ Рё СЃРїРѕСЂРёС‚СЊ СЃ Р°СЂРµРЅРѕР№ СЃРµР№С‡Р°СЃ РєР°Рє-С‚Рѕ РЅРµ С…РѕС‡РµС‚СЃСЏ.' },
+    { title: 'РџРѕСЃР»РµРґРЅРёР№ HP СѓС€С‘Р» РІ Р·Р°РєР°С‚.', text: 'РљСЂР°СЃРёРІРѕ, С‚СЂР°РіРёС‡РЅРѕ Рё СЃ Р»С‘РіРєРёРј Р°СЂРѕРјР°С‚РѕРј вЂњРЅР°РґРѕ Р±С‹Р»Рѕ Р±СЂР°С‚СЊ РґСЂСѓРіРѕР№ РЅР°РІС‹РєвЂќ.' },
+    { title: 'Р¤РёРЅР°Р»СЊРЅС‹Р№ СЌРєСЂР°РЅ РїРѕС‡С‚Рё СЃР»С‹С€РЅРѕ.', text: 'РћРЅ С‚РёС…Рѕ РіРѕРІРѕСЂРёС‚: вЂњРќСѓ С‡С‚Рѕ, РµС‰С‘ СЂР°Р·РѕРє?вЂќ. Р СЌС‚Рѕ, РєРѕРЅРµС‡РЅРѕ, Р»РѕРІСѓС€РєР°.' },
+    { title: 'Р“РµСЂРѕР№ РѕС‚РїСЂР°РІРёР»СЃСЏ РІ Р·Р°Р» СЃР»Р°РІС‹ РѕС€РёР±РѕРє.', text: 'РўР°Рј СѓСЋС‚РЅРѕ, РјРЅРѕРіРѕР»СЋРґРЅРѕ Рё РІСЃРµ РЅР°С‡РёРЅР°СЋС‚ СЂР°СЃСЃРєР°Р· СЃРѕ СЃР»РѕРІ вЂњРґР° СЏ РїСЂРѕСЃС‚Рѕ РЅРµ Р·Р°РјРµС‚РёР»вЂќ.' },
+    { title: 'Р—Р°Р±РµРі РїРѕРґРїРёСЃР°Р» Р·Р°СЏРІР»РµРЅРёРµ РЅР° С„РёРЅР°Р».', text: 'Р“РµСЂРѕР№ РґРµСЂР¶Р°Р»СЃСЏ РґРѕСЃС‚РѕР№РЅРѕ, РЅРѕ Р°СЂРµРЅР° СЃРµРіРѕРґРЅСЏ Р±С‹Р»Р° Р±СѓС…РіР°Р»С‚РµСЂРѕРј: РІСЃС‘ РїРѕСЃС‡РёС‚Р°Р»Р° Рё СЃРїРёСЃР°Р»Р°.' },
+    { title: 'Р¤РёРЅР°Р»СЊРЅР°СЏ С‚РѕС‡РєР° РїРѕСЃС‚Р°РІР»РµРЅР°.', text: 'РџСѓР±Р»РёРєР° РІС‹РґРѕС…РЅСѓР»Р°, РјРѕРЅСЃС‚СЂС‹ РґРѕРІРѕР»СЊРЅС‹, РєРѕРјРјРµРЅС‚Р°С‚РѕСЂ РґРµР»Р°РµС‚ РІРёРґ, С‡С‚Рѕ РЅРµ РїСЂРёРІСЏР·Р°Р»СЃСЏ.' },
+    { title: 'Р“РµСЂРѕР№ РІС‹С€РµР» РёР· С‡Р°С‚Р° Р¶РёР·РЅРё.', text: 'РљСЂР°СЃРёРІРѕ Р±РѕСЂРѕР»СЃСЏ, С€СѓРјРЅРѕ РїР°РґР°Р», РѕСЃС‚Р°РІРёР» РїРѕСЃР»Рµ СЃРµР±СЏ РѕРїС‹С‚ Рё Р»С‘РіРєСѓСЋ РЅРµР»РѕРІРєРѕСЃС‚СЊ.' },
+    { title: 'РђСЂРµРЅР° Р·Р°Р±СЂР°Р»Р° СЃРІРѕС‘.', text: 'РЎСѓСЂРѕРІРѕ, Р±РµР· Р»РёС€РЅРµР№ Р»РёСЂРёРєРё Рё СЃ РѕС‚РІСЂР°С‚РёС‚РµР»СЊРЅРѕ С…РѕСЂРѕС€РёРј С‚Р°Р№РјРёРЅРіРѕРј.' },
+    { title: 'Р­С‚Рѕ Р±С‹Р» РїРѕСЃР»РµРґРЅРёР№ Р°СЂРіСѓРјРµРЅС‚ РіРµСЂРѕСЏ.', text: 'Р”Р°Р»СЊС€Рµ РіРѕРІРѕСЂСЏС‚ С‚РѕР»СЊРєРѕ СЃС‚Р°С‚РёСЃС‚РёРєР°, СЌРєСЂР°РЅ СЃРјРµСЂС‚Рё Рё С‚РёС…РѕРµ вЂњРЅСѓ РµС‰С‘ РѕРґРёРЅ Р·Р°Р±РµРівЂќ.' },
+    { title: 'Р¤РёРЅР°Р»СЊРЅС‹Р№ РїРѕРєР»РѕРЅ СЃРѕСЃС‚РѕСЏР»СЃСЏ.', text: 'РќРµ СЃРѕРІСЃРµРј РґРѕР±СЂРѕРІРѕР»СЊРЅС‹Р№, Р·Р°С‚Рѕ РѕС‡РµРЅСЊ СѓР±РµРґРёС‚РµР»СЊРЅС‹Р№ СЃ С‚РѕС‡РєРё Р·СЂРµРЅРёСЏ С„РёР·РёРєРё.' },
+    { title: 'Р“РµСЂРѕР№ Р·Р°РєРѕРЅС‡РёР» СЃРјРµРЅСѓ.', text: 'Р Р°Р±РѕС‡РёР№ РґРµРЅСЊ Р±С‹Р» РЅР°СЃС‹С‰РµРЅРЅС‹Р№: Р±РµРі, СЃС‚СЂРµР»СЊР±Р°, РїР°РЅРёРєР° Рё РІРЅРµР·Р°РїРЅС‹Р№ РѕС‚РїСѓСЃРє РІ РјРµРЅСЋ.' },
+    { title: 'Р—Р°Р±РµРі Р·Р°РІРµСЂС€С‘РЅ СЃ С…Р°СЂР°РєС‚РµСЂРѕРј.', text: 'РќРµ РїРѕР±РµРґР°, РЅРѕ Рё РЅРµ СЃРєСѓС‡РЅРѕ. Рђ СЌС‚Рѕ, Р±СѓРґРµРј С‡РµСЃС‚РЅС‹, СѓР¶Рµ РїРѕР»РѕРІРёРЅР° С€РѕСѓ.' },
   ];
   return [];
 }
@@ -1336,102 +1365,102 @@ function maybeCommentateSystemMessage(message) {
   if (!text) return;
   const pickedWeaponMatchNew = text.match(/\bPicked\s+(.+?)(?:[.!]|$)/i);
   if (pickedWeaponMatchNew) {
-    const weaponLabel = String(pickedWeaponMatchNew[1] || 'оружие').trim();
+    const weaponLabel = String(pickedWeaponMatchNew[1] || 'РѕСЂСѓР¶РёРµ').trim();
     setCommentaryVariant([
-      { title: `Найдено: ${weaponLabel}.`, text: 'Лут найден, здравый смысл временно отложен. Самое время проверить, насколько эта железка дружит с точностью.' },
-      { title: `${weaponLabel} у героя в руках.`, text: 'Отлично. Теперь можно ошибаться быстрее, громче и значительно дороже для местной фауны.' },
-      { title: `${weaponLabel} пошёл в работу.`, text: 'Арена только что выдала новый аргумент в споре с фауной. У аргумента подозрительно хороший урон и плохой характер.' },
-      { title: `Свежий ствол: ${weaponLabel}.`, text: 'Люблю этот звук. Это звук надежды, которая ещё не знает, как быстро её сейчас проверят на прочность.' },
-      { title: `${weaponLabel} найден и немедленно усыновлён.`, text: 'Герой снова доказал, что может привязаться к оружию быстрее, чем к здравому смыслу.' },
-      { title: `${weaponLabel} вступает в эфир.`, text: 'Публика ждёт тест-драйв, монстры ждут худшего, а комментатор уже морально готовит сарказм на последствия.' },
+      { title: `РќР°Р№РґРµРЅРѕ: ${weaponLabel}.`, text: 'Р›СѓС‚ РЅР°Р№РґРµРЅ, Р·РґСЂР°РІС‹Р№ СЃРјС‹СЃР» РІСЂРµРјРµРЅРЅРѕ РѕС‚Р»РѕР¶РµРЅ. РЎР°РјРѕРµ РІСЂРµРјСЏ РїСЂРѕРІРµСЂРёС‚СЊ, РЅР°СЃРєРѕР»СЊРєРѕ СЌС‚Р° Р¶РµР»РµР·РєР° РґСЂСѓР¶РёС‚ СЃ С‚РѕС‡РЅРѕСЃС‚СЊСЋ.' },
+      { title: `${weaponLabel} Сѓ РіРµСЂРѕСЏ РІ СЂСѓРєР°С….`, text: 'РћС‚Р»РёС‡РЅРѕ. РўРµРїРµСЂСЊ РјРѕР¶РЅРѕ РѕС€РёР±Р°С‚СЊСЃСЏ Р±С‹СЃС‚СЂРµРµ, РіСЂРѕРјС‡Рµ Рё Р·РЅР°С‡РёС‚РµР»СЊРЅРѕ РґРѕСЂРѕР¶Рµ РґР»СЏ РјРµСЃС‚РЅРѕР№ С„Р°СѓРЅС‹.' },
+      { title: `${weaponLabel} РїРѕС€С‘Р» РІ СЂР°Р±РѕС‚Сѓ.`, text: 'РђСЂРµРЅР° С‚РѕР»СЊРєРѕ С‡С‚Рѕ РІС‹РґР°Р»Р° РЅРѕРІС‹Р№ Р°СЂРіСѓРјРµРЅС‚ РІ СЃРїРѕСЂРµ СЃ С„Р°СѓРЅРѕР№. РЈ Р°СЂРіСѓРјРµРЅС‚Р° РїРѕРґРѕР·СЂРёС‚РµР»СЊРЅРѕ С…РѕСЂРѕС€РёР№ СѓСЂРѕРЅ Рё РїР»РѕС…РѕР№ С…Р°СЂР°РєС‚РµСЂ.' },
+      { title: `РЎРІРµР¶РёР№ СЃС‚РІРѕР»: ${weaponLabel}.`, text: 'Р›СЋР±Р»СЋ СЌС‚РѕС‚ Р·РІСѓРє. Р­С‚Рѕ Р·РІСѓРє РЅР°РґРµР¶РґС‹, РєРѕС‚РѕСЂР°СЏ РµС‰С‘ РЅРµ Р·РЅР°РµС‚, РєР°Рє Р±С‹СЃС‚СЂРѕ РµС‘ СЃРµР№С‡Р°СЃ РїСЂРѕРІРµСЂСЏС‚ РЅР° РїСЂРѕС‡РЅРѕСЃС‚СЊ.' },
+      { title: `${weaponLabel} РЅР°Р№РґРµРЅ Рё РЅРµРјРµРґР»РµРЅРЅРѕ СѓСЃС‹РЅРѕРІР»С‘РЅ.`, text: 'Р“РµСЂРѕР№ СЃРЅРѕРІР° РґРѕРєР°Р·Р°Р», С‡С‚Рѕ РјРѕР¶РµС‚ РїСЂРёРІСЏР·Р°С‚СЊСЃСЏ Рє РѕСЂСѓР¶РёСЋ Р±С‹СЃС‚СЂРµРµ, С‡РµРј Рє Р·РґСЂР°РІРѕРјСѓ СЃРјС‹СЃР»Сѓ.' },
+      { title: `${weaponLabel} РІСЃС‚СѓРїР°РµС‚ РІ СЌС„РёСЂ.`, text: 'РџСѓР±Р»РёРєР° Р¶РґС‘С‚ С‚РµСЃС‚-РґСЂР°Р№РІ, РјРѕРЅСЃС‚СЂС‹ Р¶РґСѓС‚ С…СѓРґС€РµРіРѕ, Р° РєРѕРјРјРµРЅС‚Р°С‚РѕСЂ СѓР¶Рµ РјРѕСЂР°Р»СЊРЅРѕ РіРѕС‚РѕРІРёС‚ СЃР°СЂРєР°Р·Рј РЅР° РїРѕСЃР»РµРґСЃС‚РІРёСЏ.' },
     ], `weapon_pick_${weaponLabel.toLowerCase()}`, 3500);
     return;
   }
   if (/activated XP Surge/i.test(text)) {
     setCommentaryVariant([
-      { title: 'XP полетела сама.', text: 'Лень официально признана тактикой: кристаллы сами бегут к герою, как неоплаченные долги.' },
-      { title: 'XP Surge активирован.', text: 'Очень удобно. Даже опыт устал ждать и решил сам прийти в руки.' },
-      { title: 'Опыт сам пошёл навстречу.', text: 'Красота. Даже прокачка поняла, что герой слишком занят выживанием, чтобы бегать за ней ногами.' },
-      { title: 'Ленивый фарм включён официально.', text: 'Кристаллы стягиваются сами. Это не магия, это мечта человека, который устал собирать их вручную.' },
-      { title: 'XP Surge врубается без стыда.', text: 'Очень зрелое решение: пусть опыт сам приходит, пока герой делает вид, что полностью контролирует происходящее.' },
+      { title: 'XP РїРѕР»РµС‚РµР»Р° СЃР°РјР°.', text: 'Р›РµРЅСЊ РѕС„РёС†РёР°Р»СЊРЅРѕ РїСЂРёР·РЅР°РЅР° С‚Р°РєС‚РёРєРѕР№: РєСЂРёСЃС‚Р°Р»Р»С‹ СЃР°РјРё Р±РµРіСѓС‚ Рє РіРµСЂРѕСЋ, РєР°Рє РЅРµРѕРїР»Р°С‡РµРЅРЅС‹Рµ РґРѕР»РіРё.' },
+      { title: 'XP Surge Р°РєС‚РёРІРёСЂРѕРІР°РЅ.', text: 'РћС‡РµРЅСЊ СѓРґРѕР±РЅРѕ. Р”Р°Р¶Рµ РѕРїС‹С‚ СѓСЃС‚Р°Р» Р¶РґР°С‚СЊ Рё СЂРµС€РёР» СЃР°Рј РїСЂРёР№С‚Рё РІ СЂСѓРєРё.' },
+      { title: 'РћРїС‹С‚ СЃР°Рј РїРѕС€С‘Р» РЅР°РІСЃС‚СЂРµС‡Сѓ.', text: 'РљСЂР°СЃРѕС‚Р°. Р”Р°Р¶Рµ РїСЂРѕРєР°С‡РєР° РїРѕРЅСЏР»Р°, С‡С‚Рѕ РіРµСЂРѕР№ СЃР»РёС€РєРѕРј Р·Р°РЅСЏС‚ РІС‹Р¶РёРІР°РЅРёРµРј, С‡С‚РѕР±С‹ Р±РµРіР°С‚СЊ Р·Р° РЅРµР№ РЅРѕРіР°РјРё.' },
+      { title: 'Р›РµРЅРёРІС‹Р№ С„Р°СЂРј РІРєР»СЋС‡С‘РЅ РѕС„РёС†РёР°Р»СЊРЅРѕ.', text: 'РљСЂРёСЃС‚Р°Р»Р»С‹ СЃС‚СЏРіРёРІР°СЋС‚СЃСЏ СЃР°РјРё. Р­С‚Рѕ РЅРµ РјР°РіРёСЏ, СЌС‚Рѕ РјРµС‡С‚Р° С‡РµР»РѕРІРµРєР°, РєРѕС‚РѕСЂС‹Р№ СѓСЃС‚Р°Р» СЃРѕР±РёСЂР°С‚СЊ РёС… РІСЂСѓС‡РЅСѓСЋ.' },
+      { title: 'XP Surge РІСЂСѓР±Р°РµС‚СЃСЏ Р±РµР· СЃС‚С‹РґР°.', text: 'РћС‡РµРЅСЊ Р·СЂРµР»РѕРµ СЂРµС€РµРЅРёРµ: РїСѓСЃС‚СЊ РѕРїС‹С‚ СЃР°Рј РїСЂРёС…РѕРґРёС‚, РїРѕРєР° РіРµСЂРѕР№ РґРµР»Р°РµС‚ РІРёРґ, С‡С‚Рѕ РїРѕР»РЅРѕСЃС‚СЊСЋ РєРѕРЅС‚СЂРѕР»РёСЂСѓРµС‚ РїСЂРѕРёСЃС…РѕРґСЏС‰РµРµ.' },
     ], 'xp_surge', 4000);
     return;
   }
   if (/joined room/i.test(text)) {
     setCommentaryVariant([
-      { title: 'Свежая кровь на арене.', text: 'Ещё один игрок залетел в мясорубку. Теперь ошибаться можно немного коллективнее.' },
-      { title: 'В комнате прибавилось уверенности.', text: 'Новый боец в эфире. Арена уже готовит для него персональный набор неприятных сюрпризов.' },
-      { title: 'На арену зашёл ещё один оптимист.', text: 'Всегда приятно видеть человека, который пока ещё верит, что всё это закончится хорошо.' },
-      { title: 'Подкрепление прибыло красиво и без гарантий.', text: 'Команда расширяется. Количество хаоса растёт даже быстрее, чем потенциальная координация.' },
+      { title: 'РЎРІРµР¶Р°СЏ РєСЂРѕРІСЊ РЅР° Р°СЂРµРЅРµ.', text: 'Р•С‰С‘ РѕРґРёРЅ РёРіСЂРѕРє Р·Р°Р»РµС‚РµР» РІ РјСЏСЃРѕСЂСѓР±РєСѓ. РўРµРїРµСЂСЊ РѕС€РёР±Р°С‚СЊСЃСЏ РјРѕР¶РЅРѕ РЅРµРјРЅРѕРіРѕ РєРѕР»Р»РµРєС‚РёРІРЅРµРµ.' },
+      { title: 'Р’ РєРѕРјРЅР°С‚Рµ РїСЂРёР±Р°РІРёР»РѕСЃСЊ СѓРІРµСЂРµРЅРЅРѕСЃС‚Рё.', text: 'РќРѕРІС‹Р№ Р±РѕРµС† РІ СЌС„РёСЂРµ. РђСЂРµРЅР° СѓР¶Рµ РіРѕС‚РѕРІРёС‚ РґР»СЏ РЅРµРіРѕ РїРµСЂСЃРѕРЅР°Р»СЊРЅС‹Р№ РЅР°Р±РѕСЂ РЅРµРїСЂРёСЏС‚РЅС‹С… СЃСЋСЂРїСЂРёР·РѕРІ.' },
+      { title: 'РќР° Р°СЂРµРЅСѓ Р·Р°С€С‘Р» РµС‰С‘ РѕРґРёРЅ РѕРїС‚РёРјРёСЃС‚.', text: 'Р’СЃРµРіРґР° РїСЂРёСЏС‚РЅРѕ РІРёРґРµС‚СЊ С‡РµР»РѕРІРµРєР°, РєРѕС‚РѕСЂС‹Р№ РїРѕРєР° РµС‰С‘ РІРµСЂРёС‚, С‡С‚Рѕ РІСЃС‘ СЌС‚Рѕ Р·Р°РєРѕРЅС‡РёС‚СЃСЏ С…РѕСЂРѕС€Рѕ.' },
+      { title: 'РџРѕРґРєСЂРµРїР»РµРЅРёРµ РїСЂРёР±С‹Р»Рѕ РєСЂР°СЃРёРІРѕ Рё Р±РµР· РіР°СЂР°РЅС‚РёР№.', text: 'РљРѕРјР°РЅРґР° СЂР°СЃС€РёСЂСЏРµС‚СЃСЏ. РљРѕР»РёС‡РµСЃС‚РІРѕ С…Р°РѕСЃР° СЂР°СЃС‚С‘С‚ РґР°Р¶Рµ Р±С‹СЃС‚СЂРµРµ, С‡РµРј РїРѕС‚РµРЅС†РёР°Р»СЊРЅР°СЏ РєРѕРѕСЂРґРёРЅР°С†РёСЏ.' },
     ], 'join_room', 5000);
     return;
   }
   if (/left room/i.test(text)) {
     setCommentaryVariant([
-      { title: 'Кто-то решил жить подольше.', text: 'Игрок вышел из комнаты. Осуждать не будем. Слегка усмехнёмся и продолжим.' },
-      { title: 'Один билет в здравый смысл использован.', text: 'Кто-то покинул эфир раньше, чем арена успела объяснить ему свою позицию до конца.' },
-      { title: 'Состав слегка поредел по доброй воле.', text: 'Редкий жанр на этой арене: человек ушёл сам, а не в виде драматической горизонтали.' },
+      { title: 'РљС‚Рѕ-С‚Рѕ СЂРµС€РёР» Р¶РёС‚СЊ РїРѕРґРѕР»СЊС€Рµ.', text: 'РРіСЂРѕРє РІС‹С€РµР» РёР· РєРѕРјРЅР°С‚С‹. РћСЃСѓР¶РґР°С‚СЊ РЅРµ Р±СѓРґРµРј. РЎР»РµРіРєР° СѓСЃРјРµС…РЅС‘РјСЃСЏ Рё РїСЂРѕРґРѕР»Р¶РёРј.' },
+      { title: 'РћРґРёРЅ Р±РёР»РµС‚ РІ Р·РґСЂР°РІС‹Р№ СЃРјС‹СЃР» РёСЃРїРѕР»СЊР·РѕРІР°РЅ.', text: 'РљС‚Рѕ-С‚Рѕ РїРѕРєРёРЅСѓР» СЌС„РёСЂ СЂР°РЅСЊС€Рµ, С‡РµРј Р°СЂРµРЅР° СѓСЃРїРµР»Р° РѕР±СЉСЏСЃРЅРёС‚СЊ РµРјСѓ СЃРІРѕСЋ РїРѕР·РёС†РёСЋ РґРѕ РєРѕРЅС†Р°.' },
+      { title: 'РЎРѕСЃС‚Р°РІ СЃР»РµРіРєР° РїРѕСЂРµРґРµР» РїРѕ РґРѕР±СЂРѕР№ РІРѕР»Рµ.', text: 'Р РµРґРєРёР№ Р¶Р°РЅСЂ РЅР° СЌС‚РѕР№ Р°СЂРµРЅРµ: С‡РµР»РѕРІРµРє СѓС€С‘Р» СЃР°Рј, Р° РЅРµ РІ РІРёРґРµ РґСЂР°РјР°С‚РёС‡РµСЃРєРѕР№ РіРѕСЂРёР·РѕРЅС‚Р°Р»Рё.' },
     ], 'leave_room', 5000);
     return;
   }
   if (/boss is approaching|portal opened/i.test(text)) {
     setCommentaryVariant([
-      { title: 'Портал на босса уже открыт.', text: 'Поздравляю, игра официально перестала шутить и начала готовить проблемы покрупнее.' },
-      { title: 'Открылась дверь в отдел крупных неприятностей.', text: 'С этого момента фарм уже считается не подготовкой, а нервным тиком перед начальством.' },
-      { title: 'Портал босса активен.', text: 'Арена как бы намекает: разминка закончилась, теперь пойдут вопросы без вариантов ответа.' },
+      { title: 'РџРѕСЂС‚Р°Р» РЅР° Р±РѕСЃСЃР° СѓР¶Рµ РѕС‚РєСЂС‹С‚.', text: 'РџРѕР·РґСЂР°РІР»СЏСЋ, РёРіСЂР° РѕС„РёС†РёР°Р»СЊРЅРѕ РїРµСЂРµСЃС‚Р°Р»Р° С€СѓС‚РёС‚СЊ Рё РЅР°С‡Р°Р»Р° РіРѕС‚РѕРІРёС‚СЊ РїСЂРѕР±Р»РµРјС‹ РїРѕРєСЂСѓРїРЅРµРµ.' },
+      { title: 'РћС‚РєСЂС‹Р»Р°СЃСЊ РґРІРµСЂСЊ РІ РѕС‚РґРµР» РєСЂСѓРїРЅС‹С… РЅРµРїСЂРёСЏС‚РЅРѕСЃС‚РµР№.', text: 'РЎ СЌС‚РѕРіРѕ РјРѕРјРµРЅС‚Р° С„Р°СЂРј СѓР¶Рµ СЃС‡РёС‚Р°РµС‚СЃСЏ РЅРµ РїРѕРґРіРѕС‚РѕРІРєРѕР№, Р° РЅРµСЂРІРЅС‹Рј С‚РёРєРѕРј РїРµСЂРµРґ РЅР°С‡Р°Р»СЊСЃС‚РІРѕРј.' },
+      { title: 'РџРѕСЂС‚Р°Р» Р±РѕСЃСЃР° Р°РєС‚РёРІРµРЅ.', text: 'РђСЂРµРЅР° РєР°Рє Р±С‹ РЅР°РјРµРєР°РµС‚: СЂР°Р·РјРёРЅРєР° Р·Р°РєРѕРЅС‡РёР»Р°СЃСЊ, С‚РµРїРµСЂСЊ РїРѕР№РґСѓС‚ РІРѕРїСЂРѕСЃС‹ Р±РµР· РІР°СЂРёР°РЅС‚РѕРІ РѕС‚РІРµС‚Р°.' },
     ], 'boss_portal_system', 9000);
     return;
   }
   if (/BOSS arrived/i.test(text)) {
     setCommentaryVariant([
-      { title: 'Босс прибыл лично.', text: 'Вот и начальство. Сейчас начнутся те самые движения, за которые потом стыдно, но красиво.' },
-      { title: 'В эфир зашёл самый неприятный гость вечера.', text: 'Босс на карте. Сейчас быстро выясним, кто тут герой, а кто просто талантливо убегал кругами.' },
-      { title: 'Главная проблема матча прибыла без опозданий.', text: 'Очень деловой визит: минимум слов, максимум давления и полное неуважение к личным границам игроков.' },
+      { title: 'Р‘РѕСЃСЃ РїСЂРёР±С‹Р» Р»РёС‡РЅРѕ.', text: 'Р’РѕС‚ Рё РЅР°С‡Р°Р»СЊСЃС‚РІРѕ. РЎРµР№С‡Р°СЃ РЅР°С‡РЅСѓС‚СЃСЏ С‚Рµ СЃР°РјС‹Рµ РґРІРёР¶РµРЅРёСЏ, Р·Р° РєРѕС‚РѕСЂС‹Рµ РїРѕС‚РѕРј СЃС‚С‹РґРЅРѕ, РЅРѕ РєСЂР°СЃРёРІРѕ.' },
+      { title: 'Р’ СЌС„РёСЂ Р·Р°С€С‘Р» СЃР°РјС‹Р№ РЅРµРїСЂРёСЏС‚РЅС‹Р№ РіРѕСЃС‚СЊ РІРµС‡РµСЂР°.', text: 'Р‘РѕСЃСЃ РЅР° РєР°СЂС‚Рµ. РЎРµР№С‡Р°СЃ Р±С‹СЃС‚СЂРѕ РІС‹СЏСЃРЅРёРј, РєС‚Рѕ С‚СѓС‚ РіРµСЂРѕР№, Р° РєС‚Рѕ РїСЂРѕСЃС‚Рѕ С‚Р°Р»Р°РЅС‚Р»РёРІРѕ СѓР±РµРіР°Р» РєСЂСѓРіР°РјРё.' },
+      { title: 'Р“Р»Р°РІРЅР°СЏ РїСЂРѕР±Р»РµРјР° РјР°С‚С‡Р° РїСЂРёР±С‹Р»Р° Р±РµР· РѕРїРѕР·РґР°РЅРёР№.', text: 'РћС‡РµРЅСЊ РґРµР»РѕРІРѕР№ РІРёР·РёС‚: РјРёРЅРёРјСѓРј СЃР»РѕРІ, РјР°РєСЃРёРјСѓРј РґР°РІР»РµРЅРёСЏ Рё РїРѕР»РЅРѕРµ РЅРµСѓРІР°Р¶РµРЅРёРµ Рє Р»РёС‡РЅС‹Рј РіСЂР°РЅРёС†Р°Рј РёРіСЂРѕРєРѕРІ.' },
     ], 'boss_arrived_system', 9000);
     return;
   }
   if (/was eliminated/i.test(text)) {
     setCommentaryVariant([
-      { title: 'Минус один, но не навсегда.', text: 'На арене случилось насильственное перераспределение инициативы. Кому-то пора ждать респавн.' },
-      { title: 'Фраг оформлен без лишней дипломатии.', text: 'Кто-то только что проиграл спор с уроном и теперь временно пересматривает жизненные решения.' },
-      { title: 'В PvP снова победила грубая убедительность.', text: 'Один игрок отправлен подумать о жизни. Желательно до следующего респавна.' },
+      { title: 'РњРёРЅСѓСЃ РѕРґРёРЅ, РЅРѕ РЅРµ РЅР°РІСЃРµРіРґР°.', text: 'РќР° Р°СЂРµРЅРµ СЃР»СѓС‡РёР»РѕСЃСЊ РЅР°СЃРёР»СЊСЃС‚РІРµРЅРЅРѕРµ РїРµСЂРµСЂР°СЃРїСЂРµРґРµР»РµРЅРёРµ РёРЅРёС†РёР°С‚РёРІС‹. РљРѕРјСѓ-С‚Рѕ РїРѕСЂР° Р¶РґР°С‚СЊ СЂРµСЃРїР°РІРЅ.' },
+      { title: 'Р¤СЂР°Рі РѕС„РѕСЂРјР»РµРЅ Р±РµР· Р»РёС€РЅРµР№ РґРёРїР»РѕРјР°С‚РёРё.', text: 'РљС‚Рѕ-С‚Рѕ С‚РѕР»СЊРєРѕ С‡С‚Рѕ РїСЂРѕРёРіСЂР°Р» СЃРїРѕСЂ СЃ СѓСЂРѕРЅРѕРј Рё С‚РµРїРµСЂСЊ РІСЂРµРјРµРЅРЅРѕ РїРµСЂРµСЃРјР°С‚СЂРёРІР°РµС‚ Р¶РёР·РЅРµРЅРЅС‹Рµ СЂРµС€РµРЅРёСЏ.' },
+      { title: 'Р’ PvP СЃРЅРѕРІР° РїРѕР±РµРґРёР»Р° РіСЂСѓР±Р°СЏ СѓР±РµРґРёС‚РµР»СЊРЅРѕСЃС‚СЊ.', text: 'РћРґРёРЅ РёРіСЂРѕРє РѕС‚РїСЂР°РІР»РµРЅ РїРѕРґСѓРјР°С‚СЊ Рѕ Р¶РёР·РЅРё. Р–РµР»Р°С‚РµР»СЊРЅРѕ РґРѕ СЃР»РµРґСѓСЋС‰РµРіРѕ СЂРµСЃРїР°РІРЅР°.' },
     ], 'pvp_elimination', 5000);
     return;
   }
   const pickedWeaponMatch = text.match(/\bPicked\s+(.+?)(?:[.!]|$)/i);
   if (pickedWeaponMatch) {
-    const weaponLabel = String(pickedWeaponMatch[1] || 'оружие').trim();
+    const weaponLabel = String(pickedWeaponMatch[1] || 'РѕСЂСѓР¶РёРµ').trim();
     setCommentaryVariant([
-      { title: `Найдено: ${weaponLabel}.`, text: 'Лут найден, здравый смысл временно отложен. Самое время проверить, насколько эта железка дружит с точностью.' },
-      { title: `${weaponLabel} у героя в руках.`, text: 'Отлично. Теперь можно ошибаться быстрее, громче и значительно дороже для местной фауны.' },
+      { title: `РќР°Р№РґРµРЅРѕ: ${weaponLabel}.`, text: 'Р›СѓС‚ РЅР°Р№РґРµРЅ, Р·РґСЂР°РІС‹Р№ СЃРјС‹СЃР» РІСЂРµРјРµРЅРЅРѕ РѕС‚Р»РѕР¶РµРЅ. РЎР°РјРѕРµ РІСЂРµРјСЏ РїСЂРѕРІРµСЂРёС‚СЊ, РЅР°СЃРєРѕР»СЊРєРѕ СЌС‚Р° Р¶РµР»РµР·РєР° РґСЂСѓР¶РёС‚ СЃ С‚РѕС‡РЅРѕСЃС‚СЊСЋ.' },
+      { title: `${weaponLabel} Сѓ РіРµСЂРѕСЏ РІ СЂСѓРєР°С….`, text: 'РћС‚Р»РёС‡РЅРѕ. РўРµРїРµСЂСЊ РјРѕР¶РЅРѕ РѕС€РёР±Р°С‚СЊСЃСЏ Р±С‹СЃС‚СЂРµРµ, РіСЂРѕРјС‡Рµ Рё Р·РЅР°С‡РёС‚РµР»СЊРЅРѕ РґРѕСЂРѕР¶Рµ РґР»СЏ РјРµСЃС‚РЅРѕР№ С„Р°СѓРЅС‹.' },
     ], `weapon_pick_${weaponLabel.toLowerCase()}`, 3500);
     return;
   }
   if (/activated XP Surge/i.test(text)) {
     setCommentaryVariant([
-      { title: 'XP полетела сама.', text: 'Лень официально признана тактикой: кристаллы сами бегут к герою, как неоплаченные долги.' },
-      { title: 'XP Surge активирован.', text: 'Очень удобно. Даже опыт устал ждать и решил сам прийти в руки.' },
+      { title: 'XP РїРѕР»РµС‚РµР»Р° СЃР°РјР°.', text: 'Р›РµРЅСЊ РѕС„РёС†РёР°Р»СЊРЅРѕ РїСЂРёР·РЅР°РЅР° С‚Р°РєС‚РёРєРѕР№: РєСЂРёСЃС‚Р°Р»Р»С‹ СЃР°РјРё Р±РµРіСѓС‚ Рє РіРµСЂРѕСЋ, РєР°Рє РЅРµРѕРїР»Р°С‡РµРЅРЅС‹Рµ РґРѕР»РіРё.' },
+      { title: 'XP Surge Р°РєС‚РёРІРёСЂРѕРІР°РЅ.', text: 'РћС‡РµРЅСЊ СѓРґРѕР±РЅРѕ. Р”Р°Р¶Рµ РѕРїС‹С‚ СѓСЃС‚Р°Р» Р¶РґР°С‚СЊ Рё СЂРµС€РёР» СЃР°Рј РїСЂРёР№С‚Рё РІ СЂСѓРєРё.' },
     ], 'xp_surge', 4000);
     return;
   }
   if (/joined room/i.test(text)) {
-    setCommentatorLine('Свежая кровь на арене.', 'Ещё один игрок залетел в мясорубку. Теперь ошибаться можно немного коллективнее.', 'join_room', 5000);
+    setCommentatorLine('РЎРІРµР¶Р°СЏ РєСЂРѕРІСЊ РЅР° Р°СЂРµРЅРµ.', 'Р•С‰С‘ РѕРґРёРЅ РёРіСЂРѕРє Р·Р°Р»РµС‚РµР» РІ РјСЏСЃРѕСЂСѓР±РєСѓ. РўРµРїРµСЂСЊ РѕС€РёР±Р°С‚СЊСЃСЏ РјРѕР¶РЅРѕ РЅРµРјРЅРѕРіРѕ РєРѕР»Р»РµРєС‚РёРІРЅРµРµ.', 'join_room', 5000);
     return;
   }
   if (/left room/i.test(text)) {
-    setCommentatorLine('Кто-то решил жить подольше.', 'Игрок вышел из комнаты. Осуждать не будем. Слегка усмехнёмся и продолжим.', 'leave_room', 5000);
+    setCommentatorLine('РљС‚Рѕ-С‚Рѕ СЂРµС€РёР» Р¶РёС‚СЊ РїРѕРґРѕР»СЊС€Рµ.', 'РРіСЂРѕРє РІС‹С€РµР» РёР· РєРѕРјРЅР°С‚С‹. РћСЃСѓР¶РґР°С‚СЊ РЅРµ Р±СѓРґРµРј. РЎР»РµРіРєР° СѓСЃРјРµС…РЅС‘РјСЃСЏ Рё РїСЂРѕРґРѕР»Р¶РёРј.', 'leave_room', 5000);
     return;
   }
   if (/boss is approaching|portal opened/i.test(text)) {
-    setCommentatorLine('Портал на босса уже открыт.', 'Поздравляю, игра официально перестала шутить и начала готовить проблемы покрупнее.', 'boss_portal_system', 9000);
+    setCommentatorLine('РџРѕСЂС‚Р°Р» РЅР° Р±РѕСЃСЃР° СѓР¶Рµ РѕС‚РєСЂС‹С‚.', 'РџРѕР·РґСЂР°РІР»СЏСЋ, РёРіСЂР° РѕС„РёС†РёР°Р»СЊРЅРѕ РїРµСЂРµСЃС‚Р°Р»Р° С€СѓС‚РёС‚СЊ Рё РЅР°С‡Р°Р»Р° РіРѕС‚РѕРІРёС‚СЊ РїСЂРѕР±Р»РµРјС‹ РїРѕРєСЂСѓРїРЅРµРµ.', 'boss_portal_system', 9000);
     return;
   }
   if (/BOSS arrived/i.test(text)) {
-    setCommentatorLine('Босс прибыл лично.', 'Вот и начальство. Сейчас начнутся те самые движения, за которые потом стыдно, но красиво.', 'boss_arrived_system', 9000);
+    setCommentatorLine('Р‘РѕСЃСЃ РїСЂРёР±С‹Р» Р»РёС‡РЅРѕ.', 'Р’РѕС‚ Рё РЅР°С‡Р°Р»СЊСЃС‚РІРѕ. РЎРµР№С‡Р°СЃ РЅР°С‡РЅСѓС‚СЃСЏ С‚Рµ СЃР°РјС‹Рµ РґРІРёР¶РµРЅРёСЏ, Р·Р° РєРѕС‚РѕСЂС‹Рµ РїРѕС‚РѕРј СЃС‚С‹РґРЅРѕ, РЅРѕ РєСЂР°СЃРёРІРѕ.', 'boss_arrived_system', 9000);
     return;
   }
   if (/was eliminated/i.test(text)) {
-    setCommentatorLine('Минус один, но не навсегда.', 'На арене случилось насильственное перераспределение инициативы. Кому-то пора ждать респавн.', 'pvp_elimination', 5000);
+    setCommentatorLine('РњРёРЅСѓСЃ РѕРґРёРЅ, РЅРѕ РЅРµ РЅР°РІСЃРµРіРґР°.', 'РќР° Р°СЂРµРЅРµ СЃР»СѓС‡РёР»РѕСЃСЊ РЅР°СЃРёР»СЊСЃС‚РІРµРЅРЅРѕРµ РїРµСЂРµСЂР°СЃРїСЂРµРґРµР»РµРЅРёРµ РёРЅРёС†РёР°С‚РёРІС‹. РљРѕРјСѓ-С‚Рѕ РїРѕСЂР° Р¶РґР°С‚СЊ СЂРµСЃРїР°РІРЅ.', 'pvp_elimination', 5000);
   }
 }
 
@@ -1473,7 +1502,7 @@ function maybeCommentateSpectatorSkillPicks(players) {
       commentatorState.lastSkillRanks.set(key, level);
       if (previousLevel <= 0 || level <= previousLevel) continue;
       const skillLabel = trSkillName(skillId, player.skills?.find((skill) => String(skill?.id || '').toLowerCase() === skillId)?.name || skillId);
-      const playerName = String(player?.name || 'Игрок').trim() || 'Игрок';
+      const playerName = String(player?.name || 'РРіСЂРѕРє').trim() || 'РРіСЂРѕРє';
       return setCommentaryVariant(
         buildSpectatorSkillPickCommentaryVariants(playerName, skillLabel, level),
         `spectator_skill_pick_${playerId}_${skillId}_${level}`,
@@ -1506,8 +1535,8 @@ function updateInGameCommentatorFromState(state) {
     const bossCountdownBucket = bossEtaSec <= 3 ? 3 : bossEtaSec <= 7 ? 7 : bossEtaSec <= 12 ? 12 : 0;
     if (bossCountdownBucket > 0 && bossCountdownBucket !== commentatorState.lastBossCountdownBucket) {
       setCommentaryVariant([
-        { title: `До босса около ${bossEtaSec}с.`, text: 'Можно собраться, можно запаниковать. История подсказывает, что многие попробуют оба варианта сразу.' },
-        { title: `Босс почти у двери: ${bossEtaSec}с.`, text: 'Если кто-то ещё хотел спокойно пофармить, момент слегка упущен.' },
+        { title: `Р”Рѕ Р±РѕСЃСЃР° РѕРєРѕР»Рѕ ${bossEtaSec}СЃ.`, text: 'РњРѕР¶РЅРѕ СЃРѕР±СЂР°С‚СЊСЃСЏ, РјРѕР¶РЅРѕ Р·Р°РїР°РЅРёРєРѕРІР°С‚СЊ. РСЃС‚РѕСЂРёСЏ РїРѕРґСЃРєР°Р·С‹РІР°РµС‚, С‡С‚Рѕ РјРЅРѕРіРёРµ РїРѕРїСЂРѕР±СѓСЋС‚ РѕР±Р° РІР°СЂРёР°РЅС‚Р° СЃСЂР°Р·Сѓ.' },
+        { title: `Р‘РѕСЃСЃ РїРѕС‡С‚Рё Сѓ РґРІРµСЂРё: ${bossEtaSec}СЃ.`, text: 'Р•СЃР»Рё РєС‚Рѕ-С‚Рѕ РµС‰С‘ С…РѕС‚РµР» СЃРїРѕРєРѕР№РЅРѕ РїРѕС„Р°СЂРјРёС‚СЊ, РјРѕРјРµРЅС‚ СЃР»РµРіРєР° СѓРїСѓС‰РµРЅ.' },
       ], `boss_countdown_${bossCountdownBucket}`, 3200);
     }
     commentatorState.lastBossCountdownBucket = bossCountdownBucket;
@@ -1519,9 +1548,9 @@ function updateInGameCommentatorFromState(state) {
     commentatorState.lastKillsRemarkAt = Date.now();
     commentatorState.lastKillMilestone = killMilestone;
     setCommentaryVariant([
-      { title: `${totalEnemyKills} киллов уже в копилке.`, text: 'Арена постепенно превращается в отчёт о переработке чудовищ. Цифры хорошие, шансы на спокойствие плохие.' },
-      { title: `Счётчик монстров уже на ${totalEnemyKills}.`, text: 'Темп бодрый. Экологи, правда, вряд ли оценят такой подход к фауне.' },
-      { title: `${totalEnemyKills} врагов убрано с повестки.`, text: 'Команда работает так, будто ей платят за скорость, а не за выживание.' },
+      { title: `${totalEnemyKills} РєРёР»Р»РѕРІ СѓР¶Рµ РІ РєРѕРїРёР»РєРµ.`, text: 'РђСЂРµРЅР° РїРѕСЃС‚РµРїРµРЅРЅРѕ РїСЂРµРІСЂР°С‰Р°РµС‚СЃСЏ РІ РѕС‚С‡С‘С‚ Рѕ РїРµСЂРµСЂР°Р±РѕС‚РєРµ С‡СѓРґРѕРІРёС‰. Р¦РёС„СЂС‹ С…РѕСЂРѕС€РёРµ, С€Р°РЅСЃС‹ РЅР° СЃРїРѕРєРѕР№СЃС‚РІРёРµ РїР»РѕС…РёРµ.' },
+      { title: `РЎС‡С‘С‚С‡РёРє РјРѕРЅСЃС‚СЂРѕРІ СѓР¶Рµ РЅР° ${totalEnemyKills}.`, text: 'РўРµРјРї Р±РѕРґСЂС‹Р№. Р­РєРѕР»РѕРіРё, РїСЂР°РІРґР°, РІСЂСЏРґ Р»Рё РѕС†РµРЅСЏС‚ С‚Р°РєРѕР№ РїРѕРґС…РѕРґ Рє С„Р°СѓРЅРµ.' },
+      { title: `${totalEnemyKills} РІСЂР°РіРѕРІ СѓР±СЂР°РЅРѕ СЃ РїРѕРІРµСЃС‚РєРё.`, text: 'РљРѕРјР°РЅРґР° СЂР°Р±РѕС‚Р°РµС‚ С‚Р°Рє, Р±СѓРґС‚Рѕ РµР№ РїР»Р°С‚СЏС‚ Р·Р° СЃРєРѕСЂРѕСЃС‚СЊ, Р° РЅРµ Р·Р° РІС‹Р¶РёРІР°РЅРёРµ.' },
     ], 'kill_milestone_extra', 9000);
   }
 
@@ -1529,18 +1558,18 @@ function updateInGameCommentatorFromState(state) {
   if (matchPulseBucket > 0 && matchPulseBucket !== commentatorState.lastMatchPulseBucket) {
     commentatorState.lastMatchPulseBucket = matchPulseBucket;
     setCommentaryVariant([
-      { title: `Матч держится уже ${matchSec}с.`, text: 'Для этой арены это уже серьёзные отношения: много напряжения, мало доверия и ни капли стабильности.' },
-      { title: `${matchSec} секунд чистого упрямства.`, text: 'Катка затянулась достаточно, чтобы игра начала воспринимать это как личный вызов.' },
+      { title: `РњР°С‚С‡ РґРµСЂР¶РёС‚СЃСЏ СѓР¶Рµ ${matchSec}СЃ.`, text: 'Р”Р»СЏ СЌС‚РѕР№ Р°СЂРµРЅС‹ СЌС‚Рѕ СѓР¶Рµ СЃРµСЂСЊС‘Р·РЅС‹Рµ РѕС‚РЅРѕС€РµРЅРёСЏ: РјРЅРѕРіРѕ РЅР°РїСЂСЏР¶РµРЅРёСЏ, РјР°Р»Рѕ РґРѕРІРµСЂРёСЏ Рё РЅРё РєР°РїР»Рё СЃС‚Р°Р±РёР»СЊРЅРѕСЃС‚Рё.' },
+      { title: `${matchSec} СЃРµРєСѓРЅРґ С‡РёСЃС‚РѕРіРѕ СѓРїСЂСЏРјСЃС‚РІР°.`, text: 'РљР°С‚РєР° Р·Р°С‚СЏРЅСѓР»Р°СЃСЊ РґРѕСЃС‚Р°С‚РѕС‡РЅРѕ, С‡С‚РѕР±С‹ РёРіСЂР° РЅР°С‡Р°Р»Р° РІРѕСЃРїСЂРёРЅРёРјР°С‚СЊ СЌС‚Рѕ РєР°Рє Р»РёС‡РЅС‹Р№ РІС‹Р·РѕРІ.' },
     ], `match_pulse_${matchPulseBucket}`, 6000);
   }
 
   if (playerCount !== commentatorState.lastPlayerCount && commentatorState.lastPlayerCount > 0) {
     const morePlayers = playerCount > commentatorState.lastPlayerCount;
     setCommentatorLine(
-      morePlayers ? 'Комната становится люднее.' : 'Состав поредел.',
+      morePlayers ? 'РљРѕРјРЅР°С‚Р° СЃС‚Р°РЅРѕРІРёС‚СЃСЏ Р»СЋРґРЅРµРµ.' : 'РЎРѕСЃС‚Р°РІ РїРѕСЂРµРґРµР».',
       morePlayers
-        ? `Теперь в матче ${playerCount} игрока. Отлично, ошибок станет больше, а зрелище богаче.`
-        : `Игроков осталось ${playerCount}. Арена снова напоминает собеседование на выживание.`,
+        ? `РўРµРїРµСЂСЊ РІ РјР°С‚С‡Рµ ${playerCount} РёРіСЂРѕРєР°. РћС‚Р»РёС‡РЅРѕ, РѕС€РёР±РѕРє СЃС‚Р°РЅРµС‚ Р±РѕР»СЊС€Рµ, Р° Р·СЂРµР»РёС‰Рµ Р±РѕРіР°С‡Рµ.`
+        : `РРіСЂРѕРєРѕРІ РѕСЃС‚Р°Р»РѕСЃСЊ ${playerCount}. РђСЂРµРЅР° СЃРЅРѕРІР° РЅР°РїРѕРјРёРЅР°РµС‚ СЃРѕР±РµСЃРµРґРѕРІР°РЅРёРµ РЅР° РІС‹Р¶РёРІР°РЅРёРµ.`,
       'player_count',
       5000,
     );
@@ -1548,12 +1577,12 @@ function updateInGameCommentatorFromState(state) {
 
   if (threatLevel > commentatorState.lastThreatLevel) {
     setCommentatorLine(
-      `Угроза выросла до ${threatLevel}.`,
+      `РЈРіСЂРѕР·Р° РІС‹СЂРѕСЃР»Р° РґРѕ ${threatLevel}.`,
       pickCommentaryVariant([
-        `Мобы официально злее, а право на расслабление снова отменено.`,
-        `Игра подкрутила давление. Кто не в тонусе, тот уже почти в титрах.`,
-        `Сложность поднялась. Самое время делать вид, что именно этого вы и хотели.`,
-      ], 'Сложность растёт, а жалобы всё ещё не считаются тактикой.'),
+        `РњРѕР±С‹ РѕС„РёС†РёР°Р»СЊРЅРѕ Р·Р»РµРµ, Р° РїСЂР°РІРѕ РЅР° СЂР°СЃСЃР»Р°Р±Р»РµРЅРёРµ СЃРЅРѕРІР° РѕС‚РјРµРЅРµРЅРѕ.`,
+        `РРіСЂР° РїРѕРґРєСЂСѓС‚РёР»Р° РґР°РІР»РµРЅРёРµ. РљС‚Рѕ РЅРµ РІ С‚РѕРЅСѓСЃРµ, С‚РѕС‚ СѓР¶Рµ РїРѕС‡С‚Рё РІ С‚РёС‚СЂР°С….`,
+        `РЎР»РѕР¶РЅРѕСЃС‚СЊ РїРѕРґРЅСЏР»Р°СЃСЊ. РЎР°РјРѕРµ РІСЂРµРјСЏ РґРµР»Р°С‚СЊ РІРёРґ, С‡С‚Рѕ РёРјРµРЅРЅРѕ СЌС‚РѕРіРѕ РІС‹ Рё С…РѕС‚РµР»Рё.`,
+      ], 'РЎР»РѕР¶РЅРѕСЃС‚СЊ СЂР°СЃС‚С‘С‚, Р° Р¶Р°Р»РѕР±С‹ РІСЃС‘ РµС‰С‘ РЅРµ СЃС‡РёС‚Р°СЋС‚СЃСЏ С‚Р°РєС‚РёРєРѕР№.'),
       'threat_up',
       7000,
     );
@@ -1561,8 +1590,8 @@ function updateInGameCommentatorFromState(state) {
 
   if (!commentatorState.lastBossAlive && bossPortalAt > 0 && !bossAlive) {
     setCommentatorLine(
-      'На карте открылся портал босса.',
-      'Секундомер тикает, нервы плавятся. До большого начальника осталось совсем немного позора и героизма.',
+      'РќР° РєР°СЂС‚Рµ РѕС‚РєСЂС‹Р»СЃСЏ РїРѕСЂС‚Р°Р» Р±РѕСЃСЃР°.',
+      'РЎРµРєСѓРЅРґРѕРјРµСЂ С‚РёРєР°РµС‚, РЅРµСЂРІС‹ РїР»Р°РІСЏС‚СЃСЏ. Р”Рѕ Р±РѕР»СЊС€РѕРіРѕ РЅР°С‡Р°Р»СЊРЅРёРєР° РѕСЃС‚Р°Р»РѕСЃСЊ СЃРѕРІСЃРµРј РЅРµРјРЅРѕРіРѕ РїРѕР·РѕСЂР° Рё РіРµСЂРѕРёР·РјР°.',
       'boss_portal',
       9000,
     );
@@ -1570,8 +1599,8 @@ function updateInGameCommentatorFromState(state) {
 
   if (!commentatorState.lastBossAlive && bossAlive) {
     setCommentatorLine(
-      'Босс уже на карте.',
-      'Вот и встреча, ради которой все якобы качались. Сейчас выясним, кто тут герой, а кто просто удачно бегал кругами.',
+      'Р‘РѕСЃСЃ СѓР¶Рµ РЅР° РєР°СЂС‚Рµ.',
+      'Р’РѕС‚ Рё РІСЃС‚СЂРµС‡Р°, СЂР°РґРё РєРѕС‚РѕСЂРѕР№ РІСЃРµ СЏРєРѕР±С‹ РєР°С‡Р°Р»РёСЃСЊ. РЎРµР№С‡Р°СЃ РІС‹СЏСЃРЅРёРј, РєС‚Рѕ С‚СѓС‚ РіРµСЂРѕР№, Р° РєС‚Рѕ РїСЂРѕСЃС‚Рѕ СѓРґР°С‡РЅРѕ Р±РµРіР°Р» РєСЂСѓРіР°РјРё.',
       'boss_spawn',
       10000,
     );
@@ -1579,8 +1608,8 @@ function updateInGameCommentatorFromState(state) {
 
   if (commentatorState.lastBossAlive && !bossAlive && totalBossKills > commentatorState.lastBossKills) {
     setCommentatorLine(
-      'Босс уложен.',
-      'Редкий случай: коллектив действительно справился с проблемой, а не просто красиво от неё умер.',
+      'Р‘РѕСЃСЃ СѓР»РѕР¶РµРЅ.',
+      'Р РµРґРєРёР№ СЃР»СѓС‡Р°Р№: РєРѕР»Р»РµРєС‚РёРІ РґРµР№СЃС‚РІРёС‚РµР»СЊРЅРѕ СЃРїСЂР°РІРёР»СЃСЏ СЃ РїСЂРѕР±Р»РµРјРѕР№, Р° РЅРµ РїСЂРѕСЃС‚Рѕ РєСЂР°СЃРёРІРѕ РѕС‚ РЅРµС‘ СѓРјРµСЂ.',
       'boss_down',
       10000,
     );
@@ -1589,8 +1618,8 @@ function updateInGameCommentatorFromState(state) {
   if (totalEnemyKills >= 20 && totalEnemyKills % 25 < 3 && Date.now() - commentatorState.lastKillsRemarkAt > 12000) {
     commentatorState.lastKillsRemarkAt = Date.now();
     setCommentatorLine(
-      `${totalEnemyKills} киллов уже в копилке.`,
-      'Арена постепенно превращается в отчёт о переработке чудовищ. Цифры хорошие, шансы на спокойствие плохие.',
+      `${totalEnemyKills} РєРёР»Р»РѕРІ СѓР¶Рµ РІ РєРѕРїРёР»РєРµ.`,
+      'РђСЂРµРЅР° РїРѕСЃС‚РµРїРµРЅРЅРѕ РїСЂРµРІСЂР°С‰Р°РµС‚СЃСЏ РІ РѕС‚С‡С‘С‚ Рѕ РїРµСЂРµСЂР°Р±РѕС‚РєРµ С‡СѓРґРѕРІРёС‰. Р¦РёС„СЂС‹ С…РѕСЂРѕС€РёРµ, С€Р°РЅСЃС‹ РЅР° СЃРїРѕРєРѕР№СЃС‚РІРёРµ РїР»РѕС…РёРµ.',
       'kill_milestone',
       12000,
     );
@@ -1602,8 +1631,8 @@ function updateInGameCommentatorFromState(state) {
       commentatorState.lastLowHpAt = Date.now();
       commentatorState.wasLowHp = true;
       setCommentatorLine(
-        'Здоровье выглядит тревожно.',
-        'У героя осталось маловато хп и слишком много самоуверенности. Может, всё-таки начать уважать входящий урон.',
+        'Р—РґРѕСЂРѕРІСЊРµ РІС‹РіР»СЏРґРёС‚ С‚СЂРµРІРѕР¶РЅРѕ.',
+        'РЈ РіРµСЂРѕСЏ РѕСЃС‚Р°Р»РѕСЃСЊ РјР°Р»РѕРІР°С‚Рѕ С…Рї Рё СЃР»РёС€РєРѕРј РјРЅРѕРіРѕ СЃР°РјРѕСѓРІРµСЂРµРЅРЅРѕСЃС‚Рё. РњРѕР¶РµС‚, РІСЃС‘-С‚Р°РєРё РЅР°С‡Р°С‚СЊ СѓРІР°Р¶Р°С‚СЊ РІС…РѕРґСЏС‰РёР№ СѓСЂРѕРЅ.',
         'low_hp',
         15000,
       );
@@ -1611,8 +1640,8 @@ function updateInGameCommentatorFromState(state) {
       commentatorState.wasLowHp = false;
       commentatorState.lastRecoveryAt = Date.now();
       setCommentaryVariant([
-        { title: 'Хп снова похоже на хп.', text: 'Герой каким-то чудом вылез из красной зоны. Значит, драму пока откладываем.' },
-        { title: 'Стабилизировались.', text: 'Ещё минуту назад пахло катастрофой, а теперь снова пахнет самоуверенностью. Красота.' },
+        { title: 'РҐРї СЃРЅРѕРІР° РїРѕС…РѕР¶Рµ РЅР° С…Рї.', text: 'Р“РµСЂРѕР№ РєР°РєРёРј-С‚Рѕ С‡СѓРґРѕРј РІС‹Р»РµР· РёР· РєСЂР°СЃРЅРѕР№ Р·РѕРЅС‹. Р—РЅР°С‡РёС‚, РґСЂР°РјСѓ РїРѕРєР° РѕС‚РєР»Р°РґС‹РІР°РµРј.' },
+        { title: 'РЎС‚Р°Р±РёР»РёР·РёСЂРѕРІР°Р»РёСЃСЊ.', text: 'Р•С‰С‘ РјРёРЅСѓС‚Сѓ РЅР°Р·Р°Рґ РїР°С…Р»Рѕ РєР°С‚Р°СЃС‚СЂРѕС„РѕР№, Р° С‚РµРїРµСЂСЊ СЃРЅРѕРІР° РїР°С…РЅРµС‚ СЃР°РјРѕСѓРІРµСЂРµРЅРЅРѕСЃС‚СЊСЋ. РљСЂР°СЃРѕС‚Р°.' },
       ], 'hp_recovered', 9000);
     }
   }
@@ -1627,8 +1656,8 @@ function updateInGameCommentatorFromState(state) {
     if (leaderId && leaderKills > 0 && leaderId !== commentatorState.lastPvpLeaderId) {
       commentatorState.lastPvpLeaderId = leaderId;
       setCommentatorLine(
-        `${String(leader?.name || 'Кто-то')} вышел вперёд.`,
-        `В PvP появился лидер с ${leaderKills} фрагами. Остальным пора либо догонять, либо придумывать достойные оправдания.`,
+        `${String(leader?.name || 'РљС‚Рѕ-С‚Рѕ')} РІС‹С€РµР» РІРїРµСЂС‘Рґ.`,
+        `Р’ PvP РїРѕСЏРІРёР»СЃСЏ Р»РёРґРµСЂ СЃ ${leaderKills} С„СЂР°РіР°РјРё. РћСЃС‚Р°Р»СЊРЅС‹Рј РїРѕСЂР° Р»РёР±Рѕ РґРѕРіРѕРЅСЏС‚СЊ, Р»РёР±Рѕ РїСЂРёРґСѓРјС‹РІР°С‚СЊ РґРѕСЃС‚РѕР№РЅС‹Рµ РѕРїСЂР°РІРґР°РЅРёСЏ.`,
         'pvp_leader',
         8000,
       );
@@ -1637,8 +1666,8 @@ function updateInGameCommentatorFromState(state) {
 
   if (playerCount === 1 && commentatorState.lastPlayerCount > 1) {
     setCommentaryVariant([
-      { title: 'На сцене остался один человек.', text: 'Вся ответственность, весь лут и весь ужас матча теперь аккуратно легли на одного героя.' },
-      { title: 'Соло-режим включился сам.', text: 'Командная работа закончилась. Началась личная переписка с судьбой и уклонениями.' },
+      { title: 'РќР° СЃС†РµРЅРµ РѕСЃС‚Р°Р»СЃСЏ РѕРґРёРЅ С‡РµР»РѕРІРµРє.', text: 'Р’СЃСЏ РѕС‚РІРµС‚СЃС‚РІРµРЅРЅРѕСЃС‚СЊ, РІРµСЃСЊ Р»СѓС‚ Рё РІРµСЃСЊ СѓР¶Р°СЃ РјР°С‚С‡Р° С‚РµРїРµСЂСЊ Р°РєРєСѓСЂР°С‚РЅРѕ Р»РµРіР»Рё РЅР° РѕРґРЅРѕРіРѕ РіРµСЂРѕСЏ.' },
+      { title: 'РЎРѕР»Рѕ-СЂРµР¶РёРј РІРєР»СЋС‡РёР»СЃСЏ СЃР°Рј.', text: 'РљРѕРјР°РЅРґРЅР°СЏ СЂР°Р±РѕС‚Р° Р·Р°РєРѕРЅС‡РёР»Р°СЃСЊ. РќР°С‡Р°Р»Р°СЃСЊ Р»РёС‡РЅР°СЏ РїРµСЂРµРїРёСЃРєР° СЃ СЃСѓРґСЊР±РѕР№ Рё СѓРєР»РѕРЅРµРЅРёСЏРјРё.' },
     ], 'solo_survivor', 7000);
   }
 
@@ -1858,7 +1887,7 @@ function ensureHeroEquipModal() {
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
   closeBtn.className = 'mini';
-  closeBtn.textContent = trWithFallback('ui.close', 'Закрыть');
+  closeBtn.textContent = trWithFallback('ui.close', 'Р—Р°РєСЂС‹С‚СЊ');
   closeBtn.addEventListener('click', () => {
     modal.classList.add('hidden');
   });
@@ -1869,7 +1898,7 @@ function ensureHeroEquipModal() {
   const body = document.createElement('div');
   body.id = 'hero-equip-modal-body';
   body.className = 'record-details-body hero-equip-modal-body';
-  body.textContent = trWithFallback('ui.loading', 'Загрузка...');
+  body.textContent = trWithFallback('ui.loading', 'Р—Р°РіСЂСѓР·РєР°...');
 
   card.appendChild(head);
   card.appendChild(body);
@@ -1909,14 +1938,14 @@ function formatRunGameModeLabel(run) {
   const raw = String(run?.runDetails?.gameMode || '').trim().toLowerCase();
   if (raw === 'hardcore') return tr('ui.play.mode.hardcore');
   if (raw === 'normal') return tr('ui.play.mode.normal');
-  return 'Неизвестно';
+  return 'РќРµРёР·РІРµСЃС‚РЅРѕ';
 }
 
 function renderAuthorProfileRunHistory(runPayload) {
   const runs = Array.isArray(runPayload?.runs) ? runPayload.runs : [];
   const total = Math.max(0, Number(runPayload?.total) || 0);
   if (!runs.length) {
-    return '<div class="profile-card"><b>История забегов (0)</b><div class="record-details-empty">Забеги не найдены.</div></div>';
+    return '<div class="profile-card"><b>РСЃС‚РѕСЂРёСЏ Р·Р°Р±РµРіРѕРІ (0)</b><div class="record-details-empty">Р—Р°Р±РµРіРё РЅРµ РЅР°Р№РґРµРЅС‹.</div></div>';
   }
 
   const rows = runs.map((run, i) => {
@@ -1933,7 +1962,7 @@ function renderAuthorProfileRunHistory(runPayload) {
       + '</button>';
   }).join('');
 
-  return '<div class="profile-card"><b>История забегов (' + total + ')</b><div class="profile-run-list author-run-list">' + rows + '</div></div>';
+  return '<div class="profile-card"><b>РСЃС‚РѕСЂРёСЏ Р·Р°Р±РµРіРѕРІ (' + total + ')</b><div class="profile-run-list author-run-list">' + rows + '</div></div>';
 }
 
 function bindAuthorProfileRunHistoryRows() {
@@ -1960,15 +1989,15 @@ function renderAuthorProfileBody(profile, runPayload) {
   }).join('');
 
   return ''
-    + '<div class="profile-card"><b>Профиль Lv' + Math.max(1, Number(profile?.accountLevel) || 1) + '</b><div>'
+    + '<div class="profile-card"><b>РџСЂРѕС„РёР»СЊ Lv' + Math.max(1, Number(profile?.accountLevel) || 1) + '</b><div>'
     + 'XP ' + Math.max(0, Number(profile?.accountXp) || 0) + '/' + Math.max(1, Number(profile?.accountXpToNext) || 1)
     + ' | ' + trWithFallback('ui.profile.skill_points', 'Skill points') + ': ' + Math.max(0, Number(profile?.accountSkillPoints) || 0)
     + ' | ' + trWithFallback('ui.profile.shards', 'Shards') + ': ' + Math.max(0, Number(profile?.shards) || 0)
     + ' | ' + trWithFallback('ui.profile.heroes', 'Heroes') + ': ' + Math.max(0, Number(profile?.heroesUnlocked) || 0) + '/' + Math.max(0, Number(profile?.heroesTotal) || 0)
     + ' | ' + trWithFallback('ui.profile.runs', 'Runs') + ': ' + Math.max(0, Number(profile?.totalRuns) || 0)
     + '</div></div>'
-    + '<div class="profile-card"><b>Инфо аккаунта</b><div>Создан: ' + formatPublicProfileDate(profile?.createdAt) + ' | Последний вход: ' + formatPublicProfileDate(profile?.lastLoginAt) + '</div></div>'
-    + '<div class="profile-card"><b>Герои</b><div class="profile-hero-list">' + (heroRows || '<div class="record-details-empty">Нет данных по героям.</div>') + '</div></div>'
+    + '<div class="profile-card"><b>РРЅС„Рѕ Р°РєРєР°СѓРЅС‚Р°</b><div>РЎРѕР·РґР°РЅ: ' + formatPublicProfileDate(profile?.createdAt) + ' | РџРѕСЃР»РµРґРЅРёР№ РІС…РѕРґ: ' + formatPublicProfileDate(profile?.lastLoginAt) + '</div></div>'
+    + '<div class="profile-card"><b>Р“РµСЂРѕРё</b><div class="profile-hero-list">' + (heroRows || '<div class="record-details-empty">РќРµС‚ РґР°РЅРЅС‹С… РїРѕ РіРµСЂРѕСЏРј.</div>') + '</div></div>'
     + renderAuthorProfileRunHistory(runPayload);
 }
 
@@ -1978,8 +2007,8 @@ async function openAuthorProfileModal(accountId, fallbackName = '') {
   ensureAuthorProfileModal();
   if (!authorProfileModalEl || !authorProfileBodyEl || !authorProfileTitleEl) return;
 
-  authorProfileTitleEl.textContent = 'Профиль игрока';
-  authorProfileBodyEl.innerHTML = '<div class="record-details-empty">Загрузка профиля...</div>';
+  authorProfileTitleEl.textContent = 'РџСЂРѕС„РёР»СЊ РёРіСЂРѕРєР°';
+  authorProfileBodyEl.innerHTML = '<div class="record-details-empty">Р—Р°РіСЂСѓР·РєР° РїСЂРѕС„РёР»СЏ...</div>';
   authorProfileModalEl.classList.remove('hidden');
 
   try {
@@ -2004,12 +2033,12 @@ async function openAuthorProfileModal(accountId, fallbackName = '') {
     authorProfileRuns = runData.runs;
 
     const profile = profilePayload.profile;
-    authorProfileTitleEl.textContent = 'Профиль: ' + String(profile?.nickname || fallbackName || ('ID ' + id));
+    authorProfileTitleEl.textContent = 'РџСЂРѕС„РёР»СЊ: ' + String(profile?.nickname || fallbackName || ('ID ' + id));
     authorProfileBodyEl.innerHTML = renderAuthorProfileBody(profile, runData);
     bindAuthorProfileRunHistoryRows();
   } catch (err) {
     authorProfileRuns = [];
-    authorProfileBodyEl.innerHTML = '<div class="record-details-empty">' + escapeNewsHtml(err?.message || 'Не удалось загрузить профиль.') + '</div>';
+    authorProfileBodyEl.innerHTML = '<div class="record-details-empty">' + escapeNewsHtml(err?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РїСЂРѕС„РёР»СЊ.') + '</div>';
   }
 }
 
@@ -2026,8 +2055,8 @@ async function openAuthorProfileFromComment(authorAccountId, authorNameText) {
 
   ensureAuthorProfileModal();
   if (authorProfileModalEl && authorProfileBodyEl && authorProfileTitleEl) {
-    authorProfileTitleEl.textContent = 'Профиль игрока';
-    authorProfileBodyEl.innerHTML = '<div class="record-details-empty">Поиск аккаунта по нику...</div>';
+    authorProfileTitleEl.textContent = 'РџСЂРѕС„РёР»СЊ РёРіСЂРѕРєР°';
+    authorProfileBodyEl.innerHTML = '<div class="record-details-empty">РџРѕРёСЃРє Р°РєРєР°СѓРЅС‚Р° РїРѕ РЅРёРєСѓ...</div>';
     authorProfileModalEl.classList.remove('hidden');
   }
 
@@ -2036,12 +2065,12 @@ async function openAuthorProfileFromComment(authorAccountId, authorNameText) {
     const payload = await res.json().catch(() => ({}));
     const foundId = Math.max(0, Number(payload?.player?.id) || 0);
     if (!res.ok || !payload?.ok || !payload?.isRegistered || !foundId) {
-      throw new Error('Профиль для этого ника недоступен.');
+      throw new Error('РџСЂРѕС„РёР»СЊ РґР»СЏ СЌС‚РѕРіРѕ РЅРёРєР° РЅРµРґРѕСЃС‚СѓРїРµРЅ.');
     }
     await openAuthorProfileModal(foundId, nickname);
   } catch (err) {
     if (authorProfileBodyEl) {
-      authorProfileBodyEl.innerHTML = '<div class="record-details-empty">' + escapeNewsHtml(err?.message || 'Не удалось открыть профиль.') + '</div>';
+      authorProfileBodyEl.innerHTML = '<div class="record-details-empty">' + escapeNewsHtml(err?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РєСЂС‹С‚СЊ РїСЂРѕС„РёР»СЊ.') + '</div>';
     }
   }
 }
@@ -2192,7 +2221,7 @@ function renderNewsReplyComposer(container, parentId) {
   input.className = 'news-comment-input';
   input.rows = 2;
   input.maxLength = 1500;
-  input.placeholder = 'Напишите комментарий...';
+  input.placeholder = trWithFallback('ui.news.comment_placeholder', 'Напишите комментарий...');
   input.value = String(newsUi.replyDraftByParent[parentId] || '');
   input.addEventListener('input', () => {
     newsUi.replyDraftByParent[parentId] = input.value;
@@ -2204,7 +2233,7 @@ function renderNewsReplyComposer(container, parentId) {
   const sendBtn = document.createElement('button');
   sendBtn.type = 'button';
   sendBtn.className = 'mini';
-  sendBtn.textContent = newsUi.postingComment ? 'Отправка...' : 'Отправить';
+  sendBtn.textContent = newsUi.postingComment ? trWithFallback('ui.news.sending', 'Отправка...') : trWithFallback('ui.news.send', 'Отправить');
   sendBtn.disabled = newsUi.postingComment || !input.value.trim();
   sendBtn.addEventListener('click', () => {
     void submitNewsComment(newsUi.activeId, { text: input.value, parentId });
@@ -2223,7 +2252,7 @@ function renderNewsReplyComposer(container, parentId) {
   const cancelBtn = document.createElement('button');
   cancelBtn.type = 'button';
   cancelBtn.className = 'mini';
-  cancelBtn.textContent = 'Отмена';
+  cancelBtn.textContent = trWithFallback('ui.news.cancel', 'Отмена');
   cancelBtn.disabled = newsUi.postingComment;
   cancelBtn.addEventListener('click', () => {
     newsUi.replyTargetId = '';
@@ -2285,7 +2314,7 @@ function renderNewsCommentNode(comment, isReply = false, parentCommentId = '') {
     const replyBtn = document.createElement('button');
     replyBtn.type = 'button';
     replyBtn.className = 'mini news-comment-reply-btn';
-    replyBtn.textContent = newsUi.replyTargetId === parentId ? 'Закрыть ответ' : 'Ответить';
+    replyBtn.textContent = newsUi.replyTargetId === parentId ? trWithFallback('ui.news.close_reply', 'Закрыть ответ') : trWithFallback('ui.news.reply', 'Ответить');
     replyBtn.addEventListener('click', () => {
       newsUi.replyTargetId = newsUi.replyTargetId === parentId ? '' : parentId;
       renderNewsFeed();
@@ -2298,7 +2327,7 @@ function renderNewsCommentNode(comment, isReply = false, parentCommentId = '') {
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
     deleteBtn.className = 'mini news-comment-delete-btn';
-    deleteBtn.textContent = 'Удалить';
+    deleteBtn.textContent = trWithFallback('ui.news.delete', 'Удалить');
     deleteBtn.disabled = newsUi.postingComment;
     deleteBtn.addEventListener('click', () => {
       void deleteNewsComment(newsUi.activeId, {
@@ -2339,7 +2368,7 @@ function renderNewsFeed() {
   if (newsUi.loading && newsUi.items.length === 0 && !newsUi.activeItem) {
     const loading = document.createElement('div');
     loading.className = 'news-sub';
-    loading.textContent = 'Загрузка новостей...';
+    loading.textContent = trWithFallback('ui.news.loading_news', 'Загрузка новостей...');
     newsFeedEl.appendChild(loading);
     return;
   }
@@ -2358,7 +2387,7 @@ function renderNewsFeed() {
     const backBtn = document.createElement('button');
     backBtn.type = 'button';
     backBtn.className = 'mini news-back-btn';
-    backBtn.textContent = '← К списку новостей';
+    backBtn.textContent = trWithFallback('ui.news.back', '← К списку новостей');
     backBtn.addEventListener('click', () => {
       newsUi.activeId = '';
       newsUi.activeItem = null;
@@ -2372,12 +2401,12 @@ function renderNewsFeed() {
     const shareBtn = document.createElement('button');
     shareBtn.type = 'button';
     shareBtn.className = 'mini news-share-btn';
-    shareBtn.textContent = newsUi.shareCopied ? 'Ссылка скопирована' : 'Поделиться';
+    shareBtn.textContent = newsUi.shareCopied ? trWithFallback('ui.news.share_copied', 'Ссылка скопирована') : trWithFallback('ui.news.share', 'Поделиться');
     shareBtn.addEventListener('click', async () => {
       try {
         await shareNewsLink(newsUi.activeId);
       } catch {
-        newsUi.commentError = 'Не удалось скопировать ссылку.';
+        newsUi.commentError = trWithFallback('ui.news.share_copy_failed', 'Не удалось скопировать ссылку.');
         renderNewsFeed();
       }
     });
@@ -2388,7 +2417,7 @@ function renderNewsFeed() {
     if (newsUi.loadingItem) {
       const loadingItem = document.createElement('div');
       loadingItem.className = 'news-sub';
-      loadingItem.textContent = 'Открываем новость...';
+      loadingItem.textContent = trWithFallback('ui.news.opening', 'Открываем новость...');
       newsFeedEl.appendChild(loadingItem);
       return;
     }
@@ -2408,11 +2437,11 @@ function renderNewsFeed() {
 
     const h = document.createElement('h3');
     h.className = 'news-item-title';
-    h.textContent = String(item?.title || 'Без названия');
+    h.textContent = String(item?.title || trWithFallback('ui.news.untitled', 'Без названия'));
 
     const meta = document.createElement('div');
     meta.className = 'news-item-meta';
-    meta.textContent = formatNewsDate(item?.publishedAt) + ' | Views: ' + (Math.max(0, Number(item?.views) || 0)) + ' | Comments: ' + (Math.max(0, Number(item?.commentsCount) || 0));
+    meta.textContent = formatNewsDate(item?.publishedAt) + ' | ' + trWithFallback('ui.news.views', 'Просмотры') + ': ' + (Math.max(0, Number(item?.views) || 0)) + ' | ' + trWithFallback('ui.news.comments_count', 'Комментарии') + ': ' + (Math.max(0, Number(item?.commentsCount) || 0));
 
     const summary = document.createElement('div');
     summary.className = 'news-sub';
@@ -2438,7 +2467,7 @@ function renderNewsFeed() {
 
     const commentsTitle = document.createElement('div');
     commentsTitle.className = 'news-comments-title';
-    commentsTitle.textContent = 'Комментарии';
+    commentsTitle.textContent = trWithFallback('ui.news.comments', 'Комментарии');
 
     const isLoggedIn = Boolean(game.playerAuth?.player);
     if (isLoggedIn) {
@@ -2449,7 +2478,7 @@ function renderNewsFeed() {
       input.className = 'news-comment-input';
       input.rows = 3;
       input.maxLength = 1500;
-      input.placeholder = 'Напишите комментарий...';
+      input.placeholder = trWithFallback('ui.news.comment_placeholder', 'Напишите комментарий...');
       input.value = newsUi.commentDraft;
       input.addEventListener('input', () => {
         newsUi.commentDraft = input.value;
@@ -2461,7 +2490,7 @@ function renderNewsFeed() {
       const sendBtn = document.createElement('button');
       sendBtn.type = 'button';
       sendBtn.className = 'mini';
-      sendBtn.textContent = newsUi.postingComment ? 'Отправка...' : 'Отправить';
+      sendBtn.textContent = newsUi.postingComment ? trWithFallback('ui.news.sending', 'Отправка...') : trWithFallback('ui.news.send', 'Отправить');
       sendBtn.disabled = newsUi.postingComment || !input.value.trim();
       sendBtn.addEventListener('click', () => {
         void submitNewsComment(item.id, { text: input.value });
@@ -2484,7 +2513,7 @@ function renderNewsFeed() {
     } else {
       const authHint = document.createElement('div');
       authHint.className = 'news-sub';
-      authHint.textContent = 'Войдите в аккаунт, чтобы оставлять комментарии и ответы.';
+      authHint.textContent = trWithFallback('ui.news.auth_hint', 'Войдите в аккаунт, чтобы оставлять комментарии и ответы.');
       newsFeedEl.appendChild(authHint);
     }
 
@@ -2503,7 +2532,7 @@ function renderNewsFeed() {
     if (comments.length <= 0) {
       const empty = document.createElement('div');
       empty.className = 'news-sub';
-      empty.textContent = 'Пока нет комментариев.';
+      empty.textContent = trWithFallback('ui.news.no_comments', 'Пока нет комментариев.');
       commentsWrap.appendChild(empty);
     } else {
       for (const comment of comments) {
@@ -2518,7 +2547,7 @@ function renderNewsFeed() {
   if (items.length <= 0) {
     const empty = document.createElement('div');
     empty.className = 'news-sub';
-    empty.textContent = 'Пока новостей нет.';
+    empty.textContent = trWithFallback('ui.news.empty', 'Пока новостей нет.');
     newsFeedEl.appendChild(empty);
     return;
   }
@@ -2532,11 +2561,11 @@ function renderNewsFeed() {
 
     const h = document.createElement('div');
     h.className = 'news-item-title';
-    h.textContent = String(item?.title || 'Без названия');
+    h.textContent = String(item?.title || trWithFallback('ui.news.untitled', 'Без названия'));
 
     const meta = document.createElement('div');
     meta.className = 'news-item-meta';
-    meta.textContent = formatNewsDate(item?.publishedAt) + ' | Views: ' + (Math.max(0, Number(item?.views) || 0)) + ' | Comments: ' + (Math.max(0, Number(item?.commentsCount) || 0));
+    meta.textContent = formatNewsDate(item?.publishedAt) + ' | ' + trWithFallback('ui.news.views', 'Просмотры') + ': ' + (Math.max(0, Number(item?.views) || 0)) + ' | ' + trWithFallback('ui.news.comments_count', 'Комментарии') + ': ' + (Math.max(0, Number(item?.commentsCount) || 0));
 
     const summary = document.createElement('div');
     summary.className = 'news-sub';
@@ -3058,6 +3087,23 @@ function getItemCategoryLabel(category) {
   return trWithFallback(`ui.inventory.category.${key}`, fallbackMap[key] || key || '-');
 }
 
+function getInventoryItemIconMeta(itemDef, equipTargets) {
+  if (itemDef?.combatUse) {
+    return { glyph: 'FX', className: 'consumable' };
+  }
+  const slotCategory = String(itemDef?.slotCategory || '').trim().toLowerCase();
+  if (slotCategory === 'head') return { glyph: 'HD', className: 'head' };
+  if (slotCategory === 'armor') return { glyph: 'AR', className: 'armor' };
+  if (slotCategory === 'legs') return { glyph: 'LG', className: 'legs' };
+  if (slotCategory === 'ring') return { glyph: 'RG', className: 'ring' };
+  const hasLeftHand = equipTargets.some((slot) => String(slot?.key || '').trim().toLowerCase() === 'left_hand');
+  const hasRightHand = equipTargets.some((slot) => String(slot?.key || '').trim().toLowerCase() === 'right_hand');
+  if (hasLeftHand && hasRightHand) return { glyph: 'WP', className: 'hands' };
+  if (hasLeftHand) return { glyph: 'LH', className: 'hands' };
+  if (hasRightHand) return { glyph: 'RH', className: 'hands' };
+  return { glyph: 'IT', className: 'other' };
+}
+
 function getItemRaritySortWeight(rarity) {
   switch (String(rarity || '').trim().toLowerCase()) {
     case 'legendary': return 5;
@@ -3103,7 +3149,7 @@ function openHeroEquipModal(hero, slotKey) {
 
   heroEquipModalTitleEl.textContent = `${trWithFallback('ui.inventory.equip_slot_title', 'Снарядить слот')}: ${getItemSlotLabel(slot)}`;
   if (!matchingItems.length) {
-    heroEquipModalBodyEl.innerHTML = `<div class="hero-equip-modal-empty">${escapeHtml(trWithFallback('ui.inventory.no_matching_items', 'Для этого слота пока нет подходящих предметов.'))}</div>`;
+    heroEquipModalBodyEl.innerHTML = `<div class="hero-equip-modal-empty">${escapeHtml(trWithFallback('ui.inventory.no_matching_items', 'Р”Р»СЏ СЌС‚РѕРіРѕ СЃР»РѕС‚Р° РїРѕРєР° РЅРµС‚ РїРѕРґС…РѕРґСЏС‰РёС… РїСЂРµРґРјРµС‚РѕРІ.'))}</div>`;
     heroEquipModalEl.classList.remove('hidden');
     return;
   }
@@ -3306,6 +3352,13 @@ function bindHeroProgressionButtons(targetEl, hero) {
 }
 
 function bindHeroInventoryButtons(targetEl, hero) {
+  for (const btn of targetEl?.querySelectorAll?.('[data-inventory-filter]') || []) {
+    btn.addEventListener('click', () => {
+      selectedInventoryFilterKey = String(btn.getAttribute('data-inventory-filter') || 'all');
+      renderCharacterPicker();
+    });
+  }
+
   for (const btn of targetEl?.querySelectorAll?.('[data-open-slot-equip]') || []) {
     btn.addEventListener('click', () => {
       openHeroEquipModal(hero, btn.getAttribute('data-open-slot-equip') || '');
@@ -3419,9 +3472,9 @@ function renderHeroTreePanel(catalog, progression, hero, unlocked) {
   const needCards = Math.max(0, Number(hero.unlockCardNeed) || 0);
   const cardName = trWithFallback(`hero.${String(hero.id || '').toLowerCase()}.card`, String(hero.unlockCardName || hero.name || trWithFallback('ui.hero.card', 'Hero Card')));
   const haveCards = needCardId ? Math.max(0, Number(progression?.heroCards?.[needCardId]) || 0) : needCards;
-  const accountLevelReq = heroRequirementMeta(needLevel, accountLevel, (need, have) => trWithFallback('ui.hero.need_have_level', 'Required level: {need} • You have: {have}', { need, have }));
-  const shardsReq = heroRequirementMeta(needShardCost, shards, (need, have) => trWithFallback('ui.hero.need_have', 'Need: {need} • You have: {have}', { need, have }));
-  const cardsReq = heroRequirementMeta(needCards, haveCards, (need, have) => trWithFallback('ui.hero.need_have_cards', '{card}: need {need} • you have {have}', { card: cardName, need, have }));
+  const accountLevelReq = heroRequirementMeta(needLevel, accountLevel, (need, have) => trWithFallback('ui.hero.need_have_level', 'Required level: {need} вЂў You have: {have}', { need, have }));
+  const shardsReq = heroRequirementMeta(needShardCost, shards, (need, have) => trWithFallback('ui.hero.need_have', 'Need: {need} вЂў You have: {have}', { need, have }));
+  const cardsReq = heroRequirementMeta(needCards, haveCards, (need, have) => trWithFallback('ui.hero.need_have_cards', '{card}: need {need} вЂў you have {have}', { card: cardName, need, have }));
   const canUnlock = game.playerAuth?.player
     && !unlocked
     && accountLevelReq.enough
@@ -3442,7 +3495,7 @@ function renderHeroTreePanel(catalog, progression, hero, unlocked) {
     const lvl = getNodeLevel(progression, hero.id, node.id);
     const maxLevel = Math.max(1, Number(node.maxLevel) || 1);
     const cost = Math.max(1, Number(node.cost) || 1);
-    const pointReq = heroRequirementMeta(cost, points, (need, have) => trWithFallback('ui.hero.need_have_points', 'Skill points: need {need} • you have {have}', { need, have }));
+    const pointReq = heroRequirementMeta(cost, points, (need, have) => trWithFallback('ui.hero.need_have_points', 'Skill points: need {need} вЂў you have {have}', { need, have }));
     const canUpgrade = Boolean(game.playerAuth?.player && unlocked && lvl < maxLevel && pointReq.enough);
     const nodeName = trWithFallback(`hero.node.${String(node.id || '').toLowerCase()}.name`, node.name || node.id);
     const nodeDesc = trWithFallback(`hero.node.${String(node.id || '').toLowerCase()}.desc`, node.desc || '');
@@ -3461,8 +3514,8 @@ function renderHeroTreePanel(catalog, progression, hero, unlocked) {
       const tpl = unlockedSkill ? 'ui.hero.skill_upgrade_cost' : 'ui.hero.skill_unlock_cost';
       const fb = unlockedSkill ? 'Upgrade: {cost} shards' : 'Unlock: {cost} shards';
       return trWithFallback(tpl, fb, { cost: need, currency: shardWord })
-        + ' • '
-        + `${trWithFallback('ui.hero.have_label', 'У вас')}: ${have}`;
+        + ' вЂў '
+        + `${trWithFallback('ui.hero.have_label', 'РЈ РІР°СЃ')}: ${have}`;
     });
     const canUnlockSkill = Boolean(game.playerAuth?.player && unlocked && !unlockedSkill && costReq.enough);
     const canUpgradeSkill = Boolean(game.playerAuth?.player && unlocked && unlockedSkill && lvl < maxLevel && costReq.enough);
@@ -3479,8 +3532,8 @@ function renderHeroTreePanel(catalog, progression, hero, unlocked) {
         : costReq.text)
       : costReq.text;
     const requirementDisplayLabel = String(requirementLabel || '')
-      .replace(/\s+[•·]\s+(Need|Нужно):\s*\d+\s+[•·]\s+/iu, ' • ')
-      .replace(/\s+вЂў\s+(Need|Нужно):\s*\d+\s+вЂў\s+/iu, ' • ');
+      .replace(/\s+[вЂўВ·]\s+(Need|РќСѓР¶РЅРѕ):\s*\d+\s+[вЂўВ·]\s+/iu, ' вЂў ')
+      .replace(/\s+РІР‚Сћ\s+(Need|РќСѓР¶РЅРѕ):\s*\d+\s+РІР‚Сћ\s+/iu, ' вЂў ');
     return `<div class="hero-node hero-unique-skill ${(!costReq.enough && lvl < maxLevel) ? 'hero-node-lack' : ''}"><div><div class="hero-node-name">${escapeHtml(skillName)} <span class="muted">(${escapeHtml(skillType)})</span></div><div class="hero-node-desc">${escapeHtml(skillDesc)}</div><div class="hero-node-desc hero-req ${(costReq.enough || lvl >= maxLevel) ? 'ok' : 'lack'}">${escapeHtml(requirementDisplayLabel)}</div></div><button type="button" class="hero-node-up ${(!costReq.enough && lvl < maxLevel) ? 'hero-node-up-lack' : ''}" data-hero-skill-id="${escapeHtml(skill.id)}" data-hero-skill-action="${unlockedSkill ? 'upgrade' : 'unlock'}" ${(unlockedSkill ? canUpgradeSkill : canUnlockSkill) ? '' : 'disabled'}>Lv ${lvl}/${maxLevel}</button></div>`;
   }).join('');
 
@@ -3502,7 +3555,7 @@ function renderHeroTreePanel(catalog, progression, hero, unlocked) {
   const heroXpLabel = heroLevel >= heroLevelCap
     ? `Lv ${heroLevel}/${heroLevelCap} MAX`
     : `Lv ${heroLevel}/${heroLevelCap} | XP ${heroXpValue}/${heroXpNeed}`;
-  heroTreePanelEl.innerHTML = `<div class="hero-tree-head"><div><b>${escapeHtml(heroDisplayName)}</b><div class="hero-tagline">${escapeHtml(heroTagline)}</div><div class="hero-tagline">${escapeHtml(heroXpLabel)}</div><div class="hero-tagline">${escapeHtml(heroStats)}</div></div>${unlockMeta}</div>${actionBtn}<div class="hero-tree-list">${rows.join('')}</div><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.hero.unique_skills', 'Unique skills'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.hero.unique_skills_hint', '4 actives and 3 passives. Aura passives strengthen other heroes.'))}</div></div></div><div class="hero-tree-list">${skillRows || '<div class="hero-tagline">No unique skills.</div>'}</div>`;
+  heroTreePanelEl.innerHTML = `<div class="hero-tree-head"><div><b>${escapeHtml(heroDisplayName)}</b><div class="hero-tagline">${escapeHtml(heroTagline)}</div><div class="hero-tagline">${escapeHtml(heroXpLabel)}</div><div class="hero-tagline">${escapeHtml(heroStats)}</div></div>${unlockMeta}</div>${actionBtn}<div class="hero-tree-list">${rows.join('')}</div><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.hero.unique_skills', 'Уникальные навыки'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.hero.unique_skills_hint', 'Активные навыки и пассивные эффекты выбранного героя.'))}</div></div></div><div class="hero-tree-list">${skillRows || '<div class="hero-tagline">Нет уникальных навыков.</div>'}</div>`;
 
   const unlockBtn = heroTreePanelEl.querySelector('[data-hero-unlock="1"]');
   unlockBtn?.addEventListener('click', async () => {
@@ -3563,9 +3616,9 @@ function renderHeroTreePanelV2(catalog, progression, hero, unlocked) {
   const needCards = Math.max(0, Number(hero.unlockCardNeed) || 0);
   const cardName = trWithFallback(`hero.${String(hero.id || '').toLowerCase()}.card`, String(hero.unlockCardName || hero.name || trWithFallback('ui.hero.card', 'Hero Card')));
   const haveCards = needCardId ? Math.max(0, Number(progression?.heroCards?.[needCardId]) || 0) : needCards;
-  const accountLevelReq = heroRequirementMeta(needLevel, accountLevel, (need, have) => trWithFallback('ui.hero.need_have_level', 'Required level: {need} • You have: {have}', { need, have }));
-  const shardsReq = heroRequirementMeta(needShardCost, shards, (need, have) => trWithFallback('ui.hero.need_have', 'Need: {need} • You have: {have}', { need, have }));
-  const cardsReq = heroRequirementMeta(needCards, haveCards, (need, have) => trWithFallback('ui.hero.need_have_cards', '{card}: need {need} • you have {have}', { card: cardName, need, have }));
+  const accountLevelReq = heroRequirementMeta(needLevel, accountLevel, (need, have) => trWithFallback('ui.hero.need_have_level', 'Required level: {need} вЂў You have: {have}', { need, have }));
+  const shardsReq = heroRequirementMeta(needShardCost, shards, (need, have) => trWithFallback('ui.hero.need_have', 'Need: {need} вЂў You have: {have}', { need, have }));
+  const cardsReq = heroRequirementMeta(needCards, haveCards, (need, have) => trWithFallback('ui.hero.need_have_cards', '{card}: need {need} вЂў you have {have}', { card: cardName, need, have }));
   const canUnlock = game.playerAuth?.player && !unlocked && accountLevelReq.enough && shardsReq.enough && cardsReq.enough;
 
   const tree = Array.isArray(catalog.trees?.[hero.id]) ? catalog.trees[hero.id] : [];
@@ -3586,7 +3639,7 @@ function renderHeroTreePanelV2(catalog, progression, hero, unlocked) {
     const lvl = getNodeLevel(progression, hero.id, node.id);
     const maxLevel = Math.max(1, Number(node.maxLevel) || 1);
     const cost = Math.max(1, Number(node.cost) || 1);
-    const pointReq = heroRequirementMeta(cost, points, (need, have) => trWithFallback('ui.hero.need_have_points', 'Skill points: need {need} • you have {have}', { need, have }));
+    const pointReq = heroRequirementMeta(cost, points, (need, have) => trWithFallback('ui.hero.need_have_points', 'Skill points: need {need} вЂў you have {have}', { need, have }));
     const canUpgrade = Boolean(game.playerAuth?.player && unlocked && lvl < maxLevel && pointReq.enough);
     const nodeName = trWithFallback(`hero.node.${String(node.id || '').toLowerCase()}.name`, node.name || node.id);
     const nodeDesc = trWithFallback(`hero.node.${String(node.id || '').toLowerCase()}.desc`, node.desc || '');
@@ -3604,7 +3657,7 @@ function renderHeroTreePanelV2(catalog, progression, hero, unlocked) {
     const costReq = heroRequirementMeta(unlockedSkill ? upgradeCost : unlockCost, shards, (need, have) => {
       const tpl = unlockedSkill ? 'ui.hero.skill_upgrade_cost' : 'ui.hero.skill_unlock_cost';
       const fb = unlockedSkill ? 'Upgrade: {cost} shards' : 'Unlock: {cost} shards';
-      return trWithFallback(tpl, fb, { cost: need, currency: shardWord }) + ' • ' + `${trWithFallback('ui.hero.have_label', 'У вас')}: ${have}`;
+      return trWithFallback(tpl, fb, { cost: need, currency: shardWord }) + ' вЂў ' + `${trWithFallback('ui.hero.have_label', 'РЈ РІР°СЃ')}: ${have}`;
     });
     const canUnlockSkill = Boolean(game.playerAuth?.player && unlocked && !unlockedSkill && costReq.enough);
     const canUpgradeSkill = Boolean(game.playerAuth?.player && unlocked && unlockedSkill && lvl < maxLevel && costReq.enough);
@@ -3623,11 +3676,20 @@ function renderHeroTreePanelV2(catalog, progression, hero, unlocked) {
   const renderEquipSlotCard = (slot, extraMeta = '') => {
     const item = equippedItems[slot.key] || null;
     const itemDef = item ? itemMap[item.itemId] : null;
+    const iconMeta = itemDef
+      ? getInventoryItemIconMeta(itemDef, getInventorySlotTargets(catalog, itemDef))
+      : getInventoryItemIconMeta(
+        {
+          slotCategory: slot?.category,
+          combatUse: slot?.kind === 'consumable',
+        },
+        [slot],
+      );
     const itemName = itemDef ? getItemDisplayName(itemDef) : trWithFallback('ui.inventory.empty_slot', 'Пусто');
     const itemMeta = itemDef
       ? `${getItemRarityLabel(itemDef.rarity)} • Lv ${Math.max(1, Number(item.level) || 1)}${Math.max(1, Number(item.quantity) || 1) > 1 ? ` • x${Math.max(1, Number(item.quantity) || 1)}` : ''}`
-      : trWithFallback('ui.inventory.empty_slot_hint', 'Выберите предмет из инвентаря');
-    return `<div class="hero-equip-slot ${item ? `filled rarity-${escapeHtml(String(itemDef?.rarity || 'common').toLowerCase())}` : 'empty'}"><div class="hero-equip-slot-label">${escapeHtml(getItemSlotLabel(slot))}${extraMeta ? `<span class="hero-equip-slot-hotkey">${escapeHtml(extraMeta)}</span>` : ''}</div><div class="hero-equip-slot-name">${escapeHtml(itemName)}</div><div class="hero-equip-slot-meta">${escapeHtml(itemMeta)}</div>${item ? `<button type="button" class="hero-equip-action" data-unequip-slot="${escapeHtml(slot.key)}">${escapeHtml(trWithFallback('ui.inventory.unequip', 'Снять'))}</button>` : '<div class="hero-equip-slot-empty-cta">' + escapeHtml(trWithFallback('ui.inventory.empty_slot_cta', 'Наденьте предмет ниже')) + '</div>'}</div>`;
+      : (slot?.kind === 'consumable' ? '' : trWithFallback('ui.inventory.empty_slot_hint', 'Выберите предмет из инвентаря'));
+    return `<div class="hero-equip-slot ${item ? `filled rarity-${escapeHtml(String(itemDef?.rarity || 'common').toLowerCase())}` : 'empty'}"><div class="hero-equip-slot-layout"><div class="hero-equip-slot-side"><div class="hero-equip-slot-icon inventory-item-icon inventory-item-icon-${escapeHtml(iconMeta.className)}">${escapeHtml(iconMeta.glyph)}</div>${item ? `<button type="button" class="hero-equip-action" data-unequip-slot="${escapeHtml(slot.key)}">${escapeHtml(trWithFallback('ui.inventory.unequip', 'Снять'))}</button>` : '<div class="hero-equip-slot-empty-cta">' + escapeHtml(trWithFallback('ui.inventory.empty_slot_cta', 'Снарядите предмет из инвентаря')) + '</div>'}</div><div class="hero-equip-slot-copy"><div class="hero-equip-slot-label">${escapeHtml(getItemSlotLabel(slot))}${extraMeta ? `<span class="hero-equip-slot-hotkey">${escapeHtml(extraMeta)}</span>` : ''}</div><div class="hero-equip-slot-name">${escapeHtml(itemName)}</div><div class="hero-equip-slot-meta">${escapeHtml(itemMeta)}</div></div></div></div>`;
   };
 
   const gearSlotsByGroup = {
@@ -3659,6 +3721,16 @@ function renderHeroTreePanelV2(catalog, progression, hero, unlocked) {
     ['rings', trWithFallback('ui.inventory.group_rings', 'Кольца')],
     ['other', trWithFallback('ui.inventory.group_other', 'Прочее')],
   ];
+  const inventoryFilterOptions = [
+    ['all', trWithFallback('ui.inventory.filter_all', 'Все')],
+    ['consumable', trWithFallback('ui.inventory.group_consumables', 'Расходники')],
+    ['head', trWithFallback('ui.inventory.filter_head', 'Шапка')],
+    ['weapon', trWithFallback('ui.inventory.filter_weapon', 'Оружие')],
+    ['armor', trWithFallback('ui.inventory.filter_armor', 'Броня')],
+    ['legs', trWithFallback('ui.inventory.filter_legs', 'Штаны')],
+    ['ring', trWithFallback('ui.inventory.filter_ring', 'Кольца')],
+    ['other', trWithFallback('ui.inventory.group_other', 'Прочее')],
+  ];
 
   const getInventoryGroupKey = (itemDef, equipTargets) => {
     if (itemDef?.combatUse) return 'consumable';
@@ -3670,28 +3742,55 @@ function renderHeroTreePanelV2(catalog, progression, hero, unlocked) {
   };
 
   const inventoryCardsByGroup = new Map(inventoryGroupOrder.map(([key]) => [key, []]));
+  const inventoryEntries = [];
   for (const item of inventoryItems) {
     const itemDef = itemMap[item.itemId] || {};
     const quantity = Math.max(1, Number(item.quantity) || 1);
     const equipTargets = getInventorySlotTargets(catalog, itemDef);
+    const iconMeta = getInventoryItemIconMeta(itemDef, equipTargets);
     const equippedIn = Object.keys(equippedItems).filter((slotKey) => equippedItems[slotKey]?.uid === item.uid);
     const upgradeCost = Math.max(0, Number(item.upgradeCost) || 0);
     const canUpgradeItem = !itemDef.combatUse && Math.max(1, Number(item.level) || 1) < 10 && salvage >= upgradeCost;
-    const equipButtons = equipTargets.map((slot) => `<button type="button" class="inventory-mini-btn${equippedIn.includes(slot.key) ? ' active' : ''}" data-item-equip="${escapeHtml(item.uid)}" data-slot-key="${escapeHtml(slot.key)}">${escapeHtml(getItemSlotLabel(slot))}</button>`).join('');
+    const equipButtons = equipTargets.map((slot, slotIndex) => `<button type="button" class="inventory-mini-btn inventory-text-action${equippedIn.includes(slot.key) ? ' active' : ''}" data-item-equip="${escapeHtml(item.uid)}" data-slot-key="${escapeHtml(slot.key)}" title="${escapeHtml(`${trWithFallback('ui.inventory.equip_to_slot', 'Снарядить в слот')}: ${getItemSlotLabel(slot)}`)}" aria-label="${escapeHtml(`${trWithFallback('ui.inventory.equip_to_slot', 'Снарядить в слот')}: ${getItemSlotLabel(slot)}`)}">${escapeHtml(`${trWithFallback('ui.inventory.slot_short', 'Slot')} ${slotIndex + 1}`)}</button>`).join('');
     const categoryLabel = getItemCategoryLabel(itemDef.slotCategory);
     const equippedMeta = equippedIn.length
       ? `<div class="inventory-item-chip inventory-item-chip-eq">${escapeHtml(equippedIn.map((slotKey) => getItemSlotLabel((catalog.itemSlots || []).find((slot) => slot.key === slotKey) || { key: slotKey })).join(', '))}</div>`
       : '';
-    const cardHtml = `<div class="inventory-item-card inventory-item-card-compact rarity-${escapeHtml(String(itemDef.rarity || 'common').toLowerCase())}"><div class="inventory-item-name">${escapeHtml(getItemDisplayName(itemDef))}</div><div class="inventory-item-meta">${escapeHtml(getItemRarityLabel(itemDef.rarity))} • ${escapeHtml(categoryLabel)}</div><div class="inventory-item-chip-row"><div class="inventory-item-chip">Lv ${Math.max(1, Number(item.level) || 1)}</div>${quantity > 1 ? `<div class="inventory-item-chip">x${quantity}</div>` : ''}<div class="inventory-item-chip">${escapeHtml(trWithFallback('ui.inventory.sell_value_short', 'Продажа'))}: ${Math.max(0, Number(item.sellValue) || 0)}</div>${equippedMeta}</div>${equipButtons ? `<div class="inventory-item-actions-line">${equipButtons}</div>` : ''}<div class="inventory-item-actions-line">${!itemDef.combatUse ? `<button type="button" class="inventory-mini-btn${canUpgradeItem ? '' : ' disabled-like'}" data-item-upgrade="${escapeHtml(item.uid)}">${escapeHtml(`Улучшить • ${upgradeCost}`)}</button>` : `<span class="inventory-item-consumable">${escapeHtml(trWithFallback('ui.inventory.consumable_hint_keys', 'Клавиши 4/5/6 в бою'))}</span>`}<button type="button" class="inventory-mini-btn danger" data-item-sell="${escapeHtml(item.uid)}">${escapeHtml(`Продать • ${Math.max(0, Number(item.sellValue) || 0)}`)}</button></div></div>`;
+    const actionButtonsHtml = `${equipButtons || ''}${!itemDef.combatUse ? `<button type="button" class="inventory-mini-btn inventory-text-action upgrade${canUpgradeItem ? '' : ' disabled-like'}" data-item-upgrade="${escapeHtml(item.uid)}" title="${escapeHtml(`Улучшить • ${upgradeCost}`)}" aria-label="${escapeHtml(`Улучшить • ${upgradeCost}`)}">${escapeHtml(trWithFallback('ui.inventory.action_upgrade', 'Upgrade'))}</button>` : ''}<button type="button" class="inventory-mini-btn inventory-text-action danger" data-item-sell="${escapeHtml(item.uid)}" title="${escapeHtml(`Продать • ${Math.max(0, Number(item.sellValue) || 0)}`)}" aria-label="${escapeHtml(`Продать • ${Math.max(0, Number(item.sellValue) || 0)}`)}">${escapeHtml(trWithFallback('ui.inventory.action_sell', 'Sell'))}</button>`;
+    const cardHtml = `<div class="inventory-item-card inventory-item-card-compact rarity-${escapeHtml(String(itemDef.rarity || 'common').toLowerCase())}"><div class="inventory-item-layout"><div class="inventory-item-icon inventory-item-icon-${escapeHtml(iconMeta.className)}">${escapeHtml(iconMeta.glyph)}</div><div class="inventory-item-main"><div class="inventory-item-name">${escapeHtml(getItemDisplayName(itemDef))}</div><div class="inventory-item-meta">${escapeHtml(getItemRarityLabel(itemDef.rarity))} • ${escapeHtml(categoryLabel)}</div><div class="inventory-item-chip-row"><div class="inventory-item-chip">Lv ${Math.max(1, Number(item.level) || 1)}</div>${quantity > 1 ? `<div class="inventory-item-chip">x${quantity}</div>` : ''}<div class="inventory-item-chip">${escapeHtml(trWithFallback('ui.inventory.sell_value_short', 'Продажа'))}: ${Math.max(0, Number(item.sellValue) || 0)}</div>${equippedMeta}</div>${itemDef.combatUse ? `<div class="inventory-item-consumable">${escapeHtml(trWithFallback('ui.inventory.consumable_hint_keys', 'Клавиши 4/5/6 в бою'))}</div>` : ''}</div><div class="inventory-item-actions-compact">${actionButtonsHtml}</div></div></div>`;
     const groupKey = getInventoryGroupKey(itemDef, equipTargets);
     inventoryCardsByGroup.get(groupKey)?.push(cardHtml);
+    const slotCategory = String(itemDef?.slotCategory || '').trim().toLowerCase();
+    const filterTags = new Set(['all']);
+    if (itemDef?.combatUse || equipTargets.some((slot) => String(slot?.kind || '').trim().toLowerCase() === 'consumable')) {
+      filterTags.add('consumable');
+    }
+    if (slotCategory === 'head') filterTags.add('head');
+    if (slotCategory === 'armor') filterTags.add('armor');
+    if (slotCategory === 'legs') filterTags.add('legs');
+    if (slotCategory === 'ring') filterTags.add('ring');
+    if (equipTargets.some((slot) => ['left_hand', 'right_hand'].includes(String(slot?.key || '').trim().toLowerCase()))) {
+      filterTags.add('weapon');
+    }
+    if (!itemDef?.combatUse && !filterTags.has('head') && !filterTags.has('armor') && !filterTags.has('legs') && !filterTags.has('ring') && !filterTags.has('weapon')) {
+      filterTags.add('other');
+    }
+    inventoryEntries.push({ cardHtml, filterTags });
   }
 
-  const inventorySectionsHtml = inventoryGroupOrder.map(([key, title]) => {
-    const cards = inventoryCardsByGroup.get(key) || [];
-    if (!cards.length) return '';
-    return `<div class="inventory-category-group"><div class="inventory-category-title">${escapeHtml(title)}</div><div class="inventory-category-grid">${cards.join('')}</div></div>`;
-  }).join('');
+  const inventoryFilterTabsHtml = `<div class="inventory-filter-tabs">${inventoryFilterOptions.map(([key, label]) => `<button type="button" class="inventory-filter-tab${selectedInventoryFilterKey === key ? ' active' : ''}" data-inventory-filter="${escapeHtml(key)}">${escapeHtml(label)}</button>`).join('')}</div>`;
+  const inventorySectionsHtml = selectedInventoryFilterKey === 'all'
+    ? inventoryGroupOrder.map(([key, title]) => {
+      const cards = inventoryCardsByGroup.get(key) || [];
+      if (!cards.length) return '';
+      return `<div class="inventory-category-group"><div class="inventory-category-title">${escapeHtml(title)}</div><div class="inventory-category-grid">${cards.join('')}</div></div>`;
+    }).join('')
+    : (() => {
+      const filteredCards = inventoryEntries.filter((entry) => entry.filterTags.has(selectedInventoryFilterKey)).map((entry) => entry.cardHtml);
+      return filteredCards.length
+        ? `<div class="inventory-category-grid">${filteredCards.join('')}</div>`
+        : `<div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.filter_empty', 'В этой категории пока нет предметов.'))}</div>`;
+    })();
 
   const inventoryRows = inventoryItems
     .slice()
@@ -3714,7 +3813,7 @@ function renderHeroTreePanelV2(catalog, progression, hero, unlocked) {
     const canUpgradeItem = !itemDef.combatUse && Math.max(1, Number(item.level) || 1) < 10 && salvage >= upgradeCost;
     const equipButtons = equipTargets.map((slot) => `<button type="button" class="inventory-mini-btn${equippedIn.includes(slot.key) ? ' active' : ''}" data-item-equip="${escapeHtml(item.uid)}" data-slot-key="${escapeHtml(slot.key)}">${escapeHtml(getItemSlotLabel(slot))}</button>`).join('');
     const categoryLabel = getItemCategoryLabel(itemDef.slotCategory);
-    return `<div class="inventory-item-card rarity-${escapeHtml(String(itemDef.rarity || 'common').toLowerCase())}"><div class="inventory-item-head"><div><div class="inventory-item-name">${escapeHtml(getItemDisplayName(itemDef))}</div><div class="inventory-item-meta">${escapeHtml(getItemRarityLabel(itemDef.rarity))} • ${escapeHtml(categoryLabel)} • Lv ${Math.max(1, Number(item.level) || 1)}${quantity > 1 ? ` • x${quantity}` : ''}${equippedIn.length ? ` • ${escapeHtml(trWithFallback('ui.inventory.equipped_in', 'Экипировано'))}: ${escapeHtml(equippedIn.map((slotKey) => getItemSlotLabel((catalog.itemSlots || []).find((slot) => slot.key === slotKey) || { key: slotKey })).join(', '))}` : ''}</div></div><div class="inventory-item-values">${escapeHtml(trWithFallback('ui.inventory.sell_value_short', 'Продажа'))}: ${Math.max(0, Number(item.sellValue) || 0)}</div></div>${equipButtons ? `<div class="inventory-item-actions-line">${equipButtons}</div>` : ''}<div class="inventory-item-actions-line">${!itemDef.combatUse ? `<button type="button" class="inventory-mini-btn${canUpgradeItem ? '' : ' disabled-like'}" data-item-upgrade="${escapeHtml(item.uid)}">${escapeHtml(`Улучшить: ${upgradeCost} лом • У вас: ${salvage}`)}</button>` : `<span class="inventory-item-consumable">${escapeHtml(trWithFallback('ui.inventory.consumable_hint_keys', 'Боевой расходник. Использование в ранe: клавиши 4/5/6.'))}</span>`}<button type="button" class="inventory-mini-btn danger" data-item-sell="${escapeHtml(item.uid)}">${escapeHtml(`Продать за ${Math.max(0, Number(item.sellValue) || 0)}`)}</button></div></div>`;
+    return `<div class="inventory-item-card rarity-${escapeHtml(String(itemDef.rarity || 'common').toLowerCase())}"><div class="inventory-item-head"><div><div class="inventory-item-name">${escapeHtml(getItemDisplayName(itemDef))}</div><div class="inventory-item-meta">${escapeHtml(getItemRarityLabel(itemDef.rarity))} вЂў ${escapeHtml(categoryLabel)} вЂў Lv ${Math.max(1, Number(item.level) || 1)}${quantity > 1 ? ` вЂў x${quantity}` : ''}${equippedIn.length ? ` вЂў ${escapeHtml(trWithFallback('ui.inventory.equipped_in', 'Р­РєРёРїРёСЂРѕРІР°РЅРѕ'))}: ${escapeHtml(equippedIn.map((slotKey) => getItemSlotLabel((catalog.itemSlots || []).find((slot) => slot.key === slotKey) || { key: slotKey })).join(', '))}` : ''}</div></div><div class="inventory-item-values">${escapeHtml(trWithFallback('ui.inventory.sell_value_short', 'РџСЂРѕРґР°Р¶Р°'))}: ${Math.max(0, Number(item.sellValue) || 0)}</div></div>${equipButtons ? `<div class="inventory-item-actions-line">${equipButtons}</div>` : ''}<div class="inventory-item-actions-line">${!itemDef.combatUse ? `<button type="button" class="inventory-mini-btn${canUpgradeItem ? '' : ' disabled-like'}" data-item-upgrade="${escapeHtml(item.uid)}">${escapeHtml(`РЈР»СѓС‡С€РёС‚СЊ: ${upgradeCost} Р»РѕРј вЂў РЈ РІР°СЃ: ${salvage}`)}</button>` : `<span class="inventory-item-consumable">${escapeHtml(trWithFallback('ui.inventory.consumable_hint_keys', 'Р‘РѕРµРІРѕР№ СЂР°СЃС…РѕРґРЅРёРє. РСЃРїРѕР»СЊР·РѕРІР°РЅРёРµ РІ СЂР°РЅe: РєР»Р°РІРёС€Рё 4/5/6.'))}</span>`}<button type="button" class="inventory-mini-btn danger" data-item-sell="${escapeHtml(item.uid)}">${escapeHtml(`РџСЂРѕРґР°С‚СЊ Р·Р° ${Math.max(0, Number(item.sellValue) || 0)}`)}</button></div></div>`;
   }).join('');
 
   const unlockMeta = !unlocked
@@ -3731,7 +3830,7 @@ function renderHeroTreePanelV2(catalog, progression, hero, unlocked) {
     ? `POW ${Math.max(0, Number(hero.baseStats.power) || 0)} | AGI ${Math.max(0, Number(hero.baseStats.agility) || 0)} | VIT ${Math.max(0, Number(hero.baseStats.vitality) || 0)} | TEC ${Math.max(0, Number(hero.baseStats.tech) || 0)}`
     : '';
   const heroXpLabel = heroLevel >= heroLevelCap ? `Lv ${heroLevel}/${heroLevelCap} MAX` : `Lv ${heroLevel}/${heroLevelCap} | XP ${heroXpValue}/${heroXpNeed}`;
-  heroTreePanelEl.innerHTML = `<div class="hero-loadout-shell"><div class="hero-loadout-card"><div class="hero-tree-head"><div><b>${escapeHtml(heroDisplayName)}</b><div class="hero-tagline">${escapeHtml(heroTagline)}</div><div class="hero-tagline">${escapeHtml(heroXpLabel)}</div><div class="hero-tagline">${escapeHtml(heroStats)}</div></div>${unlockMeta}</div>${actionBtn}</div><div class="hero-loadout-layout"><div class="hero-loadout-card hero-loadout-stage"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.inventory.equipment', 'Экипировка'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.equipment_hint', 'Слева круг героев, справа портрет, слоты экипировки и боевые расходники.'))}</div></div><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.salvage', 'Лом'))}: ${salvage}</div></div><div class="hero-loadout-stage-grid"><div class="hero-loadout-stage-side">${coreGearGroupHtml}${handGearGroupHtml}${ringGearGroupHtml}<div class="hero-slot-group"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.inventory.items', 'Инвентарь'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.items_hint', 'Надевайте, меняйте, продавайте и улучшайте предметы прямо отсюда.'))}</div></div><div class="hero-tagline">${inventoryItems.length}</div></div><div class="inventory-category-list">${inventorySectionsHtml || `<div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.empty', 'Инвентарь пока пуст.'))}</div>`}</div></div></div><div class="hero-loadout-stage-portrait"><div class="hero-loadout-portrait-wrap hero-loadout-portrait-large"><img class="hero-loadout-portrait" src="${escapeHtml(getHeroCardImagePath(hero.id))}" alt="${escapeHtml(heroDisplayName)}" /></div><div class="hero-tree-head hero-loadout-hero-head"><div><b>${escapeHtml(heroDisplayName)}</b><div class="hero-tagline">${escapeHtml(heroTagline)}</div><div class="hero-tagline">${escapeHtml(heroXpLabel)}</div><div class="hero-tagline">${escapeHtml(heroStats)}</div><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.quick_slots_hint', 'Быстрые слоты работают в бою на клавишах 4, 5 и 6.'))}</div></div></div><div class="hero-slot-group"><div class="hero-slot-group-title">${escapeHtml(trWithFallback('ui.inventory.quick_slots', 'Боевые расходники'))}</div><div class="hero-slot-group-grid">${quickSlotsHtml}</div></div></div></div></div><div class="hero-loadout-card"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.hero.talent_tree', 'Таланты героя'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.hero.talent_tree_hint', 'Пассивные улучшения аккаунта для выбранного героя.'))}</div></div></div><div class="hero-tree-list">${rows.join('')}</div></div><div class="hero-loadout-card"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.hero.unique_skills', 'Unique skills'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.hero.unique_skills_hint', '4 actives and 3 passives. Aura passives strengthen other heroes.'))}</div></div></div><div class="hero-tree-list">${skillRows || '<div class="hero-tagline">No unique skills.</div>'}</div></div></div>`;
+  heroTreePanelEl.innerHTML = `<div class="hero-loadout-shell"><div class="hero-loadout-card"><div class="hero-tree-head"><div><b>${escapeHtml(heroDisplayName)}</b><div class="hero-tagline">${escapeHtml(heroTagline)}</div><div class="hero-tagline">${escapeHtml(heroXpLabel)}</div><div class="hero-tagline">${escapeHtml(heroStats)}</div></div>${unlockMeta}</div>${actionBtn}</div><div class="hero-loadout-layout"><div class="hero-loadout-card hero-loadout-stage"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.inventory.equipment', 'Экипировка'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.equipment_hint', 'Слева слоты экипировки, справа портрет, ниже инвентарь и боевые расходники.'))}</div></div><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.salvage', 'Лом'))}: ${salvage}</div></div><div class="hero-loadout-stage-grid"><div class="hero-loadout-stage-side">${coreGearGroupHtml}${handGearGroupHtml}${ringGearGroupHtml}<div class="hero-slot-group"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.inventory.items', 'Инвентарь'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.items_hint', 'Выбирайте предметы, снаряжайте их в слот, улучшайте или продавайте прямо здесь.'))}</div></div><div class="hero-tagline">${inventoryItems.length}</div></div>${inventoryFilterTabsHtml}<div class="inventory-category-list">${inventorySectionsHtml || `<div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.empty', 'Инвентарь пока пуст.'))}</div>`}</div></div></div><div class="hero-loadout-stage-portrait"><div class="hero-loadout-portrait-wrap hero-loadout-portrait-large"><img class="hero-loadout-portrait" src="${escapeHtml(getHeroCardImagePath(hero.id))}" alt="${escapeHtml(heroDisplayName)}" /></div><div class="hero-tree-head hero-loadout-hero-head"><div><b>${escapeHtml(heroDisplayName)}</b><div class="hero-tagline">${escapeHtml(heroTagline)}</div><div class="hero-tagline">${escapeHtml(heroXpLabel)}</div><div class="hero-tagline">${escapeHtml(heroStats)}</div><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.quick_slots_hint', 'Быстрые слоты работают в бою на клавишах 4, 5 и 6.'))}</div></div></div><div class="hero-slot-group"><div class="hero-slot-group-title">${escapeHtml(trWithFallback('ui.inventory.quick_slots', 'Боевые расходники'))}</div><div class="hero-slot-group-grid">${quickSlotsHtml}</div></div></div></div></div><div class="hero-loadout-card"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.hero.talent_tree', 'Таланты героя'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.hero.talent_tree_hint', 'Пассивные улучшения аккаунта для выбранного героя.'))}</div></div></div><div class="hero-tree-list">${rows.join('')}</div></div><div class="hero-loadout-card"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.hero.unique_skills', 'Уникальные навыки'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.hero.unique_skills_hint', 'Активные навыки и пассивные эффекты выбранного героя.'))}</div></div></div><div class="hero-tree-list">${skillRows || '<div class="hero-tagline">Нет уникальных навыков.</div>'}</div></div></div>`;
 
   const renderedSlotOrder = [
     ...gearSlotsByGroup.core,
@@ -3806,7 +3905,7 @@ function renderHeroTreePanelV2(catalog, progression, hero, unlocked) {
     btn.addEventListener('click', async () => {
       try {
         await unequipItemForAccount(hero.id, btn.getAttribute('data-unequip-slot') || '');
-        setHeroActionFeedback(trWithFallback('ui.inventory.unequipped', 'Предмет снят.'), 'ok');
+        setHeroActionFeedback(trWithFallback('ui.inventory.unequipped', 'РџСЂРµРґРјРµС‚ СЃРЅСЏС‚.'), 'ok');
         renderCharacterPicker();
       } catch (err) {
         setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to unequip item.'), 'err');
@@ -3818,7 +3917,7 @@ function renderHeroTreePanelV2(catalog, progression, hero, unlocked) {
     btn.addEventListener('click', async () => {
       try {
         await equipItemForAccount(hero.id, btn.getAttribute('data-item-equip') || '', btn.getAttribute('data-slot-key') || '');
-        setHeroActionFeedback(trWithFallback('ui.inventory.equipped', 'Предмет экипирован.'), 'ok');
+        setHeroActionFeedback(trWithFallback('ui.inventory.equipped', 'РџСЂРµРґРјРµС‚ СЌРєРёРїРёСЂРѕРІР°РЅ.'), 'ok');
         renderCharacterPicker();
       } catch (err) {
         setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to equip item.'), 'err');
@@ -3830,7 +3929,7 @@ function renderHeroTreePanelV2(catalog, progression, hero, unlocked) {
     btn.addEventListener('click', async () => {
       try {
         await sellInventoryItemForAccount(btn.getAttribute('data-item-sell') || '');
-        setHeroActionFeedback(trWithFallback('ui.inventory.sold', 'Предмет продан.'), 'ok');
+        setHeroActionFeedback(trWithFallback('ui.inventory.sold', 'РџСЂРµРґРјРµС‚ РїСЂРѕРґР°РЅ.'), 'ok');
         renderCharacterPicker();
       } catch (err) {
         setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to sell item.'), 'err');
@@ -3842,7 +3941,7 @@ function renderHeroTreePanelV2(catalog, progression, hero, unlocked) {
     btn.addEventListener('click', async () => {
       try {
         await upgradeInventoryItemForAccount(btn.getAttribute('data-item-upgrade') || '');
-        setHeroActionFeedback(trWithFallback('ui.inventory.upgraded', 'Предмет улучшен.'), 'ok');
+        setHeroActionFeedback(trWithFallback('ui.inventory.upgraded', 'РџСЂРµРґРјРµС‚ СѓР»СѓС‡С€РµРЅ.'), 'ok');
         renderCharacterPicker();
       } catch (err) {
         setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to upgrade item.'), 'err');
@@ -3948,7 +4047,7 @@ function renderHeroGalleryV2(heroes, progression, unlockedHeroes) {
     name.textContent = `${trHeroName(hero.id, hero.name)} [${heroLevel}]`;
 
     const status = document.createElement('div');
-    status.className = `hero-v2-status${unlocked ? '' : ' locked'}`;
+    status.className = `hero-v2-status ${active ? 'selected' : (unlocked ? 'unlocked' : 'locked')}`;
     status.textContent = unlocked ? (active ? trWithFallback('ui.hero.selected_short', 'Selected') : trWithFallback('ui.hero.unlocked', 'Unlocked')) : buildHeroUnlockHint(hero, progression);
 
     cardBtn.addEventListener('click', async () => {
@@ -4025,7 +4124,7 @@ function renderProfileRunHistory() {
   if (profileRunHistoryUi.loading && profileRunHistoryUi.items.length === 0) {
     const loading = document.createElement('div');
     loading.className = 'profile-run-empty';
-    loading.textContent = 'Загрузка новостей...';
+    loading.textContent = 'Р—Р°РіСЂСѓР·РєР° РЅРѕРІРѕСЃС‚РµР№...';
     profileRunHistoryEl.appendChild(loading);
     return;
   }
@@ -6450,7 +6549,7 @@ function updateScoreboard(players) {
     const pvpKills = Math.max(0, Number(p.pvpKills) || 0);
     const enemyKills = Math.max(0, Number(p.enemyKills) || kills);
     const mag = Math.max(0, Number(p.magazineAmmo) || 0);
-    const reserve = p.reserveAmmo === null ? '∞' : Math.max(0, Number(p.reserveAmmo) || 0);
+    const reserve = p.reserveAmmo === null ? 'в€ћ' : Math.max(0, Number(p.reserveAmmo) || 0);
     const reload = Math.max(0, Number(p.reloadLeftMs) || 0);
     const ammo = reload > 0 ? `${mag}/${reserve} reloading` : `${mag}/${reserve}`;
     const meClass = p.id === game.myId ? ' me' : '';
@@ -6728,8 +6827,8 @@ function handleSkillOptionInteract(e) {
   sendJson({ type: 'skillPick', skillId: sid });
   return;
   setCommentaryVariant([
-    { title: `Взяли навык: ${skillLabel}.`, text: 'Отлично, билд только что стал либо сильнее, либо гораздо смешнее. Скоро увидим какой именно вариант выпал.' },
-    { title: `${skillLabel} добавлен в арсенал.`, text: 'Очень люблю этот момент: игрок делает серьёзное лицо и выбирает себе новые способы создавать хаос.' },
+    { title: `Р’Р·СЏР»Рё РЅР°РІС‹Рє: ${skillLabel}.`, text: 'РћС‚Р»РёС‡РЅРѕ, Р±РёР»Рґ С‚РѕР»СЊРєРѕ С‡С‚Рѕ СЃС‚Р°Р» Р»РёР±Рѕ СЃРёР»СЊРЅРµРµ, Р»РёР±Рѕ РіРѕСЂР°Р·РґРѕ СЃРјРµС€РЅРµРµ. РЎРєРѕСЂРѕ СѓРІРёРґРёРј РєР°РєРѕР№ РёРјРµРЅРЅРѕ РІР°СЂРёР°РЅС‚ РІС‹РїР°Р».' },
+    { title: `${skillLabel} РґРѕР±Р°РІР»РµРЅ РІ Р°СЂСЃРµРЅР°Р».`, text: 'РћС‡РµРЅСЊ Р»СЋР±Р»СЋ СЌС‚РѕС‚ РјРѕРјРµРЅС‚: РёРіСЂРѕРє РґРµР»Р°РµС‚ СЃРµСЂСЊС‘Р·РЅРѕРµ Р»РёС†Рѕ Рё РІС‹Р±РёСЂР°РµС‚ СЃРµР±Рµ РЅРѕРІС‹Рµ СЃРїРѕСЃРѕР±С‹ СЃРѕР·РґР°РІР°С‚СЊ С…Р°РѕСЃ.' },
   ], `skill_pick_${String(sid).toLowerCase()}`, 2500);
   sendJson({ type: 'skillPick', skillId: sid });
 }
@@ -6858,7 +6957,7 @@ function renderDeathRewardsPanel() {
     : '<div class="death-reward-cards muted">' + trWithFallback('ui.run_rewards.no_cards', 'No hero card drops this run') + '</div>';
   const itemsHtml = rewards && rewards.items.length > 0
     ? (`<div class="death-reward-cards">` + rewards.items.map((item) => `<span>+${item.quantity} ${escapeHtml(item.name)}${item.level > 1 ? ` Lv${item.level}` : ''}</span>`).join('') + `</div>`)
-    : '<div class="death-reward-cards muted">' + trWithFallback('ui.run_rewards.no_items', 'Предметы в этот раз не выпали') + '</div>';
+    : '<div class="death-reward-cards muted">' + trWithFallback('ui.run_rewards.no_items', 'РџСЂРµРґРјРµС‚С‹ РІ СЌС‚РѕС‚ СЂР°Р· РЅРµ РІС‹РїР°Р»Рё') + '</div>';
   const pvpResultsHtml = (isPvpRun && Boolean(run.pvpMatchEnded)) ? buildDeathRewardsPvpResultsHtml() : '';
   deathRewardsBodyEl.innerHTML = rowsHtml + cardsHtml + itemsHtml + pvpResultsHtml;
 }
@@ -7026,8 +7125,8 @@ function clearLocalSessionState() {
   commentatorSpeech.recentKeys.clear();
   commentatorSpeech.seq += 1;
   if (commentatorSpeech.supported) window.speechSynthesis.cancel();
-  if (commentatorTitleEl) commentatorTitleEl.textContent = 'Матч загружается. Сарказм прогревается.';
-  if (commentatorTextEl) commentatorTextEl.textContent = 'Как только на карте начнётся хоть какая-то драма, я сразу это отмечу.';
+  if (commentatorTitleEl) commentatorTitleEl.textContent = 'РњР°С‚С‡ Р·Р°РіСЂСѓР¶Р°РµС‚СЃСЏ. РЎР°СЂРєР°Р·Рј РїСЂРѕРіСЂРµРІР°РµС‚СЃСЏ.';
+  if (commentatorTextEl) commentatorTextEl.textContent = 'РљР°Рє С‚РѕР»СЊРєРѕ РЅР° РєР°СЂС‚Рµ РЅР°С‡РЅС‘С‚СЃСЏ С…РѕС‚СЊ РєР°РєР°СЏ-С‚Рѕ РґСЂР°РјР°, СЏ СЃСЂР°Р·Сѓ СЌС‚Рѕ РѕС‚РјРµС‡Сѓ.';
   game.myId = null;
   game.spectating = false;
   game.roomCode = null;
@@ -7377,10 +7476,10 @@ message: (ev) => {
     }
     applyChatHistory(msg.chatHistory);
     setCommentatorLine(
-      game.spectating ? 'Арена уже в эфире.' : 'Матч начался. Самоуверенность тоже.',
+      game.spectating ? 'РђСЂРµРЅР° СѓР¶Рµ РІ СЌС„РёСЂРµ.' : 'РњР°С‚С‡ РЅР°С‡Р°Р»СЃСЏ. РЎР°РјРѕСѓРІРµСЂРµРЅРЅРѕСЃС‚СЊ С‚РѕР¶Рµ.',
       game.spectating
-        ? `Подглядываем за комнатой ${msg.roomCode} без права вмешаться. Смотреть безопаснее, чем участвовать.`
-        : `Комната ${msg.roomCode} загружена. Посмотрим, насколько быстро арена объяснит всем правила через боль.`,
+        ? `РџРѕРґРіР»СЏРґС‹РІР°РµРј Р·Р° РєРѕРјРЅР°С‚РѕР№ ${msg.roomCode} Р±РµР· РїСЂР°РІР° РІРјРµС€Р°С‚СЊСЃСЏ. РЎРјРѕС‚СЂРµС‚СЊ Р±РµР·РѕРїР°СЃРЅРµРµ, С‡РµРј СѓС‡Р°СЃС‚РІРѕРІР°С‚СЊ.`
+        : `РљРѕРјРЅР°С‚Р° ${msg.roomCode} Р·Р°РіСЂСѓР¶РµРЅР°. РџРѕСЃРјРѕС‚СЂРёРј, РЅР°СЃРєРѕР»СЊРєРѕ Р±С‹СЃС‚СЂРѕ Р°СЂРµРЅР° РѕР±СЉСЏСЃРЅРёС‚ РІСЃРµРј РїСЂР°РІРёР»Р° С‡РµСЂРµР· Р±РѕР»СЊ.`,
       game.spectating ? 'spectate_welcome' : 'welcome',
       0,
     );
@@ -7554,7 +7653,7 @@ message: (ev) => {
       const jumpMeta = dodgeCdMeta > 0 ? (dodgeCdMeta / 1000).toFixed(1) + 's' : 'ready';
       const mag = Math.max(0, Number(me.magazineAmmo) || 0);
       const magSize = Math.max(1, Number(me.magazineSize) || 1);
-      const reserve = me.reserveAmmo === null ? '∞' : Math.max(0, Number(me.reserveAmmo) || 0);
+      const reserve = me.reserveAmmo === null ? 'в€ћ' : Math.max(0, Number(me.reserveAmmo) || 0);
       const reloadLeft = Math.max(0, Number(me.reloadLeftMs) || 0);
       const reloadText = reloadLeft > 0 ? ` | Reload ${(reloadLeft / 1000).toFixed(1)}s` : '';
       weaponMetaEl.textContent = `Weapon: ${me.weaponLabel} | Mag: ${mag}/${magSize} | Ammo: ${reserve}${reloadText} | Jump: ${jumpMeta}`;
@@ -7601,28 +7700,28 @@ message: (ev) => {
         if (finalDeath) {
           setCommentaryVariant([
             {
-              title: 'Герой закончился раньше матча.',
-              text: 'Классика жанра: амбиции были огромные, полоска хп оказалась короче.',
+              title: 'Р“РµСЂРѕР№ Р·Р°РєРѕРЅС‡РёР»СЃСЏ СЂР°РЅСЊС€Рµ РјР°С‚С‡Р°.',
+              text: 'РљР»Р°СЃСЃРёРєР° Р¶Р°РЅСЂР°: Р°РјР±РёС†РёРё Р±С‹Р»Рё РѕРіСЂРѕРјРЅС‹Рµ, РїРѕР»РѕСЃРєР° С…Рї РѕРєР°Р·Р°Р»Р°СЃСЊ РєРѕСЂРѕС‡Рµ.',
             },
             {
-              title: 'Финал получился короткий, но выразительный.',
-              text: 'Арена приняла смелость к сведению и тут же оформила увольнение без выходного пособия.',
+              title: 'Р¤РёРЅР°Р» РїРѕР»СѓС‡РёР»СЃСЏ РєРѕСЂРѕС‚РєРёР№, РЅРѕ РІС‹СЂР°Р·РёС‚РµР»СЊРЅС‹Р№.',
+              text: 'РђСЂРµРЅР° РїСЂРёРЅСЏР»Р° СЃРјРµР»РѕСЃС‚СЊ Рє СЃРІРµРґРµРЅРёСЋ Рё С‚СѓС‚ Р¶Рµ РѕС„РѕСЂРјРёР»Р° СѓРІРѕР»СЊРЅРµРЅРёРµ Р±РµР· РІС‹С…РѕРґРЅРѕРіРѕ РїРѕСЃРѕР±РёСЏ.',
             },
             {
-              title: 'На этом забег официально превратился в статистику.',
-              text: 'Публика аплодирует, монстры доедают уверенность, а комментатор делает пометку: жить хотелось, но не срослось.',
+              title: 'РќР° СЌС‚РѕРј Р·Р°Р±РµРі РѕС„РёС†РёР°Р»СЊРЅРѕ РїСЂРµРІСЂР°С‚РёР»СЃСЏ РІ СЃС‚Р°С‚РёСЃС‚РёРєСѓ.',
+              text: 'РџСѓР±Р»РёРєР° Р°РїР»РѕРґРёСЂСѓРµС‚, РјРѕРЅСЃС‚СЂС‹ РґРѕРµРґР°СЋС‚ СѓРІРµСЂРµРЅРЅРѕСЃС‚СЊ, Р° РєРѕРјРјРµРЅС‚Р°С‚РѕСЂ РґРµР»Р°РµС‚ РїРѕРјРµС‚РєСѓ: Р¶РёС‚СЊ С…РѕС‚РµР»РѕСЃСЊ, РЅРѕ РЅРµ СЃСЂРѕСЃР»РѕСЃСЊ.',
             },
             {
-              title: 'Героизм встретился с бухгалтерией урона.',
-              text: 'Сошлись цифры, и выяснилось неприятное: входящего было больше, чем хотелось бы для дальнейшей жизни.',
+              title: 'Р“РµСЂРѕРёР·Рј РІСЃС‚СЂРµС‚РёР»СЃСЏ СЃ Р±СѓС…РіР°Р»С‚РµСЂРёРµР№ СѓСЂРѕРЅР°.',
+              text: 'РЎРѕС€Р»РёСЃСЊ С†РёС„СЂС‹, Рё РІС‹СЏСЃРЅРёР»РѕСЃСЊ РЅРµРїСЂРёСЏС‚РЅРѕРµ: РІС…РѕРґСЏС‰РµРіРѕ Р±С‹Р»Рѕ Р±РѕР»СЊС€Рµ, С‡РµРј С…РѕС‚РµР»РѕСЃСЊ Р±С‹ РґР»СЏ РґР°Р»СЊРЅРµР№С€РµР№ Р¶РёР·РЅРё.',
             },
             {
-              title: 'Катка закончилась в лучших традициях арены.',
-              text: 'Шума было много, планов ещё больше, а вот запас прочности снова подвёл коллектив мечты.',
+              title: 'РљР°С‚РєР° Р·Р°РєРѕРЅС‡РёР»Р°СЃСЊ РІ Р»СѓС‡С€РёС… С‚СЂР°РґРёС†РёСЏС… Р°СЂРµРЅС‹.',
+              text: 'РЁСѓРјР° Р±С‹Р»Рѕ РјРЅРѕРіРѕ, РїР»Р°РЅРѕРІ РµС‰С‘ Р±РѕР»СЊС€Рµ, Р° РІРѕС‚ Р·Р°РїР°СЃ РїСЂРѕС‡РЅРѕСЃС‚Рё СЃРЅРѕРІР° РїРѕРґРІС‘Р» РєРѕР»Р»РµРєС‚РёРІ РјРµС‡С‚С‹.',
             },
             {
-              title: 'Очень смелое решение умереть именно здесь.',
-              text: 'Зрелищно, внезапно и с тем самым послевкусием, когда хочется винить всё, кроме собственного позиционирования.',
+              title: 'РћС‡РµРЅСЊ СЃРјРµР»РѕРµ СЂРµС€РµРЅРёРµ СѓРјРµСЂРµС‚СЊ РёРјРµРЅРЅРѕ Р·РґРµСЃСЊ.',
+              text: 'Р—СЂРµР»РёС‰РЅРѕ, РІРЅРµР·Р°РїРЅРѕ Рё СЃ С‚РµРј СЃР°РјС‹Рј РїРѕСЃР»РµРІРєСѓСЃРёРµРј, РєРѕРіРґР° С…РѕС‡РµС‚СЃСЏ РІРёРЅРёС‚СЊ РІСЃС‘, РєСЂРѕРјРµ СЃРѕР±СЃС‚РІРµРЅРЅРѕРіРѕ РїРѕР·РёС†РёРѕРЅРёСЂРѕРІР°РЅРёСЏ.',
             },
           ], 'player_final_death', 6000);
           pendingFinalDeathCommentary = {
@@ -7646,7 +7745,7 @@ message: (ev) => {
         const tokensLeft = Math.max(0, Number(me.reviveTokens) || 0);
         const extra = livesLeft > 0 ? (` | Lives left: ${livesLeft}`) : (tokensLeft > 0 ? (` | Tokens left: ${tokensLeft}`) : '');
         statusEl.textContent = `Downed. Respawn in ${leftSec}s${extra}`;
-        setCommentatorLine('Нокдаун без права на драматическую паузу.', `Респавн через ${leftSec}с. Отличный момент пересмотреть свои отношения с входящим уроном.`, 'player_respawn_wait', 5000);
+        setCommentatorLine('РќРѕРєРґР°СѓРЅ Р±РµР· РїСЂР°РІР° РЅР° РґСЂР°РјР°С‚РёС‡РµСЃРєСѓСЋ РїР°СѓР·Сѓ.', `Р РµСЃРїР°РІРЅ С‡РµСЂРµР· ${leftSec}СЃ. РћС‚Р»РёС‡РЅС‹Р№ РјРѕРјРµРЅС‚ РїРµСЂРµСЃРјРѕС‚СЂРµС‚СЊ СЃРІРѕРё РѕС‚РЅРѕС€РµРЅРёСЏ СЃ РІС…РѕРґСЏС‰РёРј СѓСЂРѕРЅРѕРј.`, 'player_respawn_wait', 5000);
       }
       prevMyAlive = Boolean(me.alive);
     } else {
@@ -7778,3 +7877,4 @@ window.addEventListener('cw:i18n-changed', () => {
 });
 
 void maybeStartReplayFromUrl();
+

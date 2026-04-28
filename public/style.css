@@ -1411,6 +1411,54 @@ body.replay-game-active #scoreboard {
   padding: 8px;
 }
 
+.hero-equip-slot-layout {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.hero-equip-slot-side {
+  display: grid;
+  grid-template-rows: 90px auto;
+  gap: 6px;
+  justify-items: start;
+  align-items: start;
+}
+
+.hero-equip-slot .hero-equip-slot-icon {
+  grid-area: auto;
+  width: 90px;
+  height: 90px;
+  min-height: 90px;
+  justify-self: start;
+  align-self: start;
+}
+
+.hero-equip-slot-copy {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.hero-equip-slot .hero-equip-action,
+.hero-equip-slot .hero-equip-slot-empty-cta {
+  width: 130px;
+  min-width: 130px;
+  min-height: 34px;
+  padding: 6px 10px;
+  justify-self: start;
+  text-align: center;
+  justify-content: center;
+  font-size: 13px;
+  line-height: 1.1;
+}
+
+.hero-equip-slot .hero-equip-action {
+  display: inline-flex;
+  align-items: center;
+}
+
 .hero-equip-slot.empty {
   color: #94a3b8;
 }
@@ -1441,8 +1489,15 @@ body.replay-game-active #scoreboard {
 }
 
 .hero-equip-slot-empty-cta {
-  font-size: 11px;
-  color: #94a3b8;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: linear-gradient(180deg, rgba(18, 24, 33, 0.92), rgba(10, 14, 22, 0.94));
+  color: #f8fafc;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .hero-equip-modal-card {
@@ -1539,6 +1594,34 @@ body.replay-game-active #scoreboard {
   gap: 8px;
 }
 
+.inventory-filter-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  margin-bottom: 10px;
+}
+
+.inventory-filter-tab {
+  min-height: 34px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(100, 116, 139, 0.42);
+  background: rgba(15, 23, 42, 0.76);
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.inventory-filter-tab.active {
+  border-color: rgba(56, 189, 248, 0.9);
+  background: linear-gradient(180deg, rgba(21, 47, 76, 0.98), rgba(18, 35, 59, 0.94));
+  color: #f8fafc;
+  box-shadow: 0 0 18px rgba(56, 189, 248, 0.18), 0 0 20px rgba(239, 68, 68, 0.14);
+}
+
 .inventory-category-title {
   font-size: 11px;
   font-weight: 800;
@@ -1549,7 +1632,7 @@ body.replay-game-active #scoreboard {
 
 .inventory-category-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -1563,10 +1646,52 @@ body.replay-game-active #scoreboard {
 }
 
 .inventory-item-card-compact {
-  grid-template-rows: auto auto auto 1fr auto;
+  min-height: 108px;
   align-content: start;
-  min-height: 140px;
 }
+
+.inventory-item-layout {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  grid-template-areas:
+    "icon main"
+    "actions main";
+  gap: 12px;
+  align-items: start;
+}
+
+.inventory-item-main {
+  grid-area: main;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.inventory-item-icon {
+  grid-area: icon;
+  display: grid;
+  place-items: center;
+  width: 90px;
+  height: 90px;
+  min-height: 90px;
+  align-self: start;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: linear-gradient(180deg, rgba(21, 26, 37, 0.96), rgba(10, 14, 22, 0.96));
+  color: #e2e8f0;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.inventory-item-icon-head { color: #9cc8ff; }
+.inventory-item-icon-armor { color: #ffd9a0; }
+.inventory-item-icon-legs { color: #d8c8ff; }
+.inventory-item-icon-hands { color: #ffaf98; }
+.inventory-item-icon-ring { color: #f7d775; }
+.inventory-item-icon-consumable { color: #80f0bc; }
+.inventory-item-icon-other { color: #c4c8d1; }
 
 .inventory-item-head {
   display: flex;
@@ -1613,6 +1738,78 @@ body.replay-game-active #scoreboard {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.inventory-item-actions-compact {
+  grid-area: actions;
+  display: grid;
+  grid-auto-flow: column;
+  gap: 6px;
+  justify-content: start;
+  align-items: start;
+}
+
+.inventory-item-actions-inline {
+  margin-top: 2px;
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.inventory-text-action {
+  width: 78px;
+  min-width: 78px;
+  height: 38px;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.05;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.inventory-text-action.danger {
+  width: 92px;
+  min-width: 92px;
+}
+
+.inventory-text-action.upgrade {
+  width: 94px;
+  min-width: 94px;
+}
+
+#join-form .inventory-item-actions-inline .inventory-text-action {
+  font-size: 12px !important;
+}
+
+#join-form .inventory-item-actions-compact .inventory-text-action {
+  font-size: 12px !important;
+}
+
+.inventory-mini-btn-icon {
+  width: 30px;
+  min-width: 30px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+}
+
+@media (max-width: 760px) {
+  .inventory-item-layout {
+    grid-template-columns: 72px minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .inventory-item-icon {
+    width: 72px;
+    height: 72px;
+    min-height: 72px;
+  }
 }
 
 .rarity-common {
@@ -3712,12 +3909,19 @@ body.levelup-open #dev-console-toggle {
 
 .hero-v2-status {
   font-size: 11px;
-  color: #86efac;
   text-align: center;
 }
 
+.hero-v2-status.selected {
+  color: #86efac;
+}
+
+.hero-v2-status.unlocked {
+  color: #f8fafc;
+}
+
 .hero-v2-status.locked {
-  color: #fca5a5;
+  color: #f87171;
 }
 
 .profile-card {
@@ -6117,6 +6321,10 @@ body.battle-hub-embed #join-form.cw-shell {
   gap: 16px;
 }
 
+#menu-panel-characters .hero-loadout-stage-portrait {
+  padding-top: 24px;
+}
+
 #menu-panel-characters #hero-character-panel .hero-skill-panels-row {
   display: grid !important;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
@@ -6196,6 +6404,10 @@ body.battle-hub-embed #join-form.cw-shell {
 }
 
 @media (max-width: 720px) {
+  #menu-panel-characters .inventory-category-grid {
+    grid-template-columns: 1fr;
+  }
+
   #menu-panel-characters .hero-gallery-v2 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

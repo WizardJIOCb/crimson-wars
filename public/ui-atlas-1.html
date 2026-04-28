@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Crimson Wars UI Atlas 1</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/ui-atlas-1.css?v=20260428b" />
+</head>
+<body>
+  <div class="atlas-page">
+    <header class="atlas-header">
+      <div>
+        <p class="atlas-kicker">Crimson Wars / UI Slice Lab</p>
+        <h1>Разбор визуального языка `ui-atlas-v1.png`</h1>
+        <p class="atlas-intro">
+          Это не скриншоты текущего меню, а живая нарезка системы из atlas: палитра, рамки, углы, табы,
+          кнопки, статусы, бары, карточки, skill nodes и составные панели для Battle Hub.
+        </p>
+      </div>
+      <a class="atlas-link" href="/play">Открыть `/play`</a>
+    </header>
+
+    <section class="atlas-hero">
+      <article class="atlas-frame atlas-reference-card">
+        <div class="atlas-section-head">
+          <span>Source board</span>
+          <strong>ui-atlas-v1.png</strong>
+        </div>
+        <img src="/assets/ui/ui-atlas-v1.png" alt="Crimson Wars UI atlas reference" />
+      </article>
+
+      <article class="atlas-frame atlas-summary-card">
+        <div class="atlas-section-head">
+          <span>What is extracted</span>
+          <strong>Правила atlas</strong>
+        </div>
+        <div class="atlas-rule-list">
+          <div class="atlas-rule">
+            <strong>Панели</strong>
+            <p>Тёмный металл, красный inner glow, угловые срезы, следы крови только как акцент.</p>
+          </div>
+          <div class="atlas-rule">
+            <strong>Кнопки</strong>
+            <p>Primary в crimson plate, secondary в black graphite, активные состояния светятся по краю.</p>
+          </div>
+          <div class="atlas-rule">
+            <strong>Карточки</strong>
+            <p>Вертикальные hero cards, акцентный кант по редкости, тяжёлая рамка и плотный низ.</p>
+          </div>
+          <div class="atlas-rule">
+            <strong>HUD-геометрия</strong>
+            <p>Длинные клипованные табы, тонкие divider lines, прогресс-бары с красным накалом.</p>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section class="atlas-section">
+      <div class="atlas-section-title">
+        <p class="atlas-kicker">01 Palette</p>
+        <h2>Палитра и токены из atlas</h2>
+      </div>
+      <div class="atlas-palette-grid">
+        <article class="atlas-token-card"><i style="background:#ef261e"></i><strong>Crimson glow</strong><span>#ef261e</span></article>
+        <article class="atlas-token-card"><i style="background:#70080c"></i><strong>Deep blood</strong><span>#70080c</span></article>
+        <article class="atlas-token-card"><i style="background:#08090b"></i><strong>Black metal</strong><span>#08090b</span></article>
+        <article class="atlas-token-card"><i style="background:#16181c"></i><strong>Panel graphite</strong><span>#16181c</span></article>
+        <article class="atlas-token-card"><i style="background:#4b4e52"></i><strong>Steel border</strong><span>#4b4e52</span></article>
+        <article class="atlas-token-card"><i style="background:#929699"></i><strong>Text muted</strong><span>#929699</span></article>
+        <article class="atlas-token-card"><i style="background:#e6e6de"></i><strong>Text main</strong><span>#e6e6de</span></article>
+        <article class="atlas-token-card"><i style="background:#62ae32"></i><strong>Scout green</strong><span>#62ae32</span></article>
+        <article class="atlas-token-card"><i style="background:#25b9c6"></i><strong>Medic cyan</strong><span>#25b9c6</span></article>
+        <article class="atlas-token-card"><i style="background:#8e30d2"></i><strong>Shadow purple</strong><span>#8e30d2</span></article>
+        <article class="atlas-token-card"><i style="background:#df6f18"></i><strong>Warning orange</strong><span>#df6f18</span></article>
+        <article class="atlas-token-card"><i style="background:#ebad3d"></i><strong>Gold rank</strong><span>#ebad3d</span></article>
+      </div>
+    </section>
+
+    <section class="atlas-section">
+      <div class="atlas-section-title">
+        <p class="atlas-kicker">02 Shapes</p>
+        <h2>Формы, углы и клипованные носы</h2>
+      </div>
+      <div class="atlas-shape-grid">
+        <article class="atlas-frame">
+          <div class="atlas-section-head"><span>Tabs</span><strong>Длинные навигационные пластины</strong></div>
+          <div class="atlas-tabs-demo">
+            <button class="atlas-tab active">Играть</button>
+            <button class="atlas-tab">Персонажи</button>
+            <button class="atlas-tab">Навыки</button>
+            <button class="atlas-tab">Профиль</button>
+            <button class="atlas-tab">Рейтинг</button>
+            <button class="atlas-tab">Новости</button>
+            <button class="atlas-tab">Настройки</button>
+          </div>
+        </article>
+
+        <article class="atlas-frame">
+          <div class="atlas-section-head"><span>Buttons</span><strong>Primary / Secondary / Quiet</strong></div>
+          <div class="atlas-buttons-demo">
+            <button class="atlas-button atlas-button-primary">Быстрый матч</button>
+            <button class="atlas-button atlas-button-primary short">Выбрать героя</button>
+            <button class="atlas-button atlas-button-secondary">Создать комнату</button>
+            <button class="atlas-button atlas-button-muted">Сбросить</button>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="atlas-section">
+      <div class="atlas-section-title">
+        <p class="atlas-kicker">03 HUD atoms</p>
+        <h2>Плашки, икон-пилы, бары и dividers</h2>
+      </div>
+      <div class="atlas-atom-grid">
+        <article class="atlas-frame">
+          <div class="atlas-section-head"><span>Resource pills</span><strong>Мини-статусы</strong></div>
+          <div class="atlas-pill-row">
+            <span class="atlas-pill red"><b>SH</b>30923</span>
+            <span class="atlas-pill red"><b>SP</b>6</span>
+            <span class="atlas-pill dim"><b>SC</b>5020</span>
+            <span class="atlas-pill gray"><b>LV</b>27</span>
+          </div>
+        </article>
+
+        <article class="atlas-frame">
+          <div class="atlas-section-head"><span>Progress</span><strong>Полосы и сегменты</strong></div>
+          <div class="atlas-bars">
+            <div class="atlas-bar"><span style="width:88%"></span></div>
+            <div class="atlas-bar segmented"><span style="width:62%"></span></div>
+            <div class="atlas-bar gold"><span style="width:34%"></span></div>
+          </div>
+        </article>
+
+        <article class="atlas-frame">
+          <div class="atlas-section-head"><span>Dividers</span><strong>Орнаментальные разделители</strong></div>
+          <div class="atlas-divider-stack">
+            <div class="atlas-divider long"></div>
+            <div class="atlas-divider marked"></div>
+            <div class="atlas-divider flare"></div>
+          </div>
+        </article>
+
+        <article class="atlas-frame">
+          <div class="atlas-section-head"><span>Status icons</span><strong>Badge sockets</strong></div>
+          <div class="atlas-badge-row">
+            <span class="atlas-badge red"></span>
+            <span class="atlas-badge orange"></span>
+            <span class="atlas-badge purple"></span>
+            <span class="atlas-badge gold"></span>
+            <span class="atlas-badge gray"></span>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="atlas-section">
+      <div class="atlas-section-title">
+        <p class="atlas-kicker">04 Cards</p>
+        <h2>Карточки героев, рангов и предметов</h2>
+      </div>
+      <div class="atlas-card-grid">
+        <article class="atlas-frame">
+          <div class="atlas-section-head"><span>Hero roster</span><strong>Вертикальные hero cards</strong></div>
+          <div class="atlas-hero-row">
+            <button class="atlas-hero-card active">
+              <img src="/assets/characters/cyber.jpg" alt="Кибер" />
+              <strong>Кибер [35]</strong>
+              <span>Выбран</span>
+            </button>
+            <button class="atlas-hero-card scout">
+              <img src="/assets/characters/scout.jpg" alt="Скаут" />
+              <strong>Скаут [28]</strong>
+              <span>Открыт</span>
+            </button>
+            <button class="atlas-hero-card shadow">
+              <img src="/assets/characters/shadow.jpg" alt="Тень" />
+              <strong>Тень [32]</strong>
+              <span>Открыт</span>
+            </button>
+            <button class="atlas-hero-card medic">
+              <img src="/assets/characters/medis.jpg" alt="Медик" />
+              <strong>Медик [21]</strong>
+              <span>Открыт</span>
+            </button>
+            <button class="atlas-hero-card raider">
+              <img src="/assets/characters/raider.jpg" alt="Рейдер" />
+              <strong>Рейдер [24]</strong>
+              <span>Открыт</span>
+            </button>
+          </div>
+        </article>
+
+        <article class="atlas-frame">
+          <div class="atlas-section-head"><span>Item cards</span><strong>Рамки по редкости</strong></div>
+          <div class="atlas-item-row">
+            <div class="atlas-loot-card red"><strong>Импульсный модуль</strong><span>Legendary / Lv 15</span></div>
+            <div class="atlas-loot-card purple"><strong>Теневой стабилизатор</strong><span>Epic / Lv 11</span></div>
+            <div class="atlas-loot-card gold"><strong>Раунд коммандера</strong><span>Season / Lv 9</span></div>
+            <div class="atlas-loot-card gray"><strong>Пустой сокет</strong><span>Locked</span></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="atlas-section">
+      <div class="atlas-section-title">
+        <p class="atlas-kicker">05 Composite</p>
+        <h2>Составные панели Battle Hub</h2>
+      </div>
+      <div class="atlas-composite-grid">
+        <article class="atlas-frame atlas-composite-panel">
+          <div class="atlas-section-head"><span>Header composite</span><strong>Battle Hub top frame</strong></div>
+          <div class="atlas-hub-composite">
+            <div class="atlas-profile-chip">
+              <img src="/assets/characters/cyber.jpg" alt="Кибер" />
+              <div>
+                <strong>WizardJIOCb</strong>
+                <span>Оператор / Lv 27</span>
+              </div>
+            </div>
+            <img class="atlas-title-logo" src="/assets/other/crimson wars title.png" alt="Crimson Wars" />
+            <div class="atlas-pill-column">
+              <span class="atlas-pill red"><b>SH</b>30923</span>
+              <span class="atlas-pill dim"><b>SC</b>5020</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="atlas-frame atlas-composite-panel">
+          <div class="atlas-section-head"><span>Character panel</span><strong>Loadout / portrait / slots</strong></div>
+          <div class="atlas-loadout-composite">
+            <div class="atlas-slot-matrix">
+              <div class="atlas-slot-box filled"><span>Шапка</span><strong>Нейро-визор</strong></div>
+              <div class="atlas-slot-box filled"><span>Броня</span><strong>Карбон-панцирь</strong></div>
+              <div class="atlas-slot-box empty"><span>Штаны</span><button>Снарядить</button></div>
+              <div class="atlas-slot-box empty"><span>Левая рука</span><button>Снарядить</button></div>
+              <div class="atlas-slot-box filled"><span>Правая рука</span><strong>Ионный карабин</strong></div>
+              <div class="atlas-slot-box empty"><span>Кольцо</span><button>Снарядить</button></div>
+            </div>
+            <div class="atlas-portrait-stack">
+              <img src="/assets/characters/cyber.jpg" alt="Кибер" />
+              <div class="atlas-portrait-meta">
+                <strong>Кибер</strong>
+                <span>Универсальный адаптивный оператор</span>
+                <span>POW 7 | AGI 6 | VIT 7 | TEC 9</span>
+              </div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="atlas-section">
+      <div class="atlas-section-title">
+        <p class="atlas-kicker">06 Nodes</p>
+        <h2>Skill nodes и ветки</h2>
+      </div>
+      <div class="atlas-node-grid">
+        <article class="atlas-frame">
+          <div class="atlas-section-head"><span>Hex nodes</span><strong>Core states</strong></div>
+          <div class="atlas-skill-chain">
+            <div class="atlas-skill-node unlocked"></div>
+            <div class="atlas-skill-link"></div>
+            <div class="atlas-skill-node unlocked hot"></div>
+            <div class="atlas-skill-link"></div>
+            <div class="atlas-skill-node active"></div>
+            <div class="atlas-skill-link"></div>
+            <div class="atlas-skill-node purple"></div>
+            <div class="atlas-skill-link"></div>
+            <div class="atlas-skill-node locked"></div>
+          </div>
+        </article>
+
+        <article class="atlas-frame">
+          <div class="atlas-section-head"><span>Node cards</span><strong>Talents / unique skills</strong></div>
+          <div class="atlas-node-card-list">
+            <div class="atlas-node-card">
+              <div><strong>Оверклок</strong><span>Скорострельность +8%</span></div>
+              <button>Lv 5/5</button>
+            </div>
+            <div class="atlas-node-card">
+              <div><strong>Барьерная матрица</strong><span>Макс. HP +15</span></div>
+              <button class="hot">Lv 2/5</button>
+            </div>
+            <div class="atlas-node-card">
+              <div><strong>Импульсная волна</strong><span>ЭМИ-всплеск вокруг героя</span></div>
+              <button>Lv 10/10</button>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="atlas-section">
+      <div class="atlas-section-title">
+        <p class="atlas-kicker">07 Screens</p>
+        <h2>Сборка больших блоков интерфейса</h2>
+      </div>
+      <div class="atlas-screen-grid">
+        <article class="atlas-frame">
+          <div class="atlas-section-head"><span>Leaderboard</span><strong>Таблица рейтинга</strong></div>
+          <div class="atlas-table-controls">
+            <select>
+              <option>Орда</option>
+              <option>PvP</option>
+            </select>
+            <div class="atlas-filter-row">
+              <button class="active">Счёт</button>
+              <button>Убийства</button>
+              <button>Герои</button>
+            </div>
+          </div>
+          <div class="atlas-board">
+            <div class="atlas-board-head"><span>#</span><span>Игрок</span><span>Герой</span><span>Счёт</span></div>
+            <div class="atlas-board-row"><span>1</span><span>WizardJIOCb</span><span>Кибер</span><span>2 156 780</span></div>
+            <div class="atlas-board-row"><span>2</span><span>Ghost_77</span><span>Тень</span><span>2 014 240</span></div>
+            <div class="atlas-board-row"><span>3</span><span>NightHunter</span><span>Скаут</span><span>1 945 660</span></div>
+          </div>
+        </article>
+
+        <article class="atlas-frame">
+          <div class="atlas-section-head"><span>News card</span><strong>Featured update</strong></div>
+          <div class="atlas-news-card">
+            <img src="/assets/other/landing-image.jpg" alt="Обновление" />
+            <div class="atlas-news-copy">
+              <span>Обновление 1.2.0</span>
+              <strong>Баланс, глубина, война</strong>
+              <p>Крупная перестройка Battle Hub, переработанный экран персонажей и новый язык панелей.</p>
+              <button class="atlas-button atlas-button-primary short">Подробнее</button>
+            </div>
+          </div>
+        </article>
+
+        <article class="atlas-frame">
+          <div class="atlas-section-head"><span>Settings</span><strong>Rows and toggles</strong></div>
+          <div class="atlas-settings-list">
+            <label class="atlas-setting-row">
+              <span>Уровень графики</span>
+              <select><option>Среднее</option></select>
+            </label>
+            <label class="atlas-setting-toggle"><input type="checkbox" checked /><span>Показывать миникарту</span></label>
+            <label class="atlas-setting-toggle"><input type="checkbox" checked /><span>Трассеры пуль</span></label>
+            <label class="atlas-setting-toggle"><input type="checkbox" /><span>Показывать чат</span></label>
+          </div>
+        </article>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

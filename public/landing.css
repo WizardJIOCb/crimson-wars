@@ -870,27 +870,6 @@ main {
     rgba(8, 4, 5, 0.75);
 }
 
-.battle-hub-loading {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  color: #ffd8cb;
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  background: linear-gradient(180deg, rgba(16, 5, 7, 0.86), rgba(10, 4, 5, 0.92));
-  z-index: 2;
-  transition: opacity 220ms ease;
-}
-
-.battle-hub-loading.is-hidden {
-  opacity: 0;
-  pointer-events: none;
-}
-
 .battle-hub-frame {
   display: block;
   width: 100%;
