@@ -7,6 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "check:encoding": "node scripts/encoding-guard.js",
+    "migrate:mysql": "node scripts/migrate-files-to-mysql.js",
     "typecheck": "node --check public/js/cw-menu-react.js && node --check public/js/client-core.js && node --check public/js/client-net-input.js && node --check public/js/client-render.js && node --check public/js/client-fx.js && node --check public/js/client-i18n.js",
     "build": "npm run typecheck"
   },
@@ -16,6 +17,7 @@
   "dependencies": {
     "better-sqlite3": "^12.6.2",
     "express": "^4.21.2",
+    "mysql2": "^3.22.3",
     "ws": "^8.18.0"
   }
 }
