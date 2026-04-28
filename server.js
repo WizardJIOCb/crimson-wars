@@ -1605,6 +1605,7 @@ app.get('/api/player/me', (req, res) => {
       player: null,
       identities: [],
       providers: ['google', 'vk', 'mailru'],
+      nicknameSetupRequired: false,
       progressionCatalog: catalog,
       progression: null,
     });
@@ -1617,6 +1618,7 @@ app.get('/api/player/me', (req, res) => {
     player: req.playerUser,
     identities: req.playerSession?.identities || [],
     providers: ['google', 'vk', 'mailru'],
+    nicknameSetupRequired: playerAuthStore.needsNicknameSetup(req.playerUser.id),
     progressionCatalog: catalog,
     progression: accountProgressionStore.toPublicProgression(progression),
   });
@@ -2016,6 +2018,25 @@ app.post('/api/player/logout', (req, res) => {
   playerAuthStore.deleteSession(cookies[PLAYER_SESSION_COOKIE] || '');
   clearPlayerSessionCookie(req, res);
   res.json({ ok: true });
+});
+
+app.post('/api/player/complete-nickname', (req, res) => {
+  if (!req.playerUser) {
+    res.status(401).json({ ok: false, message: 'Authentication required' });
+    return;
+  }
+  const nickname = (req.body?.nickname || '').toString();
+  const result = playerAuthStore.renamePlayer(req.playerUser.id, nickname, { requireNicknameSetup: true });
+  if (!result?.ok) {
+    res.status(result?.code || 400).json({ ok: false, message: result?.message || 'Failed to save nickname' });
+    return;
+  }
+  res.json({
+    ok: true,
+    player: result.player,
+    identities: result.identities,
+    nicknameSetupRequired: !!result.needsNicknameSetup,
+  });
 });
 
 app.get('/admin/skills', (_req, res) => {

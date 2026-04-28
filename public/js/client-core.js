@@ -48,6 +48,9 @@ const playerLogoutBtn = document.getElementById('player-logout');
 const providerGoogleBtn = document.getElementById('provider-google');
 const providerVkBtn = document.getElementById('provider-vk');
 const providerMailruBtn = document.getElementById('provider-mailru');
+const playerRenamePanelEl = document.getElementById('player-rename-panel');
+const playerRenameNicknameEl = document.getElementById('player-rename-nickname');
+const playerRenameSaveBtn = document.getElementById('player-rename-save');
 const authTabButtons = Array.from(document.querySelectorAll('[data-auth-tab]'));
 const authPanels = Array.from(document.querySelectorAll('[data-auth-panel]'));
 const authLoginNicknameEl = document.getElementById('auth-login-nickname');
@@ -310,6 +313,7 @@ const game = {
     mode: 'guest',
     player: null,
     identities: [],
+    needsNicknameSetup: false,
     nicknameStatus: null,
     progression: null,
     progressionCatalog: null,
@@ -953,6 +957,7 @@ function setPlayerAuthBusy(busy) {
   if (providerGoogleBtn) providerGoogleBtn.disabled = game.playerAuth.busy;
   if (providerVkBtn) providerVkBtn.disabled = game.playerAuth.busy;
   if (providerMailruBtn) providerMailruBtn.disabled = true;
+  if (playerRenameSaveBtn) playerRenameSaveBtn.disabled = game.playerAuth.busy;
 }
 
 function setAuthTab(mode) {
@@ -1007,9 +1012,13 @@ function clearJoinFeedback() {
 function renderPlayerAuthUi() {
   const player = game.playerAuth.player;
   const loggedIn = Boolean(player);
+  const needsNicknameSetup = loggedIn && Boolean(game.playerAuth.needsNicknameSetup);
   if (playerAccessDetailsEl) playerAccessDetailsEl.classList.toggle('is-authenticated', loggedIn);
+  if (playerAccessDetailsEl) playerAccessDetailsEl.classList.toggle('needs-nickname-setup', needsNicknameSetup);
   if (playerAuthSummaryEl) {
-    if (loggedIn) {
+    if (needsNicknameSetup) {
+      playerAuthSummaryEl.textContent = 'Вход выполнен. Выберите постоянный никнейм для аккаунта.';
+    } else if (loggedIn) {
       const summaryText = trCore('ui.auth.summary_logged_in', `Logged in as ${player.nickname}. This nickname is reserved for your account.`, { nickname: player.nickname });
       const escapedNickname = escapeHtml(player.nickname);
       playerAuthSummaryEl.innerHTML = escapeHtml(summaryText).replace(escapedNickname, `<span class="auth-summary-nickname">${escapedNickname}</span>`);
@@ -1018,6 +1027,10 @@ function renderPlayerAuthUi() {
     }
   }
   if (playerLogoutBtn) playerLogoutBtn.classList.toggle('hidden', !loggedIn);
+  if (playerRenamePanelEl) playerRenamePanelEl.classList.toggle('hidden', !needsNicknameSetup);
+  if (playerRenameNicknameEl && needsNicknameSetup && !playerRenameNicknameEl.value) {
+    playerRenameNicknameEl.value = player?.nickname || '';
+  }
   if (nameInput) {
     if (loggedIn) {
       nameInput.value = player.nickname;
@@ -1122,6 +1135,7 @@ async function refreshPlayerAuthSession({ silent = false } = {}) {
     const data = await apiJson('/api/player/me', { method: 'GET' });
     game.playerAuth.player = data.player || null;
     game.playerAuth.identities = Array.isArray(data.identities) ? data.identities : [];
+    game.playerAuth.needsNicknameSetup = Boolean(data?.nicknameSetupRequired);
     game.playerAuth.progressionCatalog = data?.progressionCatalog || null;
     game.playerAuth.progression = data?.progression || null;
     if (game.playerAuth.player?.nickname) {
@@ -1135,6 +1149,7 @@ async function refreshPlayerAuthSession({ silent = false } = {}) {
   } catch {
     game.playerAuth.player = null;
     game.playerAuth.identities = [];
+    game.playerAuth.needsNicknameSetup = false;
     game.playerAuth.progressionCatalog = null;
     game.playerAuth.progression = null;
   }
@@ -1268,6 +1283,7 @@ async function logoutPlayerAccount() {
     trackMetrikaGoal('player_logout_success', { auth_mode: 'account' });
     game.playerAuth.player = null;
     game.playerAuth.identities = [];
+    game.playerAuth.needsNicknameSetup = false;
     game.playerAuth.nicknameStatus = null;
     game.playerAuth.progression = null;
     game.playerAuth.progressionCatalog = null;
@@ -1278,6 +1294,40 @@ async function logoutPlayerAccount() {
     reloadForPlayerSession('Logged out. Session refreshed.');
   } catch (err) {
     setPlayerAccessCollapsed(false);
+    setAuthFeedback(err.message, 'err');
+    statusEl.textContent = err.message;
+  } finally {
+    setPlayerAuthBusy(false);
+  }
+}
+
+async function completeExternalNicknameSetup() {
+  const nickname = (playerRenameNicknameEl?.value || '').trim();
+  if (!nickname) {
+    setAuthFeedback('Введите никнейм.', 'err');
+    statusEl.textContent = 'Введите никнейм.';
+    return;
+  }
+  clearAuthFeedback();
+  setPlayerAuthBusy(true);
+  try {
+    const data = await apiJson('/api/player/complete-nickname', {
+      method: 'POST',
+      body: JSON.stringify({ nickname }),
+    });
+    game.playerAuth.player = data.player || game.playerAuth.player;
+    game.playerAuth.identities = Array.isArray(data.identities) ? data.identities : game.playerAuth.identities;
+    game.playerAuth.needsNicknameSetup = Boolean(data?.nicknameSetupRequired);
+    statusEl.textContent = `Никнейм ${data.player?.nickname || nickname} сохранён.`;
+    setAuthFeedback(`Никнейм ${data.player?.nickname || nickname} сохранён.`, 'ok');
+    if (playerRenameNicknameEl) playerRenameNicknameEl.value = '';
+    renderPlayerAuthUi();
+    try {
+      await connectGameSocket(APP_ORIGIN, { forceReconnect: true });
+    } catch {
+      // Normal join flow will surface connection errors if reconnect fails.
+    }
+  } catch (err) {
     setAuthFeedback(err.message, 'err');
     statusEl.textContent = err.message;
   } finally {
@@ -1366,6 +1416,17 @@ providerGoogleBtn?.addEventListener('click', () => {
 
 providerVkBtn?.addEventListener('click', () => {
   startExternalAuth('vk');
+});
+
+playerRenameSaveBtn?.addEventListener('click', () => {
+  void completeExternalNicknameSetup();
+});
+
+playerRenameNicknameEl?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    void completeExternalNicknameSetup();
+  }
 });
 
 window.addEventListener('message', (event) => {

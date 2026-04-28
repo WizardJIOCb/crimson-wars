@@ -418,6 +418,40 @@ function createPlayerAuthStore({ dataDir, dbPath }) {
     return getAccountById(player.id) || player;
   }
 
+  function needsNicknameSetup(playerId) {
+    const player = getAccountById(playerId);
+    if (!player || !player.isActive) return false;
+    const identities = listIdentities(player.id);
+    return identities.some((identity) => isGenericExternalNickname(player.nickname, identity.provider));
+  }
+
+  function renamePlayer(playerId, nickname, { requireNicknameSetup = false } = {}) {
+    const player = getAccountById(playerId);
+    if (!player || !player.isActive) {
+      return { ok: false, code: 404, message: 'Player not found' };
+    }
+    if (requireNicknameSetup && !needsNicknameSetup(player.id)) {
+      return { ok: false, code: 400, message: 'Nickname setup is not required' };
+    }
+    const validation = validateNickname(nickname);
+    if (!validation.ok) {
+      return { ok: false, code: 400, message: validation.message };
+    }
+    const existing = parsePlayerRow(stmtGetByNicknameKey.get(validation.nicknameKey));
+    if (existing && existing.id !== player.id) {
+      return { ok: false, code: 409, message: 'Nickname is already registered' };
+    }
+    const now = nowMs();
+    stmtUpdateNickname.run(validation.nickname, validation.nicknameKey, now, player.id);
+    const updatedPlayer = getAccountById(player.id);
+    return {
+      ok: true,
+      player: updatedPlayer,
+      identities: listIdentities(player.id),
+      needsNicknameSetup: needsNicknameSetup(player.id),
+    };
+  }
+
   function authenticateExternal({ provider, providerUserId, providerEmail = '', nicknameBase = '' }) {
     const normalizedProvider = (provider || '').toString().trim().toLowerCase();
     const externalUserId = (providerUserId || '').toString().trim();
@@ -500,6 +534,8 @@ function createPlayerAuthStore({ dataDir, dbPath }) {
     register,
     authenticate,
     authenticateExternal,
+    renamePlayer,
+    needsNicknameSetup,
     updatePassword,
     createProviderPlaceholder,
   };

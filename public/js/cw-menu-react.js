@@ -190,6 +190,12 @@
             h('button', { id: 'provider-mailru', type: 'button', className: 'provider-btn', disabled: true }, 'Mail.ru')
           )
         ),
+        h('div', { id: 'player-rename-panel', className: 'auth-rename-panel hidden' },
+          h('div', { className: 'auth-copy' }, 'Выберите постоянный никнейм для аккаунта. Он будет закреплён за этим входом.'),
+          h('label', { htmlFor: 'player-rename-nickname' }, 'Новый никнейм'),
+          h('input', { id: 'player-rename-nickname', maxLength: 18, placeholder: 'Nickname' }),
+          h(CwButton, { id: 'player-rename-save', className: 'auth-action', variant: 'primary' }, 'Сохранить ник')
+        ),
         h('div', { id: 'player-auth-feedback', className: 'auth-feedback hidden', 'aria-live': 'polite' })
       )
     );

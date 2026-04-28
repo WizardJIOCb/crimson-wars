@@ -5863,6 +5863,16 @@ body.battle-hub-embed #join-form.cw-shell {
   display: none !important;
 }
 
+#player-access-details.needs-nickname-setup .auth-rename-panel {
+  display: grid !important;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+#player-access-details.needs-nickname-setup #player-auth-feedback {
+  display: block !important;
+}
+
 #player-access-details.is-authenticated .auth-card-body {
   gap: 0;
 }
