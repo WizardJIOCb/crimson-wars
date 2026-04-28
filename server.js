@@ -909,6 +909,13 @@ function listRoomsForLobby() {
   return runtimeRegistryStore.listRooms();
 }
 
+function hasActiveGameplay() {
+  for (const room of rooms.values()) {
+    if (room?.players?.size > 0) return true;
+  }
+  return false;
+}
+
 function publishRuntimeRegistry() {
   const localRooms = Array.from(rooms.values())
     .filter((room) => room.players.size > 0)
@@ -931,7 +938,11 @@ function publishRuntimeRegistry() {
     roomCount: localRooms.length,
     publicBaseUrl: PUBLIC_BASE_URL,
   });
-  runtimeRegistryStore.publishRooms(localRooms, { isShuttingDown, publicBaseUrl: PUBLIC_BASE_URL });
+  runtimeRegistryStore.publishRooms(localRooms, {
+    isShuttingDown,
+    publicBaseUrl: PUBLIC_BASE_URL,
+    skipPersist: !isShuttingDown && localRooms.length > 0,
+  });
 }
 
 function parseCookies(req) {
@@ -1241,6 +1252,12 @@ function isConsoleAdmin(ws, player = null) {
 }
 
 function attachAdminAuth(req, _res, next) {
+  if (shouldSkipGlobalAuth(req)) {
+    req.adminSession = null;
+    req.adminUser = null;
+    next();
+    return;
+  }
   const session = readAdminSession(req);
   req.adminSession = session;
   req.adminUser = session?.user || null;
@@ -1248,10 +1265,27 @@ function attachAdminAuth(req, _res, next) {
 }
 
 function attachPlayerAuth(req, _res, next) {
+  if (shouldSkipGlobalAuth(req)) {
+    req.playerSession = null;
+    req.playerUser = null;
+    next();
+    return;
+  }
   const session = readPlayerSession(req);
   req.playerSession = session;
   req.playerUser = session?.player || null;
   next();
+}
+
+function shouldSkipGlobalAuth(req) {
+  const method = String(req?.method || '').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD') return false;
+  const reqPath = String(req?.path || '').split('?')[0];
+  if (reqPath === '/healthz' || reqPath === '/readyz') return true;
+  if (reqPath === '/api/rooms' || reqPath === '/api/records' || reqPath === '/api/leaderboard') return true;
+  if (reqPath.startsWith('/api/landing/')) return true;
+  if (reqPath.startsWith('/api/news')) return true;
+  return false;
 }
 
 function requireAdmin(req, res, next) {
@@ -1843,6 +1877,16 @@ app.post('/api/integrations/partner-runs/start', requirePartnerRunsSecret, (req,
 });
 
 app.get('/api/player/public-profile/:id', (req, res) => {
+  if (hasActiveGameplay()) {
+    res.status(503).json({
+      ok: false,
+      message: 'Profile loading is paused during an active match.',
+      lowLatencyMode: true,
+      now: Date.now(),
+    });
+    return;
+  }
+
   const playerId = Math.max(0, Number(req.params.id) || 0);
   if (!playerId) {
     res.status(400).json({ ok: false, message: 'Invalid player id' });
@@ -1911,7 +1955,9 @@ app.get('/api/player/public-profile/:id/run-history', (req, res) => {
 
   const page = Number(req.query.page) || 1;
   const pageSize = Number(req.query.page_size) || 8;
-  const payload = recordsStore.listPlayerRunsByName(player.nickname, page, pageSize);
+  const payload = hasActiveGameplay() && typeof recordsStore.listPlayerRunsByNameMemory === 'function'
+    ? recordsStore.listPlayerRunsByNameMemory(player.nickname, page, pageSize)
+    : recordsStore.listPlayerRunsByName(player.nickname, page, pageSize);
   const runs = payload.items.map((run) => ({
     ...run,
     replayApiPath: '/api/player/public-profile/' + playerId + '/run-history/' + Math.max(0, Number(run?.id) || 0) + '/replay',
@@ -1929,6 +1975,17 @@ app.get('/api/player/public-profile/:id/run-history', (req, res) => {
 });
 
 app.get('/api/player/public-profile/:id/run-history/:runId/replay', (req, res) => {
+  if (hasActiveGameplay()) {
+    res.status(503).json({
+      ok: false,
+      error: 'Replay loading is paused during an active match.',
+      lowLatencyMode: true,
+      recordId: Math.max(0, Number(req.params.runId) || 0),
+      now: Date.now(),
+    });
+    return;
+  }
+
   const playerId = Math.max(0, Number(req.params.id) || 0);
   if (!playerId) {
     res.status(400).json({ ok: false, message: 'Invalid player id' });
@@ -2392,6 +2449,23 @@ app.get('/api/leaderboard', (req, res) => {
     res.json({ ...cached.payload, now: Date.now() });
     return;
   }
+  if (hasActiveGameplay()) {
+    const stalePayload = cached?.payload || {
+      ok: true,
+      category: { key: category.key, title: category.title, source: category.source, unit: category.unit },
+      mode: LEADERBOARD_MODES[modeKey] || LEADERBOARD_MODES.all,
+      modes: Object.values(LEADERBOARD_MODES),
+      categories: availableCategories.map((x) => ({ key: x.key, title: x.title, source: x.source, unit: x.unit })),
+      items: [],
+      page,
+      pageSize,
+      total: 0,
+      totalPages: 1,
+      lowLatencyMode: true,
+    };
+    res.json({ ...stalePayload, lowLatencyMode: true, now: Date.now() });
+    return;
+  }
   try {
     const payload = category.source === 'account'
       ? listAccountLeaderboardRows(category.key, page, pageSize)
@@ -2438,7 +2512,9 @@ app.get('/api/records', (req, res) => {
 app.get('/api/landing/latest-runs', (req, res) => {
   const page = Number(req.query.page) || 1;
   const pageSize = Math.max(1, Math.min(12, Number(req.query.page_size) || 6));
-  const payload = recordsStore.listLatestPlayerRuns(page, pageSize);
+  const payload = hasActiveGameplay() && typeof recordsStore.listLatestPlayerRunsMemory === 'function'
+    ? recordsStore.listLatestPlayerRunsMemory(page, pageSize)
+    : recordsStore.listLatestPlayerRuns(page, pageSize);
 
   res.json({
     ok: true,
@@ -2456,7 +2532,10 @@ app.get('/api/landing/live-run', (req, res) => {
   const localActiveRooms = sortLandingLiveRooms(listLocalActiveRooms());
   const allActiveRooms = listRoomsForLobby().filter((room) => Math.max(0, Number(room?.players) || 0) > 0);
   const featuredRoom = getFeaturedLandingLiveRoom(requestedRoomCode);
-  const fallbackRun = recordsStore.listLatestPlayerRuns(1, 1)?.items?.[0] || null;
+  const latestRunsPayload = hasActiveGameplay() && typeof recordsStore.listLatestPlayerRunsMemory === 'function'
+    ? recordsStore.listLatestPlayerRunsMemory(1, 1)
+    : recordsStore.listLatestPlayerRuns(1, 1);
+  const fallbackRun = latestRunsPayload?.items?.[0] || null;
   const fallbackReplayId = Math.max(0, Number(fallbackRun?.id) || 0);
   const roomSummaries = localActiveRooms.map(buildLandingLiveRoomSummary).filter(Boolean);
   const selectedRoomCode = featuredRoom ? cleanRoomCodeForLookup(featuredRoom.code) : '';
@@ -2493,7 +2572,9 @@ app.get('/api/player/run-history', (req, res) => {
 
   const page = Number(req.query.page) || 1;
   const pageSize = Number(req.query.page_size) || 20;
-  const payload = recordsStore.listPlayerRunsByName(req.playerUser.nickname, page, pageSize);
+  const payload = hasActiveGameplay() && typeof recordsStore.listPlayerRunsByNameMemory === 'function'
+    ? recordsStore.listPlayerRunsByNameMemory(req.playerUser.nickname, page, pageSize)
+    : recordsStore.listPlayerRunsByName(req.playerUser.nickname, page, pageSize);
 
   const runs = payload.items.map((run) => ({
     ...run,
@@ -2514,6 +2595,16 @@ app.get('/api/player/run-history', (req, res) => {
 app.get('/api/player/run-history/:id/replay', (req, res) => {
   if (!req.playerUser) {
     res.status(401).json({ ok: false, message: 'Authentication required' });
+    return;
+  }
+  if (hasActiveGameplay()) {
+    res.status(503).json({
+      ok: false,
+      error: 'Replay loading is paused during an active match.',
+      lowLatencyMode: true,
+      recordId: Math.max(0, Number(req.params.id) || 0),
+      now: Date.now(),
+    });
     return;
   }
 
@@ -2543,6 +2634,17 @@ app.get('/api/player/run-history/:id/replay', (req, res) => {
 });
 
 app.get('/api/leaderboard/runs/:id/replay', (req, res) => {
+  if (hasActiveGameplay()) {
+    res.status(503).json({
+      ok: false,
+      error: 'Replay loading is paused during an active match.',
+      lowLatencyMode: true,
+      recordId: Math.max(0, Number(req.params.id) || 0),
+      now: Date.now(),
+    });
+    return;
+  }
+
   const payload = recordsStore.getPlayerRunReplayById(req.params.id);
   if (!payload?.replay) {
     res.status(404).json({
@@ -2569,6 +2671,17 @@ app.get('/api/leaderboard/runs/:id/replay', (req, res) => {
 });
 
 app.get('/api/records/:id/replay', (req, res) => {
+  if (hasActiveGameplay()) {
+    res.status(503).json({
+      ok: false,
+      error: 'Replay loading is paused during an active match.',
+      lowLatencyMode: true,
+      recordId: Math.max(0, Number(req.params.id) || 0),
+      now: Date.now(),
+    });
+    return;
+  }
+
   const payload = recordsStore.getRecordReplay(req.params.id);
   if (!payload?.replay) {
     res.status(404).json({

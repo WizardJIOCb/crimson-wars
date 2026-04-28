@@ -65,6 +65,7 @@ function createAccountProgressionStore({
 }) {
   const useMysql = !!mysql?.enabled;
   const mysqlClient = useMysql ? createMysqlSyncClient(mysql) : null;
+  const progressionCache = new Map();
   if (!useMysql) fs.mkdirSync(dataDir, { recursive: true });
   const db = useMysql ? null : new Database(dbPath);
   if (!useMysql) {
@@ -585,7 +586,9 @@ function createAccountProgressionStore({
     const exists = stmtGet.get(payload.playerId);
     if (exists) stmtUpdate.run(payload);
     else stmtInsert.run(payload);
-    return normalizeProgressionRow(stmtGet.get(payload.playerId));
+    const saved = normalizeProgressionRow(stmtGet.get(payload.playerId));
+    if (saved?.playerId) progressionCache.set(saved.playerId, cloneProgressionState(saved, saved.playerId));
+    return saved;
   }
 
   function cloneProgressionState(raw, fallbackPlayerId = 0) {
@@ -621,9 +624,24 @@ function createAccountProgressionStore({
   function getOrCreateProgression(playerId) {
     const pid = clampInt(playerId, 1);
     if (!pid) return null;
+    const cached = progressionCache.get(pid);
+    if (cached) return cloneProgressionState(cached, pid);
     const found = normalizeProgressionRow(stmtGet.get(pid));
-    if (found) return found;
+    if (found) {
+      progressionCache.set(pid, cloneProgressionState(found, pid));
+      return cloneProgressionState(found, pid);
+    }
     return saveProgression(createDefaultProgression(pid));
+  }
+
+  function loadProgressionCache() {
+    if (!useMysql) return;
+    const rows = mysqlClient.queryJsonRows(`SELECT ${progressionJsonSql} FROM account_progression`);
+    progressionCache.clear();
+    for (const row of rows) {
+      const progression = normalizeProgressionRow(row);
+      if (progression?.playerId) progressionCache.set(progression.playerId, cloneProgressionState(progression, progression.playerId));
+    }
   }
 
   function getCatalogPayload() {
@@ -1268,6 +1286,8 @@ function createAccountProgressionStore({
     const saved = saveProgression(progression);
     return { ok: true, progression: toPublicProgression(saved) };
   }
+
+  if (useMysql) loadProgressionCache();
 
   return {
     getCatalogPayload,

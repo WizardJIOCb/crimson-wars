@@ -146,6 +146,19 @@ function createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql 
     }
   }
 
+  function loadRecentRunsFromDb() {
+    const rows = client.queryJsonRows([
+      `SELECT ${playerRunSummaryJson}`,
+      'FROM player_runs',
+      'ORDER BY at DESC',
+      `LIMIT ${MEMORY_RUN_HISTORY_LIMIT}`,
+    ].join('\n'));
+    runHistory.length = 0;
+    for (const row of rows) {
+      runHistory.push(normalizeRecordEntry(row));
+    }
+  }
+
   function listRecordsForLobby(page = 1, pageSize = leaderboardPageSize) {
     const total = records.length;
     const size = Math.max(1, Math.min(50, Math.floor(pageSize) || leaderboardPageSize));
@@ -268,6 +281,23 @@ function createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql 
     return { page: currentPage, pageSize: size, total, totalPages, items: rows.map((row) => publicRecordEntry(row)) };
   }
 
+  function listPlayerRunsByNameMemory(name, page = 1, pageSize = PLAYER_RUN_HISTORY_PAGE_SIZE) {
+    const normalizedNameKey = recordNameKey(name);
+    const itemsForPlayer = runHistory.filter((run) => recordNameKey(run.name) === normalizedNameKey);
+    const size = Math.max(1, Math.min(50, Math.floor(pageSize) || PLAYER_RUN_HISTORY_PAGE_SIZE));
+    const total = itemsForPlayer.length;
+    const totalPages = Math.max(1, Math.ceil(total / size));
+    const currentPage = Math.max(1, Math.min(totalPages, Math.floor(page) || 1));
+    const start = (currentPage - 1) * size;
+    return {
+      page: currentPage,
+      pageSize: size,
+      total,
+      totalPages,
+      items: itemsForPlayer.slice(start, start + size).map((row) => publicRecordEntry(row)),
+    };
+  }
+
   function listLatestPlayerRuns(page = 1, pageSize = PLAYER_RUN_HISTORY_PAGE_SIZE) {
     const size = Math.max(1, Math.min(50, Math.floor(pageSize) || PLAYER_RUN_HISTORY_PAGE_SIZE));
     const cacheKey = `${Math.max(1, Math.floor(page) || 1)}:${size}`;
@@ -289,6 +319,21 @@ function createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql 
     latestRunsCache.set(cacheKey, { at: Date.now(), payload });
     if (latestRunsCache.size > 20) latestRunsCache.delete(latestRunsCache.keys().next().value);
     return JSON.parse(JSON.stringify(payload));
+  }
+
+  function listLatestPlayerRunsMemory(page = 1, pageSize = PLAYER_RUN_HISTORY_PAGE_SIZE) {
+    const size = Math.max(1, Math.min(50, Math.floor(pageSize) || PLAYER_RUN_HISTORY_PAGE_SIZE));
+    const total = runHistory.length;
+    const totalPages = Math.max(1, Math.ceil(total / size));
+    const currentPage = Math.max(1, Math.min(totalPages, Math.floor(page) || 1));
+    const start = (currentPage - 1) * size;
+    return {
+      page: currentPage,
+      pageSize: size,
+      total,
+      totalPages,
+      items: runHistory.slice(start, start + size).map((entry) => publicRecordEntry(entry)),
+    };
   }
 
   function getPlayerRunReplayByNameAndId(name, runId) {
@@ -332,11 +377,14 @@ function createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql 
   }
 
   loadRecordsFromDb();
+  loadRecentRunsFromDb();
   console.log(`Records MySQL ready (loaded ${records.length})`);
   return {
     listRecordsForLobby,
     listPlayerRunsByName,
+    listPlayerRunsByNameMemory,
     listLatestPlayerRuns,
+    listLatestPlayerRunsMemory,
     pushRecord,
     pushRecordMemory,
     persistRecord,
@@ -748,6 +796,38 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
     };
   }
 
+  function listPlayerRunsByNameMemory(name, page = 1, pageSize = PLAYER_RUN_HISTORY_PAGE_SIZE) {
+    const normalizedNameKey = recordNameKey(name);
+    const itemsForPlayer = runHistory.filter((run) => recordNameKey(run.name) === normalizedNameKey);
+    const size = Math.max(1, Math.min(50, Math.floor(pageSize) || PLAYER_RUN_HISTORY_PAGE_SIZE));
+    const total = itemsForPlayer.length;
+    const totalPages = Math.max(1, Math.ceil(total / size));
+    const currentPage = Math.max(1, Math.min(totalPages, Math.floor(page) || 1));
+    const start = (currentPage - 1) * size;
+    return {
+      page: currentPage,
+      pageSize: size,
+      total,
+      totalPages,
+      items: itemsForPlayer.slice(start, start + size).map((entry) => publicRecordEntry(entry)),
+    };
+  }
+
+  function listLatestPlayerRunsMemory(page = 1, pageSize = PLAYER_RUN_HISTORY_PAGE_SIZE) {
+    const size = Math.max(1, Math.min(50, Math.floor(pageSize) || PLAYER_RUN_HISTORY_PAGE_SIZE));
+    const total = runHistory.length;
+    const totalPages = Math.max(1, Math.ceil(total / size));
+    const currentPage = Math.max(1, Math.min(totalPages, Math.floor(page) || 1));
+    const start = (currentPage - 1) * size;
+    return {
+      page: currentPage,
+      pageSize: size,
+      total,
+      totalPages,
+      items: runHistory.slice(start, start + size).map((entry) => publicRecordEntry(entry)),
+    };
+  }
+
   function getPlayerRunReplayByNameAndId(name, runId) {
     const id = Math.max(0, Number(runId) || 0);
     const nameKey = recordNameKey(name);
@@ -852,7 +932,9 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
   return {
     listRecordsForLobby,
     listPlayerRunsByName,
+    listPlayerRunsByNameMemory,
     listLatestPlayerRuns,
+    listLatestPlayerRunsMemory,
     pushRecord,
     getRecordReplay,
     getPlayerRunReplayById,

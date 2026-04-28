@@ -141,7 +141,7 @@ function createMysqlRuntimeRegistryStore({ instanceId, mysql }) {
     }
   }
 
-  function publishRooms(rooms, { isShuttingDown = false, publicBaseUrl = '' } = {}) {
+  function publishRooms(rooms, { isShuttingDown = false, publicBaseUrl = '', skipPersist = false } = {}) {
     const updatedAt = nowMs();
     localRooms = (Array.isArray(rooms) ? rooms : []).map((room) => parseRoomRow({
       room_code: room.code,
@@ -153,6 +153,7 @@ function createMysqlRuntimeRegistryStore({ instanceId, mysql }) {
       is_shutting_down: isShuttingDown ? 1 : 0,
       public_base_url: String(publicBaseUrl || '').trim(),
     })).filter(Boolean);
+    if (skipPersist && !isShuttingDown) return;
     persistRuntimeRegistry({ force: isShuttingDown });
   }
 

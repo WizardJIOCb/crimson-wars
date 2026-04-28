@@ -438,6 +438,11 @@ function createMysqlPlayerAuthStore({ mysql }) {
   function countAccounts() {
     const now = nowMs();
     if (cachedAccountCount !== null && cachedAccountCountUntil > now) return cachedAccountCount;
+    if (accountCacheLoaded) {
+      cachedAccountCount = accountCacheById.size;
+      cachedAccountCountUntil = now + ACCOUNT_COUNT_CACHE_MS;
+      return cachedAccountCount;
+    }
     const row = client.queryOne('SELECT COUNT(*) AS total FROM player_accounts WHERE is_active = 1');
     cachedAccountCount = Math.max(0, Number(row?.total) || 0);
     cachedAccountCountUntil = now + ACCOUNT_COUNT_CACHE_MS;
