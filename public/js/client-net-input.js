@@ -1887,7 +1887,7 @@ function ensureHeroEquipModal() {
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
   closeBtn.className = 'mini';
-  closeBtn.textContent = trWithFallback('ui.close', 'Р—Р°РєСЂС‹С‚СЊ');
+  closeBtn.textContent = trWithFallback('ui.close', 'Закрыть');
   closeBtn.addEventListener('click', () => {
     modal.classList.add('hidden');
   });
@@ -1898,7 +1898,7 @@ function ensureHeroEquipModal() {
   const body = document.createElement('div');
   body.id = 'hero-equip-modal-body';
   body.className = 'record-details-body hero-equip-modal-body';
-  body.textContent = trWithFallback('ui.loading', 'Р—Р°РіСЂСѓР·РєР°...');
+  body.textContent = trWithFallback('ui.loading', 'Загрузка...');
 
   card.appendChild(head);
   card.appendChild(body);
@@ -3149,7 +3149,7 @@ function openHeroEquipModal(hero, slotKey) {
 
   heroEquipModalTitleEl.textContent = `${trWithFallback('ui.inventory.equip_slot_title', 'Снарядить слот')}: ${getItemSlotLabel(slot)}`;
   if (!matchingItems.length) {
-    heroEquipModalBodyEl.innerHTML = `<div class="hero-equip-modal-empty">${escapeHtml(trWithFallback('ui.inventory.no_matching_items', 'Р”Р»СЏ СЌС‚РѕРіРѕ СЃР»РѕС‚Р° РїРѕРєР° РЅРµС‚ РїРѕРґС…РѕРґСЏС‰РёС… РїСЂРµРґРјРµС‚РѕРІ.'))}</div>`;
+    heroEquipModalBodyEl.innerHTML = `<div class="hero-equip-modal-empty">${escapeHtml(trWithFallback('ui.inventory.no_matching_items', 'Для этого слота пока нет подходящих предметов.'))}</div>`;
     heroEquipModalEl.classList.remove('hidden');
     return;
   }

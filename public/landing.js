@@ -729,7 +729,7 @@ function openLandingLiveFullscreen(event) {
 function updateLandingFullscreenButtonLabel() {
   const isFullscreen = document.fullscreenElement === landingLiveCanvasWrap;
   if (liveSecondaryLink instanceof HTMLElement) {
-    liveSecondaryLink.textContent = isFullscreen ? 'Exit Fullscreen' : 'Fullscreen';
+    liveSecondaryLink.textContent = isFullscreen ? 'Свернуть экран' : 'На весь экран';
   }
   if (landingLiveFullscreenToggle instanceof HTMLButtonElement) {
     landingLiveFullscreenToggle.classList.toggle('is-exit', isFullscreen);

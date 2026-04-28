@@ -191,6 +191,7 @@
       'ui.auth.external_signin': 'External sign-in',
       'ui.auth.google': 'Google',
       'ui.auth.vk': 'VK ID',
+      'ui.auth.mailru': 'Mail.ru',
       'ui.auth.google_soon': 'Google coming soon',
       'ui.auth.vk_soon': 'VK ID coming soon',
       'ui.auth.mail_soon': 'Mail.ru coming soon',
@@ -618,6 +619,7 @@
       'ui.auth.external_signin': 'Внешний вход',
       'ui.auth.google': 'Google',
       'ui.auth.vk': 'VK ID',
+      'ui.auth.mailru': 'Mail.ru',
       'ui.auth.google_soon': 'Google скоро',
       'ui.auth.vk_soon': 'VK ID скоро',
       'ui.auth.mail_soon': 'Mail.ru скоро',
@@ -1166,7 +1168,7 @@
     setText('.providers-title', 'ui.auth.external_signin');
     setText('#provider-google', 'ui.auth.google');
     setText('#provider-vk', 'ui.auth.vk');
-    setText('#provider-mailru', 'ui.auth.mail_soon');
+    setText('#provider-mailru', 'ui.auth.mailru');
     setText('label[for="name"]', 'ui.nickname');
     setText('#nickname-hint', 'ui.nickname_hint_guest');
     setText('#room-code-label', 'ui.play.room_code_optional');

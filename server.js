@@ -1052,6 +1052,83 @@ function sendOauthPopupResult(req, res, {
   res.end(html);
 }
 
+function renderVkOauthPopupPage({ provider, appId, redirectUri }) {
+  const normalizedProvider = provider === 'mailru' ? 'mail_ru' : 'vkid';
+  const providerForCallback = provider === 'mailru' ? 'mailru' : 'vk';
+  const safeAppId = JSON.stringify(String(appId || ''));
+  const safeRedirect = JSON.stringify(String(redirectUri || ''));
+  const safeProvider = JSON.stringify(normalizedProvider);
+  const safeProviderForCallback = JSON.stringify(providerForCallback);
+  return `<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Crimson Wars Sign-In</title>
+  <style>
+    body { margin: 0; font-family: Segoe UI, Arial, sans-serif; background: #0b0b0d; color: #f4ede8; display: grid; min-height: 100vh; place-items: center; }
+    .card { width: min(92vw, 420px); padding: 24px; border: 1px solid rgba(255,255,255,0.12); border-radius: 16px; background: linear-gradient(180deg, rgba(22,22,24,0.98), rgba(8,8,10,0.98)); box-shadow: 0 16px 48px rgba(0,0,0,0.35); }
+    .title { margin: 0 0 10px; font-size: 28px; font-weight: 800; }
+    .copy { margin: 0 0 16px; font-size: 14px; line-height: 1.45; color: #cfd6de; }
+    #vkid-oauth-root { min-height: 48px; }
+    .error { margin-top: 14px; color: #ff9da3; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <section class="card">
+    <h1 class="title">Crimson Wars</h1>
+    <p class="copy">Завершаем внешний вход. Если кнопка не появилась, проверьте блокировку скриптов или обновите окно.</p>
+    <div id="vkid-oauth-root"></div>
+    <div id="vkid-oauth-error" class="error"></div>
+  </section>
+  <script src="https://unpkg.com/@vkid/sdk@<3.0.0/dist-sdk/umd/index.js"></script>
+  <script>
+    (function () {
+      var provider = ${safeProvider};
+      var providerForCallback = ${safeProviderForCallback};
+      var errorEl = document.getElementById('vkid-oauth-error');
+      function fail(message) {
+        var text = String(message || 'VK ID login failed');
+        if (errorEl) errorEl.textContent = text;
+        window.location.replace('/api/auth/vk/callback?provider=' + encodeURIComponent(providerForCallback) + '&error=' + encodeURIComponent(text));
+      }
+      if (!('VKIDSDK' in window)) {
+        fail('VK ID SDK is unavailable.');
+        return;
+      }
+      try {
+        var VKID = window.VKIDSDK;
+        VKID.Config.init({
+          app: ${safeAppId},
+          redirectUrl: ${safeRedirect},
+          responseMode: VKID.ConfigResponseMode.Callback,
+          source: VKID.ConfigSource.LOWCODE,
+          scope: ''
+        });
+        var oAuth = new VKID.OAuthList();
+        oAuth.render({
+          container: document.getElementById('vkid-oauth-root'),
+          oauthList: [provider]
+        })
+        .on(VKID.WidgetEvents.ERROR, function (error) {
+          fail(error && error.message ? error.message : 'VK ID widget error');
+        })
+        .on(VKID.OAuthListInternalEvents.LOGIN_SUCCESS, function (payload) {
+          var url = new URL('/api/auth/vk/callback', window.location.origin);
+          url.searchParams.set('provider', providerForCallback);
+          url.searchParams.set('code', payload.code || '');
+          url.searchParams.set('device_id', payload.device_id || '');
+          window.location.replace(url.toString());
+        });
+      } catch (error) {
+        fail(error && error.message ? error.message : 'VK ID init error');
+      }
+    })();
+  </script>
+</body>
+</html>`;
+}
+
 async function fetchJsonWithDetails(url, options = {}) {
   const response = await fetch(url, options);
   const text = await response.text();
@@ -1412,29 +1489,54 @@ app.get('/api/auth/vk/start', (req, res) => {
   res.redirect(302, url.toString());
 });
 
+app.get('/api/auth/mailru/start', (req, res) => {
+  const redirectUri = getVkRedirectUri(req);
+  if (!VK_CLIENT_ID || !redirectUri) {
+    sendOauthPopupResult(req, res, {
+      ok: false,
+      provider: 'mailru',
+      message: 'Mail.ru sign-in is not configured.',
+      redirectUrl: buildPlayRedirectUrl(req, {
+        authError: 'Mail.ru sign-in is not configured.',
+        authProvider: 'mailru',
+      }),
+    });
+    return;
+  }
+  res.status(200).setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.end(renderVkOauthPopupPage({
+    provider: 'mailru',
+    appId: VK_CLIENT_ID,
+    redirectUri,
+  }));
+});
+
 app.get('/api/auth/vk/callback', async (req, res) => {
+  const requestedProvider = String(req.query?.provider || '').trim().toLowerCase() === 'mailru' ? 'mailru' : 'vk';
   const cookies = parseCookies(req);
   const expectedState = String(cookies[VK_OAUTH_STATE_COOKIE] || '').trim();
   const verifier = String(cookies[VK_OAUTH_VERIFIER_COOKIE] || '').trim();
-  clearTransientCookie(req, res, VK_OAUTH_STATE_COOKIE);
-  clearTransientCookie(req, res, VK_OAUTH_VERIFIER_COOKIE);
   const queryError = String(req.query?.error || '').trim();
   if (queryError) {
     sendOauthPopupResult(req, res, {
       ok: false,
-      provider: 'vk',
+      provider: requestedProvider,
       message: queryError,
-      redirectUrl: buildPlayRedirectUrl(req, { authError: queryError, authProvider: 'vk' }),
+      redirectUrl: buildPlayRedirectUrl(req, { authError: queryError, authProvider: requestedProvider }),
     });
     return;
   }
+  if (requestedProvider === 'vk') {
+    clearTransientCookie(req, res, VK_OAUTH_STATE_COOKIE);
+    clearTransientCookie(req, res, VK_OAUTH_VERIFIER_COOKIE);
+  }
   const state = String(req.query?.state || '').trim();
-  if (!state || !expectedState || state !== expectedState) {
+  if (requestedProvider === 'vk' && (!state || !expectedState || state !== expectedState)) {
     sendOauthPopupResult(req, res, {
       ok: false,
-      provider: 'vk',
+      provider: requestedProvider,
       message: 'VK login state mismatch.',
-      redirectUrl: buildPlayRedirectUrl(req, { authError: 'VK login state mismatch.', authProvider: 'vk' }),
+      redirectUrl: buildPlayRedirectUrl(req, { authError: 'VK login state mismatch.', authProvider: requestedProvider }),
     });
     return;
   }
@@ -1443,18 +1545,18 @@ app.get('/api/auth/vk/callback', async (req, res) => {
   if (!code) {
     sendOauthPopupResult(req, res, {
       ok: false,
-      provider: 'vk',
+      provider: requestedProvider,
       message: 'VK login code is missing.',
-      redirectUrl: buildPlayRedirectUrl(req, { authError: 'VK login code is missing.', authProvider: 'vk' }),
+      redirectUrl: buildPlayRedirectUrl(req, { authError: 'VK login code is missing.', authProvider: requestedProvider }),
     });
     return;
   }
-  if (!verifier) {
+  if (requestedProvider === 'vk' && !verifier) {
     sendOauthPopupResult(req, res, {
       ok: false,
-      provider: 'vk',
+      provider: requestedProvider,
       message: 'VK login verifier is missing.',
-      redirectUrl: buildPlayRedirectUrl(req, { authError: 'VK login verifier is missing.', authProvider: 'vk' }),
+      redirectUrl: buildPlayRedirectUrl(req, { authError: 'VK login verifier is missing.', authProvider: requestedProvider }),
     });
     return;
   }
@@ -1465,8 +1567,8 @@ app.get('/api/auth/vk/callback', async (req, res) => {
       client_secret: VK_CLIENT_SECRET,
       redirect_uri: getVkRedirectUri(req),
       code,
-      code_verifier: verifier,
     });
+    if (requestedProvider === 'vk') tokenBody.set('code_verifier', verifier);
     if (deviceId) tokenBody.set('device_id', deviceId);
     const tokenPayload = await fetchJsonWithDetails('https://id.vk.com/oauth2/auth', {
       method: 'POST',
@@ -1497,7 +1599,7 @@ app.get('/api/auth/vk/callback', async (req, res) => {
       throw new Error('VK profile id is missing.');
     }
     const authResult = playerAuthStore.authenticateExternal({
-      provider: 'vk',
+      provider: requestedProvider,
       providerUserId,
       providerEmail,
       nicknameBase,
@@ -1508,21 +1610,21 @@ app.get('/api/auth/vk/callback', async (req, res) => {
     setPlayerSessionCookie(req, res, authResult.token);
     sendOauthPopupResult(req, res, {
       ok: true,
-      provider: 'vk',
+      provider: requestedProvider,
       message: authResult.createdAccount ? 'created' : 'login',
       redirectUrl: buildPlayRedirectUrl(req, {
-        authProvider: 'vk',
+        authProvider: requestedProvider,
         authStatus: authResult.createdAccount ? 'created' : 'login',
       }),
     });
   } catch (err) {
     sendOauthPopupResult(req, res, {
       ok: false,
-      provider: 'vk',
+      provider: requestedProvider,
       message: err?.message || 'VK sign-in failed.',
       redirectUrl: buildPlayRedirectUrl(req, {
         authError: err?.message || 'VK sign-in failed.',
-        authProvider: 'vk',
+        authProvider: requestedProvider,
       }),
     });
   }

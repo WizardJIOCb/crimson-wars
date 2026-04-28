@@ -187,7 +187,7 @@
           h('div', { className: 'providers-grid' },
             h('button', { id: 'provider-google', type: 'button', className: 'provider-btn' }, 'Google'),
             h('button', { id: 'provider-vk', type: 'button', className: 'provider-btn' }, 'VK ID'),
-            h('button', { id: 'provider-mailru', type: 'button', className: 'provider-btn', disabled: true }, 'Mail.ru')
+            h('button', { id: 'provider-mailru', type: 'button', className: 'provider-btn' }, 'Mail.ru')
           )
         ),
         h('div', { id: 'player-rename-panel', className: 'auth-rename-panel hidden' },

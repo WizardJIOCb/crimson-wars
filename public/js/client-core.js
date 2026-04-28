@@ -956,7 +956,7 @@ function setPlayerAuthBusy(busy) {
   if (playerLogoutBtn) playerLogoutBtn.disabled = game.playerAuth.busy;
   if (providerGoogleBtn) providerGoogleBtn.disabled = game.playerAuth.busy;
   if (providerVkBtn) providerVkBtn.disabled = game.playerAuth.busy;
-  if (providerMailruBtn) providerMailruBtn.disabled = true;
+  if (providerMailruBtn) providerMailruBtn.disabled = game.playerAuth.busy;
   if (playerRenameSaveBtn) playerRenameSaveBtn.disabled = game.playerAuth.busy;
 }
 
@@ -1336,10 +1336,12 @@ async function completeExternalNicknameSetup() {
 }
 
 function startExternalAuth(provider) {
-  const normalized = provider === 'google' ? 'google' : (provider === 'vk' ? 'vk' : '');
+  const normalized = provider === 'google' ? 'google' : (provider === 'vk' ? 'vk' : (provider === 'mailru' ? 'mailru' : ''));
   if (!normalized) return;
   clearAuthFeedback();
-  statusEl.textContent = normalized === 'google' ? 'Opening Google sign-in...' : 'Opening VK ID sign-in...';
+  statusEl.textContent = normalized === 'google'
+    ? 'Opening Google sign-in...'
+    : (normalized === 'mailru' ? 'Opening Mail.ru sign-in...' : 'Opening VK ID sign-in...');
   const authUrl = `${window.location.origin}/api/auth/${normalized}/start`;
   const popupWidth = 560;
   const popupHeight = 720;
@@ -1370,7 +1372,7 @@ async function handleOAuthPopupResult(payload) {
   const provider = String(payload?.provider || '').trim().toLowerCase();
   const authError = String(payload?.message || '').trim();
   if (payload?.ok) {
-    const providerLabel = provider === 'google' ? 'Google' : (provider === 'vk' ? 'VK ID' : 'External login');
+    const providerLabel = provider === 'google' ? 'Google' : (provider === 'vk' ? 'VK ID' : (provider === 'mailru' ? 'Mail.ru' : 'External login'));
     const status = authError === 'created' ? 'account created and connected.' : 'login successful.';
     const message = `${providerLabel}: ${status}`;
     setAuthFeedback(message, 'ok');
@@ -1384,7 +1386,7 @@ async function handleOAuthPopupResult(payload) {
     }
     return;
   }
-  const providerLabel = provider === 'google' ? 'Google' : (provider === 'vk' ? 'VK ID' : 'External login');
+  const providerLabel = provider === 'google' ? 'Google' : (provider === 'vk' ? 'VK ID' : (provider === 'mailru' ? 'Mail.ru' : 'External login'));
   const message = `${providerLabel}: ${authError || 'sign-in failed.'}`;
   setAuthFeedback(message, 'err');
   statusEl.textContent = message;
@@ -1416,6 +1418,10 @@ providerGoogleBtn?.addEventListener('click', () => {
 
 providerVkBtn?.addEventListener('click', () => {
   startExternalAuth('vk');
+});
+
+providerMailruBtn?.addEventListener('click', () => {
+  startExternalAuth('mailru');
 });
 
 playerRenameSaveBtn?.addEventListener('click', () => {

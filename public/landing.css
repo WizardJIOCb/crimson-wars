@@ -1247,17 +1247,17 @@ main {
 }
 
 .live-player-fullscreen-toggle.is-exit::before {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   background:
-    linear-gradient(currentColor, currentColor) left 4px top / 5px 2px no-repeat,
-    linear-gradient(currentColor, currentColor) left 4px top / 2px 5px no-repeat,
-    linear-gradient(currentColor, currentColor) right 4px top / 5px 2px no-repeat,
-    linear-gradient(currentColor, currentColor) right 4px top / 2px 5px no-repeat,
-    linear-gradient(currentColor, currentColor) left 4px bottom / 5px 2px no-repeat,
-    linear-gradient(currentColor, currentColor) left 4px bottom / 2px 5px no-repeat,
-    linear-gradient(currentColor, currentColor) right 4px bottom / 5px 2px no-repeat,
-    linear-gradient(currentColor, currentColor) right 4px bottom / 2px 5px no-repeat;
+    linear-gradient(currentColor, currentColor) left top / 7px 2px no-repeat,
+    linear-gradient(currentColor, currentColor) left top / 2px 7px no-repeat,
+    linear-gradient(currentColor, currentColor) right top / 7px 2px no-repeat,
+    linear-gradient(currentColor, currentColor) right top / 2px 7px no-repeat,
+    linear-gradient(currentColor, currentColor) left bottom / 7px 2px no-repeat,
+    linear-gradient(currentColor, currentColor) left bottom / 2px 7px no-repeat,
+    linear-gradient(currentColor, currentColor) right bottom / 7px 2px no-repeat,
+    linear-gradient(currentColor, currentColor) right bottom / 2px 7px no-repeat;
 }
 
 .live-run-canvas-wrap:hover .live-player-controls,
