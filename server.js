@@ -992,6 +992,45 @@ function buildPlayRedirectUrl(req, params = {}) {
   return url.toString();
 }
 
+function sendOauthPopupResult(req, res, {
+  ok = false,
+  provider = '',
+  message = '',
+  redirectUrl = '',
+} = {}) {
+  const payload = {
+    type: 'cw-oauth-result',
+    ok: Boolean(ok),
+    provider: String(provider || ''),
+    message: String(message || ''),
+  };
+  const fallback = String(redirectUrl || buildPlayRedirectUrl(req)).replace(/"/g, '&quot;');
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Crimson Wars OAuth</title>
+</head>
+<body>
+  <script>
+    (function () {
+      var payload = ${JSON.stringify(payload)};
+      try {
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage(payload, window.location.origin);
+          window.close();
+          return;
+        }
+      } catch (err) {}
+      window.location.replace("${fallback}");
+    })();
+  </script>
+</body>
+</html>`;
+  res.status(200).setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.end(html);
+}
+
 async function fetchJsonWithDetails(url, options = {}) {
   const response = await fetch(url, options);
   const text = await response.text();
@@ -1241,28 +1280,34 @@ app.get('/api/auth/google/callback', async (req, res) => {
   const queryError = String(req.query?.error || '').trim();
   if (queryError) {
     clearTransientCookie(req, res, GOOGLE_OAUTH_STATE_COOKIE);
-    res.redirect(302, buildPlayRedirectUrl(req, {
-      authError: queryError,
-      authProvider: 'google',
-    }));
+    sendOauthPopupResult(req, res, {
+      ok: false,
+      provider: 'google',
+      message: queryError,
+      redirectUrl: buildPlayRedirectUrl(req, { authError: queryError, authProvider: 'google' }),
+    });
     return;
   }
   const state = String(req.query?.state || '').trim();
   const expectedState = String(parseCookies(req)[GOOGLE_OAUTH_STATE_COOKIE] || '').trim();
   clearTransientCookie(req, res, GOOGLE_OAUTH_STATE_COOKIE);
   if (!state || !expectedState || state !== expectedState) {
-    res.redirect(302, buildPlayRedirectUrl(req, {
-      authError: 'Google login state mismatch.',
-      authProvider: 'google',
-    }));
+    sendOauthPopupResult(req, res, {
+      ok: false,
+      provider: 'google',
+      message: 'Google login state mismatch.',
+      redirectUrl: buildPlayRedirectUrl(req, { authError: 'Google login state mismatch.', authProvider: 'google' }),
+    });
     return;
   }
   const code = String(req.query?.code || '').trim();
   if (!code) {
-    res.redirect(302, buildPlayRedirectUrl(req, {
-      authError: 'Google login code is missing.',
-      authProvider: 'google',
-    }));
+    sendOauthPopupResult(req, res, {
+      ok: false,
+      provider: 'google',
+      message: 'Google login code is missing.',
+      redirectUrl: buildPlayRedirectUrl(req, { authError: 'Google login code is missing.', authProvider: 'google' }),
+    });
     return;
   }
   try {
@@ -1298,15 +1343,25 @@ app.get('/api/auth/google/callback', async (req, res) => {
       throw new Error(authResult?.message || 'Google sign-in failed');
     }
     setPlayerSessionCookie(req, res, authResult.token);
-    res.redirect(302, buildPlayRedirectUrl(req, {
-      authProvider: 'google',
-      authStatus: authResult.createdAccount ? 'created' : 'login',
-    }));
+    sendOauthPopupResult(req, res, {
+      ok: true,
+      provider: 'google',
+      message: authResult.createdAccount ? 'created' : 'login',
+      redirectUrl: buildPlayRedirectUrl(req, {
+        authProvider: 'google',
+        authStatus: authResult.createdAccount ? 'created' : 'login',
+      }),
+    });
   } catch (err) {
-    res.redirect(302, buildPlayRedirectUrl(req, {
-      authError: err?.message || 'Google sign-in failed.',
-      authProvider: 'google',
-    }));
+    sendOauthPopupResult(req, res, {
+      ok: false,
+      provider: 'google',
+      message: err?.message || 'Google sign-in failed.',
+      redirectUrl: buildPlayRedirectUrl(req, {
+        authError: err?.message || 'Google sign-in failed.',
+        authProvider: 'google',
+      }),
+    });
   }
 });
 
@@ -1343,34 +1398,42 @@ app.get('/api/auth/vk/callback', async (req, res) => {
   clearTransientCookie(req, res, VK_OAUTH_VERIFIER_COOKIE);
   const queryError = String(req.query?.error || '').trim();
   if (queryError) {
-    res.redirect(302, buildPlayRedirectUrl(req, {
-      authError: queryError,
-      authProvider: 'vk',
-    }));
+    sendOauthPopupResult(req, res, {
+      ok: false,
+      provider: 'vk',
+      message: queryError,
+      redirectUrl: buildPlayRedirectUrl(req, { authError: queryError, authProvider: 'vk' }),
+    });
     return;
   }
   const state = String(req.query?.state || '').trim();
   if (!state || !expectedState || state !== expectedState) {
-    res.redirect(302, buildPlayRedirectUrl(req, {
-      authError: 'VK login state mismatch.',
-      authProvider: 'vk',
-    }));
+    sendOauthPopupResult(req, res, {
+      ok: false,
+      provider: 'vk',
+      message: 'VK login state mismatch.',
+      redirectUrl: buildPlayRedirectUrl(req, { authError: 'VK login state mismatch.', authProvider: 'vk' }),
+    });
     return;
   }
   const code = String(req.query?.code || '').trim();
   const deviceId = String(req.query?.device_id || '').trim();
   if (!code) {
-    res.redirect(302, buildPlayRedirectUrl(req, {
-      authError: 'VK login code is missing.',
-      authProvider: 'vk',
-    }));
+    sendOauthPopupResult(req, res, {
+      ok: false,
+      provider: 'vk',
+      message: 'VK login code is missing.',
+      redirectUrl: buildPlayRedirectUrl(req, { authError: 'VK login code is missing.', authProvider: 'vk' }),
+    });
     return;
   }
   if (!verifier) {
-    res.redirect(302, buildPlayRedirectUrl(req, {
-      authError: 'VK login verifier is missing.',
-      authProvider: 'vk',
-    }));
+    sendOauthPopupResult(req, res, {
+      ok: false,
+      provider: 'vk',
+      message: 'VK login verifier is missing.',
+      redirectUrl: buildPlayRedirectUrl(req, { authError: 'VK login verifier is missing.', authProvider: 'vk' }),
+    });
     return;
   }
   try {
@@ -1411,15 +1474,25 @@ app.get('/api/auth/vk/callback', async (req, res) => {
       throw new Error(authResult?.message || 'VK sign-in failed');
     }
     setPlayerSessionCookie(req, res, authResult.token);
-    res.redirect(302, buildPlayRedirectUrl(req, {
-      authProvider: 'vk',
-      authStatus: authResult.createdAccount ? 'created' : 'login',
-    }));
+    sendOauthPopupResult(req, res, {
+      ok: true,
+      provider: 'vk',
+      message: authResult.createdAccount ? 'created' : 'login',
+      redirectUrl: buildPlayRedirectUrl(req, {
+        authProvider: 'vk',
+        authStatus: authResult.createdAccount ? 'created' : 'login',
+      }),
+    });
   } catch (err) {
-    res.redirect(302, buildPlayRedirectUrl(req, {
-      authError: err?.message || 'VK sign-in failed.',
-      authProvider: 'vk',
-    }));
+    sendOauthPopupResult(req, res, {
+      ok: false,
+      provider: 'vk',
+      message: err?.message || 'VK sign-in failed.',
+      redirectUrl: buildPlayRedirectUrl(req, {
+        authError: err?.message || 'VK sign-in failed.',
+        authProvider: 'vk',
+      }),
+    });
   }
 });
 

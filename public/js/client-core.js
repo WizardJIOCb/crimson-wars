@@ -409,6 +409,7 @@ let pendingReplayRecordId = 0;
 let pendingReplayStartSec = 0;
 let pendingReplayApiPath = '';
 let routedIntent = null;
+let authPopupWindow = null;
 const recordReplay = {
   recordId: 0,
   record: null,
@@ -1288,8 +1289,57 @@ function startExternalAuth(provider) {
   const normalized = provider === 'google' ? 'google' : (provider === 'vk' ? 'vk' : '');
   if (!normalized) return;
   clearAuthFeedback();
-  statusEl.textContent = normalized === 'google' ? 'Redirecting to Google...' : 'Redirecting to VK ID...';
-  window.location.assign(`/api/auth/${normalized}/start`);
+  statusEl.textContent = normalized === 'google' ? 'Opening Google sign-in...' : 'Opening VK ID sign-in...';
+  const authUrl = `${window.location.origin}/api/auth/${normalized}/start`;
+  const popupWidth = 560;
+  const popupHeight = 720;
+  const left = Math.max(0, Math.round(window.screenX + ((window.outerWidth - popupWidth) / 2)));
+  const top = Math.max(0, Math.round(window.screenY + ((window.outerHeight - popupHeight) / 2)));
+  const features = [
+    `width=${popupWidth}`,
+    `height=${popupHeight}`,
+    `left=${left}`,
+    `top=${top}`,
+    'popup=yes',
+    'resizable=yes',
+    'scrollbars=yes',
+  ].join(',');
+  authPopupWindow = window.open(authUrl, `cw-oauth-${normalized}`, features);
+  if (authPopupWindow) {
+    try {
+      authPopupWindow.focus();
+    } catch {
+      // noop
+    }
+    return;
+  }
+  window.location.assign(authUrl);
+}
+
+async function handleOAuthPopupResult(payload) {
+  const provider = String(payload?.provider || '').trim().toLowerCase();
+  const authError = String(payload?.message || '').trim();
+  if (payload?.ok) {
+    const providerLabel = provider === 'google' ? 'Google' : (provider === 'vk' ? 'VK ID' : 'External login');
+    const status = authError === 'created' ? 'account created and connected.' : 'login successful.';
+    const message = `${providerLabel}: ${status}`;
+    setAuthFeedback(message, 'ok');
+    statusEl.textContent = message;
+    setPlayerAccessCollapsed(false);
+    await refreshPlayerAuthSession({ silent: true });
+    try {
+      await connectGameSocket(APP_ORIGIN, { forceReconnect: true });
+    } catch {
+      // Normal join flow will surface errors if reconnect fails.
+    }
+    return;
+  }
+  const providerLabel = provider === 'google' ? 'Google' : (provider === 'vk' ? 'VK ID' : 'External login');
+  const message = `${providerLabel}: ${authError || 'sign-in failed.'}`;
+  setAuthFeedback(message, 'err');
+  statusEl.textContent = message;
+  setAuthTab('login');
+  setPlayerAccessCollapsed(false);
 }
 
 for (const button of authTabButtons) {
@@ -1316,6 +1366,21 @@ providerGoogleBtn?.addEventListener('click', () => {
 
 providerVkBtn?.addEventListener('click', () => {
   startExternalAuth('vk');
+});
+
+window.addEventListener('message', (event) => {
+  if (event.origin !== window.location.origin) return;
+  const payload = event.data;
+  if (!payload || payload.type !== 'cw-oauth-result') return;
+  if (authPopupWindow && !authPopupWindow.closed) {
+    try {
+      authPopupWindow.close();
+    } catch {
+      // noop
+    }
+  }
+  authPopupWindow = null;
+  void handleOAuthPopupResult(payload);
 });
 
 authLoginPasswordEl?.addEventListener('keydown', (e) => {
