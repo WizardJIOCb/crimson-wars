@@ -5,7 +5,14 @@ const { createMysqlSyncClient, escapeSql } = require('./mysql-sync');
 const INSTANCE_STALE_MS = 15000;
 const ROOM_STALE_MS = 15000;
 const MYSQL_RUNTIME_PERSIST_INTERVAL_MS = 15000;
-const MYSQL_RUNTIME_REGISTRY_PERSIST = (process.env.MYSQL_RUNTIME_REGISTRY_PERSIST || '').toString().trim() === '1';
+
+function envFlag(name) {
+  const value = (process.env[name] || '').toString().trim().toLowerCase();
+  return value === '1' || value === 'true' || value === 'yes';
+}
+
+const RUNTIME_REGISTRY_PERSIST = envFlag('RUNTIME_REGISTRY_PERSIST') || envFlag('MYSQL_RUNTIME_REGISTRY_PERSIST');
+const MYSQL_RUNTIME_REGISTRY_PERSIST = envFlag('MYSQL_RUNTIME_REGISTRY_PERSIST') || envFlag('RUNTIME_REGISTRY_PERSIST');
 
 function nowMs() {
   return Date.now();
@@ -232,7 +239,9 @@ function createMysqlRuntimeRegistryStore({ instanceId, mysql }) {
 }
 
 function createRuntimeRegistryStore({ dataDir, dbPath, instanceId, mysql }) {
-  if (mysql?.enabled) return createMysqlRuntimeRegistryStore({ instanceId, mysql });
+  if (mysql?.enabled || !RUNTIME_REGISTRY_PERSIST) {
+    return createMysqlRuntimeRegistryStore({ instanceId, mysql });
+  }
   fs.mkdirSync(dataDir, { recursive: true });
   const db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
