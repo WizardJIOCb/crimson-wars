@@ -438,26 +438,41 @@ const recordsStore = createRecordsStore({
 });
 const RUN_PERSIST_QUEUE_DIR = path.join(DATA_DIR, 'run-persist-queue');
 const RUN_PERSIST_WORKER_PATH = path.join(__dirname, 'server', 'run-persistence-worker.js');
+const pendingRunPersistencePayloads = [];
+
+function spawnRunPersistenceWorker(payload) {
+  fs.mkdirSync(RUN_PERSIST_QUEUE_DIR, { recursive: true });
+  const fileName = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}.json`;
+  const payloadPath = path.join(RUN_PERSIST_QUEUE_DIR, fileName);
+  fs.writeFileSync(payloadPath, JSON.stringify(payload), 'utf8');
+  const child = spawn(process.execPath, [RUN_PERSIST_WORKER_PATH, payloadPath], {
+    cwd: __dirname,
+    env: process.env,
+    detached: true,
+    stdio: 'ignore',
+  });
+  child.unref();
+}
+
+function flushRunPersistenceQueue({ force = false } = {}) {
+  if (pendingRunPersistencePayloads.length <= 0) return;
+  if (!force && hasActiveGameplay()) return;
+  const payloads = pendingRunPersistencePayloads.splice(0, pendingRunPersistencePayloads.length);
+  for (const payload of payloads) {
+    try {
+      spawnRunPersistenceWorker(payload);
+    } catch (err) {
+      pendingRunPersistencePayloads.unshift(payload);
+      console.error('Run persistence queue failed:', err.message);
+      break;
+    }
+  }
+}
 
 function queueRunPersistence(payload) {
   if (!payload || (!payload.record && !payload.progression)) return;
-  setImmediate(() => {
-    try {
-      fs.mkdirSync(RUN_PERSIST_QUEUE_DIR, { recursive: true });
-      const fileName = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}.json`;
-      const payloadPath = path.join(RUN_PERSIST_QUEUE_DIR, fileName);
-      fs.writeFileSync(payloadPath, JSON.stringify(payload), 'utf8');
-      const child = spawn(process.execPath, [RUN_PERSIST_WORKER_PATH, payloadPath], {
-        cwd: __dirname,
-        env: process.env,
-        detached: true,
-        stdio: 'ignore',
-      });
-      child.unref();
-    } catch (err) {
-      console.error('Run persistence queue failed:', err.message);
-    }
-  });
+  pendingRunPersistencePayloads.push(payload);
+  setImmediate(() => flushRunPersistenceQueue());
 }
 
 const skillsStore = createSkillsStore({
@@ -6033,6 +6048,7 @@ function removeRoomClient(client) {
     rooms.delete(room.code);
   }
   publishRuntimeRegistry();
+  flushRunPersistenceQueue();
 }
 
 function notifyClientsAboutRestart(reason = 'restart') {
@@ -6064,6 +6080,7 @@ function beginGracefulShutdown(signal) {
   shutdownStartedAt = Date.now();
   console.log(`Graceful shutdown started (${signal}) on ${INSTANCE_ID}`);
   publishRuntimeRegistry();
+  flushRunPersistenceQueue({ force: true });
   notifyClientsAboutRestart(signal);
 
   if (forceShutdownTimer) clearTimeout(forceShutdownTimer);
@@ -6740,6 +6757,7 @@ setInterval(() => {
 
 setInterval(() => {
   publishRuntimeRegistry();
+  flushRunPersistenceQueue();
 }, 1000);
 
 process.on('SIGTERM', () => {
