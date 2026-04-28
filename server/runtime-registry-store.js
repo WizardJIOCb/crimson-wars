@@ -5,6 +5,7 @@ const { createMysqlSyncClient, escapeSql } = require('./mysql-sync');
 const INSTANCE_STALE_MS = 15000;
 const ROOM_STALE_MS = 15000;
 const MYSQL_RUNTIME_PERSIST_INTERVAL_MS = 15000;
+const MYSQL_RUNTIME_REGISTRY_PERSIST = (process.env.MYSQL_RUNTIME_REGISTRY_PERSIST || '').toString().trim() === '1';
 
 function nowMs() {
   return Date.now();
@@ -40,7 +41,7 @@ function parseInstanceRow(row) {
 }
 
 function createMysqlRuntimeRegistryStore({ instanceId, mysql }) {
-  const client = createMysqlSyncClient(mysql);
+  const client = MYSQL_RUNTIME_REGISTRY_PERSIST ? createMysqlSyncClient(mysql) : null;
   let localInstance = null;
   let localRooms = [];
   let lastPersistAt = 0;
@@ -48,6 +49,7 @@ function createMysqlRuntimeRegistryStore({ instanceId, mysql }) {
   let lastPersistErrorAt = 0;
 
   function pruneStale() {
+    if (!client) return;
     const now = nowMs();
     client.execute(`DELETE FROM room_registry WHERE instance_id IN (SELECT instance_id FROM instance_registry WHERE heartbeat_at < ${escapeSql(now - INSTANCE_STALE_MS)})`);
     client.execute(`DELETE FROM instance_registry WHERE heartbeat_at < ${escapeSql(now - INSTANCE_STALE_MS)}`);
@@ -116,6 +118,7 @@ function createMysqlRuntimeRegistryStore({ instanceId, mysql }) {
   }
 
   function persistRuntimeRegistry({ force = false } = {}) {
+    if (!client) return;
     const now = nowMs();
     if (!force && now - lastPersistAt < MYSQL_RUNTIME_PERSIST_INTERVAL_MS) return;
     lastPersistAt = now;
@@ -206,6 +209,7 @@ function createMysqlRuntimeRegistryStore({ instanceId, mysql }) {
   function unregisterInstance() {
     localRooms = [];
     if (localInstance) localInstance = { ...localInstance, isShuttingDown: true, heartbeatAt: nowMs(), roomCount: 0 };
+    if (!client) return;
     try {
       client.execute([
         `DELETE FROM room_registry WHERE instance_id = ${escapeSql(instanceId)}`,

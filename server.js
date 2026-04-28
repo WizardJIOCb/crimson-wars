@@ -4764,7 +4764,7 @@ function usePlayerQuickConsumable(room, player, slotKey, now = Date.now()) {
   if (!room || !player || !player.alive || !player.playerAccountId) {
     return { ok: false, code: 403, message: 'Consumable is unavailable right now' };
   }
-  const consumed = accountProgressionStore.consumeEquippedItem(player.playerAccountId, player.playerClass, slotKey);
+  const consumed = accountProgressionStore.consumeEquippedItemInMemory(player.accountProgression, player.playerClass, slotKey);
   if (!consumed?.ok || !consumed.usedItem) return consumed || { ok: false, code: 400, message: 'Failed to use consumable' };
 
   player.accountProgression = consumed.progression || player.accountProgression;
@@ -5059,7 +5059,7 @@ function downPlayer(room, target, now, options = {}) {
       bossKills: isPvpMode ? 0 : target.bossKills,
       survivalSec: isPvpMode ? (pvpStats?.survivalSec || survivalSec) : survivalSec,
       heroId: target.playerClass,
-    });
+    }, { progression: target.accountProgression });
     if (rewardResult?.progression) {
       target.accountProgression = rewardResult.progression;
       target.accountHeroBonuses = accountProgressionStore.computeHeroBonuses(target.accountProgression, target.playerClass);

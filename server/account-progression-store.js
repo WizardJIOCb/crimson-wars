@@ -588,6 +588,36 @@ function createAccountProgressionStore({
     return normalizeProgressionRow(stmtGet.get(payload.playerId));
   }
 
+  function cloneProgressionState(raw, fallbackPlayerId = 0) {
+    const pid = clampInt(raw?.playerId || fallbackPlayerId, 1);
+    const base = createDefaultProgression(pid);
+    const inventoryItems = normalizeInventoryItems(raw?.inventoryItems || base.inventoryItems);
+    const unlockedHeroes = normalizeUnlockedHeroes(raw?.unlockedHeroes || base.unlockedHeroes);
+    const heroLevels = normalizeHeroLevels(raw?.heroLevels || base.heroLevels);
+    const activeHeroRaw = String(raw?.activeHero || base.activeHero || fallbackHeroId).trim();
+    return {
+      ...base,
+      accountXp: clampInt(raw?.accountXp, 0),
+      accountLevel: Math.max(1, clampInt(raw?.accountLevel, 1)),
+      accountSkillPoints: clampInt(raw?.accountSkillPoints, 0),
+      shards: clampInt(raw?.shards, 0),
+      activeHero: unlockedHeroes.includes(activeHeroRaw) ? activeHeroRaw : unlockedHeroes[0],
+      unlockedHeroes,
+      heroNodes: normalizeHeroNodes(raw?.heroNodes || base.heroNodes),
+      heroCards: normalizeHeroCards(raw?.heroCards || base.heroCards),
+      heroLevels,
+      heroXp: normalizeHeroXp(raw?.heroXp || base.heroXp, heroLevels),
+      heroSkillLevels: normalizeHeroSkillLevels(raw?.heroSkillLevels || base.heroSkillLevels),
+      salvage: clampInt(raw?.salvage, 0),
+      inventoryItems,
+      heroEquipment: normalizeHeroEquipment(raw?.heroEquipment || base.heroEquipment, inventoryItems),
+      totalRuns: clampInt(raw?.totalRuns, 0),
+      heroRuns: normalizeHeroRuns(raw?.heroRuns || base.heroRuns),
+      createdAt: clampInt(raw?.createdAt || base.createdAt, 0),
+      updatedAt: clampInt(raw?.updatedAt || base.updatedAt, 0),
+    };
+  }
+
   function getOrCreateProgression(playerId) {
     const pid = clampInt(playerId, 1);
     if (!pid) return null;
@@ -880,8 +910,10 @@ function createAccountProgressionStore({
     return gainedCards;
   }
 
-  function grantRunRewards(playerId, runStats) {
-    const progression = getOrCreateProgression(playerId);
+  function grantRunRewards(playerId, runStats, options = {}) {
+    const progression = options?.progression
+      ? cloneProgressionState(options.progression, playerId)
+      : getOrCreateProgression(playerId);
     if (!progression) return null;
 
     const score = clampInt(runStats?.score, 0);
@@ -1039,8 +1071,7 @@ function createAccountProgressionStore({
     return { ok: true, progression: toPublicProgression(saved) };
   }
 
-  function consumeEquippedItem(playerId, heroId, slotKey) {
-    const progression = getOrCreateProgression(playerId);
+  function consumeEquippedItemFromProgression(progression, heroId, slotKey) {
     if (!progression) return { ok: false, code: 404, message: 'Progression not found' };
     const targetHero = String(heroId || '').trim();
     const targetSlot = String(slotKey || '').trim();
@@ -1062,10 +1093,9 @@ function createAccountProgressionStore({
     }
     progression.heroEquipment = normalizeHeroEquipment(progression.heroEquipment, progression.inventoryItems);
 
-    const saved = saveProgression(progression);
     return {
       ok: true,
-      progression: toPublicProgression(saved),
+      progression,
       usedItem: {
         uid: item.uid,
         itemId: item.itemId,
@@ -1074,6 +1104,21 @@ function createAccountProgressionStore({
         combatUse: itemDef.combatUse && typeof itemDef.combatUse === 'object' ? { ...itemDef.combatUse } : null,
       },
     };
+  }
+
+  function consumeEquippedItem(playerId, heroId, slotKey) {
+    const progression = getOrCreateProgression(playerId);
+    const result = consumeEquippedItemFromProgression(progression, heroId, slotKey);
+    if (!result?.ok) return result;
+    const saved = saveProgression(result.progression);
+    return { ...result, progression: toPublicProgression(saved) };
+  }
+
+  function consumeEquippedItemInMemory(progression, heroId, slotKey) {
+    const state = cloneProgressionState(progression, progression?.playerId || 0);
+    const result = consumeEquippedItemFromProgression(state, heroId, slotKey);
+    if (!result?.ok) return result;
+    return { ...result, progression: toPublicProgression(result.progression) };
   }
 
   function selectActiveHero(playerId, heroId) {
@@ -1222,6 +1267,7 @@ function createAccountProgressionStore({
     sellItem,
     upgradeItem,
     consumeEquippedItem,
+    consumeEquippedItemInMemory,
     computeHeroBonuses,
     getHeroRuntimeSkills,
     getHeroUniqueSkillDef,
