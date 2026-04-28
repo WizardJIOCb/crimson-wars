@@ -1,6 +1,8 @@
 const path = require('path');
 const http = require('http');
 const crypto = require('crypto');
+const fs = require('fs');
+const { spawn } = require('child_process');
 const express = require('express');
 const Database = require('better-sqlite3');
 const WebSocket = require('ws');
@@ -433,6 +435,29 @@ const recordsStore = createRecordsStore({
   leaderboardPageSize: LEADERBOARD_PAGE_SIZE,
   mysql: MYSQL_STORE,
 });
+const RUN_PERSIST_QUEUE_DIR = path.join(DATA_DIR, 'run-persist-queue');
+const RUN_PERSIST_WORKER_PATH = path.join(__dirname, 'server', 'run-persistence-worker.js');
+
+function queueRunPersistence(payload) {
+  if (!payload || (!payload.record && !payload.progression)) return;
+  setImmediate(() => {
+    try {
+      fs.mkdirSync(RUN_PERSIST_QUEUE_DIR, { recursive: true });
+      const fileName = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}.json`;
+      const payloadPath = path.join(RUN_PERSIST_QUEUE_DIR, fileName);
+      fs.writeFileSync(payloadPath, JSON.stringify(payload), 'utf8');
+      const child = spawn(process.execPath, [RUN_PERSIST_WORKER_PATH, payloadPath], {
+        cwd: __dirname,
+        env: process.env,
+        detached: true,
+        stdio: 'ignore',
+      });
+      child.unref();
+    } catch (err) {
+      console.error('Run persistence queue failed:', err.message);
+    }
+  });
+}
 
 const skillsStore = createSkillsStore({
   dataDir: DATA_DIR,
@@ -5041,7 +5066,7 @@ function downPlayer(room, target, now, options = {}) {
   const score = isPvpMode ? pvpStats.score : (room.scores.get(target.id) || 0);
   const survivalSec = Math.max(1, Math.floor((now - (target.joinedAt || now)) / 1000));
   let rewardResult = null;
-  recordsStore.pushRecord({
+  const recordEntry = {
     name: target.name,
     kills,
     score,
@@ -5050,10 +5075,14 @@ function downPlayer(room, target, now, options = {}) {
     at: now,
     runDetails,
     runReplay,
-  });
+  };
+
+  if (typeof recordsStore.pushRecordMemory === 'function') {
+    recordsStore.pushRecordMemory(recordEntry);
+  }
 
   if (target.playerAccountId) {
-    rewardResult = accountProgressionStore.grantRunRewards(target.playerAccountId, {
+    rewardResult = accountProgressionStore.grantRunRewardsInMemory(target.playerAccountId, {
       score,
       kills,
       bossKills: isPvpMode ? 0 : target.bossKills,
@@ -5070,6 +5099,12 @@ function downPlayer(room, target, now, options = {}) {
       });
     }
   }
+
+  queueRunPersistence({
+    record: recordEntry,
+    playerAccountId: target.playerAccountId || null,
+    progression: rewardResult?.progression || null,
+  });
 
   if (target.partnerRunContext) {
     const completionPayload = {

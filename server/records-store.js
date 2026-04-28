@@ -156,7 +156,7 @@ function createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql 
     return { page: currentPage, pageSize: size, total, totalPages, items };
   }
 
-  function pushRecord(entry) {
+  function applyRecordMemory(entry) {
     const normalized = normalizeRecordEntry(entry);
     latestRunsCache.clear();
     runHistory.unshift(normalized);
@@ -177,7 +177,12 @@ function createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql 
     records.sort((a, b) => (b.kills - a.kills) || (b.score - a.score) || (b.at - a.at));
     if (records.length > leaderboardLimit) records.length = leaderboardLimit;
     const persistedRecord = records.find((x) => recordNameKey(x.name) === key) || normalized;
+    return { normalized, persistedRecord, newPersonalBest };
+  }
 
+  function persistRecord(entry) {
+    const normalized = normalizeRecordEntry(entry);
+    latestRunsCache.clear();
     try {
       client.execute([
         'INSERT INTO player_runs (name, name_key, kills, score, room_code, duration_sec, at, run_details, run_replay)',
@@ -193,6 +198,23 @@ function createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql 
           normalized.runReplay ? JSON.stringify(normalized.runReplay) : null,
         ].map(escapeSql).join(', ')})`,
       ].join('\n'));
+
+      const existingRow = client.queryJsonOne([
+        `SELECT ${recordSummaryJson}`,
+        'FROM records',
+        `WHERE LOWER(name)=LOWER(${escapeSql(normalized.name)})`,
+        'ORDER BY kills DESC, score DESC, at DESC',
+        'LIMIT 1',
+      ].join('\n'));
+      const existingRecord = existingRow ? normalizeRecordEntry(existingRow) : null;
+      const attempts = existingRecord
+        ? Math.max(1, Number(existingRecord?.attempts) || 1) + 1
+        : Math.max(1, Number(normalized?.attempts) || 1);
+      const newPersonalBest = !existingRecord || isBetterRecord(normalized, existingRecord);
+      const persistedRecord = newPersonalBest
+        ? { ...normalized, attempts }
+        : { ...existingRecord, attempts };
+
       if (newPersonalBest) {
         client.execute(`DELETE FROM records WHERE LOWER(name)=LOWER(${escapeSql(normalized.name)})`);
         client.execute([
@@ -217,6 +239,15 @@ function createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql 
     } catch (err) {
       console.error('Records MySQL write failed:', err.message);
     }
+  }
+
+  function pushRecordMemory(entry) {
+    applyRecordMemory(entry);
+  }
+
+  function pushRecord(entry) {
+    applyRecordMemory(entry);
+    persistRecord(entry);
   }
 
   function listPlayerRunsByName(name, page = 1, pageSize = PLAYER_RUN_HISTORY_PAGE_SIZE) {
@@ -307,6 +338,8 @@ function createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql 
     listPlayerRunsByName,
     listLatestPlayerRuns,
     pushRecord,
+    pushRecordMemory,
+    persistRecord,
     getRecordReplay,
     getPlayerRunReplayById,
     getPlayerRunReplayByNameAndId,

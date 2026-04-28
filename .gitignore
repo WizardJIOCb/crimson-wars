@@ -5,6 +5,8 @@ npm-debug.log*
 data/*.db
 data/*.db-shm
 data/*.db-wal
+data/run-persist-queue/
+data/run-persist-worker.log
 data/news.json
 news.json
 .vexp/

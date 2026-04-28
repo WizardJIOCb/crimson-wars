@@ -910,10 +910,10 @@ function createAccountProgressionStore({
     return gainedCards;
   }
 
-  function grantRunRewards(playerId, runStats, options = {}) {
+  function grantRunRewardsInMemory(playerId, runStats, options = {}) {
     const progression = options?.progression
       ? cloneProgressionState(options.progression, playerId)
-      : getOrCreateProgression(playerId);
+      : null;
     if (!progression) return null;
 
     const score = clampInt(runStats?.score, 0);
@@ -971,9 +971,8 @@ function createAccountProgressionStore({
       xpToNext = xpToNextLevel(progression.accountLevel);
     }
 
-    const saved = saveProgression(progression);
     return {
-      progression: toPublicProgression(saved),
+      progression: toPublicProgression(progression),
       rewards: {
         gainedXp,
         gainedShards,
@@ -984,6 +983,24 @@ function createAccountProgressionStore({
         gainedCards,
         gainedItems,
       },
+    };
+  }
+
+  function saveProgressionSnapshot(playerId, progression) {
+    const state = cloneProgressionState(progression, playerId);
+    if (!state) return null;
+    const saved = saveProgression(state);
+    return toPublicProgression(saved);
+  }
+
+  function grantRunRewards(playerId, runStats, options = {}) {
+    const baseProgression = options?.progression || getOrCreateProgression(playerId);
+    const result = grantRunRewardsInMemory(playerId, runStats, { progression: baseProgression });
+    if (!result?.progression) return result;
+    const saved = saveProgressionSnapshot(playerId, result.progression);
+    return {
+      ...result,
+      progression: saved || result.progression,
     };
   }
 
@@ -1257,6 +1274,8 @@ function createAccountProgressionStore({
     getOrCreateProgression,
     toPublicProgression,
     grantRunRewards,
+    grantRunRewardsInMemory,
+    saveProgressionSnapshot,
     unlockHero,
     selectActiveHero,
     upgradeHeroNode,
