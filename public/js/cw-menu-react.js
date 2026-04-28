@@ -185,9 +185,9 @@
         h('div', { className: 'providers-card' },
           h('div', { className: 'providers-title' }, 'Соц. логины'),
           h('div', { className: 'providers-grid' },
-            h('button', { type: 'button', className: 'provider-btn', disabled: true }, 'Google'),
-            h('button', { type: 'button', className: 'provider-btn', disabled: true }, 'VK ID'),
-            h('button', { type: 'button', className: 'provider-btn', disabled: true }, 'Mail.ru')
+            h('button', { id: 'provider-google', type: 'button', className: 'provider-btn' }, 'Google'),
+            h('button', { id: 'provider-vk', type: 'button', className: 'provider-btn' }, 'VK ID'),
+            h('button', { id: 'provider-mailru', type: 'button', className: 'provider-btn', disabled: true }, 'Mail.ru')
           )
         ),
         h('div', { id: 'player-auth-feedback', className: 'auth-feedback hidden', 'aria-live': 'polite' })

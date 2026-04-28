@@ -62,6 +62,7 @@ function parseIdentityRow(row) {
   if (!row) return null;
   return {
     id: Math.max(0, Number(row.id) || 0),
+    playerAccountId: Math.max(0, Number(row.player_account_id) || 0),
     provider: (row.provider || '').toString(),
     providerUserId: (row.provider_user_id || '').toString(),
     providerEmail: (row.provider_email || '').toString(),
@@ -81,6 +82,18 @@ function validateNickname(nickname) {
     return { ok: false, message: 'Nickname must contain letters or numbers' };
   }
   return { ok: true, nickname: normalized, nicknameKey: normalizeNicknameKey(normalized) };
+}
+
+function sanitizeNicknameSeed(value, fallback = 'Player') {
+  const raw = (value || '').toString().trim();
+  const cleaned = raw
+    .replace(/[^\p{L}\p{N} _-]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const normalized = normalizeNickname(cleaned || fallback);
+  if (!normalized) return fallback;
+  if (!/[\p{L}\p{N}]/u.test(normalized)) return fallback;
+  return normalized;
 }
 
 function createPlayerAuthStore({ dataDir, dbPath }) {
@@ -148,6 +161,11 @@ function createPlayerAuthStore({ dataDir, dbPath }) {
   const stmtTouchSession = db.prepare('UPDATE player_sessions SET last_seen_at = ?, expires_at = ? WHERE id = ?');
   const stmtPruneExpiredSessions = db.prepare('DELETE FROM player_sessions WHERE expires_at < ?');
   const stmtListIdentitiesByPlayerId = db.prepare('SELECT * FROM player_identities WHERE player_account_id = ? ORDER BY provider ASC');
+  const stmtGetIdentityByProviderUserId = db.prepare('SELECT * FROM player_identities WHERE provider = ? AND provider_user_id = ?');
+  const stmtInsertIdentity = db.prepare([
+    'INSERT INTO player_identities (player_account_id, provider, provider_user_id, provider_email, created_at)',
+    'VALUES (?, ?, ?, ?, ?)',
+  ].join('\n'));
 
   function pruneExpiredSessions() {
     stmtPruneExpiredSessions.run(nowMs());
@@ -315,10 +333,6 @@ function createPlayerAuthStore({ dataDir, dbPath }) {
     if (!getAccountById(playerId)) {
       return { ok: false, code: 404, message: 'Player not found' };
     }
-    const stmtInsertIdentity = db.prepare([
-      'INSERT INTO player_identities (player_account_id, provider, provider_user_id, provider_email, created_at)',
-      'VALUES (?, ?, ?, ?, ?)',
-    ].join('\n'));
     try {
       stmtInsertIdentity.run(
         Number(playerId) || 0,
@@ -333,6 +347,109 @@ function createPlayerAuthStore({ dataDir, dbPath }) {
     return { ok: true, identities: listIdentities(playerId) };
   }
 
+  function createUniqueExternalNickname(provider, nicknameBase) {
+    const providerPrefixMap = {
+      google: 'Google',
+      vk: 'VK',
+      mailru: 'Mail',
+    };
+    const prefix = providerPrefixMap[(provider || '').toString().trim().toLowerCase()] || 'Player';
+    const seed = sanitizeNicknameSeed(nicknameBase, prefix);
+    const variants = [seed];
+    if (!seed.toLowerCase().startsWith(prefix.toLowerCase())) {
+      variants.push(sanitizeNicknameSeed(`${prefix} ${seed}`, prefix));
+    }
+    variants.push(prefix);
+    for (const baseVariant of variants) {
+      const base = sanitizeNicknameSeed(baseVariant, prefix).slice(0, NICKNAME_MAX_LENGTH);
+      const initialValidation = validateNickname(base);
+      if (initialValidation.ok && !stmtGetByNicknameKey.get(initialValidation.nicknameKey)) {
+        return initialValidation.nickname;
+      }
+      for (let attempt = 1; attempt <= 200; attempt += 1) {
+        const suffix = ` ${1000 + attempt}`;
+        const trimmedBase = base.slice(0, Math.max(1, NICKNAME_MAX_LENGTH - suffix.length)).trim();
+        const candidate = normalizeNickname(`${trimmedBase}${suffix}`);
+        const validation = validateNickname(candidate);
+        if (!validation.ok) continue;
+        if (!stmtGetByNicknameKey.get(validation.nicknameKey)) {
+          return validation.nickname;
+        }
+      }
+    }
+    return normalizeNickname(`Player ${Date.now().toString().slice(-6)}`);
+  }
+
+  function authenticateExternal({ provider, providerUserId, providerEmail = '', nicknameBase = '' }) {
+    const normalizedProvider = (provider || '').toString().trim().toLowerCase();
+    const externalUserId = (providerUserId || '').toString().trim();
+    const externalEmail = (providerEmail || '').toString().trim().slice(0, 200);
+    if (!PROVIDERS.has(normalizedProvider)) {
+      return { ok: false, code: 400, message: 'Unsupported provider' };
+    }
+    if (!externalUserId) {
+      return { ok: false, code: 400, message: 'Provider user id is required' };
+    }
+    const existingIdentity = parseIdentityRow(stmtGetIdentityByProviderUserId.get(normalizedProvider, externalUserId));
+    if (existingIdentity) {
+      const player = getAccountById(existingIdentity.playerAccountId || 0);
+      if (!player || !player.isActive) {
+        return { ok: false, code: 404, message: 'Player account is unavailable' };
+      }
+      const token = createSession(player.id);
+      return {
+        ok: true,
+        token,
+        player,
+        identities: listIdentities(player.id),
+        createdAccount: false,
+      };
+    }
+
+    const createExternalAccountTx = db.transaction(() => {
+      const nickname = createUniqueExternalNickname(normalizedProvider, nicknameBase);
+      const validation = validateNickname(nickname);
+      if (!validation.ok) {
+        throw new Error(validation.message || 'Failed to generate nickname');
+      }
+      const now = nowMs();
+      const result = stmtInsertAccount.run({
+        nickname: validation.nickname,
+        nicknameKey: validation.nicknameKey,
+        passwordHash: hashPassword(randomToken(24)),
+        createdAt: now,
+        updatedAt: now,
+      });
+      const playerId = Number(result.lastInsertRowid) || 0;
+      stmtInsertIdentity.run(
+        playerId,
+        normalizedProvider,
+        externalUserId,
+        externalEmail,
+        now,
+      );
+      return getAccountById(playerId);
+    });
+
+    let player = null;
+    try {
+      player = createExternalAccountTx();
+    } catch (err) {
+      return { ok: false, code: 500, message: err?.message || 'Failed to create external account' };
+    }
+    if (!player) {
+      return { ok: false, code: 500, message: 'Failed to create external account' };
+    }
+    const token = createSession(player.id);
+    return {
+      ok: true,
+      token,
+      player,
+      identities: listIdentities(player.id),
+      createdAccount: true,
+    };
+  }
+
   return {
     validateNickname,
     getAccountById,
@@ -343,6 +460,7 @@ function createPlayerAuthStore({ dataDir, dbPath }) {
     deleteSession,
     register,
     authenticate,
+    authenticateExternal,
     updatePassword,
     createProviderPlaceholder,
   };

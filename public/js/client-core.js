@@ -45,6 +45,9 @@ const playerAuthSummaryEl = document.getElementById('player-auth-summary');
 const playerAuthFeedbackEl = document.getElementById('player-auth-feedback');
 const joinFeedbackEl = document.getElementById('join-feedback');
 const playerLogoutBtn = document.getElementById('player-logout');
+const providerGoogleBtn = document.getElementById('provider-google');
+const providerVkBtn = document.getElementById('provider-vk');
+const providerMailruBtn = document.getElementById('provider-mailru');
 const authTabButtons = Array.from(document.querySelectorAll('[data-auth-tab]'));
 const authPanels = Array.from(document.querySelectorAll('[data-auth-panel]'));
 const authLoginNicknameEl = document.getElementById('auth-login-nickname');
@@ -946,6 +949,9 @@ function setPlayerAuthBusy(busy) {
   if (playerLoginBtn) playerLoginBtn.disabled = game.playerAuth.busy;
   if (playerRegisterBtn) playerRegisterBtn.disabled = game.playerAuth.busy;
   if (playerLogoutBtn) playerLogoutBtn.disabled = game.playerAuth.busy;
+  if (providerGoogleBtn) providerGoogleBtn.disabled = game.playerAuth.busy;
+  if (providerVkBtn) providerVkBtn.disabled = game.playerAuth.busy;
+  if (providerMailruBtn) providerMailruBtn.disabled = true;
 }
 
 function setAuthTab(mode) {
@@ -1058,6 +1064,34 @@ function reloadForPlayerSession(message) {
       // The normal join flow will surface connection errors if reconnect fails.
     }
   })();
+}
+
+function consumeAuthRedirectFeedback() {
+  const url = new URL(window.location.href);
+  const authError = String(url.searchParams.get('authError') || '').trim();
+  const authProvider = String(url.searchParams.get('authProvider') || '').trim().toLowerCase();
+  const authStatus = String(url.searchParams.get('authStatus') || '').trim().toLowerCase();
+  if (!authError && !authProvider && !authStatus) return;
+  if (authError) {
+    const providerLabel = authProvider === 'google' ? 'Google' : (authProvider === 'vk' ? 'VK ID' : 'External login');
+    const message = `${providerLabel}: ${authError}`;
+    setAuthFeedback(message, 'err');
+    statusEl.textContent = message;
+    setAuthTab('login');
+    setPlayerAccessCollapsed(false);
+  } else if (authProvider) {
+    const providerLabel = authProvider === 'google' ? 'Google' : (authProvider === 'vk' ? 'VK ID' : 'External login');
+    const message = authStatus === 'created'
+      ? `${providerLabel}: account created and connected.`
+      : `${providerLabel}: login successful.`;
+    setAuthFeedback(message, 'ok');
+    statusEl.textContent = message;
+    setPlayerAccessCollapsed(false);
+  }
+  url.searchParams.delete('authError');
+  url.searchParams.delete('authProvider');
+  url.searchParams.delete('authStatus');
+  window.history.replaceState({}, document.title, url.toString());
 }
 
 function scheduleClientReload(delayMs = 1500, message = 'Server restarting. Reconnecting...') {
@@ -1250,6 +1284,14 @@ async function logoutPlayerAccount() {
   }
 }
 
+function startExternalAuth(provider) {
+  const normalized = provider === 'google' ? 'google' : (provider === 'vk' ? 'vk' : '');
+  if (!normalized) return;
+  clearAuthFeedback();
+  statusEl.textContent = normalized === 'google' ? 'Redirecting to Google...' : 'Redirecting to VK ID...';
+  window.location.assign(`/api/auth/${normalized}/start`);
+}
+
 for (const button of authTabButtons) {
   button.addEventListener('click', () => {
     setAuthTab(button.dataset.authTab || 'guest');
@@ -1266,6 +1308,14 @@ playerRegisterBtn?.addEventListener('click', () => {
 
 playerLogoutBtn?.addEventListener('click', () => {
   void logoutPlayerAccount();
+});
+
+providerGoogleBtn?.addEventListener('click', () => {
+  startExternalAuth('google');
+});
+
+providerVkBtn?.addEventListener('click', () => {
+  startExternalAuth('vk');
 });
 
 authLoginPasswordEl?.addEventListener('keydown', (e) => {
@@ -1296,6 +1346,7 @@ setAuthTab('guest');
 applyInitialRoomIntent();
 renderPlayerAuthUi();
 renderInstanceMeta();
+consumeAuthRedirectFeedback();
 void refreshPlayerAuthSession({ silent: true });
 
 function updateTopCenterHud(nowMs = Date.now()) {

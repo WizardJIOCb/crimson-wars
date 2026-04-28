@@ -189,6 +189,8 @@
       'ui.auth.new_nickname': 'New nickname',
       'ui.auth.register_nickname': 'Register nickname',
       'ui.auth.external_signin': 'External sign-in',
+      'ui.auth.google': 'Google',
+      'ui.auth.vk': 'VK ID',
       'ui.auth.google_soon': 'Google coming soon',
       'ui.auth.vk_soon': 'VK ID coming soon',
       'ui.auth.mail_soon': 'Mail.ru coming soon',
@@ -614,6 +616,8 @@
       'ui.auth.new_nickname': 'Новый ник',
       'ui.auth.register_nickname': 'Зарегистрировать ник',
       'ui.auth.external_signin': 'Внешний вход',
+      'ui.auth.google': 'Google',
+      'ui.auth.vk': 'VK ID',
       'ui.auth.google_soon': 'Google скоро',
       'ui.auth.vk_soon': 'VK ID скоро',
       'ui.auth.mail_soon': 'Mail.ru скоро',
@@ -1160,9 +1164,9 @@
     setText('label[for="auth-register-password"]', 'ui.auth.password');
     setText('#player-register', 'ui.auth.register_nickname');
     setText('.providers-title', 'ui.auth.external_signin');
-    setText('.provider-btn:nth-of-type(1)', 'ui.auth.google_soon');
-    setText('.provider-btn:nth-of-type(2)', 'ui.auth.vk_soon');
-    setText('.provider-btn:nth-of-type(3)', 'ui.auth.mail_soon');
+    setText('#provider-google', 'ui.auth.google');
+    setText('#provider-vk', 'ui.auth.vk');
+    setText('#provider-mailru', 'ui.auth.mail_soon');
     setText('label[for="name"]', 'ui.nickname');
     setText('#nickname-hint', 'ui.nickname_hint_guest');
     setText('#room-code-label', 'ui.play.room_code_optional');

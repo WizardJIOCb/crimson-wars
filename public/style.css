@@ -2951,6 +2951,7 @@ body.replay-game-active #scoreboard {
   border-radius: 10px;
   padding: 8px;
   background: rgba(8, 12, 18, 0.45);
+  padding-bottom: 0px;
 }
 
 .sync-settings > summary {

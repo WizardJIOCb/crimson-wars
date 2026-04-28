@@ -28,6 +28,13 @@ const SHUTDOWN_GRACE_MS = Math.max(1000, Number(process.env.SHUTDOWN_GRACE_MS) |
 const RESTART_RETRY_MS = Math.max(1000, Number(process.env.RESTART_RETRY_MS) || 2500);
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || (IS_PROD ? '' : `http://localhost:${PORT}`)).toString().trim().replace(/\/+$/, '');
 const SESSION_COOKIE_DOMAIN = (process.env.SESSION_COOKIE_DOMAIN || (IS_PROD ? '.rodion.pro' : '')).toString().trim();
+const GOOGLE_CLIENT_ID = (process.env.GOOGLE_CLIENT_ID || '').toString().trim();
+const GOOGLE_CLIENT_SECRET = (process.env.GOOGLE_CLIENT_SECRET || '').toString().trim();
+const GOOGLE_REDIRECT_URI = (process.env.GOOGLE_REDIRECT_URI || '').toString().trim();
+const VK_CLIENT_ID = (process.env.VK_CLIENT_ID || '').toString().trim();
+const VK_CLIENT_SECRET = (process.env.VK_CLIENT_SECRET || '').toString().trim();
+const VK_REDIRECT_URI = (process.env.VK_REDIRECT_URI || '').toString().trim();
+const VK_SERVICE_TOKEN = (process.env.VK_SERVICE_TOKEN || '').toString().trim();
 const CHAT_MAX_LEN = 180;
 const CHAT_HISTORY_LIMIT = 50;
 const CHAT_WELCOME_LIMIT = 30;
@@ -198,6 +205,9 @@ const XP_SURGE_DURATION_MS = 3200;
 const XP_SURGE_PULL_MIN_MUL = 0.22;
 const XP_SURGE_PULL_MAX_MUL = 3.9;
 const partnerRunSessions = new Map();
+const GOOGLE_OAUTH_STATE_COOKIE = 'cw_google_oauth_state';
+const VK_OAUTH_STATE_COOKIE = 'cw_vk_oauth_state';
+const VK_OAUTH_VERIFIER_COOKIE = 'cw_vk_oauth_verifier';
 
 function normalizeGameMode(rawMode) {
   const mode = String(rawMode || '').trim().toLowerCase();
@@ -920,6 +930,87 @@ function getRequestBaseUrl(req) {
   return `${proto}://${host}`.replace(/\/+$/, '');
 }
 
+function setTransientCookie(req, res, name, value, maxAgeSec = 600) {
+  const parts = [
+    `${name}=${encodeURIComponent(String(value || ''))}`,
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Lax',
+    `Max-Age=${Math.max(0, Math.floor(Number(maxAgeSec) || 0))}`,
+  ];
+  appendCookieDomain(parts, req);
+  if (IS_PROD) parts.push('Secure');
+  appendSetCookieHeader(res, parts.join('; '));
+}
+
+function clearTransientCookie(req, res, name) {
+  setTransientCookie(req, res, name, '', 0);
+}
+
+function createOAuthState() {
+  return crypto.randomBytes(24).toString('base64url');
+}
+
+function createPkceVerifier() {
+  return crypto.randomBytes(48).toString('base64url');
+}
+
+function createPkceChallenge(verifier) {
+  return crypto.createHash('sha256').update(String(verifier || '')).digest('base64url');
+}
+
+function decodeJwtPayload(token) {
+  const raw = String(token || '').trim();
+  if (!raw) return null;
+  const parts = raw.split('.');
+  if (parts.length < 2) return null;
+  try {
+    return JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function getPlayRedirectBase(req) {
+  return new URL('/play', getRequestBaseUrl(req) || GOOGLE_REDIRECT_URI || VK_REDIRECT_URI);
+}
+
+function getGoogleRedirectUri(req) {
+  return GOOGLE_REDIRECT_URI || `${getRequestBaseUrl(req)}/api/auth/google/callback`;
+}
+
+function getVkRedirectUri(req) {
+  return VK_REDIRECT_URI || `${getRequestBaseUrl(req)}/api/auth/vk/callback`;
+}
+
+function buildPlayRedirectUrl(req, params = {}) {
+  const url = getPlayRedirectBase(req);
+  for (const [key, value] of Object.entries(params || {})) {
+    if (value === undefined || value === null || value === '') continue;
+    url.searchParams.set(key, String(value));
+  }
+  return url.toString();
+}
+
+async function fetchJsonWithDetails(url, options = {}) {
+  const response = await fetch(url, options);
+  const text = await response.text();
+  let payload = null;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    payload = null;
+  }
+  if (!response.ok) {
+    const message = payload?.error_description || payload?.error || payload?.message || text || `HTTP ${response.status}`;
+    const err = new Error(message);
+    err.status = response.status;
+    err.payload = payload;
+    throw err;
+  }
+  return payload;
+}
+
 function buildPartnerRunJoinUrl(session) {
   return buildUrlWithParams(buildRoomRedirectUrl(
     PUBLIC_BASE_URL,
@@ -1012,6 +1103,13 @@ function appendCookieDomain(parts, req) {
   if (domain) parts.push(`Domain=${domain}`);
 }
 
+function appendSetCookieHeader(res, value) {
+  const current = res.getHeader('Set-Cookie');
+  const next = Array.isArray(current) ? current.slice() : (current ? [String(current)] : []);
+  next.push(value);
+  res.setHeader('Set-Cookie', next);
+}
+
 function setAdminSessionCookie(req, res, token) {
   const parts = [
     `${ADMIN_SESSION_COOKIE}=${encodeURIComponent(token)}`,
@@ -1022,7 +1120,7 @@ function setAdminSessionCookie(req, res, token) {
   ];
   appendCookieDomain(parts, req);
   if (IS_PROD) parts.push('Secure');
-  res.setHeader('Set-Cookie', parts.join('; '));
+  appendSetCookieHeader(res, parts.join('; '));
 }
 
 function clearAdminSessionCookie(req, res) {
@@ -1035,7 +1133,7 @@ function clearAdminSessionCookie(req, res) {
   ];
   appendCookieDomain(parts, req);
   if (IS_PROD) parts.push('Secure');
-  res.setHeader('Set-Cookie', parts.join('; '));
+  appendSetCookieHeader(res, parts.join('; '));
 }
 
 function setPlayerSessionCookie(req, res, token) {
@@ -1048,7 +1146,7 @@ function setPlayerSessionCookie(req, res, token) {
   ];
   appendCookieDomain(parts, req);
   if (IS_PROD) parts.push('Secure');
-  res.setHeader('Set-Cookie', parts.join('; '));
+  appendSetCookieHeader(res, parts.join('; '));
 }
 
 function clearPlayerSessionCookie(req, res) {
@@ -1061,7 +1159,7 @@ function clearPlayerSessionCookie(req, res) {
   ];
   appendCookieDomain(parts, req);
   if (IS_PROD) parts.push('Secure');
-  res.setHeader('Set-Cookie', parts.join('; '));
+  appendSetCookieHeader(res, parts.join('; '));
 }
 
 function generateAdminPassword() {
@@ -1114,6 +1212,215 @@ app.get('/api/runtime', (_req, res) => {
     lobbyRooms: runtimeRegistryStore.listRooms(),
     now: Date.now(),
   });
+});
+
+app.get('/api/auth/google/start', (req, res) => {
+  const redirectUri = getGoogleRedirectUri(req);
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !redirectUri) {
+    res.redirect(302, buildPlayRedirectUrl(req, {
+      authError: 'Google OAuth is not configured.',
+      authProvider: 'google',
+    }));
+    return;
+  }
+  const state = createOAuthState();
+  setTransientCookie(req, res, GOOGLE_OAUTH_STATE_COOKIE, state, 600);
+  const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  url.searchParams.set('client_id', GOOGLE_CLIENT_ID);
+  url.searchParams.set('redirect_uri', redirectUri);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('scope', 'openid email profile');
+  url.searchParams.set('state', state);
+  url.searchParams.set('access_type', 'online');
+  url.searchParams.set('include_granted_scopes', 'true');
+  url.searchParams.set('prompt', 'select_account');
+  res.redirect(302, url.toString());
+});
+
+app.get('/api/auth/google/callback', async (req, res) => {
+  const queryError = String(req.query?.error || '').trim();
+  if (queryError) {
+    clearTransientCookie(req, res, GOOGLE_OAUTH_STATE_COOKIE);
+    res.redirect(302, buildPlayRedirectUrl(req, {
+      authError: queryError,
+      authProvider: 'google',
+    }));
+    return;
+  }
+  const state = String(req.query?.state || '').trim();
+  const expectedState = String(parseCookies(req)[GOOGLE_OAUTH_STATE_COOKIE] || '').trim();
+  clearTransientCookie(req, res, GOOGLE_OAUTH_STATE_COOKIE);
+  if (!state || !expectedState || state !== expectedState) {
+    res.redirect(302, buildPlayRedirectUrl(req, {
+      authError: 'Google login state mismatch.',
+      authProvider: 'google',
+    }));
+    return;
+  }
+  const code = String(req.query?.code || '').trim();
+  if (!code) {
+    res.redirect(302, buildPlayRedirectUrl(req, {
+      authError: 'Google login code is missing.',
+      authProvider: 'google',
+    }));
+    return;
+  }
+  try {
+    const tokenPayload = await fetchJsonWithDetails('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: GOOGLE_CLIENT_ID,
+        client_secret: GOOGLE_CLIENT_SECRET,
+        redirect_uri: getGoogleRedirectUri(req),
+        grant_type: 'authorization_code',
+      }).toString(),
+    });
+    const accessToken = String(tokenPayload?.access_token || '').trim();
+    const profile = await fetchJsonWithDetails('https://openidconnect.googleapis.com/v1/userinfo', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const providerUserId = String(profile?.sub || '').trim();
+    if (!providerUserId) {
+      throw new Error('Google profile id is missing.');
+    }
+    const providerEmail = String(profile?.email || '').trim();
+    const nicknameBase = String(profile?.name || profile?.given_name || providerEmail.split('@')[0] || 'Google Player').trim();
+    const authResult = playerAuthStore.authenticateExternal({
+      provider: 'google',
+      providerUserId,
+      providerEmail,
+      nicknameBase,
+    });
+    if (!authResult?.ok) {
+      throw new Error(authResult?.message || 'Google sign-in failed');
+    }
+    setPlayerSessionCookie(req, res, authResult.token);
+    res.redirect(302, buildPlayRedirectUrl(req, {
+      authProvider: 'google',
+      authStatus: authResult.createdAccount ? 'created' : 'login',
+    }));
+  } catch (err) {
+    res.redirect(302, buildPlayRedirectUrl(req, {
+      authError: err?.message || 'Google sign-in failed.',
+      authProvider: 'google',
+    }));
+  }
+});
+
+app.get('/api/auth/vk/start', (req, res) => {
+  const redirectUri = getVkRedirectUri(req);
+  if (!VK_CLIENT_ID || !VK_CLIENT_SECRET || !redirectUri) {
+    res.redirect(302, buildPlayRedirectUrl(req, {
+      authError: 'VK ID OAuth is not configured.',
+      authProvider: 'vk',
+    }));
+    return;
+  }
+  const state = createOAuthState();
+  const verifier = createPkceVerifier();
+  const challenge = createPkceChallenge(verifier);
+  setTransientCookie(req, res, VK_OAUTH_STATE_COOKIE, state, 600);
+  setTransientCookie(req, res, VK_OAUTH_VERIFIER_COOKIE, verifier, 600);
+  const url = new URL('https://id.vk.com/authorize');
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('client_id', VK_CLIENT_ID);
+  url.searchParams.set('redirect_uri', redirectUri);
+  url.searchParams.set('scope', 'vkid.personal_info email');
+  url.searchParams.set('state', state);
+  url.searchParams.set('code_challenge', challenge);
+  url.searchParams.set('code_challenge_method', 'S256');
+  res.redirect(302, url.toString());
+});
+
+app.get('/api/auth/vk/callback', async (req, res) => {
+  const cookies = parseCookies(req);
+  const expectedState = String(cookies[VK_OAUTH_STATE_COOKIE] || '').trim();
+  const verifier = String(cookies[VK_OAUTH_VERIFIER_COOKIE] || '').trim();
+  clearTransientCookie(req, res, VK_OAUTH_STATE_COOKIE);
+  clearTransientCookie(req, res, VK_OAUTH_VERIFIER_COOKIE);
+  const queryError = String(req.query?.error || '').trim();
+  if (queryError) {
+    res.redirect(302, buildPlayRedirectUrl(req, {
+      authError: queryError,
+      authProvider: 'vk',
+    }));
+    return;
+  }
+  const state = String(req.query?.state || '').trim();
+  if (!state || !expectedState || state !== expectedState) {
+    res.redirect(302, buildPlayRedirectUrl(req, {
+      authError: 'VK login state mismatch.',
+      authProvider: 'vk',
+    }));
+    return;
+  }
+  const code = String(req.query?.code || '').trim();
+  const deviceId = String(req.query?.device_id || '').trim();
+  if (!code) {
+    res.redirect(302, buildPlayRedirectUrl(req, {
+      authError: 'VK login code is missing.',
+      authProvider: 'vk',
+    }));
+    return;
+  }
+  if (!verifier) {
+    res.redirect(302, buildPlayRedirectUrl(req, {
+      authError: 'VK login verifier is missing.',
+      authProvider: 'vk',
+    }));
+    return;
+  }
+  try {
+    const tokenBody = new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: VK_CLIENT_ID,
+      client_secret: VK_CLIENT_SECRET,
+      redirect_uri: getVkRedirectUri(req),
+      code,
+      code_verifier: verifier,
+    });
+    if (deviceId) tokenBody.set('device_id', deviceId);
+    const tokenPayload = await fetchJsonWithDetails('https://id.vk.com/oauth2/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: tokenBody.toString(),
+    });
+    const idTokenPayload = decodeJwtPayload(tokenPayload?.id_token);
+    const profile = idTokenPayload || {};
+    const providerUserId = String(profile?.sub || tokenPayload?.user_id || '').trim();
+    const providerEmail = String(profile?.email || tokenPayload?.email || '').trim();
+    const nicknameBase = String(
+      profile?.name
+      || [profile?.first_name, profile?.last_name].filter(Boolean).join(' ')
+      || providerEmail.split('@')[0]
+      || 'VK Player'
+    ).trim();
+    if (!providerUserId) {
+      throw new Error('VK profile id is missing.');
+    }
+    const authResult = playerAuthStore.authenticateExternal({
+      provider: 'vk',
+      providerUserId,
+      providerEmail,
+      nicknameBase,
+    });
+    if (!authResult?.ok) {
+      throw new Error(authResult?.message || 'VK sign-in failed');
+    }
+    setPlayerSessionCookie(req, res, authResult.token);
+    res.redirect(302, buildPlayRedirectUrl(req, {
+      authProvider: 'vk',
+      authStatus: authResult.createdAccount ? 'created' : 'login',
+    }));
+  } catch (err) {
+    res.redirect(302, buildPlayRedirectUrl(req, {
+      authError: err?.message || 'VK sign-in failed.',
+      authProvider: 'vk',
+    }));
+  }
 });
 
 app.get('/api/room-route', (req, res) => {
