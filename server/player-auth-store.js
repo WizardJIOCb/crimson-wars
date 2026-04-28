@@ -146,6 +146,7 @@ function createPlayerAuthStore({ dataDir, dbPath }) {
   ].join('\n'));
   const stmtUpdateLastLogin = db.prepare('UPDATE player_accounts SET last_login_at = ?, updated_at = ? WHERE id = ?');
   const stmtUpdatePasswordHash = db.prepare('UPDATE player_accounts SET password_hash = ?, updated_at = ? WHERE id = ?');
+  const stmtUpdateNickname = db.prepare('UPDATE player_accounts SET nickname = ?, nickname_key = ?, updated_at = ? WHERE id = ?');
   const stmtInsertSession = db.prepare([
     'INSERT INTO player_sessions (player_id, token_hash, created_at, expires_at, last_seen_at)',
     'VALUES (@playerId, @tokenHash, @createdAt, @expiresAt, @lastSeenAt)',
@@ -380,6 +381,43 @@ function createPlayerAuthStore({ dataDir, dbPath }) {
     return normalizeNickname(`Player ${Date.now().toString().slice(-6)}`);
   }
 
+  function isGenericExternalNickname(nickname, provider) {
+    const normalizedNickname = normalizeNickname(nickname).toLowerCase();
+    const normalizedProvider = (provider || '').toString().trim().toLowerCase();
+    const providerPrefixMap = {
+      google: ['google', 'google player'],
+      vk: ['vk', 'vk player', 'vk id', 'vk user', 'vk игрок'],
+      mailru: ['mail', 'mail ru', 'mail player'],
+    };
+    const prefixes = providerPrefixMap[normalizedProvider] || ['player'];
+    return prefixes.some((prefix) => normalizedNickname === prefix || normalizedNickname.startsWith(`${prefix} `));
+  }
+
+  function maybeRefreshExternalNickname(player, provider, nicknameBase) {
+    if (!player || !player.id || !nicknameBase) return player;
+    if (!isGenericExternalNickname(player.nickname, provider)) return player;
+    const seed = sanitizeNicknameSeed(nicknameBase, player.nickname);
+    if (!seed || isGenericExternalNickname(seed, provider)) return player;
+    const validation = validateNickname(seed);
+    let nextNickname = '';
+    if (validation.ok && validation.nicknameKey === normalizeNicknameKey(player.nickname)) {
+      return player;
+    }
+    if (validation.ok && !stmtGetByNicknameKey.get(validation.nicknameKey)) {
+      nextNickname = validation.nickname;
+    } else {
+      nextNickname = createUniqueExternalNickname(provider, seed);
+    }
+    if (!nextNickname || normalizeNicknameKey(nextNickname) === normalizeNicknameKey(player.nickname)) {
+      return player;
+    }
+    const nextValidation = validateNickname(nextNickname);
+    if (!nextValidation.ok) return player;
+    const now = nowMs();
+    stmtUpdateNickname.run(nextValidation.nickname, nextValidation.nicknameKey, now, player.id);
+    return getAccountById(player.id) || player;
+  }
+
   function authenticateExternal({ provider, providerUserId, providerEmail = '', nicknameBase = '' }) {
     const normalizedProvider = (provider || '').toString().trim().toLowerCase();
     const externalUserId = (providerUserId || '').toString().trim();
@@ -392,10 +430,11 @@ function createPlayerAuthStore({ dataDir, dbPath }) {
     }
     const existingIdentity = parseIdentityRow(stmtGetIdentityByProviderUserId.get(normalizedProvider, externalUserId));
     if (existingIdentity) {
-      const player = getAccountById(existingIdentity.playerAccountId || 0);
+      let player = getAccountById(existingIdentity.playerAccountId || 0);
       if (!player || !player.isActive) {
         return { ok: false, code: 404, message: 'Player account is unavailable' };
       }
+      player = maybeRefreshExternalNickname(player, normalizedProvider, nicknameBase);
       const token = createSession(player.id);
       return {
         ok: true,

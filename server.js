@@ -971,6 +971,27 @@ function decodeJwtPayload(token) {
   }
 }
 
+function pickProfileDisplayName(profile = {}, fallback = '') {
+  const candidates = [
+    profile?.name,
+    [profile?.first_name, profile?.last_name].filter(Boolean).join(' '),
+    [profile?.given_name, profile?.family_name].filter(Boolean).join(' '),
+    profile?.display_name,
+    profile?.preferred_username,
+    profile?.screen_name,
+    profile?.nickname,
+    profile?.user?.name,
+    [profile?.user?.first_name, profile?.user?.last_name].filter(Boolean).join(' '),
+    [profile?.user?.given_name, profile?.user?.family_name].filter(Boolean).join(' '),
+    fallback,
+  ];
+  for (const candidate of candidates) {
+    const value = String(candidate || '').trim();
+    if (value) return value;
+  }
+  return '';
+}
+
 function getPlayRedirectBase(req) {
   return new URL('/play', getRequestBaseUrl(req) || GOOGLE_REDIRECT_URI || VK_REDIRECT_URI);
 }
@@ -1332,7 +1353,8 @@ app.get('/api/auth/google/callback', async (req, res) => {
       throw new Error('Google profile id is missing.');
     }
     const providerEmail = String(profile?.email || '').trim();
-    const nicknameBase = String(profile?.name || profile?.given_name || providerEmail.split('@')[0] || 'Google Player').trim();
+    const idTokenProfile = decodeJwtPayload(tokenPayload?.id_token);
+    const nicknameBase = pickProfileDisplayName(profile, pickProfileDisplayName(idTokenProfile, providerEmail.split('@')[0] || 'Google Player'));
     const authResult = playerAuthStore.authenticateExternal({
       provider: 'google',
       providerUserId,
@@ -1452,15 +1474,25 @@ app.get('/api/auth/vk/callback', async (req, res) => {
       body: tokenBody.toString(),
     });
     const idTokenPayload = decodeJwtPayload(tokenPayload?.id_token);
-    const profile = idTokenPayload || {};
+    let vkUserInfo = null;
+    const accessToken = String(tokenPayload?.access_token || '').trim();
+    if (accessToken && VK_CLIENT_ID) {
+      try {
+        const userInfoUrl = new URL('https://id.vk.com/oauth2/user_info');
+        userInfoUrl.searchParams.set('client_id', VK_CLIENT_ID);
+        userInfoUrl.searchParams.set('access_token', accessToken);
+        vkUserInfo = await fetchJsonWithDetails(userInfoUrl.toString(), {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+        });
+      } catch {
+        vkUserInfo = null;
+      }
+    }
+    const profile = vkUserInfo?.user || vkUserInfo || idTokenPayload || {};
     const providerUserId = String(profile?.sub || tokenPayload?.user_id || '').trim();
     const providerEmail = String(profile?.email || tokenPayload?.email || '').trim();
-    const nicknameBase = String(
-      profile?.name
-      || [profile?.first_name, profile?.last_name].filter(Boolean).join(' ')
-      || providerEmail.split('@')[0]
-      || 'VK Player'
-    ).trim();
+    const nicknameBase = pickProfileDisplayName(profile, pickProfileDisplayName(idTokenPayload, providerEmail.split('@')[0] || 'VK Player'));
     if (!providerUserId) {
       throw new Error('VK profile id is missing.');
     }
