@@ -941,7 +941,7 @@ function publishRuntimeRegistry() {
   runtimeRegistryStore.publishRooms(localRooms, {
     isShuttingDown,
     publicBaseUrl: PUBLIC_BASE_URL,
-    skipPersist: !isShuttingDown && localRooms.length > 0,
+    skipPersist: !isShuttingDown,
   });
 }
 
