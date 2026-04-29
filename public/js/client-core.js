@@ -306,6 +306,7 @@ const game = {
   renderBullets: new Map(),
   renderXpOrbs: new Map(),
   netSnapshots: [],
+  liveEntitySnapshots: [],
   sampledNet: null,
   nextInputSeq: 0,
   roomStartedAt: 0,

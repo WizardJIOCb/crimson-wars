@@ -4373,6 +4373,31 @@ function pushNetSnapshot(state) {
   if (game.netSnapshots.length > 30) game.netSnapshots.shift();
 }
 
+function pushLiveEntitySnapshot(state) {
+  if (isSpectatorSmoothingView()) return;
+  const snap = {
+    t: performance.now(),
+    players: state.players.map((p) => ({
+      id: p.id,
+      x: p.x,
+      y: p.y,
+      alive: Boolean(p.alive),
+      moveSpeed: Math.max(0, Number(p.moveSpeed) || 0),
+      dodgeInvulnUntil: Number(p.dodgeInvulnUntil) || 0,
+      isCompanion: Boolean(p.isCompanion),
+    })),
+    enemies: state.enemies.map((e) => ({
+      id: e.id,
+      type: e.type || 'normal',
+      x: e.x,
+      y: e.y,
+      faceLeft: Boolean(e.faceLeft),
+    })),
+  };
+  game.liveEntitySnapshots.push(snap);
+  if (game.liveEntitySnapshots.length > 6) game.liveEntitySnapshots.shift();
+}
+
 function mapById(list) {
   const out = new Map();
   for (const item of list) out.set(item.id, item);
@@ -4477,6 +4502,114 @@ function extrapolateSnapshotMap(previousList, latestList, dtMs, extraSec, option
   return out;
 }
 
+function interpolateSnapshotMap(la, lb, k, withVel, snapDistanceSq = Infinity) {
+  const ma = mapById(la);
+  const mb = mapById(lb);
+  const ids = new Set([...ma.keys(), ...mb.keys()]);
+  const out = new Map();
+
+  for (const id of ids) {
+    const pa = ma.get(id);
+    const pb = mb.get(id);
+    if (pa && pb) {
+      const paAliveKnown = typeof pa.alive === 'boolean';
+      const pbAliveKnown = typeof pb.alive === 'boolean';
+      const aliveChanged = paAliveKnown && pbAliveKnown && (Boolean(pa.alive) !== Boolean(pb.alive));
+
+      const dx = pb.x - pa.x;
+      const dy = pb.y - pa.y;
+      if (aliveChanged || dx * dx + dy * dy > snapDistanceSq) {
+        out.set(id, { ...pb, id });
+        continue;
+      }
+      out.set(id, {
+        id,
+        x: pa.x + (pb.x - pa.x) * k,
+        y: pa.y + (pb.y - pa.y) * k,
+        vx: withVel ? (pb.vx ?? pa.vx ?? 0) : 0,
+        vy: withVel ? (pb.vy ?? pa.vy ?? 0) : 0,
+        color: pb.color ?? pa.color,
+        kind: pb.kind ?? pa.kind,
+        radius: pb.radius ?? pa.radius,
+        ownerId: pb.ownerId ?? pa.ownerId ?? '',
+        ownerPlayerId: pb.ownerPlayerId ?? pa.ownerPlayerId ?? '',
+        shooterType: pb.shooterType ?? pa.shooterType,
+        weaponKey: pb.weaponKey ?? pa.weaponKey,
+        faceLeft: typeof pb.faceLeft === 'boolean' ? pb.faceLeft : pa.faceLeft,
+        alive: pbAliveKnown ? Boolean(pb.alive) : (paAliveKnown ? Boolean(pa.alive) : undefined),
+        dodgeInvulnUntil: Number(pb.dodgeInvulnUntil ?? pa.dodgeInvulnUntil) || 0,
+        moveSpeed: Number(pb.moveSpeed ?? pa.moveSpeed) || 0,
+        isCompanion: Boolean(pb.isCompanion ?? pa.isCompanion),
+      });
+    } else {
+      out.set(id, pb || pa);
+    }
+  }
+
+  return out;
+}
+
+function getLiveEntityRenderDelayMs() {
+  const observedIntervalMs = getObservedStateIntervalMs();
+  const jitterPadMs = Math.min(18, Math.max(0, Number(netStats?.jitterMs) || 0) * 0.8);
+  return Math.max(28, Math.min(72, observedIntervalMs * 0.88 + jitterPadMs));
+}
+
+function sampleLiveEntityTargets() {
+  const snaps = game.liveEntitySnapshots;
+  if (!Array.isArray(snaps) || snaps.length <= 0) return null;
+  if (snaps.length === 1) {
+    return {
+      players: mapById(snaps[0].players || []),
+      enemies: mapById(snaps[0].enemies || []),
+    };
+  }
+
+  const target = performance.now() - getLiveEntityRenderDelayMs();
+  let a = snaps[0];
+  let b = snaps[snaps.length - 1];
+
+  for (let i = 0; i < snaps.length - 1; i += 1) {
+    if (snaps[i].t <= target && target <= snaps[i + 1].t) {
+      a = snaps[i];
+      b = snaps[i + 1];
+      break;
+    }
+  }
+
+  if (target >= snaps[snaps.length - 1].t) {
+    const latest = snaps[snaps.length - 1];
+    const previous = snaps[snaps.length - 2] || latest;
+    const latestDtMs = Math.max(1, latest.t - previous.t);
+    const extraMs = Math.min(Math.max(16, getObservedStateIntervalMs() * 0.35), Math.max(0, target - latest.t));
+    const extraSec = Math.max(0, extraMs / 1000);
+    return {
+      players: extrapolateSnapshotMap(previous.players, latest.players, latestDtMs, extraSec, {
+        resolveMaxSpeed: (item) => {
+          const baseSpeed = Math.max(0, Number(item?.moveSpeed) || 0);
+          const dodgeActive = Number(item?.dodgeInvulnUntil) > Date.now();
+          return Math.max(260, baseSpeed * (dodgeActive ? 2.8 : 1.9));
+        },
+      }),
+      enemies: extrapolateSnapshotMap(previous.enemies, latest.enemies, latestDtMs, extraSec, {
+        resolveMaxSpeed: (item) => {
+          const type = String(item?.type || '').toLowerCase();
+          if (type === 'boss') return 900;
+          if (type === 'charger') return 720;
+          return 520;
+        },
+      }),
+    };
+  }
+
+  const dt = Math.max(1, b.t - a.t);
+  const k = Math.max(0, Math.min(1, (target - a.t) / dt));
+  return {
+    players: interpolateSnapshotMap(a.players, b.players, k, false, 210 * 210),
+    enemies: interpolateSnapshotMap(a.enemies, b.enemies, k, false),
+  };
+}
+
 function sampleBufferedState() {
   const snaps = game.netSnapshots;
   if (snaps.length === 0) return null;
@@ -4530,56 +4663,11 @@ function sampleBufferedState() {
   const dt = Math.max(1, b.t - a.t);
   const k = Math.max(0, Math.min(1, (target - a.t) / dt));
 
-  const lerpMap = (la, lb, withVel, snapDistanceSq = Infinity) => {
-    const ma = mapById(la);
-    const mb = mapById(lb);
-    const ids = new Set([...ma.keys(), ...mb.keys()]);
-    const out = new Map();
-
-    for (const id of ids) {
-      const pa = ma.get(id);
-      const pb = mb.get(id);
-      if (pa && pb) {
-        const paAliveKnown = typeof pa.alive === 'boolean';
-        const pbAliveKnown = typeof pb.alive === 'boolean';
-        const aliveChanged = paAliveKnown && pbAliveKnown && (Boolean(pa.alive) !== Boolean(pb.alive));
-
-        const dx = pb.x - pa.x;
-        const dy = pb.y - pa.y;
-        if (aliveChanged || dx * dx + dy * dy > snapDistanceSq) {
-          out.set(id, { ...pb, id });
-          continue;
-        }
-        out.set(id, {
-          id,
-          x: pa.x + (pb.x - pa.x) * k,
-          y: pa.y + (pb.y - pa.y) * k,
-          vx: withVel ? (pb.vx ?? pa.vx ?? 0) : 0,
-          vy: withVel ? (pb.vy ?? pa.vy ?? 0) : 0,
-          color: pb.color ?? pa.color,
-          kind: pb.kind ?? pa.kind,
-          radius: pb.radius ?? pa.radius,
-          ownerId: pb.ownerId ?? pa.ownerId ?? '',
-          ownerPlayerId: pb.ownerPlayerId ?? pa.ownerPlayerId ?? '',
-          shooterType: pb.shooterType ?? pa.shooterType,
-          weaponKey: pb.weaponKey ?? pa.weaponKey,
-          faceLeft: typeof pb.faceLeft === 'boolean' ? pb.faceLeft : pa.faceLeft,
-          alive: pbAliveKnown ? Boolean(pb.alive) : (paAliveKnown ? Boolean(pa.alive) : undefined),
-          dodgeInvulnUntil: Number(pb.dodgeInvulnUntil ?? pa.dodgeInvulnUntil) || 0,
-        });
-      } else {
-        out.set(id, pb || pa);
-      }
-    }
-
-    return out;
-  };
-
   return {
-    players: lerpMap(a.players, b.players, false, 210 * 210),
-    enemies: lerpMap(a.enemies, b.enemies, false),
-    bullets: lerpMap(a.bullets, b.bullets, true),
-    xpOrbs: lerpMap(a.xpOrbs || [], b.xpOrbs || [], false),
+    players: interpolateSnapshotMap(a.players, b.players, k, false, 210 * 210),
+    enemies: interpolateSnapshotMap(a.enemies, b.enemies, k, false),
+    bullets: interpolateSnapshotMap(a.bullets, b.bullets, k, true),
+    xpOrbs: interpolateSnapshotMap(a.xpOrbs || [], b.xpOrbs || [], k, false),
   };
 }
 function isVisibleWorld(x, y, pad = 0) {
@@ -5213,6 +5301,7 @@ function clearLocalSessionState() {
   game.roomCode = null;
   game.state = null;
   game.netSnapshots = [];
+  game.liveEntitySnapshots = [];
   game.sampledNet = null;
   game.nextInputSeq = 0;
   game.renderPlayers.clear();
@@ -5393,6 +5482,7 @@ message: (ev) => {
     game.renderBullets.clear();
     game.renderXpOrbs.clear();
     game.netSnapshots = [];
+    game.liveEntitySnapshots = [];
     game.sampledNet = null;
     game.nextInputSeq = 0;
     visuals.enemyPrev = new Map();
@@ -5592,9 +5682,11 @@ message: (ev) => {
     game.bossAlive = Boolean(s.bossAlive);
     game.spectatorCount = Math.max(0, Number(s.spectators ?? s.spectatorCount) || 0);
     game.roomDifficulty = s.roomDifficulty || game.roomDifficulty;
-    if (isSpectatorSmoothingView()) pushNetSnapshot(s);
-    else {
-      game.sampledNet = null;
+    if (isSpectatorSmoothingView()) {
+      pushNetSnapshot(s);
+      if (Array.isArray(game.liveEntitySnapshots) && game.liveEntitySnapshots.length > 0) game.liveEntitySnapshots.length = 0;
+    } else {
+      pushLiveEntitySnapshot(s);
       if (Array.isArray(game.netSnapshots) && game.netSnapshots.length > 0) game.netSnapshots.length = 0;
     }
     syncBulletsFromState(s);

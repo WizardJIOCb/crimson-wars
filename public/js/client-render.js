@@ -1468,7 +1468,7 @@ function render(ts) {
     renderDiagReset();
   }
 
-  game.sampledNet = isSpectatorSmoothingView() ? sampleBufferedState() : null;
+  game.sampledNet = isSpectatorSmoothingView() ? sampleBufferedState() : sampleLiveEntityTargets();
   updateFx(simDt);
   updatePlayerInterpolation(simDt);
   updateEnemyInterpolation(simDt);
