@@ -233,6 +233,7 @@ const RUNTIME_DIAG_PERIOD_MS = Math.max(1000, Number(process.env.RUNTIME_DIAG_PE
 const RUNTIME_DIAG_STATE_BYTES = Math.max(1024, Number(process.env.RUNTIME_DIAG_STATE_BYTES) || (48 * 1024));
 const RUNTIME_DIAG_BUFFERED_BYTES = Math.max(1024, Number(process.env.RUNTIME_DIAG_BUFFERED_BYTES) || WS_STATE_BACKPRESSURE_BYTES);
 const runtimeDiagLastRoomLogAt = new Map();
+const ADAPTIVE_STATE_SEND_ENABLED = (process.env.ADAPTIVE_STATE_SEND_ENABLED || '1') !== '0';
 
 setMysqlSyncMonitor(USE_MYSQL_STORE ? {
   enabled: true,
@@ -2515,6 +2516,27 @@ function collectRoomRuntimeSnapshot(room) {
   };
 }
 
+function getAdaptiveStateSendHz(room) {
+  const baseHz = Math.max(1, Math.round(Number(room?.sync?.stateSendHz) || DEFAULT_ROOM_SYNC.stateSendHz));
+  if (!ADAPTIVE_STATE_SEND_ENABLED) return baseHz;
+  const lastState = room?.lastRuntimeDiagState || null;
+  const stateBytes = Math.max(0, Number(lastState?.bytes) || 0);
+  const maxBufferedAmount = Math.max(0, Number(lastState?.maxBufferedAmount) || 0);
+  let hz = baseHz;
+
+  if (maxBufferedAmount >= 192 * 1024) hz = Math.min(hz, 6);
+  else if (maxBufferedAmount >= 128 * 1024) hz = Math.min(hz, 8);
+  else if (maxBufferedAmount >= 64 * 1024) hz = Math.min(hz, 10);
+  else if (maxBufferedAmount >= 24 * 1024) hz = Math.min(hz, 12);
+
+  if (stateBytes >= 44 * 1024) hz = Math.min(hz, 10);
+  else if (stateBytes >= 36 * 1024) hz = Math.min(hz, 12);
+  else if (stateBytes >= 28 * 1024) hz = Math.min(hz, 15);
+  else if (stateBytes >= 20 * 1024) hz = Math.min(hz, 20);
+
+  return Math.max(6, Math.min(baseHz, hz));
+}
+
 function appendRuntimeDiagLog(entry) {
   const line = `[runtime-diag] ${JSON.stringify(entry)}`;
   console.warn(line);
@@ -2560,6 +2582,7 @@ function maybeLogRoomRuntime(room, now, metrics = {}) {
     tickWorkMs: Number(tickWorkMs.toFixed(3)),
     steps: Math.max(0, Number(metrics.steps) || 0),
     tickMs: Number((Math.max(0, Number(metrics.tickMs) || 0)).toFixed(3)),
+    effectiveStateSendHz: Math.max(1, Number(lastState?.stateSendHz) || Number(room?.sync?.stateSendHz) || DEFAULT_ROOM_SYNC.stateSendHz),
     stateBytes,
     serializeMs: Number((Math.max(0, Number(lastState?.serializeMs) || 0)).toFixed(3)),
     jsonMs: Number((Math.max(0, Number(lastState?.jsonMs) || 0)).toFixed(3)),
@@ -6336,7 +6359,8 @@ setInterval(() => {
     }
 
     room.stateAccumulatorMs = (room.stateAccumulatorMs || 0) + elapsedMs;
-    const stateIntervalMs = room.stateIntervalMs || (1000 / DEFAULT_ROOM_SYNC.stateSendHz);
+    const stateSendHz = getAdaptiveStateSendHz(room);
+    const stateIntervalMs = 1000 / Math.max(1, stateSendHz);
     if (room.players.size > 0 && room.stateAccumulatorMs >= stateIntervalMs) {
       room.stateAccumulatorMs %= stateIntervalMs;
       const serializeStartedNs = process.hrtime.bigint();
@@ -6351,6 +6375,7 @@ setInterval(() => {
       const broadcastMs = Number(process.hrtime.bigint() - broadcastStartedNs) / 1e6;
       room.lastRuntimeDiagState = {
         at: now,
+        stateSendHz,
         bytes: sendStats.rawBytes,
         recipients: sendStats.recipients,
         sent: sendStats.sent,
