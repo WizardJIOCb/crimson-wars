@@ -1854,7 +1854,7 @@ function updateLiveIframe(roomCode) {
     url.searchParams.set('room', normalizedRoomCode);
     url.searchParams.set('mode', 'spectate');
     url.searchParams.set('embed', '1');
-    url.searchParams.set('liveEmbedBuild', '20260429projectiles1');
+    url.searchParams.set('liveEmbedBuild', '20260429replayaudio1');
     liveIframe.src = url.toString();
     landingLiveIframeRoomCode = normalizedRoomCode;
     landingLiveSpectatorCommentary = { roomCode: normalizedRoomCode, title: '', text: '', at: 0 };

@@ -2985,7 +2985,8 @@ function playProceduralSfx(name, options, volume) {
 }
 
 function playGameSfx(name, options = {}) {
-  if (!game.sfxEnabled || (game.embedMode && !game.liveAudioEnabled) || replayGame.active) return;
+  const replayAudio = Boolean(replayGame.active || options.replay);
+  if (!game.sfxEnabled || (game.embedMode && !game.liveAudioEnabled && !replayAudio)) return;
   if (name !== 'shot' && name !== 'weaponReload') return;
   const normalized = { ...options };
   const weapon = String(normalized.weaponKey || '').toLowerCase();

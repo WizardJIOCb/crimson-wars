@@ -4884,21 +4884,20 @@ function buildReplayCollisionTargets(enemiesRaw, playersRaw, bullet) {
   return targets;
 }
 
-function findReplayBulletImpactPoint(bullet, dtSec, enemiesRaw, playersRaw) {
+function findReplayBulletSegmentImpact(bullet, targetX, targetY, enemiesRaw, playersRaw) {
   const x1 = Number(bullet?.[1]) || 0;
   const y1 = Number(bullet?.[2]) || 0;
-  const vx = Number(bullet?.[3]) || 0;
-  const vy = Number(bullet?.[4]) || 0;
   const bulletRadius = Math.max(2, Number(bullet?.[8]) || 3);
-  const x2 = x1 + vx * dtSec;
-  const y2 = y1 + vy * dtSec;
+  const x2 = Number(targetX) || x1;
+  const y2 = Number(targetY) || y1;
   const dx = x2 - x1;
   const dy = y2 - y1;
   const segLenSq = dx * dx + dy * dy;
-  if (segLenSq <= 0.0001) return { x: x1, y: y1 };
+  if (segLenSq <= 0.0001) return { x: x1, y: y1, t: 0, hit: false };
 
   const targets = buildReplayCollisionTargets(enemiesRaw, playersRaw, bullet);
   let bestT = 1;
+  let hit = false;
   for (const target of targets) {
     const rr = Math.max(4, bulletRadius + Math.max(8, Number(target.r) || 0));
     const tx = Number(target.x) || 0;
@@ -4911,13 +4910,30 @@ function findReplayBulletImpactPoint(bullet, dtSec, enemiesRaw, playersRaw) {
     const ddy = ty - py;
     if ((ddx * ddx + ddy * ddy) <= rr * rr) {
       bestT = Math.min(bestT, Math.max(0, t - 0.06));
+      hit = true;
     }
   }
 
   return {
     x: x1 + dx * bestT,
     y: y1 + dy * bestT,
+    t: bestT,
+    hit,
   };
+}
+
+function findReplayBulletImpact(bullet, dtSec, enemiesRaw, playersRaw) {
+  const x1 = Number(bullet?.[1]) || 0;
+  const y1 = Number(bullet?.[2]) || 0;
+  const vx = Number(bullet?.[3]) || 0;
+  const vy = Number(bullet?.[4]) || 0;
+  const safeDtSec = Math.max(0, Number(dtSec) || 0);
+  return findReplayBulletSegmentImpact(bullet, x1 + vx * safeDtSec, y1 + vy * safeDtSec, enemiesRaw, playersRaw);
+}
+
+function findReplayBulletImpactPoint(bullet, dtSec, enemiesRaw, playersRaw) {
+  const impact = findReplayBulletImpact(bullet, dtSec, enemiesRaw, playersRaw);
+  return { x: impact.x, y: impact.y };
 }
 
 function getReplayBulletExtrapolateSec(kind, dtSec) {
@@ -4926,9 +4942,46 @@ function getReplayBulletExtrapolateSec(kind, dtSec) {
   return Math.min(dtSec, 0.22);
 }
 
+function buildReplayRawTupleMap(list) {
+  const map = new Map();
+  for (const item of Array.isArray(list) ? list : []) {
+    if (!Array.isArray(item)) continue;
+    const id = item[0];
+    if (id === undefined || id === null || id === '') continue;
+    map.set(String(id), item);
+  }
+  return map;
+}
+
+function interpolateReplayRawTuples(currentList, nextList, alpha, xIndex, yIndex) {
+  const source = Array.isArray(currentList) ? currentList : [];
+  const nextById = buildReplayRawTupleMap(nextList);
+  return source.map((item) => {
+    if (!Array.isArray(item)) return item;
+    const out = item.slice();
+    const nextItem = nextById.get(String(item[0]));
+    if (Array.isArray(nextItem)) {
+      const x1 = Number(item[xIndex]) || 0;
+      const y1 = Number(item[yIndex]) || 0;
+      out[xIndex] = lerp(x1, Number(nextItem[xIndex]) || x1, alpha);
+      out[yIndex] = lerp(y1, Number(nextItem[yIndex]) || y1, alpha);
+    }
+    return out;
+  });
+}
+
+function buildReplayCollisionFrame(current, next, alpha) {
+  return {
+    enemies: interpolateReplayRawTuples(current?.e, next?.e, alpha, 2, 3),
+    players: interpolateReplayRawTuples(current?.p, next?.p, alpha, 1, 2),
+  };
+}
+
 function interpolateReplayBullets(currentBullets, nextBullets, alpha, currentT, nextT, currentEnemies, nextEnemies, currentPlayers, nextPlayers) {
   const source = Array.isArray(currentBullets) ? currentBullets : [];
   const target = Array.isArray(nextBullets) ? nextBullets : [];
+  const collisionEnemies = Array.isArray(currentEnemies) && currentEnemies.length ? currentEnemies : nextEnemies;
+  const collisionPlayers = Array.isArray(currentPlayers) && currentPlayers.length ? currentPlayers : nextPlayers;
   if (source.some(isNewReplayBulletTuple)) {
     const targetById = new Map();
     for (const nextBullet of target) {
@@ -4964,6 +5017,9 @@ function interpolateReplayBullets(currentBullets, nextBullets, alpha, currentT, 
         x2 = x1 + (Number(bullet[3]) || 0) * extrapolateSec;
         y2 = y1 + (Number(bullet[4]) || 0) * extrapolateSec;
       }
+      const impact = findReplayBulletSegmentImpact(bullet, x2, y2, collisionEnemies, collisionPlayers);
+      x2 = impact.x;
+      y2 = impact.y;
       return {
         id: String(bullet[0]),
         ownerId: bullet[9] || '',
@@ -5177,20 +5233,67 @@ function isReplayRecordedWeaponBullet(bullet) {
   return !bullet.replaySyntheticShot;
 }
 
-function buildReplaySyntheticShotBullets(payload, elapsedMs) {
+function buildReplayShotBulletTuple(event) {
+  return [
+    event?.id,
+    Number(event?.x) || 0,
+    Number(event?.y) || 0,
+    Number(event?.vx) || 0,
+    Number(event?.vy) || 0,
+    event?.color || '#f59e0b',
+    'bullet',
+    0,
+    Math.max(2, Number(event?.radius) || 3),
+    event?.ownerId || '',
+    event?.weaponKey || 'pistol',
+    event?.ownerPlayerId || '',
+    event?.shooterType || 'player',
+  ];
+}
+
+function getReplayShotEventImpact(payload, event) {
+  if (!event || event.__replayImpactReady) return event?.__replayImpact || null;
+  event.__replayImpactReady = true;
+  event.__replayImpact = null;
+  const frames = Array.isArray(payload?.frames) ? payload.frames : [];
+  const pair = pickReplayFramePair(frames, Math.max(0, Number(event.offsetMs) || 0));
+  if (!pair.current) return null;
+  const collisionFrame = buildReplayCollisionFrame(pair.current, pair.next, pair.alpha);
+  const lifeSec = Math.max(0.001, getReplayShotVisualLifeMs(event, payload) / 1000);
+  const impact = findReplayBulletImpact(buildReplayShotBulletTuple(event), lifeSec, collisionFrame.enemies, collisionFrame.players);
+  if (!impact.hit) return null;
+  event.__replayImpact = {
+    x: impact.x,
+    y: impact.y,
+    sec: lifeSec * Math.max(0, Math.min(1, Number(impact.t) || 0)),
+  };
+  return event.__replayImpact;
+}
+
+function buildReplaySyntheticShotBullets(payload, current, next, alpha, elapsedMs) {
   const timeline = getReplayShotTimeline(payload);
   const out = [];
   const nowMs = Math.max(0, Number(elapsedMs) || 0);
+  const collisionFrame = buildReplayCollisionFrame(current, next, alpha);
   for (const event of timeline) {
     const ageMs = nowMs - Math.max(0, Number(event.offsetMs) || 0);
     if (ageMs < 0 || ageMs > getReplayShotVisualLifeMs(event, payload)) continue;
     const ageSec = ageMs / 1000;
+    const bulletTuple = buildReplayShotBulletTuple(event);
+    const impact = findReplayBulletImpact(bulletTuple, ageSec, collisionFrame.enemies, collisionFrame.players);
+    const eventImpact = getReplayShotEventImpact(payload, event);
+    const impactSec = eventImpact
+      ? Math.max(0, Number(eventImpact.sec) || 0)
+      : ageSec * Math.max(0, Math.min(1, Number(impact.t) || 0));
+    if ((eventImpact || impact.hit) && ageSec > impactSec + 0.055) continue;
+    const x = eventImpact && ageSec >= impactSec ? eventImpact.x : impact.x;
+    const y = eventImpact && ageSec >= impactSec ? eventImpact.y : impact.y;
     out.push({
       id: `replay-shot:${event.id}`,
       ownerId: event.ownerId || '',
       ownerPlayerId: event.ownerPlayerId || '',
-      x: (Number(event.x) || 0) + (Number(event.vx) || 0) * ageSec,
-      y: (Number(event.y) || 0) + (Number(event.vy) || 0) * ageSec,
+      x,
+      y,
       vx: Number(event.vx) || 0,
       vy: Number(event.vy) || 0,
       color: event.color || '#f59e0b',
@@ -5232,7 +5335,7 @@ function buildReplayBulletsForElapsed(payload, current, next, alpha, elapsedMs) 
     return bullet;
   });
 
-  return withHiddenRecorded.concat(buildReplaySyntheticShotBullets(payload, elapsedMs));
+  return withHiddenRecorded.concat(buildReplaySyntheticShotBullets(payload, current, next, alpha, elapsedMs));
 }
 
 function updateReplayGameSpeed(speed) {
@@ -5484,6 +5587,7 @@ function tickReplayGame(ts) {
   if (nextState) {
     if (nextState.replayFrameIndex !== replayGame.fxFrameIndex) {
       processStateFx(nextState);
+      if (replayGame.playing && !replayGame.seeking) updateInGameCommentatorFromState(nextState);
       replayGame.fxFrameIndex = nextState.replayFrameIndex;
     }
     game.state = nextState;
@@ -6397,8 +6501,11 @@ function spawnSpectatorShotEventFx(event, state) {
     a: Math.atan2(dirY, dirX || 1),
     owner,
   };
+  const fakeBulletId = `shot-event:${eventId}`;
+  const alreadyVisualized = visuals.spectatorMuzzleBulletIds instanceof Set
+    && visuals.spectatorMuzzleBulletIds.has(fakeBulletId);
   const fakeBullet = {
-    id: `shot-event:${eventId}`,
+    id: fakeBulletId,
     ownerId,
     ownerPlayerId: event.ownerPlayerId || '',
     weaponKey,
@@ -6411,6 +6518,18 @@ function spawnSpectatorShotEventFx(event, state) {
     radius: Math.max(2, Number(event.radius) || 3),
   };
   spawnSpectatorBulletMuzzleFx(fakeBullet, anchor);
+  if (replayShot && !alreadyVisualized && replayGame.playing && !replayGame.seeking) {
+    window.cwPlaySfx?.('shot', {
+      x: anchor.x,
+      y: anchor.y,
+      weaponKey,
+      key: `replayShot:${eventId}`,
+      minGapMs: 0,
+      radius: 1600,
+      volume: ownerId === game.myId ? 0.88 : 0.42,
+      replay: true,
+    });
+  }
 
   // Replay frames already contain their own bullet positions. Shot events in
   // replay are only used to restore muzzle/audio timing, otherwise we can draw
