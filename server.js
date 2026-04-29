@@ -2631,21 +2631,35 @@ function selectRealtimeEntitiesByInterest(room, list, options = {}) {
   const anchors = getAlivePlayerAnchors(room);
   if (anchors.length <= 0) return source.slice(0, maxItems);
   const radiusSq = Math.max(0, Number(options.radius) || 0) ** 2;
+  const alwaysIncludeRadiusSq = Math.max(0, Number(options.alwaysIncludeRadius) || 0) ** 2;
   const priorityFn = typeof options.priorityFn === 'function' ? options.priorityFn : null;
+  const alwaysInclude = [];
   const inRange = [];
   const outOfRange = [];
   for (const item of source) {
     const d2 = nearestAnchorDistanceSq(anchors, Number(item?.x) || 0, Number(item?.y) || 0);
     const priority = priorityFn ? Number(priorityFn(item, d2)) || 0 : 0;
     const entry = { item, d2, priority };
-    if (radiusSq <= 0 || d2 <= radiusSq) inRange.push(entry);
-    else outOfRange.push(entry);
+    if (alwaysIncludeRadiusSq > 0 && d2 <= alwaysIncludeRadiusSq) {
+      alwaysInclude.push(entry);
+    } else if (radiusSq <= 0 || d2 <= radiusSq) {
+      inRange.push(entry);
+    } else {
+      outOfRange.push(entry);
+    }
   }
   const byPriority = (a, b) => (a.priority - b.priority) || (a.d2 - b.d2);
+  alwaysInclude.sort(byPriority);
   inRange.sort(byPriority);
-  if (inRange.length >= maxItems) return inRange.slice(0, maxItems).map((entry) => entry.item);
+  if (alwaysInclude.length >= maxItems) return alwaysInclude.map((entry) => entry.item);
+  if (alwaysInclude.length + inRange.length >= maxItems) {
+    return alwaysInclude.concat(inRange.slice(0, maxItems - alwaysInclude.length)).map((entry) => entry.item);
+  }
   outOfRange.sort(byPriority);
-  return inRange.concat(outOfRange.slice(0, maxItems - inRange.length)).map((entry) => entry.item);
+  return alwaysInclude
+    .concat(inRange)
+    .concat(outOfRange.slice(0, maxItems - alwaysInclude.length - inRange.length))
+    .map((entry) => entry.item);
 }
 
 function getAdaptiveStateSendHz(room) {
@@ -3429,6 +3443,10 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
   const includeRealtimeSkillOrbs = !compactRealtime || shouldIncludeRealtimeCollection(room, 'skillOrbs', now, {
     resendMs: REALTIME_STATIC_COLLECTION_RESEND_MS,
   });
+  const realtimeXpAlwaysIncludeRadius = Math.max(
+    PLAYER_PICKUP_RADIUS_BASE + 96,
+    ...Array.from(room.players.values()).map((player) => Math.max(0, Number(player?.pickupRadius) || PLAYER_PICKUP_RADIUS_BASE) + 96),
+  );
   const realtimeDrops = compactRealtime
     ? selectRealtimeEntitiesByInterest(room, room.drops, {
       radius: REALTIME_DROP_RADIUS,
@@ -3437,6 +3455,7 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
     : room.drops;
   const realtimeXpOrbs = compactRealtime
     ? selectRealtimeEntitiesByInterest(room, room.xpOrbs, {
+      alwaysIncludeRadius: realtimeXpAlwaysIncludeRadius,
       radius: REALTIME_XP_ORB_RADIUS,
       maxItems: REALTIME_XP_ORB_LIMIT,
       priorityFn: (orb) => ((Number(orb?.pullSpeed) || 0) > 1 ? -1 : 0),
