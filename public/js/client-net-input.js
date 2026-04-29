@@ -4421,6 +4421,87 @@ function setTabScoreboardVisible(visible) {
   if (tabScoreboardVisible) updateTabScoreboard(lastBattlePlayers);
 }
 
+function isCompactLiveEnemyTuple(enemy) {
+  return Array.isArray(enemy) && enemy.length >= 7;
+}
+
+function isCompactLiveXpOrbTuple(orb) {
+  return Array.isArray(orb) && orb.length >= 4;
+}
+
+function isCompactLiveDropTuple(drop) {
+  return Array.isArray(drop) && drop.length >= 6;
+}
+
+function isCompactLiveSkillOrbTuple(orb) {
+  return Array.isArray(orb) && orb.length >= 6;
+}
+
+function normalizeLiveStatePayload(state) {
+  if (!state || typeof state !== 'object') return state;
+
+  if (Array.isArray(state.enemies) && state.enemies.some(isCompactLiveEnemyTuple)) {
+    state.enemies = state.enemies.map((enemy) => {
+      if (!isCompactLiveEnemyTuple(enemy)) return enemy;
+      return {
+        id: enemy[0],
+        type: enemy[1] || 'normal',
+        x: Number(enemy[2]) || 0,
+        y: Number(enemy[3]) || 0,
+        hp: Math.max(0, Number(enemy[4]) || 0),
+        maxHp: Math.max(1, Number(enemy[5]) || 1),
+        radius: Math.max(18, Number(enemy[6]) || 18),
+        faceLeft: Boolean(enemy[7]),
+      };
+    });
+  }
+
+  if (Array.isArray(state.xpOrbs) && state.xpOrbs.some(isCompactLiveXpOrbTuple)) {
+    state.xpOrbs = state.xpOrbs.map((orb) => {
+      if (!isCompactLiveXpOrbTuple(orb)) return orb;
+      return {
+        id: orb[0],
+        x: Number(orb[1]) || 0,
+        y: Number(orb[2]) || 0,
+        ttlMs: Math.max(0, Number(orb[3]) || 0),
+      };
+    });
+  }
+
+  if (Array.isArray(state.drops) && state.drops.some(isCompactLiveDropTuple)) {
+    state.drops = state.drops.map((drop) => {
+      if (!isCompactLiveDropTuple(drop)) return drop;
+      const kind = drop[3] || 'weapon';
+      const weaponKey = drop[4] || null;
+      return {
+        id: drop[0],
+        x: Number(drop[1]) || 0,
+        y: Number(drop[2]) || 0,
+        kind,
+        weaponKey: kind === 'xp_vacuum' ? null : weaponKey,
+        weaponLabel: kind === 'xp_vacuum' ? 'XP Surge' : (weaponKey || 'Weapon'),
+        ttlMs: Math.max(0, Number(drop[5]) || 0),
+      };
+    });
+  }
+
+  if (Array.isArray(state.skillOrbs) && state.skillOrbs.some(isCompactLiveSkillOrbTuple)) {
+    state.skillOrbs = state.skillOrbs.map((orb) => {
+      if (!isCompactLiveSkillOrbTuple(orb)) return orb;
+      return {
+        id: orb[0],
+        ownerId: orb[1] || '',
+        skillId: orb[2] || '',
+        x: Number(orb[3]) || 0,
+        y: Number(orb[4]) || 0,
+        ttlMs: Math.max(0, Number(orb[5]) || 0),
+      };
+    });
+  }
+
+  return state;
+}
+
 function updateTabScoreboard(players) {
   if (!tabScoreboardEl) return;
   const list = Array.isArray(players) ? players.filter((p) => !p.isCompanion) : [];
@@ -5248,7 +5329,7 @@ message: (ev) => {
   if (msg.type === 'state') {
     waitingForFirstState = false;
     waitingForFirstStateSince = 0;
-    const s = msg.payload;
+    const s = normalizeLiveStatePayload(msg.payload);
     if ((!s.decor || !Array.isArray(s.decor.trees)) && game.state?.decor) {
       s.decor = game.state.decor;
     }

@@ -3278,7 +3278,7 @@ function castPlayerActiveSkill(room, player, def, st, now) {
   return true;
 }
 
-function serializeRoom(room, { includeDecor = true } = {}) {
+function serializeRoom(room, { includeDecor = true, compactRealtime = false } = {}) {
   const now = Date.now();
   const difficulty = getRoomDifficulty(room, now);
   const nextPortal = room.bossPortals.length > 0 ? room.bossPortals[0] : null;
@@ -3457,17 +3457,33 @@ function serializeRoom(room, { includeDecor = true } = {}) {
       radius: Math.max(2, Number(event.radius) || BULLET_RADIUS),
       at: Math.max(0, Number(event.at) || 0),
     })),
-    enemies: room.enemies.map((e) => ({
-      id: e.id,
-      type: e.type || 'normal',
-      x: e.x,
-      y: e.y,
-      faceLeft: Boolean(e.faceLeft),
-      hp: e.hp,
-      maxHp: e.maxHp,
-      radius: Math.max(ENEMY_RADIUS, Number(e.radius) || ENEMY_RADIUS),
-      spriteScale: Number(e.spriteScale) || 1,
-    })),
+    enemies: room.enemies.map((e) => {
+      const enemyType = e.type || 'normal';
+      const radius = Math.max(ENEMY_RADIUS, Number(e.radius) || ENEMY_RADIUS);
+      if (compactRealtime) {
+        return [
+          e.id,
+          enemyType,
+          e.x,
+          e.y,
+          e.hp,
+          e.maxHp,
+          radius,
+          Boolean(e.faceLeft) ? 1 : 0,
+        ];
+      }
+      return {
+        id: e.id,
+        type: enemyType,
+        x: e.x,
+        y: e.y,
+        faceLeft: Boolean(e.faceLeft),
+        hp: e.hp,
+        maxHp: e.maxHp,
+        radius,
+        spriteScale: Number(e.spriteScale) || 1,
+      };
+    }),
     bossPortals: room.bossPortals.map((bp) => ({
       id: bp.id,
       x: bp.x,
@@ -3475,33 +3491,47 @@ function serializeRoom(room, { includeDecor = true } = {}) {
       spawnAt: bp.spawnAt,
       ttlMs: Math.max(0, bp.spawnAt - now),
     })),
-    drops: room.drops.map((d) => ({
-      id: d.id,
-      x: d.x,
-      y: d.y,
-      kind: d.kind || 'weapon',
-      weaponKey: d.weaponKey || null,
-      weaponLabel: d.kind === 'xp_vacuum' ? 'XP Surge' : (WEAPONS[d.weaponKey]?.label || 'Drop'),
-      ttlMs: Math.max(0, Math.round(d.ttlMs || 0)),
-      ttlMaxMs: DROP_LIFETIME_MS,
-    })),
-    xpOrbs: room.xpOrbs.map((o) => ({
-      id: o.id,
-      x: o.x,
-      y: o.y,
-      xp: o.xp,
-      ttlMs: Math.max(0, Math.round(o.ttlMs || 0)),
-      ttlMaxMs: XP_ORB_LIFETIME_MS,
-    })),
-    skillOrbs: room.skillOrbs.map((o) => ({
-      id: o.id,
-      ownerId: o.ownerId,
-      skillId: o.skillId,
-      x: o.x,
-      y: o.y,
-      ttlMs: Math.max(0, Math.round(o.ttlMs || 0)),
-      ttlMaxMs: Math.max(1, Math.round(o.ttlMaxMs || SKILL_OFFER_TTL_MS)),
-    })),
+    drops: room.drops.map((d) => {
+      const ttlMs = Math.max(0, Math.round(d.ttlMs || 0));
+      const kind = d.kind || 'weapon';
+      const weaponKey = d.weaponKey || null;
+      if (compactRealtime) return [d.id, d.x, d.y, kind, weaponKey, ttlMs];
+      return {
+        id: d.id,
+        x: d.x,
+        y: d.y,
+        kind,
+        weaponKey,
+        weaponLabel: kind === 'xp_vacuum' ? 'XP Surge' : (WEAPONS[d.weaponKey]?.label || 'Drop'),
+        ttlMs,
+        ttlMaxMs: DROP_LIFETIME_MS,
+      };
+    }),
+    xpOrbs: room.xpOrbs.map((o) => {
+      const ttlMs = Math.max(0, Math.round(o.ttlMs || 0));
+      if (compactRealtime) return [o.id, o.x, o.y, ttlMs];
+      return {
+        id: o.id,
+        x: o.x,
+        y: o.y,
+        xp: o.xp,
+        ttlMs,
+        ttlMaxMs: XP_ORB_LIFETIME_MS,
+      };
+    }),
+    skillOrbs: room.skillOrbs.map((o) => {
+      const ttlMs = Math.max(0, Math.round(o.ttlMs || 0));
+      if (compactRealtime) return [o.id, o.ownerId, o.skillId, o.x, o.y, ttlMs];
+      return {
+        id: o.id,
+        ownerId: o.ownerId,
+        skillId: o.skillId,
+        x: o.x,
+        y: o.y,
+        ttlMs,
+        ttlMaxMs: Math.max(1, Math.round(o.ttlMaxMs || SKILL_OFFER_TTL_MS)),
+      };
+    }),
     decor: includeDecor ? {
       trees: room.trees,
     } : undefined,
@@ -6364,7 +6394,7 @@ setInterval(() => {
     if (room.players.size > 0 && room.stateAccumulatorMs >= stateIntervalMs) {
       room.stateAccumulatorMs %= stateIntervalMs;
       const serializeStartedNs = process.hrtime.bigint();
-      const payload = serializeRoom(room, { includeDecor: false });
+      const payload = serializeRoom(room, { includeDecor: false, compactRealtime: true });
       const serializeMs = Number(process.hrtime.bigint() - serializeStartedNs) / 1e6;
       const message = { type: 'state', payload };
       const jsonStartedNs = process.hrtime.bigint();
