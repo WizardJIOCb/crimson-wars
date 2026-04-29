@@ -24,6 +24,12 @@ const { registerNewsRoutes } = require('./server/http/news-routes');
 const { clamp, segmentIntersectsCircle, wrapAngleDelta } = require('./server/game/math');
 const PORT = process.env.PORT || 8080;
 const IS_PROD = process.env.NODE_ENV === 'production';
+
+function envEnabled(name) {
+  const value = (process.env[name] || '').toString().trim().toLowerCase();
+  return value === '1' || value === 'true' || value === 'yes';
+}
+
 const DEV_CHEATS_ENABLED = (process.env.DEV_CHEATS_ENABLED || '1') !== '0';
 const DEV_CHEAT_SECRET = (process.env.DEV_CHEAT_SECRET || 'bloodmoon').toString().trim();
 const ADMIN_BOOTSTRAP_LOGIN = process.env.ADMIN_BOOTSTRAP_LOGIN || 'WizardJIOCb';
@@ -220,6 +226,13 @@ const partnerRunSessions = new Map();
 const GOOGLE_OAUTH_STATE_COOKIE = 'cw_google_oauth_state';
 const VK_OAUTH_STATE_COOKIE = 'cw_vk_oauth_state';
 const VK_OAUTH_VERIFIER_COOKIE = 'cw_vk_oauth_verifier';
+const RUNTIME_DIAG_ENABLED = envEnabled('RUNTIME_DIAG_ENABLED');
+const RUNTIME_DIAG_LOG_PATH = String(process.env.RUNTIME_DIAG_LOG_PATH || (IS_PROD ? '/tmp/cw-runtime-diag.log' : '')).trim();
+const RUNTIME_DIAG_SLOW_MS = Math.max(1, Number(process.env.RUNTIME_DIAG_SLOW_MS) || 18);
+const RUNTIME_DIAG_PERIOD_MS = Math.max(1000, Number(process.env.RUNTIME_DIAG_PERIOD_MS) || 10000);
+const RUNTIME_DIAG_STATE_BYTES = Math.max(1024, Number(process.env.RUNTIME_DIAG_STATE_BYTES) || (48 * 1024));
+const RUNTIME_DIAG_BUFFERED_BYTES = Math.max(1024, Number(process.env.RUNTIME_DIAG_BUFFERED_BYTES) || WS_STATE_BACKPRESSURE_BYTES);
+const runtimeDiagLastRoomLogAt = new Map();
 
 setMysqlSyncMonitor(USE_MYSQL_STORE ? {
   enabled: true,
@@ -2459,6 +2472,117 @@ function canSendRealtimeState(ws) {
   return Math.max(0, Number(ws.bufferedAmount) || 0) <= WS_STATE_BACKPRESSURE_BYTES;
 }
 
+function getOpenSocketBufferStats(room) {
+  let recipients = 0;
+  let maxBufferedAmount = 0;
+  let totalBufferedAmount = 0;
+  const collect = (ws) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const bufferedAmount = Math.max(0, Number(ws.bufferedAmount) || 0);
+    recipients += 1;
+    totalBufferedAmount += bufferedAmount;
+    if (bufferedAmount > maxBufferedAmount) maxBufferedAmount = bufferedAmount;
+  };
+  for (const player of room.players.values()) collect(player.ws);
+  for (const spectator of room.spectators.values()) collect(spectator.ws);
+  return { recipients, maxBufferedAmount, totalBufferedAmount };
+}
+
+function collectRoomRuntimeSnapshot(room) {
+  let companionCount = 0;
+  let replayFrames = 0;
+  for (const player of room.players.values()) {
+    if (Array.isArray(player?.companions)) companionCount += player.companions.length;
+    if (Array.isArray(player?.runReplay?.frames)) replayFrames += player.runReplay.frames.length;
+  }
+  const socketStats = getOpenSocketBufferStats(room);
+  return {
+    roomAgeSec: Math.max(0, Math.round((Date.now() - Math.max(0, Number(room?.startedAt) || 0)) / 1000)),
+    players: room.players.size,
+    spectators: room.spectators.size,
+    companions: companionCount,
+    enemies: Array.isArray(room.enemies) ? room.enemies.length : 0,
+    bullets: Array.isArray(room.bullets) ? room.bullets.length : 0,
+    xpOrbs: Array.isArray(room.xpOrbs) ? room.xpOrbs.length : 0,
+    drops: Array.isArray(room.drops) ? room.drops.length : 0,
+    skillOrbs: Array.isArray(room.skillOrbs) ? room.skillOrbs.length : 0,
+    shotEvents: Array.isArray(room.shotEvents) ? room.shotEvents.length : 0,
+    replayShotEvents: Array.isArray(room.replayShotEvents) ? room.replayShotEvents.length : 0,
+    replayFrames,
+    recipients: socketStats.recipients,
+    maxBufferedAmount: socketStats.maxBufferedAmount,
+    totalBufferedAmount: socketStats.totalBufferedAmount,
+  };
+}
+
+function appendRuntimeDiagLog(entry) {
+  const line = `[runtime-diag] ${JSON.stringify(entry)}`;
+  console.warn(line);
+  if (!RUNTIME_DIAG_LOG_PATH) return;
+  try {
+    fs.appendFileSync(RUNTIME_DIAG_LOG_PATH, `${line}\n`, 'utf8');
+  } catch (err) {
+    console.warn(`[runtime-diag] failed to append ${RUNTIME_DIAG_LOG_PATH}: ${err?.message || err}`);
+  }
+}
+
+function maybeLogRoomRuntime(room, now, metrics = {}) {
+  if (!RUNTIME_DIAG_ENABLED || !room) return;
+  if (room.players.size <= 0) {
+    runtimeDiagLastRoomLogAt.delete(room.code);
+    return;
+  }
+  const lastState = room.lastRuntimeDiagState || null;
+  const snapshot = collectRoomRuntimeSnapshot(room);
+  const loopMs = Math.max(0, Number(metrics.loopMs) || 0);
+  const tickWorkMs = Math.max(0, Number(metrics.tickWorkMs) || 0);
+  const stateBytes = Math.max(0, Number(lastState?.bytes) || 0);
+  const stateMaxBuffered = Math.max(
+    Math.max(0, Number(lastState?.maxBufferedAmount) || 0),
+    Math.max(0, Number(snapshot.maxBufferedAmount) || 0),
+  );
+  const reasons = [];
+  if (loopMs >= RUNTIME_DIAG_SLOW_MS || tickWorkMs >= RUNTIME_DIAG_SLOW_MS) reasons.push('slow_loop');
+  if (stateBytes >= RUNTIME_DIAG_STATE_BYTES) reasons.push('large_state');
+  if (stateMaxBuffered >= RUNTIME_DIAG_BUFFERED_BYTES) reasons.push('ws_backpressure');
+  if (metrics.accumulatorClamped) reasons.push('accumulator_clamped');
+  const lastAt = Math.max(0, Number(runtimeDiagLastRoomLogAt.get(room.code)) || 0);
+  if (reasons.length <= 0 && now - lastAt < RUNTIME_DIAG_PERIOD_MS) return;
+  if (reasons.length <= 0) reasons.push('periodic');
+  runtimeDiagLastRoomLogAt.set(room.code, now);
+  appendRuntimeDiagLog({
+    ts: new Date(now).toISOString(),
+    instanceId: INSTANCE_ID,
+    room: room.code,
+    reasons,
+    roomAgeSec: snapshot.roomAgeSec,
+    loopMs: Number(loopMs.toFixed(3)),
+    tickWorkMs: Number(tickWorkMs.toFixed(3)),
+    steps: Math.max(0, Number(metrics.steps) || 0),
+    tickMs: Number((Math.max(0, Number(metrics.tickMs) || 0)).toFixed(3)),
+    stateBytes,
+    serializeMs: Number((Math.max(0, Number(lastState?.serializeMs) || 0)).toFixed(3)),
+    jsonMs: Number((Math.max(0, Number(lastState?.jsonMs) || 0)).toFixed(3)),
+    broadcastMs: Number((Math.max(0, Number(lastState?.broadcastMs) || 0)).toFixed(3)),
+    stateRecipients: Math.max(0, Number(lastState?.recipients) || snapshot.recipients),
+    stateSent: Math.max(0, Number(lastState?.sent) || 0),
+    stateSkipped: Math.max(0, Number(lastState?.skipped) || 0),
+    stateMaxBuffered,
+    stateTotalBuffered: Math.max(0, Number(lastState?.totalBufferedAmount) || snapshot.totalBufferedAmount),
+    players: snapshot.players,
+    spectators: snapshot.spectators,
+    companions: snapshot.companions,
+    enemies: snapshot.enemies,
+    bullets: snapshot.bullets,
+    xpOrbs: snapshot.xpOrbs,
+    drops: snapshot.drops,
+    skillOrbs: snapshot.skillOrbs,
+    shotEvents: snapshot.shotEvents,
+    replayShotEvents: snapshot.replayShotEvents,
+    replayFrames: snapshot.replayFrames,
+  });
+}
+
 function pushRoomShotEvent(room, event) {
   if (!room || !event) return;
   if (!Array.isArray(room.shotEvents)) room.shotEvents = [];
@@ -2479,19 +2603,41 @@ function pushRoomShotEvent(room, event) {
   }
 }
 
-function broadcastRoom(room, payload) {
-  const raw = JSON.stringify(payload);
-  const isRealtimeState = payload?.type === 'state';
+function broadcastRoom(room, payload, options = {}) {
+  const raw = typeof options.raw === 'string' ? options.raw : JSON.stringify(payload);
+  const isRealtimeState = options.isRealtimeState ?? (payload?.type === 'state');
+  let recipients = 0;
+  let sent = 0;
+  let skipped = 0;
+  let maxBufferedAmount = 0;
+  let totalBufferedAmount = 0;
+  const send = (ws) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const bufferedAmount = Math.max(0, Number(ws.bufferedAmount) || 0);
+    recipients += 1;
+    totalBufferedAmount += bufferedAmount;
+    if (bufferedAmount > maxBufferedAmount) maxBufferedAmount = bufferedAmount;
+    if (isRealtimeState && !canSendRealtimeState(ws)) {
+      skipped += 1;
+      return;
+    }
+    ws.send(raw);
+    sent += 1;
+  };
   for (const p of room.players.values()) {
-    if (!p.ws || p.ws.readyState !== WebSocket.OPEN) continue;
-    if (isRealtimeState && !canSendRealtimeState(p.ws)) continue;
-    p.ws.send(raw);
+    send(p.ws);
   }
   for (const spectator of room.spectators.values()) {
-    if (!spectator.ws || spectator.ws.readyState !== WebSocket.OPEN) continue;
-    if (isRealtimeState && !canSendRealtimeState(spectator.ws)) continue;
-    spectator.ws.send(raw);
+    send(spectator.ws);
   }
+  return {
+    rawBytes: Buffer.byteLength(raw, 'utf8'),
+    recipients,
+    sent,
+    skipped,
+    maxBufferedAmount,
+    totalBufferedAmount,
+  };
 }
 
 function sanitizeChatText(rawText) {
@@ -6169,28 +6315,63 @@ setInterval(() => {
   lastLoopAt = now;
 
   for (const room of rooms.values()) {
+    const roomLoopStartedNs = process.hrtime.bigint();
+    let tickWorkMs = 0;
+    let accumulatorClamped = false;
     room.accumulatorMs = (room.accumulatorMs || 0) + elapsedMs;
     const tickMs = room.tickMs || (1000 / DEFAULT_ROOM_SYNC.tickRate);
 
     let steps = 0;
     while (room.accumulatorMs >= tickMs && steps < 8) {
+      const tickStartedNs = process.hrtime.bigint();
       tickRoom(room, tickMs / 1000, now);
+      tickWorkMs += Number(process.hrtime.bigint() - tickStartedNs) / 1e6;
       room.accumulatorMs -= tickMs;
       steps += 1;
     }
 
     if (room.accumulatorMs > tickMs * 8) {
       room.accumulatorMs = tickMs * 2;
+      accumulatorClamped = true;
     }
 
     room.stateAccumulatorMs = (room.stateAccumulatorMs || 0) + elapsedMs;
     const stateIntervalMs = room.stateIntervalMs || (1000 / DEFAULT_ROOM_SYNC.stateSendHz);
     if (room.players.size > 0 && room.stateAccumulatorMs >= stateIntervalMs) {
       room.stateAccumulatorMs %= stateIntervalMs;
+      const serializeStartedNs = process.hrtime.bigint();
       const payload = serializeRoom(room, { includeDecor: false });
-      broadcastRoom(room, { type: 'state', payload });
+      const serializeMs = Number(process.hrtime.bigint() - serializeStartedNs) / 1e6;
+      const message = { type: 'state', payload };
+      const jsonStartedNs = process.hrtime.bigint();
+      const raw = JSON.stringify(message);
+      const jsonMs = Number(process.hrtime.bigint() - jsonStartedNs) / 1e6;
+      const broadcastStartedNs = process.hrtime.bigint();
+      const sendStats = broadcastRoom(room, message, { raw, isRealtimeState: true });
+      const broadcastMs = Number(process.hrtime.bigint() - broadcastStartedNs) / 1e6;
+      room.lastRuntimeDiagState = {
+        at: now,
+        bytes: sendStats.rawBytes,
+        recipients: sendStats.recipients,
+        sent: sendStats.sent,
+        skipped: sendStats.skipped,
+        maxBufferedAmount: sendStats.maxBufferedAmount,
+        totalBufferedAmount: sendStats.totalBufferedAmount,
+        serializeMs,
+        jsonMs,
+        broadcastMs,
+      };
       room.shotEvents = [];
     }
+
+    const roomLoopMs = Number(process.hrtime.bigint() - roomLoopStartedNs) / 1e6;
+    maybeLogRoomRuntime(room, now, {
+      loopMs: roomLoopMs,
+      tickWorkMs,
+      steps,
+      tickMs,
+      accumulatorClamped,
+    });
   }
 }, MAIN_LOOP_MS);
 
