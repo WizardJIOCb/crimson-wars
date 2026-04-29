@@ -2572,10 +2572,10 @@ function interpolateReplayBullets(currentBullets, nextBullets, alpha, currentT, 
         const extrapolateSec = getReplayBulletExtrapolateSec(bullet[6], dtSec);
         x2 = x1 + (Number(bullet[3]) || 0) * extrapolateSec;
         y2 = y1 + (Number(bullet[4]) || 0) * extrapolateSec;
+        const impact = findReplayBulletSegmentImpact(bullet, x2, y2, collisionEnemies, collisionPlayers);
+        x2 = impact.x;
+        y2 = impact.y;
       }
-      const impact = findReplayBulletSegmentImpact(bullet, x2, y2, collisionEnemies, collisionPlayers);
-      x2 = impact.x;
-      y2 = impact.y;
       return {
         id: String(bullet[0]),
         ownerId: bullet[9] || '',
@@ -2773,6 +2773,92 @@ function getReplayShotTimelineByBulletId(payload) {
   return payload?.__shotTimelineByBulletId instanceof Map ? payload.__shotTimelineByBulletId : new Map();
 }
 
+function getReplayShotTimelineByOwner(payload) {
+  const timeline = getReplayShotTimeline(payload);
+  const frames = Array.isArray(payload?.frames) ? payload.frames : [];
+  if (
+    payload
+    && payload.__shotTimelineByOwner instanceof Map
+    && payload.__shotTimelineByOwnerSourceLen === frames.length
+  ) {
+    return payload.__shotTimelineByOwner;
+  }
+  const byOwner = new Map();
+  for (const event of timeline) {
+    const ownerKeys = [
+      String(event?.ownerId || ''),
+      String(event?.ownerPlayerId || ''),
+    ].filter(Boolean);
+    for (const ownerKey of ownerKeys) {
+      if (!byOwner.has(ownerKey)) byOwner.set(ownerKey, []);
+      byOwner.get(ownerKey).push(event);
+    }
+  }
+  if (payload) {
+    payload.__shotTimelineByOwner = byOwner;
+    payload.__shotTimelineByOwnerSourceLen = frames.length;
+  }
+  return byOwner;
+}
+
+function pickReplayRecentShotEvent(payload, ownerKeys, elapsedMs) {
+  const byOwner = getReplayShotTimelineByOwner(payload);
+  const nowMs = Math.max(0, Number(elapsedMs) || 0);
+  let best = null;
+  let bestAgeMs = Infinity;
+
+  for (const rawKey of Array.isArray(ownerKeys) ? ownerKeys : []) {
+    const key = String(rawKey || '').trim();
+    if (!key) continue;
+    const events = byOwner.get(key);
+    if (!Array.isArray(events) || events.length <= 0) continue;
+    let lo = 0;
+    let hi = events.length - 1;
+    let idx = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if ((Number(events[mid]?.offsetMs) || 0) <= nowMs) {
+        idx = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    if (idx < 0) continue;
+    const event = events[idx];
+    const ageMs = nowMs - Math.max(0, Number(event?.offsetMs) || 0);
+    if (ageMs < 0 || ageMs > 1200) continue;
+    if (ageMs < bestAgeMs) {
+      best = event;
+      bestAgeMs = ageMs;
+    }
+  }
+
+  return best;
+}
+
+function resolveReplayAimTarget(payload, ownerKeys, elapsedMs, x, y, fallbackDx = 1, fallbackDy = 0) {
+  const shotEvent = pickReplayRecentShotEvent(payload, ownerKeys, elapsedMs);
+  let dirX = Number(fallbackDx) || 0;
+  let dirY = Number(fallbackDy) || 0;
+  if (shotEvent) {
+    dirX = Number(shotEvent.vx) || dirX;
+    dirY = Number(shotEvent.vy) || dirY;
+  }
+  const len = Math.hypot(dirX, dirY);
+  if (len <= 0.001) {
+    dirX = 1;
+    dirY = 0;
+  } else {
+    dirX /= len;
+    dirY /= len;
+  }
+  return {
+    x: (Number(x) || 0) + dirX * 44,
+    y: (Number(y) || 0) + dirY * 44,
+  };
+}
+
 function getReplayShotVisualLifeMs(event, payload) {
   const captureMs = Math.max(100, Number(payload?.captureIntervalMs) || 350);
   const weaponKey = String(event?.weaponKey || '').toLowerCase();
@@ -2831,9 +2917,16 @@ function buildReplaySyntheticShotBullets(payload, current, next, alpha, elapsedM
   const out = [];
   const nowMs = Math.max(0, Number(elapsedMs) || 0);
   const collisionFrame = buildReplayCollisionFrame(current, next, alpha);
+  const currentBulletIds = new Set(
+    (Array.isArray(current?.b) ? current.b : [])
+      .map((bullet) => (Array.isArray(bullet) ? String(bullet[0] ?? '') : ''))
+      .filter(Boolean),
+  );
   for (const event of timeline) {
     const ageMs = nowMs - Math.max(0, Number(event.offsetMs) || 0);
     if (ageMs < 0 || ageMs > getReplayShotVisualLifeMs(event, payload)) continue;
+    const bulletId = String(event?.bulletId ?? '');
+    if (bulletId && currentBulletIds.has(bulletId)) continue;
     const ageSec = ageMs / 1000;
     const bulletTuple = buildReplayShotBulletTuple(event);
     const impact = findReplayBulletImpact(bulletTuple, ageSec, collisionFrame.enemies, collisionFrame.players);
@@ -2876,22 +2969,8 @@ function buildReplayBulletsForElapsed(payload, current, next, alpha, elapsedMs) 
     current?.p,
     next?.p,
   );
-  const byBulletId = getReplayShotTimelineByBulletId(payload);
-  if (byBulletId.size <= 0) return recorded;
-
-  const nowMs = Math.max(0, Number(elapsedMs) || 0);
-  const withHiddenRecorded = recorded.map((bullet) => {
-    if (!isReplayRecordedWeaponBullet(bullet)) return bullet;
-    const event = byBulletId.get(String(bullet.id));
-    if (!event) return bullet;
-    const ageMs = nowMs - Math.max(0, Number(event.offsetMs) || 0);
-    if (ageMs >= -10 && ageMs <= getReplayShotVisualLifeMs(event, payload)) {
-      return { ...bullet, replayHidden: true };
-    }
-    return bullet;
-  });
-
-  return withHiddenRecorded.concat(buildReplaySyntheticShotBullets(payload, current, next, alpha, elapsedMs));
+  if (getReplayShotTimelineByBulletId(payload).size <= 0) return recorded;
+  return recorded.concat(buildReplaySyntheticShotBullets(payload, current, next, alpha, elapsedMs));
 }
 
 function updateReplayGameSpeed(speed) {
@@ -2925,12 +3004,17 @@ function buildReplayState(payload, elapsedMs) {
     const y = lerp(player[2], nextPlayer[2], alpha);
     const level = Math.max(1, Math.floor(Number(player[14]) || 1));
     const xpToNext = Math.max(1, Math.floor(Number(player[16]) || 1));
+    const hasRecordedAim = Number.isFinite(Number(player[20])) || Number.isFinite(Number(player[21]))
+      || Number.isFinite(Number(nextPlayer[20])) || Number.isFinite(Number(nextPlayer[21]));
+    const moveDx = (Number(nextPlayer[1]) || x) - (Number(player[1]) || x);
+    const moveDy = (Number(nextPlayer[2]) || y) - (Number(player[2]) || y);
     const aimStartX = Number.isFinite(Number(player[20])) ? (Number(player[20]) || x) : x;
     const aimStartY = Number.isFinite(Number(player[21])) ? (Number(player[21]) || y) : y;
     const aimEndX = Number.isFinite(Number(nextPlayer[20])) ? (Number(nextPlayer[20]) || Number(nextPlayer[1]) || x) : (Number(nextPlayer[1]) || x);
     const aimEndY = Number.isFinite(Number(nextPlayer[21])) ? (Number(nextPlayer[21]) || Number(nextPlayer[2]) || y) : (Number(nextPlayer[2]) || y);
-    const aimX = lerp(aimStartX, aimEndX, alpha);
-    const aimY = lerp(aimStartY, aimEndY, alpha);
+    const fallbackAim = resolveReplayAimTarget(payload, [player[0]], elapsedMs, x, y, moveDx, moveDy);
+    const aimX = hasRecordedAim ? lerp(aimStartX, aimEndX, alpha) : fallbackAim.x;
+    const aimY = hasRecordedAim ? lerp(aimStartY, aimEndY, alpha) : fallbackAim.y;
     const skills = (Array.isArray(player[9]) ? player[9] : []).map((skill) => ({
       id: skill[0] || '',
       level: Math.max(0, Number(skill[1]) || 0),
@@ -2992,10 +3076,21 @@ function buildReplayState(payload, elapsedMs) {
     const nextCompanion = nextCompanions.get(companion[0]) || companion;
     const cx = lerp(companion[1], nextCompanion[1], alpha);
     const cy = lerp(companion[2], nextCompanion[2], alpha);
+    const hasRecordedCompanionAim = Number.isFinite(Number(companion[5])) || Number.isFinite(Number(companion[6]))
+      || Number.isFinite(Number(nextCompanion[5])) || Number.isFinite(Number(nextCompanion[6]));
     const companionAimStartX = Number.isFinite(Number(companion[5])) ? (Number(companion[5]) || cx) : (cx + 10);
     const companionAimStartY = Number.isFinite(Number(companion[6])) ? (Number(companion[6]) || cy) : cy;
     const companionAimEndX = Number.isFinite(Number(nextCompanion[5])) ? (Number(nextCompanion[5]) || Number(nextCompanion[1]) || cx) : ((Number(nextCompanion[1]) || cx) + 10);
     const companionAimEndY = Number.isFinite(Number(nextCompanion[6])) ? (Number(nextCompanion[6]) || Number(nextCompanion[2]) || cy) : (Number(nextCompanion[2]) || cy);
+    const companionFallbackAim = resolveReplayAimTarget(
+      payload,
+      [companion[0], companion[4]],
+      elapsedMs,
+      cx,
+      cy,
+      (Number(nextCompanion[1]) || cx) - (Number(companion[1]) || cx),
+      (Number(nextCompanion[2]) || cy) - (Number(companion[2]) || cy),
+    );
     playerList.push({
       id: companion[0],
       name: '',
@@ -3009,8 +3104,8 @@ function buildReplayState(payload, elapsedMs) {
       weaponKey: companion[3] || 'pistol',
       weaponLabel: companion[3] || 'pistol',
       ammo: null,
-      aimX: lerp(companionAimStartX, companionAimEndX, alpha),
-      aimY: lerp(companionAimStartY, companionAimEndY, alpha),
+      aimX: hasRecordedCompanionAim ? lerp(companionAimStartX, companionAimEndX, alpha) : companionFallbackAim.x,
+      aimY: hasRecordedCompanionAim ? lerp(companionAimStartY, companionAimEndY, alpha) : companionFallbackAim.y,
       shooting: false,
       damageMul: 1,
       fireRateMul: 1,
