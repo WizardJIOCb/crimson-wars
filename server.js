@@ -17,7 +17,7 @@ const { createRuntimeRegistryStore } = require('./server/runtime-registry-store'
 const { createSkillsStore } = require('./server/skills-store');
 const { createAccountProgressionStore } = require('./server/account-progression-store');
 const { createNewsStore } = require('./server/news-store');
-const { isMysqlStoreEnabled, createMysqlSyncClient } = require('./server/mysql-sync');
+const { isMysqlStoreEnabled, createMysqlSyncClient, setMysqlSyncMonitor } = require('./server/mysql-sync');
 const { createLeaderboardService } = require('./server/services/leaderboard-service');
 const { registerLeaderboardRoutes } = require('./server/http/leaderboard-routes');
 const { registerNewsRoutes } = require('./server/http/news-routes');
@@ -220,6 +220,15 @@ const partnerRunSessions = new Map();
 const GOOGLE_OAUTH_STATE_COOKIE = 'cw_google_oauth_state';
 const VK_OAUTH_STATE_COOKIE = 'cw_vk_oauth_state';
 const VK_OAUTH_VERIFIER_COOKIE = 'cw_vk_oauth_verifier';
+
+setMysqlSyncMonitor(USE_MYSQL_STORE ? {
+  enabled: true,
+  thresholdMs: Math.max(1, Number(process.env.MYSQL_SYNC_SLOW_MS) || 25),
+  previewLimit: Math.max(120, Number(process.env.MYSQL_SYNC_PREVIEW_LIMIT) || 360),
+  logPath: String(process.env.MYSQL_SYNC_LOG_PATH || (IS_PROD ? '/tmp/cw-mysql-wall.log' : '')).trim(),
+  instanceId: INSTANCE_ID,
+  shouldLog: () => hasActiveGameplay(),
+} : null);
 
 function normalizeGameMode(rawMode) {
   const mode = String(rawMode || '').trim().toLowerCase();
