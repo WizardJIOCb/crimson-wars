@@ -4495,6 +4495,10 @@ function isCompactLiveEnemyTuple(enemy) {
   return Array.isArray(enemy) && enemy.length >= 7;
 }
 
+function isCompactLiveBulletTuple(bullet) {
+  return Array.isArray(bullet) && bullet.length >= 13;
+}
+
 function isCompactLiveXpOrbTuple(orb) {
   return Array.isArray(orb) && orb.length >= 4;
 }
@@ -4541,6 +4545,27 @@ function carryForwardOmittedRealtimeCollections(state, previousState = null) {
 
 function normalizeLiveStatePayload(state) {
   if (!state || typeof state !== 'object') return state;
+
+  if (Array.isArray(state.bullets) && state.bullets.some(isCompactLiveBulletTuple)) {
+    state.bullets = state.bullets.map((bullet) => {
+      if (!isCompactLiveBulletTuple(bullet)) return bullet;
+      return {
+        id: bullet[0],
+        ownerId: bullet[1] || '',
+        ownerPlayerId: bullet[2] || '',
+        weaponKey: bullet[3] || '',
+        x: Number(bullet[4]) || 0,
+        y: Number(bullet[5]) || 0,
+        vx: Number(bullet[6]) || 0,
+        vy: Number(bullet[7]) || 0,
+        color: bullet[8] || '',
+        kind: bullet[9] || 'bullet',
+        radius: Math.max(2, Number(bullet[10]) || 2),
+        fromEnemy: Boolean(bullet[11]),
+        shooterType: bullet[12] || '',
+      };
+    });
+  }
 
   if (Array.isArray(state.enemies) && state.enemies.some(isCompactLiveEnemyTuple)) {
     state.enemies = state.enemies.map((enemy) => {

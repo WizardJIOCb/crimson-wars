@@ -206,7 +206,7 @@ app.get('/play', (_req, res) => {
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({ server, path: '/ws', perMessageDeflate: false });
 
 const rooms = new Map();
 const activeSockets = new Set();
@@ -238,6 +238,10 @@ const runtimeDiagLastRoomLogAt = new Map();
 const ADAPTIVE_STATE_SEND_ENABLED = (process.env.ADAPTIVE_STATE_SEND_ENABLED || '1') !== '0';
 const REALTIME_STATIC_COLLECTION_RESEND_MS = Math.max(150, Number(process.env.REALTIME_STATIC_COLLECTION_RESEND_MS) || 900);
 const REALTIME_XP_ORB_STATIC_RESEND_MS = Math.max(100, Number(process.env.REALTIME_XP_ORB_STATIC_RESEND_MS) || 280);
+const REALTIME_XP_ORB_RADIUS = Math.max(240, Number(process.env.REALTIME_XP_ORB_RADIUS) || 960);
+const REALTIME_XP_ORB_LIMIT = Math.max(24, Number(process.env.REALTIME_XP_ORB_LIMIT) || 120);
+const REALTIME_DROP_RADIUS = Math.max(240, Number(process.env.REALTIME_DROP_RADIUS) || 1100);
+const REALTIME_DROP_LIMIT = Math.max(8, Number(process.env.REALTIME_DROP_LIMIT) || 40);
 
 setMysqlSyncMonitor(USE_MYSQL_STORE ? {
   enabled: true,
@@ -2475,7 +2479,7 @@ function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode, reques
 }
 function sendTo(ws, payload) {
   if (ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(payload));
+    ws.send(JSON.stringify(payload), { compress: false });
   }
 }
 
@@ -2591,6 +2595,57 @@ function getEffectiveReplayCaptureIntervalMs(replay, room) {
   if (xpCount >= 220 || (xpCount >= 170 && bulletCount >= 20) || enemyCount >= 120) mul = 2;
   else if (xpCount >= 120 || bulletCount >= 28 || enemyCount >= 90) mul = 1.5;
   return Math.max(baseMs, Math.round(baseMs * mul));
+}
+
+function getAlivePlayerAnchors(room) {
+  const anchors = [];
+  if (!room?.players || typeof room.players.values !== 'function') return anchors;
+  for (const player of room.players.values()) {
+    if (!player) continue;
+    if (player.alive) anchors.push({ x: Number(player.x) || 0, y: Number(player.y) || 0 });
+  }
+  if (anchors.length > 0) return anchors;
+  for (const player of room.players.values()) {
+    if (!player) continue;
+    anchors.push({ x: Number(player.x) || 0, y: Number(player.y) || 0 });
+  }
+  return anchors;
+}
+
+function nearestAnchorDistanceSq(anchors, x, y) {
+  if (!Array.isArray(anchors) || anchors.length <= 0) return 0;
+  let best = Infinity;
+  for (const anchor of anchors) {
+    const dx = (Number(anchor?.x) || 0) - x;
+    const dy = (Number(anchor?.y) || 0) - y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < best) best = d2;
+  }
+  return best;
+}
+
+function selectRealtimeEntitiesByInterest(room, list, options = {}) {
+  const source = Array.isArray(list) ? list : [];
+  const maxItems = Math.max(1, Math.floor(Number(options.maxItems) || source.length || 1));
+  if (source.length <= maxItems) return source;
+  const anchors = getAlivePlayerAnchors(room);
+  if (anchors.length <= 0) return source.slice(0, maxItems);
+  const radiusSq = Math.max(0, Number(options.radius) || 0) ** 2;
+  const priorityFn = typeof options.priorityFn === 'function' ? options.priorityFn : null;
+  const inRange = [];
+  const outOfRange = [];
+  for (const item of source) {
+    const d2 = nearestAnchorDistanceSq(anchors, Number(item?.x) || 0, Number(item?.y) || 0);
+    const priority = priorityFn ? Number(priorityFn(item, d2)) || 0 : 0;
+    const entry = { item, d2, priority };
+    if (radiusSq <= 0 || d2 <= radiusSq) inRange.push(entry);
+    else outOfRange.push(entry);
+  }
+  const byPriority = (a, b) => (a.priority - b.priority) || (a.d2 - b.d2);
+  inRange.sort(byPriority);
+  if (inRange.length >= maxItems) return inRange.slice(0, maxItems).map((entry) => entry.item);
+  outOfRange.sort(byPriority);
+  return inRange.concat(outOfRange.slice(0, maxItems - inRange.length)).map((entry) => entry.item);
 }
 
 function getAdaptiveStateSendHz(room) {
@@ -2731,7 +2786,7 @@ function broadcastRoom(room, payload, options = {}) {
       skipped += 1;
       return;
     }
-    ws.send(raw);
+    ws.send(raw, { compress: false });
     sent += 1;
   };
   for (const p of room.players.values()) {
@@ -3369,16 +3424,24 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
   const now = Date.now();
   const difficulty = getRoomDifficulty(room, now);
   const nextPortal = room.bossPortals.length > 0 ? room.bossPortals[0] : null;
-  const includeRealtimeDrops = !compactRealtime || shouldIncludeRealtimeCollection(room, 'drops', now, {
-    resendMs: REALTIME_STATIC_COLLECTION_RESEND_MS,
-  });
-  const includeRealtimeXpOrbs = !compactRealtime || shouldIncludeRealtimeCollection(room, 'xpOrbs', now, {
-    force: Boolean(room?.hasMovingXpOrbs),
-    resendMs: REALTIME_XP_ORB_STATIC_RESEND_MS,
-  });
+  const includeRealtimeDrops = true;
+  const includeRealtimeXpOrbs = true;
   const includeRealtimeSkillOrbs = !compactRealtime || shouldIncludeRealtimeCollection(room, 'skillOrbs', now, {
     resendMs: REALTIME_STATIC_COLLECTION_RESEND_MS,
   });
+  const realtimeDrops = compactRealtime
+    ? selectRealtimeEntitiesByInterest(room, room.drops, {
+      radius: REALTIME_DROP_RADIUS,
+      maxItems: REALTIME_DROP_LIMIT,
+    })
+    : room.drops;
+  const realtimeXpOrbs = compactRealtime
+    ? selectRealtimeEntitiesByInterest(room, room.xpOrbs, {
+      radius: REALTIME_XP_ORB_RADIUS,
+      maxItems: REALTIME_XP_ORB_LIMIT,
+      priorityFn: (orb) => ((Number(orb?.pullSpeed) || 0) > 1 ? -1 : 0),
+    })
+    : room.xpOrbs;
   const serializedPlayers = Array.from(room.players.values()).map((p) => ({
     id: p.id,
     name: p.name,
@@ -3524,22 +3587,48 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
     world: { width: WORLD_WIDTH, height: WORLD_HEIGHT },
     sync: room.sync,
     players: serializedPlayers.concat(serializedCompanions),
-    bullets: room.bullets.map((b) => ({
-      id: b.id,
-      ownerId: b.ownerId,
-      ownerPlayerId: b.ownerPlayerId || '',
-      weaponKey: b.weaponKey || '',
-      x: b.x,
-      y: b.y,
-      vx: b.vx,
-      vy: b.vy,
-      color: b.color,
-      kind: b.kind || 'bullet',
-      radius: Math.max(2, Number(b.radius) || BULLET_RADIUS),
-      fromEnemy: Boolean(b.fromEnemy),
-      shooterType: b.shooterType || (b.fromEnemy ? 'enemy' : ''),
-    })),
-    shotEvents: (Array.isArray(room.shotEvents) ? room.shotEvents : []).map((event) => ({
+    bullets: room.bullets.map((b) => {
+      const radius = Math.max(2, Number(b.radius) || BULLET_RADIUS);
+      const ownerId = b.ownerId || '';
+      const ownerPlayerId = b.ownerPlayerId || '';
+      const weaponKey = b.weaponKey || '';
+      const color = b.color || '';
+      const kind = b.kind || 'bullet';
+      const shooterType = b.shooterType || (b.fromEnemy ? 'enemy' : '');
+      if (compactRealtime) {
+        return [
+          b.id,
+          ownerId,
+          ownerPlayerId,
+          weaponKey,
+          b.x,
+          b.y,
+          b.vx,
+          b.vy,
+          color,
+          kind,
+          radius,
+          Boolean(b.fromEnemy) ? 1 : 0,
+          shooterType,
+        ];
+      }
+      return {
+        id: b.id,
+        ownerId,
+        ownerPlayerId,
+        weaponKey,
+        x: b.x,
+        y: b.y,
+        vx: b.vx,
+        vy: b.vy,
+        color,
+        kind,
+        radius,
+        fromEnemy: Boolean(b.fromEnemy),
+        shooterType,
+      };
+    }),
+    shotEvents: Array.isArray(room.shotEvents) && room.shotEvents.length > 0 ? room.shotEvents.map((event) => ({
       id: event.id,
       bulletId: event.bulletId,
       ownerId: event.ownerId || '',
@@ -3553,7 +3642,7 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
       color: event.color || '#f59e0b',
       radius: Math.max(2, Number(event.radius) || BULLET_RADIUS),
       at: Math.max(0, Number(event.at) || 0),
-    })),
+    })) : undefined,
     enemies: room.enemies.map((e) => {
       const enemyType = e.type || 'normal';
       const radius = Math.max(ENEMY_RADIUS, Number(e.radius) || ENEMY_RADIUS);
@@ -3588,7 +3677,7 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
       spawnAt: bp.spawnAt,
       ttlMs: Math.max(0, bp.spawnAt - now),
     })),
-    drops: includeRealtimeDrops ? room.drops.map((d) => {
+    drops: includeRealtimeDrops ? realtimeDrops.map((d) => {
       const ttlMs = Math.max(0, Math.round(d.ttlMs || 0));
       const kind = d.kind || 'weapon';
       const weaponKey = d.weaponKey || null;
@@ -3604,7 +3693,7 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
         ttlMaxMs: DROP_LIFETIME_MS,
       };
     }) : undefined,
-    xpOrbs: includeRealtimeXpOrbs ? room.xpOrbs.map((o) => {
+    xpOrbs: includeRealtimeXpOrbs ? realtimeXpOrbs.map((o) => {
       const ttlMs = Math.max(0, Math.round(o.ttlMs || 0));
       if (compactRealtime) return [o.id, o.x, o.y, ttlMs];
       return {
