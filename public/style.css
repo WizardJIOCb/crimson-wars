@@ -6272,6 +6272,20 @@ body.battle-hub-embed #join-form.cw-shell {
   border-top: 1px solid rgba(135, 143, 156, 0.18);
 }
 
+#settings-sync-card {
+  margin-top: 22px;
+}
+
+#settings-sync-card .cw-copy {
+  margin: 0 0 12px;
+  color: #b9c2ce;
+  line-height: 1.45;
+}
+
+#settings-sync-card .sync-settings {
+  margin: 0;
+}
+
 #menu-panel-menu .cw-settings-host {
   display: grid;
   gap: 14px;
@@ -6530,6 +6544,16 @@ body.battle-hub-embed #join-form.cw-shell {
 
 #menu-panel-characters .hero-loadout-stage-portrait {
   padding-top: 24px;
+}
+
+/* Play tab: keep room list directly after game mode and normalize panel rhythm. */
+#menu-panel-play {
+  gap: 16px;
+}
+
+#menu-panel-play > .cw-column {
+  align-content: start;
+  gap: 16px;
 }
 
 #menu-panel-characters #hero-character-panel .hero-skill-panels-row {

@@ -201,32 +201,79 @@
     );
   }
 
+  function SyncSettingsCard(props = {}) {
+    return h(CwRunCard, { id: props.id || 'settings-sync-card', className: cx('cw-subpanel', 'cw-subpanel-emphasis', props.className) },
+      h('div', { className: 'cw-subpanel-head' },
+        h('span', { className: 'cw-kicker' }, 'Sync'),
+        h('strong', null, '\u041f\u0430\u0440\u0430\u043c\u0435\u0442\u0440\u044b \u043a\u043e\u043c\u043d\u0430\u0442\u044b')
+      ),
+      h('p', { className: 'cw-copy' }, '\u0421\u0435\u0442\u0435\u0432\u043e\u0439 \u0440\u0435\u0436\u0438\u043c \u043d\u043e\u0432\u043e\u0439 \u043a\u043e\u043c\u043d\u0430\u0442\u044b: \u043f\u0440\u0435\u0441\u0435\u0442, \u0447\u0430\u0441\u0442\u043e\u0442\u0430 \u0442\u0438\u043a\u043e\u0432 \u0438 \u043f\u043b\u0430\u0432\u043d\u043e\u0441\u0442\u044c \u0441\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0430\u0446\u0438\u0438.'),
+      h('details', { id: 'sync-settings', className: 'sync-settings' },
+        h('summary', null, 'Sync settings (Create room)'),
+        h('label', { htmlFor: 'sync-preset' }, 'Preset'),
+        h('select', { id: 'sync-preset', defaultValue: 'normal' },
+          h('option', { value: 'normal' }, 'Normal (default)'),
+          h('option', { value: 'better' }, 'Better'),
+          h('option', { value: 'best' }, 'Best'),
+          h('option', { value: 'custom' }, 'Custom')
+        ),
+        h('div', { className: 'sync-grid' },
+          h('label', { htmlFor: 'sync-tickrate' }, 'Tickrate'),
+          h('input', { id: 'sync-tickrate', type: 'number', min: '20', max: '120', step: '1' }),
+          h('label', { htmlFor: 'sync-state-rate' }, 'State send rate (Hz)'),
+          h('input', { id: 'sync-state-rate', type: 'number', min: '10', max: '120', step: '1' }),
+          h('label', { htmlFor: 'sync-render-delay' }, 'Interp delay (ms)'),
+          h('input', { id: 'sync-render-delay', type: 'number', min: '20', max: '250', step: '1' }),
+          h('label', { htmlFor: 'sync-max-extrapolation' }, 'Max extrapolation (ms)'),
+          h('input', { id: 'sync-max-extrapolation', type: 'number', min: '20', max: '250', step: '1' }),
+          h('label', { htmlFor: 'sync-entity-interp' }, 'Entity interp rate'),
+          h('input', { id: 'sync-entity-interp', type: 'number', min: '4', max: '50', step: '1' }),
+          h('label', { htmlFor: 'sync-bullet-correction' }, 'Bullet correction rate'),
+          h('input', { id: 'sync-bullet-correction', type: 'number', min: '4', max: '60', step: '1' }),
+          h('label', { htmlFor: 'sync-input-rate' }, 'Input send rate (Hz)'),
+          h('input', { id: 'sync-input-rate', type: 'number', min: '10', max: '120', step: '1' })
+        )
+      )
+    );
+  }
+
+  function ActiveRoomsCard() {
+    return h(CwRunCard, { id: 'rooms-browser', className: 'rooms-browser' },
+      h('div', { className: 'rooms-head' },
+        h('span', null, '\u0410\u043a\u0442\u0438\u0432\u043d\u044b\u0435 \u043a\u043e\u043c\u043d\u0430\u0442\u044b'),
+        h('button', { type: 'button', id: 'refresh-rooms', className: 'mini' }, 'Refresh')
+      ),
+      h('div', { id: 'presence-meta', className: 'presence-meta' }, 'Online: -- | In game: -- | In menu: -- | Registered: --'),
+      h('div', { id: 'rooms-list', className: 'rooms-list' }, 'Loading...')
+    );
+  }
+
   function PlayPanel() {
     return h(CwPanel, { id: 'menu-panel-play', className: 'menu-panel active cw-menu-grid', dataMenuPanel: 'play', active: true },
       h('div', { className: 'cw-column cw-column-main' },
         h(CwPanel, { tag: 'div', id: 'play-deploy-card', className: 'cw-subpanel cw-subpanel-emphasis' },
           h('div', { className: 'cw-subpanel-head' },
             h('span', { className: 'cw-kicker' }, 'Deploy'),
-            h('strong', null, 'Вход в матч')
+            h('strong', null, '\u0412\u0445\u043e\u0434 \u0432 \u043c\u0430\u0442\u0447')
           ),
-          h('label', { id: 'room-code-label', htmlFor: 'room-code' }, 'Код комнаты'),
+          h('label', { id: 'room-code-label', htmlFor: 'room-code' }, '\u041a\u043e\u0434 \u043a\u043e\u043c\u043d\u0430\u0442\u044b'),
           h('input', { id: 'room-code', maxLength: 10, placeholder: 'AUTO or ABC123' }),
           h('div', { className: 'actions cw-action-row' },
-            h(CwButton, { type: 'submit', dataMode: 'create', variant: 'primary' }, 'Создать матч'),
-            h(CwButton, { type: 'submit', dataMode: 'join', className: 'secondary', variant: 'secondary' }, 'Войти по коду')
+            h(CwButton, { type: 'submit', dataMode: 'create', variant: 'primary' }, '\u0421\u043e\u0437\u0434\u0430\u0442\u044c \u043c\u0430\u0442\u0447'),
+            h(CwButton, { type: 'submit', dataMode: 'join', className: 'secondary', variant: 'secondary' }, '\u0412\u043e\u0439\u0442\u0438 \u043f\u043e \u043a\u043e\u0434\u0443')
           ),
           h('div', { id: 'join-feedback', className: 'join-feedback hidden', 'aria-live': 'polite' }),
           h('div', { id: 'death-result', className: 'death-result' }, 'Last result: --')
         ),
         h(CwRunCard, { id: 'game-mode-panel', className: 'rooms-browser game-mode-browser' },
-          h('div', { className: 'rooms-head' }, h('span', null, 'Режим боя')),
+          h('div', { className: 'rooms-head' }, h('span', null, '\u0420\u0435\u0436\u0438\u043c \u0431\u043e\u044f')),
           h('div', { className: 'game-mode-options' },
-            h(CwButton, { className: 'game-mode-option active', dataGameMode: 'normal', variant: 'tab' }, h('b', null, 'Normal'), h('span', null, 'Текущий баланс игры')),
-            h(CwButton, { className: 'game-mode-option', dataGameMode: 'hardcore', variant: 'tab' }, h('b', null, 'Hardcore'), h('span', null, 'x3 монстры, x2 HP врагов')),
-            h(CwButton, { className: 'game-mode-option', dataGameMode: 'pvp', variant: 'tab' }, h('b', null, 'PvP'), h('span', null, 'До 16 игроков, меньше NPC'))
+            h(CwButton, { className: 'game-mode-option active', dataGameMode: 'normal', variant: 'tab' }, h('b', null, 'Normal'), h('span', null, '\u0422\u0435\u043a\u0443\u0449\u0438\u0439 \u0431\u0430\u043b\u0430\u043d\u0441 \u0438\u0433\u0440\u044b')),
+            h(CwButton, { className: 'game-mode-option', dataGameMode: 'hardcore', variant: 'tab' }, h('b', null, 'Hardcore'), h('span', null, 'x3 \u043c\u043e\u043d\u0441\u0442\u0440\u044b, x2 HP \u0432\u0440\u0430\u0433\u043e\u0432')),
+            h(CwButton, { className: 'game-mode-option', dataGameMode: 'pvp', variant: 'tab' }, h('b', null, 'PvP'), h('span', null, '\u0414\u043e 16 \u0438\u0433\u0440\u043e\u043a\u043e\u0432, \u043c\u0435\u043d\u044c\u0448\u0435 NPC'))
           ),
           h('div', { id: 'pvp-duration-wrap', className: 'field-row hidden' },
-            h('label', { htmlFor: 'pvp-duration-select' }, 'Длительность матча'),
+            h('label', { htmlFor: 'pvp-duration-select' }, '\u0414\u043b\u0438\u0442\u0435\u043b\u044c\u043d\u043e\u0441\u0442\u044c \u043c\u0430\u0442\u0447\u0430'),
             h('select', { id: 'pvp-duration-select', defaultValue: '10' },
               h('option', { value: '3' }, '3 min'),
               h('option', { value: '5' }, '5 min'),
@@ -235,55 +282,15 @@
             )
           )
         ),
-        h(CwRunCard, { id: 'rooms-browser', className: 'rooms-browser' },
-          h('div', { className: 'rooms-head' },
-            h('span', null, 'Активные комнаты'),
-            h('button', { type: 'button', id: 'refresh-rooms', className: 'mini' }, 'Refresh')
-          ),
-          h('div', { id: 'presence-meta', className: 'presence-meta' }, 'Online: -- | In game: -- | In menu: -- | Registered: --'),
-          h('div', { id: 'rooms-list', className: 'rooms-list' }, 'Loading...')
-        )
+        h(ActiveRoomsCard)
       ),
       h('div', { className: 'cw-column cw-column-side' },
         h(CwPanel, { tag: 'div', className: 'cw-subpanel' },
           h('div', { className: 'cw-subpanel-head' },
             h('span', { className: 'cw-kicker' }, 'Access'),
-            h('strong', null, 'Доступ игрока')
+            h('strong', null, '\u0414\u043e\u0441\u0442\u0443\u043f \u0438\u0433\u0440\u043e\u043a\u0430')
           ),
           h(AuthShell)
-        ),
-        h(CwRunCard, { id: 'play-sync-card', className: 'cw-subpanel cw-subpanel-emphasis' },
-          h('div', { className: 'cw-subpanel-head' },
-            h('span', { className: 'cw-kicker' }, 'Sync'),
-            h('strong', null, 'Параметры комнаты')
-          ),
-          h('p', { className: 'cw-copy' }, 'Настройка сетевого режима комнаты: пресет, частота тиков и плавность синхронизации.'),
-          h('details', { id: 'sync-settings', className: 'sync-settings' },
-            h('summary', null, 'Sync settings (Create room)'),
-            h('label', { htmlFor: 'sync-preset' }, 'Preset'),
-            h('select', { id: 'sync-preset', defaultValue: 'normal' },
-              h('option', { value: 'normal' }, 'Normal (default)'),
-              h('option', { value: 'better' }, 'Better'),
-              h('option', { value: 'best' }, 'Best'),
-              h('option', { value: 'custom' }, 'Custom')
-            ),
-            h('div', { className: 'sync-grid' },
-              h('label', { htmlFor: 'sync-tickrate' }, 'Tickrate'),
-              h('input', { id: 'sync-tickrate', type: 'number', min: '20', max: '120', step: '1' }),
-              h('label', { htmlFor: 'sync-state-rate' }, 'State send rate (Hz)'),
-              h('input', { id: 'sync-state-rate', type: 'number', min: '10', max: '120', step: '1' }),
-              h('label', { htmlFor: 'sync-render-delay' }, 'Interp delay (ms)'),
-              h('input', { id: 'sync-render-delay', type: 'number', min: '20', max: '250', step: '1' }),
-              h('label', { htmlFor: 'sync-max-extrapolation' }, 'Max extrapolation (ms)'),
-              h('input', { id: 'sync-max-extrapolation', type: 'number', min: '20', max: '250', step: '1' }),
-              h('label', { htmlFor: 'sync-entity-interp' }, 'Entity interp rate'),
-              h('input', { id: 'sync-entity-interp', type: 'number', min: '4', max: '50', step: '1' }),
-              h('label', { htmlFor: 'sync-bullet-correction' }, 'Bullet correction rate'),
-              h('input', { id: 'sync-bullet-correction', type: 'number', min: '4', max: '60', step: '1' }),
-              h('label', { htmlFor: 'sync-input-rate' }, 'Input send rate (Hz)'),
-              h('input', { id: 'sync-input-rate', type: 'number', min: '10', max: '120', step: '1' })
-            )
-          )
         )
       )
     );
@@ -375,9 +382,10 @@
           ),
           h('div', { id: 'settings-toggles-host', className: 'cw-settings-host' })
         ),
+        h(SyncSettingsCard, { id: 'settings-sync-card', className: 'cw-settings-sync-section' }),
         h('div', { className: 'cw-subpanel-head' },
           h('span', { className: 'cw-kicker' }, 'System'),
-          h('strong', null, 'Настройки хаба и HUD')
+          h('strong', null, '\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438 \u0445\u0430\u0431\u0430 \u0438 HUD')
         ),
         h('div', { id: 'info-panel-menu-host', className: 'info-panel-menu-host settings-source-host' })
       )
@@ -410,23 +418,4 @@
     versionSlot.appendChild(versionTrigger);
   }
 
-  function syncPlayHeroPanelHeights() {
-    const leftCard = document.querySelector('#play-deploy-card');
-    const rightCard = document.querySelector('#play-sync-card');
-    if (!(leftCard instanceof HTMLElement) || !(rightCard instanceof HTMLElement)) return;
-    leftCard.style.minHeight = '';
-    rightCard.style.minHeight = '';
-    const targetHeight = Math.max(leftCard.offsetHeight, rightCard.offsetHeight);
-    if (targetHeight > 0) {
-      leftCard.style.minHeight = `${targetHeight}px`;
-      rightCard.style.minHeight = `${targetHeight}px`;
-    }
-  }
-
-  const syncPlayHeroPanelHeightsDeferred = () => {
-    globalThis.requestAnimationFrame(syncPlayHeroPanelHeights);
-  };
-
-  syncPlayHeroPanelHeightsDeferred();
-  globalThis.addEventListener('resize', syncPlayHeroPanelHeightsDeferred);
 }());

@@ -11,7 +11,7 @@
     "db:local:down": "docker compose -f docker-compose.mysql.yml --env-file .env.mysql.local down",
     "db:local:migrate": "npm run migrate:mysql -- --truncate",
     "migrate:mysql": "node scripts/migrate-files-to-mysql.js",
-    "typecheck": "node --check public/js/cw-menu-react.js && node --check public/js/client-core.js && node --check public/js/client-net-input.js && node --check public/js/client-render.js && node --check public/js/client-fx.js && node --check public/js/client-i18n.js",
+    "typecheck": "node --check server.js && node --check server/services/leaderboard-service.js && node --check server/http/leaderboard-routes.js && node --check server/http/news-routes.js && node --check server/game/math.js && node --check public/js/cw-menu-react.js && node --check public/js/client-core.js && node --check public/js/client-net-input.js && node --check public/js/client-death.js && node --check public/js/client-menu-characters.js && node --check public/js/client-rooms-list.js && node --check public/js/client-records-list.js && node --check public/js/client-profile-modal.js && node --check public/js/client-hero-equip-modal.js && node --check public/js/client-menu-profile.js && node --check public/js/client-menu-rating.js && node --check public/js/client-menu-news.js && node --check public/js/client-render.js && node --check public/js/client-fx.js && node --check public/js/client-i18n.js",
     "build": "npm run typecheck"
   },
   "engines": {
