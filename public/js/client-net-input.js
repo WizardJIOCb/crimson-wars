@@ -2591,7 +2591,8 @@ function buildReplayEmergingRecordedBullets(payload, current, next, alpha, elaps
       const shotAt = Math.max(currentT, Math.min(nextT, Number(event.offsetMs) || currentT));
       if (nowMs < shotAt) continue;
       const denom = Math.max(1, nextT - shotAt);
-      visibleAlpha = Math.max(0, Math.min(1, (nowMs - shotAt) / denom));
+      const progress = Math.max(0, Math.min(1, (nowMs - shotAt) / denom));
+      visibleAlpha = 1 - ((1 - progress) * (1 - progress));
       startX = Number(event.x) || startX;
       startY = Number(event.y) || startY;
     }
@@ -3242,13 +3243,11 @@ function buildReplayState(payload, elapsedMs) {
 
   const enemies = (Array.isArray(current.e) ? current.e : []).map((enemy) => {
     const nextEnemy = nextEnemies.get(enemy[0]) || enemy;
-    const prevEnemy = prevEnemies.get(enemy[0]) || enemy;
-    const next2Enemy = next2Enemies.get(enemy[0]) || nextEnemy;
     return {
       id: enemy[0],
       type: enemy[1] || 'normal',
-      x: sampleReplaySmoothCoord(prevEnemy, enemy, nextEnemy, next2Enemy, 2, alpha),
-      y: sampleReplaySmoothCoord(prevEnemy, enemy, nextEnemy, next2Enemy, 3, alpha),
+      x: lerp(enemy[2], nextEnemy[2], alpha),
+      y: lerp(enemy[3], nextEnemy[3], alpha),
       hp: Math.max(0, Number(enemy[4]) || 0),
       maxHp: Math.max(1, Number(enemy[5]) || 1),
       radius: Math.max(18, Number(enemy[6]) || 18),
