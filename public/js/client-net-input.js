@@ -3891,43 +3891,17 @@ function updatePlayerInterpolation(dt) {
       r.y = targetY;
     } else {
       const isLocalPlayer = Boolean(game.myId) && String(id) === String(game.myId);
-      if (usingBufferedTargets) {
-        // Spectator/live views prefer stability over input responsiveness: every player is remote there.
-        const alphaRemote = spectatorSmoothing
-          ? (dodgeActive ? Math.max(alpha, 0.32) : Math.max(alpha, 0.48))
-          : (dodgeActive ? Math.max(alpha, 0.26) : Math.max(alpha, 0.52));
-        const alphaPlayer = isLocalPlayer ? alpha : alphaRemote;
-        const nx = r.x + (targetX - r.x) * alphaPlayer;
-        const ny = r.y + (targetY - r.y) * alphaPlayer;
-        r.vx = (nx - r.x) / Math.max(0.001, dt);
-        r.vy = (ny - r.y) / Math.max(0.001, dt);
-        r.x = nx;
-        r.y = ny;
-      } else {
-        const localInputVel = isLocalPlayer ? getPredictedLocalPlayerVelocity(live || p) : null;
-        const targetVx = Number(localInputVel?.vx ?? predictedTarget.vx) || 0;
-        const targetVy = Number(localInputVel?.vy ?? predictedTarget.vy) || 0;
-        const velBlend = isLocalPlayer ? 0.72 : (dodgeActive ? 0.54 : 0.46);
-        r.serverX = targetX;
-        r.serverY = targetY;
-        r.vx = (r.vx * (1 - velBlend)) + (targetVx * velBlend);
-        r.vy = (r.vy * (1 - velBlend)) + (targetVy * velBlend);
-        r.x += r.vx * dt;
-        r.y += r.vy * dt;
-
-        const corrDx = r.serverX - r.x;
-        const corrDy = r.serverY - r.y;
-        const corrDist = Math.hypot(corrDx, corrDy);
-        if (corrDist > 0.001) {
-          const speed = Math.max(Math.hypot(r.vx, r.vy), maxSpeed * 0.35);
-          const maxStep = Math.max(6, speed * dt * (isLocalPlayer ? 0.95 : 1.15));
-          const correction = Math.min(corrDist, maxStep);
-          const corrRate = Math.max(10, roomSync.entityInterpRate * (isLocalPlayer ? 1.45 : 1.1));
-          const k = (correction / corrDist) * Math.min(1, corrRate * dt);
-          r.x += corrDx * k;
-          r.y += corrDy * k;
-        }
-      }
+      // Spectator/live views prefer stability over input responsiveness: every player is remote there.
+      const alphaRemote = spectatorSmoothing
+        ? (dodgeActive ? Math.max(alpha, 0.32) : Math.max(alpha, 0.48))
+        : (dodgeActive ? Math.max(alpha, 0.26) : Math.max(alpha, 0.52));
+      const alphaPlayer = isLocalPlayer ? alpha : alphaRemote;
+      const nx = r.x + (targetX - r.x) * alphaPlayer;
+      const ny = r.y + (targetY - r.y) * alphaPlayer;
+      r.vx = usingBufferedTargets ? (nx - r.x) / Math.max(0.001, dt) : predictedTarget.vx;
+      r.vy = usingBufferedTargets ? (ny - r.y) / Math.max(0.001, dt) : predictedTarget.vy;
+      r.x = nx;
+      r.y = ny;
     }
 
     r.alive = isAlive;
@@ -4145,36 +4119,14 @@ function updateEnemyInterpolation(dt) {
     const predictedTarget = usingBufferedTargets
       ? { x: Number(e.x) || 0, y: Number(e.y) || 0, vx: Number(e.vx) || 0, vy: Number(e.vy) || 0 }
       : resolveLiveEntityTarget(r, e, statePerfAt, extraSec, maxSpeed);
-    if (usingBufferedTargets) {
-      const nx = r.x + (predictedTarget.x - r.x) * alpha;
-      const ny = r.y + (predictedTarget.y - r.y) * alpha;
-      r.vx = (nx - r.x) / Math.max(0.001, dt);
-      r.vy = (ny - r.y) / Math.max(0.001, dt);
-      r.x = nx;
-      r.y = ny;
-    } else {
-      r.serverX = predictedTarget.x;
-      r.serverY = predictedTarget.y;
-      const velBlend = 0.44;
-      r.vx = (r.vx * (1 - velBlend)) + ((Number(predictedTarget.vx) || 0) * velBlend);
-      r.vy = (r.vy * (1 - velBlend)) + ((Number(predictedTarget.vy) || 0) * velBlend);
-      r.x += r.vx * dt;
-      r.y += r.vy * dt;
-
-      const corrDx = r.serverX - r.x;
-      const corrDy = r.serverY - r.y;
-      const corrDist = Math.hypot(corrDx, corrDy);
-      if (corrDist > 0.001) {
-        const speed = Math.max(Math.hypot(r.vx, r.vy), maxSpeed * 0.4);
-        const maxStep = Math.max(7, speed * dt * 1.18);
-        const correction = Math.min(corrDist, maxStep);
-        const k = (correction / corrDist) * Math.min(1, Math.max(10, roomSync.entityInterpRate * 1.08) * dt);
-        r.x += corrDx * k;
-        r.y += corrDy * k;
-      }
-    }
+    const nx = r.x + (predictedTarget.x - r.x) * alpha;
+    const ny = r.y + (predictedTarget.y - r.y) * alpha;
+    r.vx = usingBufferedTargets ? (nx - r.x) / Math.max(0.001, dt) : predictedTarget.vx;
+    r.vy = usingBufferedTargets ? (ny - r.y) / Math.max(0.001, dt) : predictedTarget.vy;
     if (typeof e.faceLeft === 'boolean') r.faceLeft = e.faceLeft;
     else if (Math.abs(Number(r.vx) || 0) > 0.15) r.faceLeft = (Number(r.vx) || 0) < 0;
+    r.x = nx;
+    r.y = ny;
   }
 
   for (const id of Array.from(game.renderEnemies.keys())) {
@@ -4495,22 +4447,6 @@ function resolveLiveEntityTarget(renderEntry, item, statePerfAt, extraSec, maxSp
     y: stateY + (Number(renderEntry.serverVy) || 0) * extraSec,
     vx: Number(renderEntry.serverVx) || 0,
     vy: Number(renderEntry.serverVy) || 0,
-  };
-}
-
-function getPredictedLocalPlayerVelocity(player) {
-  if (!player || !game?.myId || String(player.id) !== String(game.myId) || isSpectatorSmoothingView()) {
-    return null;
-  }
-  const axisX = (input.right ? 1 : 0) - (input.left ? 1 : 0);
-  const axisY = (input.down ? 1 : 0) - (input.up ? 1 : 0);
-  if (!axisX && !axisY) return null;
-  const len = Math.hypot(axisX, axisY) || 1;
-  const speed = Math.max(0, Number(player.moveSpeed) || 0);
-  if (speed <= 0) return null;
-  return {
-    vx: (axisX / len) * speed,
-    vy: (axisY / len) * speed,
   };
 }
 
