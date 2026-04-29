@@ -27,6 +27,17 @@
           "desc": "+fire rate"
         },
         {
+          "id": "shilo_rm",
+          "name": "Shilo RM",
+          "kind": "passive",
+          "rarity": "rare",
+          "maxLevel": 5,
+          "weight": 0.64,
+          "bulletPiercePerLevel": 1,
+          "bulletDamageMulPerLevel": 0.08,
+          "desc": "Shilo Rap Machine: bullets pierce enemies and hit harder"
+        },
+        {
           "id": "vitality",
           "name": "Vitality",
           "kind": "passive",
@@ -226,6 +237,17 @@
           "weight": 1.3,
           "fireRateMulPerLevel": 0.1,
           "desc": "+fire rate"
+        },
+        {
+          "id": "shilo_rm",
+          "name": "Shilo RM",
+          "kind": "passive",
+          "rarity": "rare",
+          "maxLevel": 5,
+          "weight": 0.64,
+          "bulletPiercePerLevel": 1,
+          "bulletDamageMulPerLevel": 0.08,
+          "desc": "Shilo Rap Machine: bullets pierce enemies and hit harder"
         },
         {
           "id": "vitality",

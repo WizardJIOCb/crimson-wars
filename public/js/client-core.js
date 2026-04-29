@@ -1686,6 +1686,8 @@ function buildSkillCurrentStatLines(skill, def) {
     const pickupFlat = (Number(def?.pickupRadiusPerLevel) || 0) * lvl;
     const regen = (Number(def?.hpRegenPerSecPerLevel) || 0) * lvl;
     const dodge = (Number(def?.extraDodgeChargesPerLevel) || 0) * lvl;
+    const bulletPierce = (Number(def?.bulletPierceFlat) || 0) + (Number(def?.bulletPiercePerLevel) || 0) * lvl;
+    const bulletDmgPct = (Number(def?.bulletDamageMulPerLevel) || 0) * lvl * 100;
     const globalDmgPct = (Number(def?.globalDamageMulPerLevel) || 0) * lvl * 100;
     const globalFirePct = (Number(def?.globalFireRateMulPerLevel) || 0) * lvl * 100;
     const globalMovePct = (Number(def?.globalMoveSpeedMulPerLevel) || 0) * lvl * 100;
@@ -1700,6 +1702,8 @@ function buildSkillCurrentStatLines(skill, def) {
     if (pickupFlat !== 0) lines.push('Pickup radius: +' + Math.round(pickupFlat));
     if (regen !== 0) lines.push('HP regen: +' + fmtSkillNumber(regen, 2) + '/s');
     if (dodge !== 0) lines.push('Jump charges: +' + Math.round(dodge));
+    if (bulletPierce !== 0) lines.push('Bullet pierce: +' + Math.round(bulletPierce));
+    if (bulletDmgPct !== 0) lines.push('Bullet damage: +' + fmtSkillNumber(bulletDmgPct, 1) + '%');
     if (globalDmgPct !== 0) lines.push('Other heroes damage: +' + fmtSkillNumber(globalDmgPct, 1) + '%');
     if (globalFirePct !== 0) lines.push('Other heroes fire rate: +' + fmtSkillNumber(globalFirePct, 1) + '%');
     if (globalMovePct !== 0) lines.push('Other heroes speed: +' + fmtSkillNumber(globalMovePct, 1) + '%');

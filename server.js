@@ -3437,6 +3437,7 @@ function fireCompanionWeapon(room, companion, owner, now) {
   const baseAngle = Math.atan2(dy, dx);
   const damageMul = Math.max(0.2, Number(owner?.damageMul) || 1);
   const fireRateMul = Math.max(0.2, Number(owner?.fireRateMul) || 1);
+  const bulletSkill = getPlayerBulletSkillStats(owner);
   const firstBulletId = room.nextBulletId;
   const eventSpeed = Math.max(120, Number(weapon.bulletSpeed) || 920);
   pushRoomShotEvent(room, {
@@ -3469,10 +3470,12 @@ function fireCompanionWeapon(room, companion, owner, now) {
       vx: Math.cos(angle) * bulletSpeed,
       vy: Math.sin(angle) * bulletSpeed,
       lifeMs: weapon.bulletLifeMs,
-      damage: Math.max(1, Math.round(weapon.bulletDamage * damageMul)),
+      damage: Math.max(1, Math.round(weapon.bulletDamage * damageMul * bulletSkill.damageMul)),
       color: weapon.color,
       weaponKey: String(companion.weaponKey || 'pistol').toLowerCase(),
       segmentHit: String(companion.weaponKey || '').toLowerCase() === 'sniper',
+      pierceRemaining: bulletSkill.pierce,
+      hitEnemyIds: bulletSkill.pierce > 0 ? [] : undefined,
       shooterType: 'companion',
     });
   }
@@ -3878,7 +3881,7 @@ function serializeRoom(room) {
     pickupRadius: Math.max(0, Math.round(Number(p.pickupRadius) || PLAYER_PICKUP_RADIUS_BASE)),
     hpRegenPerSec: Number(Math.max(0, Number(p.hpRegenPerSec) || 0).toFixed(2)),
     moveSpeed: Math.max(1, Math.round(PLAYER_SPEED * Math.max(0.2, Number(p.moveSpeedMul) || 1))),
-    shotDamage: Math.max(1, Math.round((WEAPONS[p.weaponKey]?.bulletDamage || WEAPONS.pistol.bulletDamage) * Math.max(0.2, Number(p.damageMul) || 1))),
+    shotDamage: Math.max(1, Math.round((WEAPONS[p.weaponKey]?.bulletDamage || WEAPONS.pistol.bulletDamage) * Math.max(0.2, Number(p.damageMul) || 1) * getPlayerBulletSkillStats(p).damageMul)),
     shotIntervalMs: Math.max(35, Math.round((WEAPONS[p.weaponKey]?.cooldownMs || WEAPONS.pistol.cooldownMs) / Math.max(0.2, Number(p.fireRateMul) || 1))),
     playerClass: p.playerClass || 'cyber',
     netQuality: p.netQuality || 0,
@@ -4428,6 +4431,7 @@ function fireFromPlayer(room, player, now = Date.now()) {
 
   const damageMul = Math.max(0.2, Number(player.damageMul) || 1);
   const fireRateMul = Math.max(0.2, Number(player.fireRateMul) || 1);
+  const bulletSkill = getPlayerBulletSkillStats(player);
   const firstBulletId = room.nextBulletId;
   const eventSpeed = Math.max(120, Number(activeWeapon.bulletSpeed) || 920);
   pushRoomShotEvent(room, {
@@ -4460,10 +4464,12 @@ function fireFromPlayer(room, player, now = Date.now()) {
       vx: Math.cos(angle) * bulletSpeed,
       vy: Math.sin(angle) * bulletSpeed,
       lifeMs: activeWeapon.bulletLifeMs,
-      damage: Math.max(1, Math.round(activeWeapon.bulletDamage * damageMul)),
+      damage: Math.max(1, Math.round(activeWeapon.bulletDamage * damageMul * bulletSkill.damageMul)),
       color: activeWeapon.color,
       weaponKey: String(player.weaponKey || 'pistol').toLowerCase(),
       segmentHit: String(player.weaponKey || '').toLowerCase() === 'sniper',
+      pierceRemaining: bulletSkill.pierce,
+      hitEnemyIds: bulletSkill.pierce > 0 ? [] : undefined,
       shooterType: player.isCompanion ? 'companion' : 'player',
     });
   }
@@ -4564,6 +4570,26 @@ function getXpToNextLevel(level) {
 function getSkillRank(player, skillId) {
   const st = player.skills?.[skillId];
   return Math.max(0, Math.floor(Number(st?.level) || 0));
+}
+
+function getPlayerBulletSkillStats(player) {
+  const out = {
+    pierce: 0,
+    damageMul: 1,
+  };
+  if (!player || !player.skills || typeof player.skills !== 'object') return out;
+  for (const skillId of Object.keys(player.skills)) {
+    const def = getCombatSkillDef(skillId, player.playerClass);
+    if (!def) continue;
+    const lvl = getSkillRank(player, def.id);
+    if (lvl <= 0) continue;
+    out.pierce += Math.max(0, Number(def.bulletPierceFlat) || 0);
+    out.pierce += Math.max(0, Number(def.bulletPiercePerLevel) || 0) * lvl;
+    out.damageMul += Math.max(0, Number(def.bulletDamageMulPerLevel) || 0) * lvl;
+  }
+  out.pierce = Math.max(0, Math.min(24, Math.floor(out.pierce)));
+  out.damageMul = Math.max(0.2, Number(out.damageMul) || 1);
+  return out;
 }
 
 function ensureSkillState(player, skillId) {
@@ -6518,20 +6544,33 @@ function tickRoom(room, dtSec, now) {
       if (!hit) {
         for (let ei = room.enemies.length - 1; ei >= 0; ei -= 1) {
           const e = room.enemies[ei];
+          if (Array.isArray(b.hitEnemyIds) && b.hitEnemyIds.includes(e.id)) continue;
           const rr = (Number(e.radius) || ENEMY_RADIUS) + bulletR;
           const collides = useSegmentHit
             ? segmentIntersectsCircle(prevX, prevY, b.x, b.y, e.x, e.y, rr)
             : (((e.x - b.x) ** 2 + (e.y - b.y) ** 2) <= rr * rr);
           if (collides) {
-            hit = true;
-            if (b.kind === 'rocket') explodeRocket(room, b, now);
-            else enemyTakeDamage(room, e, b.damage, b.ownerPlayerId || b.ownerId, now, {
-              fromX: prevX,
-              fromY: prevY,
-              dirX: b.vx,
-              dirY: b.vy,
-              damageSource: 'bullet',
-            });
+            if (b.kind === 'rocket') {
+              hit = true;
+              explodeRocket(room, b, now);
+            } else {
+              if (!Array.isArray(b.hitEnemyIds)) b.hitEnemyIds = [];
+              b.hitEnemyIds.push(e.id);
+              enemyTakeDamage(room, e, b.damage, b.ownerPlayerId || b.ownerId, now, {
+                fromX: prevX,
+                fromY: prevY,
+                dirX: b.vx,
+                dirY: b.vy,
+                damageSource: 'bullet',
+              });
+              const pierceLeft = Math.max(0, Math.floor(Number(b.pierceRemaining) || 0));
+              if (pierceLeft > 0) {
+                b.pierceRemaining = pierceLeft - 1;
+                hit = false;
+              } else {
+                hit = true;
+              }
+            }
             break;
           }
         }

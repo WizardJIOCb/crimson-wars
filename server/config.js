@@ -155,6 +155,7 @@ const DROP_WEAPON_KEYS = ['smg', 'shotgun', 'sniper'];
 const DEFAULT_SKILL_DEFS = {
   weapon_mastery: { id: 'weapon_mastery', name: 'Weapon Mastery', kind: 'passive', rarity: 'common', maxLevel: 8, weight: 1.35, damageMulPerLevel: 0.11, desc: '+damage' },
   rapid_reload: { id: 'rapid_reload', name: 'Rapid Reload', kind: 'passive', rarity: 'common', maxLevel: 8, weight: 1.3, fireRateMulPerLevel: 0.1, desc: '+fire rate' },
+  shilo_rm: { id: 'shilo_rm', name: 'Shilo RM', kind: 'passive', rarity: 'rare', maxLevel: 5, weight: 0.64, bulletPiercePerLevel: 1, bulletDamageMulPerLevel: 0.08, desc: 'Shilo Rap Machine: bullets pierce enemies and hit harder' },
   vitality: { id: 'vitality', name: 'Vitality', kind: 'passive', rarity: 'common', maxLevel: 8, weight: 1.25, maxHpFlatPerLevel: 20, desc: '+max HP' },
   haste: { id: 'haste', name: 'Haste', kind: 'passive', rarity: 'common', maxLevel: 7, weight: 1.2, moveSpeedMulPerLevel: 0.075, desc: '+move speed' },
   magnetism: { id: 'magnetism', name: 'Magnetism', kind: 'passive', rarity: 'common', maxLevel: 6, weight: 1.12, pickupRadiusPerLevel: 22, desc: '+XP pickup radius' },
