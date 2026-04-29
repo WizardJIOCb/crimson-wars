@@ -4280,6 +4280,7 @@ function getBulletsForRender() {
   return game.state?.bullets || [];
 }
 function pushNetSnapshot(state) {
+  if (!isSpectatorSmoothingView()) return;
   const snap = {
     t: performance.now(),
     players: state.players.map((p) => ({
@@ -5487,7 +5488,11 @@ message: (ev) => {
     game.bossAlive = Boolean(s.bossAlive);
     game.spectatorCount = Math.max(0, Number(s.spectators ?? s.spectatorCount) || 0);
     game.roomDifficulty = s.roomDifficulty || game.roomDifficulty;
-    pushNetSnapshot(s);
+    if (isSpectatorSmoothingView()) pushNetSnapshot(s);
+    else {
+      game.sampledNet = null;
+      if (Array.isArray(game.netSnapshots) && game.netSnapshots.length > 0) game.netSnapshots.length = 0;
+    }
     syncBulletsFromState(s);
     try {
       processStateFx(s);
