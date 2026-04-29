@@ -169,6 +169,10 @@ function createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql 
     return { page: currentPage, pageSize: size, total, totalPages, items };
   }
 
+  function listRecordsForLobbyMemory(page = 1, pageSize = leaderboardPageSize) {
+    return listRecordsForLobby(page, pageSize);
+  }
+
   function applyRecordMemory(entry) {
     const normalized = normalizeRecordEntry(entry);
     latestRunsCache.clear();
@@ -381,6 +385,7 @@ function createMysqlRecordsStore({ leaderboardLimit, leaderboardPageSize, mysql 
   console.log(`Records MySQL ready (loaded ${records.length})`);
   return {
     listRecordsForLobby,
+    listRecordsForLobbyMemory,
     listPlayerRunsByName,
     listPlayerRunsByNameMemory,
     listLatestPlayerRuns,
@@ -664,6 +669,23 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
     };
   }
 
+  function listRecordsForLobbyMemory(page = 1, pageSize = leaderboardPageSize) {
+    const total = records.length;
+    const size = Math.max(1, Math.min(50, Math.floor(pageSize) || leaderboardPageSize));
+    const totalPages = Math.max(1, Math.ceil(total / size));
+    const currentPage = Math.max(1, Math.min(totalPages, Math.floor(page) || 1));
+    const start = (currentPage - 1) * size;
+    const items = records.slice(start, start + size).map((entry) => publicRecordEntry(entry));
+
+    return {
+      page: currentPage,
+      pageSize: size,
+      total,
+      totalPages,
+      items,
+    };
+  }
+
   function pushRecord(entry) {
     const normalized = normalizeRecordEntry(entry);
 
@@ -931,6 +953,7 @@ function createRecordsStore({ dataDir, dbPath, leaderboardLimit, leaderboardPage
 
   return {
     listRecordsForLobby,
+    listRecordsForLobbyMemory,
     listPlayerRunsByName,
     listPlayerRunsByNameMemory,
     listLatestPlayerRuns,

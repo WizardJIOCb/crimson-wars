@@ -212,6 +212,7 @@ const REPLAY_CAPTURE_INTERVAL_MS = Math.max(100, Number(process.env.REPLAY_CAPTU
 const REPLAY_FRAME_LIMIT = 14400;
 const REPLAY_CHAT_LIMIT = 240;
 const COMPANION_SYNC_INTERVAL_MS = Math.max(80, Number(process.env.COMPANION_SYNC_INTERVAL_MS) || 220);
+const WS_STATE_BACKPRESSURE_BYTES = Math.max(64 * 1024, Number(process.env.WS_STATE_BACKPRESSURE_BYTES) || (256 * 1024));
 const XP_SURGE_DURATION_MS = 3200;
 const XP_SURGE_PULL_MIN_MUL = 0.22;
 const XP_SURGE_PULL_MAX_MUL = 3.9;
@@ -2444,6 +2445,11 @@ function sendTo(ws, payload) {
   }
 }
 
+function canSendRealtimeState(ws) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+  return Math.max(0, Number(ws.bufferedAmount) || 0) <= WS_STATE_BACKPRESSURE_BYTES;
+}
+
 function pushRoomShotEvent(room, event) {
   if (!room || !event) return;
   if (!Array.isArray(room.shotEvents)) room.shotEvents = [];
@@ -2466,15 +2472,16 @@ function pushRoomShotEvent(room, event) {
 
 function broadcastRoom(room, payload) {
   const raw = JSON.stringify(payload);
+  const isRealtimeState = payload?.type === 'state';
   for (const p of room.players.values()) {
-    if (p.ws.readyState === WebSocket.OPEN) {
-      p.ws.send(raw);
-    }
+    if (!p.ws || p.ws.readyState !== WebSocket.OPEN) continue;
+    if (isRealtimeState && !canSendRealtimeState(p.ws)) continue;
+    p.ws.send(raw);
   }
   for (const spectator of room.spectators.values()) {
-    if (spectator.ws.readyState === WebSocket.OPEN) {
-      spectator.ws.send(raw);
-    }
+    if (!spectator.ws || spectator.ws.readyState !== WebSocket.OPEN) continue;
+    if (isRealtimeState && !canSendRealtimeState(spectator.ws)) continue;
+    spectator.ws.send(raw);
   }
 }
 
@@ -3093,7 +3100,7 @@ function castPlayerActiveSkill(room, player, def, st, now) {
   return true;
 }
 
-function serializeRoom(room) {
+function serializeRoom(room, { includeDecor = true } = {}) {
   const now = Date.now();
   const difficulty = getRoomDifficulty(room, now);
   const nextPortal = room.bossPortals.length > 0 ? room.bossPortals[0] : null;
@@ -3317,9 +3324,9 @@ function serializeRoom(room) {
       ttlMs: Math.max(0, Math.round(o.ttlMs || 0)),
       ttlMaxMs: Math.max(1, Math.round(o.ttlMaxMs || SKILL_OFFER_TTL_MS)),
     })),
-    decor: {
+    decor: includeDecor ? {
       trees: room.trees,
-    },
+    } : undefined,
   };
 }
 
@@ -4040,17 +4047,13 @@ function applyPlayerHitToPlayer(room, attacker, target, damage, now, options = {
   return true;
 }
 
-function captureReplayFrame(room, replay, now, options = {}) {
-  const force = options.force === true;
-  if (!replay || replay.truncated) return;
-  if (!force && replay.frames.length > 0 && now - replay.lastCaptureAt < replay.captureIntervalMs) return;
-  if (replay.frames.length >= REPLAY_FRAME_LIMIT) {
-    replay.truncated = true;
-    replay.endedAt = now;
-    replay.durationSec = Math.max(1, Math.floor((now - replay.startedAt) / 1000));
-    return;
-  }
+function shouldCaptureReplayFrame(replay, now, force = false) {
+  if (!replay || replay.truncated) return false;
+  if (force) return true;
+  return !(replay.frames.length > 0 && now - replay.lastCaptureAt < replay.captureIntervalMs);
+}
 
+function buildReplayFrameBase(room, now) {
   const players = Array.from(room.players.values()).map((p) => {
     const skills = [];
     if (p.skills && typeof p.skills === 'object') {
@@ -4124,7 +4127,51 @@ function captureReplayFrame(room, replay, now, options = {}) {
     b.ownerPlayerId || '',
     b.shooterType || '',
   ]));
-  const shotEvents = (Array.isArray(room.replayShotEvents) ? room.replayShotEvents : [])
+  const drops = room.drops.map((d) => ([
+    roundReplayCoord(d.x),
+    roundReplayCoord(d.y),
+    d.weaponKey || 'pistol',
+    d.kind || 'weapon',
+  ]));
+  const xpOrbs = room.xpOrbs.map((o) => ([
+    Math.max(0, Math.floor(Number(o.id) || 0)),
+    roundReplayCoord(o.x),
+    roundReplayCoord(o.y),
+    Math.max(1, Math.round(Number(o.xp) || 1)),
+    Math.max(0, Math.round(Number(o.pullSpeed) || 0)),
+  ]));
+  const bossPortals = room.bossPortals.map((bp) => ([
+    roundReplayCoord(bp.x),
+    roundReplayCoord(bp.y),
+    Math.max(0, Math.round((Number(bp.spawnAt) || now) - now)),
+  ]));
+
+  return {
+    players,
+    companions,
+    enemies,
+    bullets,
+    drops,
+    xpOrbs,
+    bossPortals,
+    replayShotEvents: Array.isArray(room.replayShotEvents) ? room.replayShotEvents : [],
+    totalEnemyKills: Math.max(0, Number(room.totalEnemyKills) || 0),
+    totalBossKills: Math.max(0, Number(room.totalBossKills) || 0),
+    bossAlive: hasAliveBoss(room) ? 1 : 0,
+  };
+}
+
+function captureReplayFrame(room, replay, now, options = {}) {
+  const force = options.force === true;
+  if (!shouldCaptureReplayFrame(replay, now, force)) return;
+  if (replay.frames.length >= REPLAY_FRAME_LIMIT) {
+    replay.truncated = true;
+    replay.endedAt = now;
+    replay.durationSec = Math.max(1, Math.floor((now - replay.startedAt) / 1000));
+    return;
+  }
+  const baseFrame = options.baseFrame || buildReplayFrameBase(room, now);
+  const shotEvents = (Array.isArray(baseFrame.replayShotEvents) ? baseFrame.replayShotEvents : [])
     .filter((event) => {
       const at = Math.max(0, Number(event?.at) || 0);
       return at >= Math.max(0, Number(replay.startedAt) || 0)
@@ -4146,38 +4193,20 @@ function captureReplayFrame(room, replay, now, options = {}) {
       Math.max(2, Math.round(Number(event.radius) || BULLET_RADIUS)),
       Math.max(0, Math.round((Number(event.at) || now) - replay.startedAt)),
     ]));
-  const drops = room.drops.map((d) => ([
-    roundReplayCoord(d.x),
-    roundReplayCoord(d.y),
-    d.weaponKey || 'pistol',
-    d.kind || 'weapon',
-  ]));
-  const xpOrbs = room.xpOrbs.map((o) => ([
-    Math.max(0, Math.floor(Number(o.id) || 0)),
-    roundReplayCoord(o.x),
-    roundReplayCoord(o.y),
-    Math.max(1, Math.round(Number(o.xp) || 1)),
-    Math.max(0, Math.round(Number(o.pullSpeed) || 0)),
-  ]));
-  const bossPortals = room.bossPortals.map((bp) => ([
-    roundReplayCoord(bp.x),
-    roundReplayCoord(bp.y),
-    Math.max(0, Math.round((Number(bp.spawnAt) || now) - now)),
-  ]));
 
   replay.frames.push({
     t: Math.max(0, now - replay.startedAt),
-    te: Math.max(0, Number(room.totalEnemyKills) || 0),
-    tb: Math.max(0, Number(room.totalBossKills) || 0),
-    ba: hasAliveBoss(room) ? 1 : 0,
-    p: players,
-    c: companions,
-    e: enemies,
-    b: bullets,
+    te: baseFrame.totalEnemyKills,
+    tb: baseFrame.totalBossKills,
+    ba: baseFrame.bossAlive,
+    p: baseFrame.players,
+    c: baseFrame.companions,
+    e: baseFrame.enemies,
+    b: baseFrame.bullets,
     se: shotEvents,
-    d: drops,
-    x: xpOrbs,
-    bp: bossPortals,
+    d: baseFrame.drops,
+    x: baseFrame.xpOrbs,
+    bp: baseFrame.bossPortals,
   });
   replay.lastCaptureAt = now;
   replay.endedAt = now;
@@ -5392,6 +5421,7 @@ function joinRoom(ws, join) {
     progressionCatalog,
     chatHistory: Array.isArray(room.chatHistory) ? room.chatHistory.slice(-CHAT_WELCOME_LIMIT) : [],
   });
+  sendTo(ws, { type: 'state', payload: serializeRoom(room) });
 
   broadcastRoom(room, {
     type: 'system',
@@ -6111,8 +6141,11 @@ function tickRoom(room, dtSec, now) {
     if ((Number(p.unspentLevelUps) || 0) > 0) ensureSkillOffer(room, p, now);
   }
 
+  let sharedReplayBase = null;
   for (const p of room.players.values()) {
-    captureReplayFrame(room, p.runReplay, now);
+    if (!shouldCaptureReplayFrame(p.runReplay, now)) continue;
+    if (!sharedReplayBase) sharedReplayBase = buildReplayFrameBase(room, now);
+    captureReplayFrame(room, p.runReplay, now, { baseFrame: sharedReplayBase });
   }
   if (Array.isArray(room.replayShotEvents) && room.replayShotEvents.length > 0) {
     const oldestKeepAt = Math.max(0, now - 8000);
@@ -6145,7 +6178,7 @@ setInterval(() => {
     const stateIntervalMs = room.stateIntervalMs || (1000 / DEFAULT_ROOM_SYNC.stateSendHz);
     if (room.players.size > 0 && room.stateAccumulatorMs >= stateIntervalMs) {
       room.stateAccumulatorMs %= stateIntervalMs;
-      const payload = serializeRoom(room);
+      const payload = serializeRoom(room, { includeDecor: false });
       broadcastRoom(room, { type: 'state', payload });
       room.shotEvents = [];
     }

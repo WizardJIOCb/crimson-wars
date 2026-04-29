@@ -5249,6 +5249,9 @@ message: (ev) => {
     waitingForFirstState = false;
     waitingForFirstStateSince = 0;
     const s = msg.payload;
+    if ((!s.decor || !Array.isArray(s.decor.trees)) && game.state?.decor) {
+      s.decor = game.state.decor;
+    }
     if (game.embedMode && game.spectating) {
       window.parent?.postMessage({
         type: 'cw-live-spectator',

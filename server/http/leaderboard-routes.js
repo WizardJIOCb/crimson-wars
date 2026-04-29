@@ -18,7 +18,9 @@ function registerLeaderboardRoutes(app, {
   app.get('/api/records', (req, res) => {
     const page = Number(req.query.page) || 1;
     const pageSize = Number(req.query.page_size) || leaderboardPageSize;
-    const payload = recordsStore.listRecordsForLobby(page, pageSize);
+    const payload = hasActiveGameplay() && typeof recordsStore.listRecordsForLobbyMemory === 'function'
+      ? recordsStore.listRecordsForLobbyMemory(page, pageSize)
+      : recordsStore.listRecordsForLobby(page, pageSize);
 
     res.json({
       records: payload.items,
