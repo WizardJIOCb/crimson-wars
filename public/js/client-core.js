@@ -64,6 +64,10 @@ const roomCodeInput = document.getElementById('room-code');
 const refreshRoomsBtn = document.getElementById('refresh-rooms');
 const roomsListEl = document.getElementById('rooms-list');
 const presenceMetaEl = document.getElementById('presence-meta');
+const playRoomsBrowserEl = document.getElementById('rooms-browser');
+const playMainColumnEl = document.querySelector('#menu-panel-play > .cw-column-main');
+const playSideColumnEl = document.querySelector('#menu-panel-play > .cw-column-side');
+const playGameModePanelEl = document.getElementById('game-mode-panel');
 const refreshRecordsBtn = document.getElementById('refresh-records');
 const recordsListEl = document.getElementById('records-list');
 const recordsPrevBtn = document.getElementById('records-prev');
@@ -1039,10 +1043,25 @@ function clearJoinFeedback() {
   joinFeedbackEl.className = 'join-feedback hidden';
 }
 
+function updatePlayRoomsPlacement(loggedIn) {
+  if (!playRoomsBrowserEl || !playMainColumnEl || !playSideColumnEl) return;
+  if (loggedIn) {
+    if (playRoomsBrowserEl.parentElement !== playSideColumnEl) {
+      playSideColumnEl.appendChild(playRoomsBrowserEl);
+    }
+    return;
+  }
+  if (playRoomsBrowserEl.parentElement !== playMainColumnEl) {
+    const afterGameMode = playGameModePanelEl?.nextSibling || null;
+    playMainColumnEl.insertBefore(playRoomsBrowserEl, afterGameMode);
+  }
+}
+
 function renderPlayerAuthUi() {
   const player = game.playerAuth.player;
   const loggedIn = Boolean(player);
   const needsNicknameSetup = loggedIn && Boolean(game.playerAuth.needsNicknameSetup);
+  updatePlayRoomsPlacement(loggedIn);
   if (playerAccessDetailsEl) playerAccessDetailsEl.classList.toggle('is-authenticated', loggedIn);
   if (playerAccessDetailsEl) playerAccessDetailsEl.classList.toggle('needs-nickname-setup', needsNicknameSetup);
   if (playerAuthSummaryEl) {

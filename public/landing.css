@@ -864,7 +864,7 @@ main {
   grid-column: 1 / -1;
   min-width: 0;
   display: grid;
-  gap: 14px;
+  gap: 0;
 }
 
 .battle-hub-head {
@@ -874,7 +874,7 @@ main {
   align-items: center;
   padding: 22px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 24px;
+  border-radius: 24px 24px 0 0;
   background: rgba(255, 255, 255, 0.035);
 }
 
@@ -892,6 +892,7 @@ main {
 .battle-hub-frame-wrap {
   position: relative;
   border: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 0;
   overflow: hidden;
   background:
     radial-gradient(circle at top, rgba(255, 114, 84, 0.09), transparent 34%),
