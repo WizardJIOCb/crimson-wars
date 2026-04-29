@@ -3149,6 +3149,7 @@ function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode, reques
       companions: [],
       bullets: [],
       shotEvents: [],
+      replayShotEvents: [],
       enemies: [],
       drops: [],
       xpOrbs: [],
@@ -3190,14 +3191,20 @@ function sendTo(ws, payload) {
 function pushRoomShotEvent(room, event) {
   if (!room || !event) return;
   if (!Array.isArray(room.shotEvents)) room.shotEvents = [];
+  if (!Array.isArray(room.replayShotEvents)) room.replayShotEvents = [];
   if (!Number.isFinite(Number(room.nextShotEventId))) room.nextShotEventId = 1;
-  room.shotEvents.push({
+  const payload = {
     id: room.nextShotEventId++,
     at: Date.now(),
     ...event,
-  });
+  };
+  room.shotEvents.push(payload);
+  room.replayShotEvents.push(payload);
   if (room.shotEvents.length > 96) {
     room.shotEvents.splice(0, room.shotEvents.length - 96);
+  }
+  if (room.replayShotEvents.length > 512) {
+    room.replayShotEvents.splice(0, room.replayShotEvents.length - 512);
   }
 }
 
@@ -4838,7 +4845,32 @@ function captureReplayFrame(room, replay, now, options = {}) {
     b.fromEnemy ? 1 : 0,
     Math.max(2, Math.round(Number(b.radius) || BULLET_RADIUS)),
     b.ownerId || '',
+    b.weaponKey || '',
+    b.ownerPlayerId || '',
+    b.shooterType || '',
   ]));
+  const shotEvents = (Array.isArray(room.replayShotEvents) ? room.replayShotEvents : [])
+    .filter((event) => {
+      const at = Math.max(0, Number(event?.at) || 0);
+      return at >= Math.max(0, Number(replay.startedAt) || 0)
+        && at > Math.max(0, Number(replay.lastCaptureAt) || 0)
+        && at <= now;
+    })
+    .map((event) => ([
+      Math.max(0, Number(event.id) || 0),
+      event.bulletId || '',
+      event.ownerId || '',
+      event.ownerPlayerId || '',
+      event.shooterType || 'player',
+      event.weaponKey || 'pistol',
+      roundReplayCoord(event.x),
+      roundReplayCoord(event.y),
+      Math.round(Number(event.vx) || 0),
+      Math.round(Number(event.vy) || 0),
+      event.color || '#f59e0b',
+      Math.max(2, Math.round(Number(event.radius) || BULLET_RADIUS)),
+      Math.max(0, Math.round((Number(event.at) || now) - replay.startedAt)),
+    ]));
   const drops = room.drops.map((d) => ([
     roundReplayCoord(d.x),
     roundReplayCoord(d.y),
@@ -4867,6 +4899,7 @@ function captureReplayFrame(room, replay, now, options = {}) {
     c: companions,
     e: enemies,
     b: bullets,
+    se: shotEvents,
     d: drops,
     x: xpOrbs,
     bp: bossPortals,
@@ -6792,6 +6825,10 @@ function tickRoom(room, dtSec, now) {
 
   for (const p of room.players.values()) {
     captureReplayFrame(room, p.runReplay, now);
+  }
+  if (Array.isArray(room.replayShotEvents) && room.replayShotEvents.length > 0) {
+    const oldestKeepAt = Math.max(0, now - 8000);
+    room.replayShotEvents = room.replayShotEvents.filter((event) => Math.max(0, Number(event?.at) || 0) >= oldestKeepAt);
   }
 }
 

@@ -4920,6 +4920,12 @@ function findReplayBulletImpactPoint(bullet, dtSec, enemiesRaw, playersRaw) {
   };
 }
 
+function getReplayBulletExtrapolateSec(kind, dtSec) {
+  const normalizedKind = String(kind || 'bullet').toLowerCase();
+  if (normalizedKind === 'rocket') return Math.min(dtSec, 0.12);
+  return Math.min(dtSec, 0.22);
+}
+
 function interpolateReplayBullets(currentBullets, nextBullets, alpha, currentT, nextT, currentEnemies, nextEnemies, currentPlayers, nextPlayers) {
   const source = Array.isArray(currentBullets) ? currentBullets : [];
   const target = Array.isArray(nextBullets) ? nextBullets : [];
@@ -4954,18 +4960,14 @@ function interpolateReplayBullets(currentBullets, nextBullets, alpha, currentT, 
         x2 = Number(nextBullet[1]) || x1;
         y2 = Number(nextBullet[2]) || y1;
       } else {
-        const impact = findReplayBulletImpactPoint(
-          bullet,
-          dtSec,
-          Array.isArray(currentEnemies) && currentEnemies.length ? currentEnemies : nextEnemies,
-          Array.isArray(currentPlayers) && currentPlayers.length ? currentPlayers : nextPlayers,
-        );
-        x2 = impact.x;
-        y2 = impact.y;
+        const extrapolateSec = getReplayBulletExtrapolateSec(bullet[6], dtSec);
+        x2 = x1 + (Number(bullet[3]) || 0) * extrapolateSec;
+        y2 = y1 + (Number(bullet[4]) || 0) * extrapolateSec;
       }
       return {
         id: String(bullet[0]),
         ownerId: bullet[9] || '',
+        ownerPlayerId: bullet[11] || '',
         x: lerp(x1, x2, alpha),
         y: lerp(y1, y2, alpha),
         vx: Number(bullet[3]) || 0,
@@ -4974,6 +4976,8 @@ function interpolateReplayBullets(currentBullets, nextBullets, alpha, currentT, 
         kind: bullet[6] || 'bullet',
         radius: Math.max(2, Number(bullet[8]) || ((bullet[6] || 'bullet') === 'rocket' ? 6 : 3)),
         fromEnemy: Boolean(bullet[7]),
+        weaponKey: bullet[10] || '',
+        shooterType: bullet[12] || '',
       };
     });
   }
@@ -5003,8 +5007,9 @@ function interpolateReplayBullets(currentBullets, nextBullets, alpha, currentT, 
     if (bestIndex >= 0) used.add(bestIndex);
     const x1 = Number(bullet?.[0]) || 0;
     const y1 = Number(bullet?.[1]) || 0;
-    const x2 = Number(nextBullet?.[0]) || x1;
-    const y2 = Number(nextBullet?.[1]) || y1;
+    const extrapolateSec = getReplayBulletExtrapolateSec(bullet?.[2], dtSec);
+    const x2 = nextBullet ? (Number(nextBullet?.[0]) || x1) : (x1 + (Number(bullet?.[4]) || 0) * extrapolateSec);
+    const y2 = nextBullet ? (Number(nextBullet?.[1]) || y1) : (y1 + (Number(bullet?.[5]) || 0) * extrapolateSec);
     out.push({
       id: makeReplayBulletId(bullet?.[2] || 'bullet', Boolean(bullet?.[3]), x1, y1, bestIndex >= 0 ? bestIndex : i),
       ownerId: '',
@@ -5073,6 +5078,161 @@ function interpolateReplayXpOrbs(currentOrbs, nextOrbs, alpha) {
       ttlMaxMs: 999999,
     };
   });
+}
+
+function parseReplayShotEvents(frame, payload) {
+  const events = Array.isArray(frame?.se) ? frame.se : [];
+  const startedAt = Math.max(0, Number(payload?.startedAt) || Date.now());
+  return events.map((event) => ({
+    id: event?.[0],
+    bulletId: event?.[1],
+    ownerId: event?.[2] || '',
+    ownerPlayerId: event?.[3] || '',
+    shooterType: event?.[4] || 'player',
+    weaponKey: event?.[5] || 'pistol',
+    x: Number(event?.[6]) || 0,
+    y: Number(event?.[7]) || 0,
+    vx: Number(event?.[8]) || 0,
+    vy: Number(event?.[9]) || 0,
+    color: event?.[10] || '#f59e0b',
+    radius: Math.max(2, Number(event?.[11]) || 3),
+    at: startedAt + Math.max(0, Number(event?.[12]) || 0),
+    replayShot: true,
+  }));
+}
+
+function getReplayShotTimeline(payload) {
+  const frames = Array.isArray(payload?.frames) ? payload.frames : [];
+  if (
+    payload
+    && Array.isArray(payload.__shotTimeline)
+    && payload.__shotTimelineSourceLen === frames.length
+  ) {
+    return payload.__shotTimeline;
+  }
+
+  const seen = new Set();
+  const timeline = [];
+  for (let frameIndex = 0; frameIndex < frames.length; frameIndex += 1) {
+    const frame = frames[frameIndex];
+    const events = Array.isArray(frame?.se) ? frame.se : [];
+    for (let eventIndex = 0; eventIndex < events.length; eventIndex += 1) {
+      const event = events[eventIndex];
+      const id = event?.[0] ?? `${frameIndex}:${eventIndex}`;
+      const dedupeKey = String(id);
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      timeline.push({
+        id,
+        bulletId: event?.[1],
+        ownerId: event?.[2] || '',
+        ownerPlayerId: event?.[3] || '',
+        shooterType: event?.[4] || 'player',
+        weaponKey: event?.[5] || 'pistol',
+        x: Number(event?.[6]) || 0,
+        y: Number(event?.[7]) || 0,
+        vx: Number(event?.[8]) || 0,
+        vy: Number(event?.[9]) || 0,
+        color: event?.[10] || '#f59e0b',
+        radius: Math.max(2, Number(event?.[11]) || 3),
+        offsetMs: Math.max(0, Number(event?.[12]) || Number(frame?.t) || 0),
+      });
+    }
+  }
+  timeline.sort((a, b) => (a.offsetMs - b.offsetMs) || String(a.id).localeCompare(String(b.id)));
+
+  const byBulletId = new Map();
+  for (const event of timeline) {
+    if (event.bulletId !== undefined && event.bulletId !== null && event.bulletId !== '') {
+      byBulletId.set(String(event.bulletId), event);
+    }
+  }
+
+  if (payload) {
+    payload.__shotTimeline = timeline;
+    payload.__shotTimelineByBulletId = byBulletId;
+    payload.__shotTimelineSourceLen = frames.length;
+  }
+  return timeline;
+}
+
+function getReplayShotTimelineByBulletId(payload) {
+  getReplayShotTimeline(payload);
+  return payload?.__shotTimelineByBulletId instanceof Map ? payload.__shotTimelineByBulletId : new Map();
+}
+
+function getReplayShotVisualLifeMs(event, payload) {
+  const captureMs = Math.max(100, Number(payload?.captureIntervalMs) || 350);
+  const weaponKey = String(event?.weaponKey || '').toLowerCase();
+  if (weaponKey === 'shotgun') return Math.max(180, Math.min(360, captureMs + 40));
+  if (weaponKey === 'sniper') return Math.max(260, Math.min(520, captureMs + 110));
+  if (weaponKey === 'smg') return Math.max(180, Math.min(390, captureMs + 35));
+  return Math.max(220, Math.min(460, captureMs + 80));
+}
+
+function isReplayRecordedWeaponBullet(bullet) {
+  if (!bullet || bullet.fromEnemy) return false;
+  const kind = String(bullet.kind || 'bullet').toLowerCase();
+  if (kind === 'rocket') return false;
+  return !bullet.replaySyntheticShot;
+}
+
+function buildReplaySyntheticShotBullets(payload, elapsedMs) {
+  const timeline = getReplayShotTimeline(payload);
+  const out = [];
+  const nowMs = Math.max(0, Number(elapsedMs) || 0);
+  for (const event of timeline) {
+    const ageMs = nowMs - Math.max(0, Number(event.offsetMs) || 0);
+    if (ageMs < 0 || ageMs > getReplayShotVisualLifeMs(event, payload)) continue;
+    const ageSec = ageMs / 1000;
+    out.push({
+      id: `replay-shot:${event.id}`,
+      ownerId: event.ownerId || '',
+      ownerPlayerId: event.ownerPlayerId || '',
+      x: (Number(event.x) || 0) + (Number(event.vx) || 0) * ageSec,
+      y: (Number(event.y) || 0) + (Number(event.vy) || 0) * ageSec,
+      vx: Number(event.vx) || 0,
+      vy: Number(event.vy) || 0,
+      color: event.color || '#f59e0b',
+      kind: 'bullet',
+      radius: Math.max(2, Number(event.radius) || 3),
+      fromEnemy: false,
+      weaponKey: event.weaponKey || 'pistol',
+      shooterType: event.shooterType || 'player',
+      replaySyntheticShot: true,
+    });
+  }
+  return out;
+}
+
+function buildReplayBulletsForElapsed(payload, current, next, alpha, elapsedMs) {
+  const recorded = interpolateReplayBullets(
+    current?.b,
+    next?.b,
+    alpha,
+    Number(current?.t || 0),
+    Number(next?.t || current?.t || 0),
+    current?.e,
+    next?.e,
+    current?.p,
+    next?.p,
+  );
+  const byBulletId = getReplayShotTimelineByBulletId(payload);
+  if (byBulletId.size <= 0) return recorded;
+
+  const nowMs = Math.max(0, Number(elapsedMs) || 0);
+  const withHiddenRecorded = recorded.map((bullet) => {
+    if (!isReplayRecordedWeaponBullet(bullet)) return bullet;
+    const event = byBulletId.get(String(bullet.id));
+    if (!event) return bullet;
+    const ageMs = nowMs - Math.max(0, Number(event.offsetMs) || 0);
+    if (ageMs >= -10 && ageMs <= getReplayShotVisualLifeMs(event, payload)) {
+      return { ...bullet, replayHidden: true };
+    }
+    return bullet;
+  });
+
+  return withHiddenRecorded.concat(buildReplaySyntheticShotBullets(payload, elapsedMs));
 }
 
 function updateReplayGameSpeed(speed) {
@@ -5225,17 +5385,7 @@ function buildReplayState(payload, elapsedMs) {
     };
   });
 
-  const bullets = interpolateReplayBullets(
-    current.b,
-    next?.b,
-    alpha,
-    Number(current?.t || 0),
-    Number(next?.t || current?.t || 0),
-    current.e,
-    next?.e,
-    current.p,
-    next?.p,
-  );
+  const bullets = buildReplayBulletsForElapsed(payload, current, next, alpha, elapsedMs);
 
   const drops = (Array.isArray(current.d) ? current.d : []).map((drop, index) => {
     const kind = drop[3] || 'weapon';
@@ -5283,6 +5433,7 @@ function buildReplayState(payload, elapsedMs) {
     sync: { tickRate: 45, stateSendHz: 30, netRenderDelayMs: 0 },
     players: playerList,
     bullets,
+    shotEvents: parseReplayShotEvents(current, payload),
     enemies,
     bossPortals,
     drops,
@@ -5521,17 +5672,7 @@ function drawRecordReplay() {
   const nextPlayers = frameEntityMap(next?.p);
   const nextEnemies = frameEntityMap(next?.e);
   const nextCompanions = frameEntityMap(next?.c);
-  const previewBullets = interpolateReplayBullets(
-    current.b,
-    next?.b,
-    alpha,
-    Number(current?.t || 0),
-    Number(next?.t || current?.t || 0),
-    current.e,
-    next?.e,
-    current.p,
-    next?.p,
-  );
+  const previewBullets = buildReplayBulletsForElapsed(payload, current, next, alpha, recordReplay.elapsedMs);
 
   for (const portal of Array.isArray(current.bp) ? current.bp : []) {
     const sx = toScreenX(portal[0]);
@@ -5562,6 +5703,7 @@ function drawRecordReplay() {
   }
 
   for (const bullet of previewBullets) {
+    if (bullet?.replayHidden) continue;
     const sx = toScreenX(bullet.x);
     const sy = toScreenY(bullet.y);
     replayCtx.fillStyle = bullet.fromEnemy ? '#fb7185' : (bullet.kind === 'rocket' ? '#f59e0b' : '#f8fafc');
@@ -6230,7 +6372,8 @@ function spawnSpectatorBulletMuzzleFx(bullet, anchor) {
 }
 
 function spawnSpectatorShotEventFx(event, state) {
-  if (!isSpectatorSmoothingView() || replayGame.active || !event) return;
+  const replayShot = Boolean(replayGame.active || event?.replayShot);
+  if ((!isSpectatorSmoothingView() && !replayShot) || !event) return;
   const eventId = event.id ?? `${event.ownerId || event.ownerPlayerId || 'shot'}:${event.at || Date.now()}`;
   const ownerId = String(event.ownerId || event.ownerPlayerId || '');
   const owner = (state?.players || game.state?.players || []).find((p) => String(p?.id || '') === ownerId) || {
@@ -6247,7 +6390,7 @@ function spawnSpectatorShotEventFx(event, state) {
   const speed = Math.max(120, Math.hypot(dirX, dirY) || (weaponKey === 'sniper' ? 3050 : 920));
   dirX /= speed;
   dirY /= speed;
-  const ownerRender = getPlayerRenderPos(owner);
+  const ownerRender = replayShot ? owner : getPlayerRenderPos(owner);
   const anchor = {
     x: (Number(ownerRender?.x) || Number(event.x) || 0) + dirX * 20,
     y: (Number(ownerRender?.y) || Number(event.y) || 0) + dirY * 20,
@@ -6268,6 +6411,11 @@ function spawnSpectatorShotEventFx(event, state) {
     radius: Math.max(2, Number(event.radius) || 3),
   };
   spawnSpectatorBulletMuzzleFx(fakeBullet, anchor);
+
+  // Replay frames already contain their own bullet positions. Shot events in
+  // replay are only used to restore muzzle/audio timing, otherwise we can draw
+  // the same shot twice in different directions.
+  if (replayShot) return;
 
   const bulletId = event.bulletId;
   const hasRealBullet = bulletId !== undefined && bulletId !== null && (
@@ -6294,7 +6442,7 @@ function spawnSpectatorShotEventFx(event, state) {
     shooterType: event.shooterType || 'player',
     weaponKey,
     syntheticShot: true,
-    syntheticExpiresAt: performance.now() + (weaponKey === 'sniper' ? 115 : 95),
+    syntheticExpiresAt: performance.now() + (weaponKey === 'sniper' ? 105 : 85),
   });
 }
 
@@ -6431,11 +6579,14 @@ function updateBulletInterpolation(dt) {
       if (isRocket && typeof spawnRocketTrailFx === 'function') {
         const dx = tb.x - r.x;
         const dy = tb.y - r.y;
-        if ((dx * dx + dy * dy) >= 0.49) {
+        const trailNow = performance.now();
+        const lastTrailAt = Math.max(0, Number(r.replayTrailAt) || 0);
+        if ((dx * dx + dy * dy) >= 0.49 && trailNow - lastTrailAt >= 55) {
           const invDt = 1 / Math.max(0.001, dt);
           const trailVx = Number(tb.vx) || (dx * invDt);
           const trailVy = Number(tb.vy) || (dy * invDt);
           spawnRocketTrailFx(r.x, r.y, trailVx, trailVy, tb.color || '#fb923c');
+          r.replayTrailAt = trailNow;
         }
       }
       r.x = tb.x;
@@ -6516,6 +6667,9 @@ function getBulletRenderPos(bullet) {
 }
 
 function getBulletsForRender() {
+  if (replayGame.active) {
+    return game.state?.bullets || [];
+  }
   if (isSpectatorSmoothingView() && !replayGame.active) {
     return Array.from(game.renderBullets.values());
   }

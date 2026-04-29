@@ -1432,6 +1432,7 @@ function render(ts) {
     ctx.fill();
   }
   for (const b of getBulletsForRender()) {
+    if (b?.replayHidden) continue;
     const rb = getBulletRenderPos(b);
     if (!rb) continue;
     const bulletRadius = Math.max(2, Number(rb.radius) || Number(b.radius) || 3);

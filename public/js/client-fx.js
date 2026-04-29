@@ -855,6 +855,7 @@ function processStateFx(nextState) {
   const nextRocketMap = new Map();
   const rocketTrailLastAt = visuals.rocketTrailLastAt instanceof Map ? visuals.rocketTrailLastAt : new Map();
   visuals.rocketTrailLastAt = rocketTrailLastAt;
+  const replayFxActive = Boolean(replayGame?.active);
   for (const bullet of nextState.bullets || []) {
     if (String(bullet.kind || '').toLowerCase() !== 'rocket') continue;
     const prevRocket = visuals.rocketPrev.get(bullet.id);
@@ -863,7 +864,7 @@ function processStateFx(nextState) {
     nextRocketMap.set(bullet.id, { x: bullet.x, y: bullet.y });
     const trailVisible = typeof isVisibleWorld !== 'function' || isVisibleWorld(fxX, fxY, 160);
     const lastTrailAt = Math.max(0, Number(rocketTrailLastAt.get(bullet.id)) || 0);
-    if (trailVisible && nowMs - lastTrailAt >= 70) {
+    if (!replayFxActive && trailVisible && nowMs - lastTrailAt >= 70) {
       rocketTrailLastAt.set(bullet.id, nowMs);
       spawnRocketTrailFx(fxX, fxY, bullet.vx, bullet.vy, bullet.color || '#fb923c');
     }
@@ -973,9 +974,11 @@ function processStateFx(nextState) {
   const enemyShooters = new Map((nextState.enemies || []).map((e) => [e.id, e]));
   const ids = new Set();
   const shotgunBurstKeys = new Set();
+  const replayShotEventsActive = Boolean(replayGame?.active && Array.isArray(nextState.shotEvents) && nextState.shotEvents.length > 0);
   for (const b of nextState.bullets) {
     ids.add(b.id);
     if (!visuals.bulletIds.has(b.id)) {
+      if (replayGame?.active && (b.replayHidden || b.replaySyntheticShot)) continue;
       let owner = playersById.get(b.ownerId) || playersById.get(b.ownerPlayerId);
       const bulletShooterType = String(b.shooterType || '').toLowerCase();
       if (!owner && bulletShooterType === 'companion') {
@@ -989,6 +992,7 @@ function processStateFx(nextState) {
         };
       }
       if (owner) {
+        if (replayShotEventsActive && !b.fromEnemy) continue;
         const bvx = Number(b.vx) || 0;
         const bvy = Number(b.vy) || 0;
         const dx = Math.abs(bvx) + Math.abs(bvy) > 0.001 ? bvx : ((Number(b.x) || owner.x) - owner.x);
