@@ -2590,12 +2590,44 @@ function buildReplayEmergingRecordedBullets(payload, current, next, alpha, elaps
     if (event) {
       const shotAt = Math.max(currentT, Math.min(nextT, Number(event.offsetMs) || currentT));
       if (nowMs < shotAt) continue;
-      const denom = Math.max(1, nextT - shotAt);
-      visibleAlpha = Math.max(0, Math.min(1, (nowMs - shotAt) / denom));
-      startX = Number(event.x) || startX;
-      startY = Number(event.y) || startY;
+      const horizonSec = Math.max(0.001, (nextT - shotAt) / 1000);
+      const ageSec = Math.max(0, (nowMs - shotAt) / 1000);
+      const bulletTuple = [
+        bulletId,
+        Number(event.x) || startX,
+        Number(event.y) || startY,
+        Number(event.vx) || Number(bullet[3]) || 0,
+        Number(event.vy) || Number(bullet[4]) || 0,
+        bullet[5] || event.color || '#f59e0b',
+        bullet[6] || 'bullet',
+        bullet[7] ? 1 : 0,
+        Math.max(2, Number(bullet[8]) || Number(event.radius) || 3),
+        bullet[9] || event.ownerId || '',
+        bullet[10] || event.weaponKey || '',
+        bullet[11] || event.ownerPlayerId || '',
+        bullet[12] || event.shooterType || 'player',
+      ];
+      const impact = findReplayBulletImpact(bulletTuple, horizonSec, buildReplayCollisionFrame(current, next, alpha).enemies, buildReplayCollisionFrame(current, next, alpha).players);
+      const impactSec = impact.hit ? horizonSec * Math.max(0, Math.min(1, Number(impact.t) || 0)) : Infinity;
+      const linearX = (Number(event.x) || startX) + (Number(event.vx) || Number(bullet[3]) || 0) * ageSec;
+      const linearY = (Number(event.y) || startY) + (Number(event.vy) || Number(bullet[4]) || 0) * ageSec;
+      out.push({
+        id: bulletId,
+        ownerId: bullet[9] || '',
+        ownerPlayerId: bullet[11] || '',
+        x: ageSec >= impactSec ? impact.x : linearX,
+        y: ageSec >= impactSec ? impact.y : linearY,
+        vx: Number(bullet[3]) || 0,
+        vy: Number(bullet[4]) || 0,
+        color: bullet[5] || (bullet[7] ? '#fb7185' : ((bullet[6] || 'bullet') === 'rocket' ? '#fb923c' : '#f8fafc')),
+        kind: bullet[6] || 'bullet',
+        radius: Math.max(2, Number(bullet[8]) || ((bullet[6] || 'bullet') === 'rocket' ? 6 : 3)),
+        fromEnemy: Boolean(bullet[7]),
+        weaponKey: bullet[10] || '',
+        shooterType: bullet[12] || '',
+      });
+      continue;
     }
-
     out.push({
       id: bulletId,
       ownerId: bullet[9] || '',
@@ -2648,6 +2680,38 @@ function interpolateReplayBullets(currentBullets, nextBullets, alpha, currentT, 
       const y1 = Number(bullet[2]) || 0;
       let x2 = Number(nextBullet[1]) || 0;
       let y2 = Number(nextBullet[2]) || 0;
+      const dtAlphaSec = dtSec * Math.max(0, Math.min(1, alpha));
+      const linearFullX = x1 + (Number(bullet[3]) || 0) * dtSec;
+      const linearFullY = y1 + (Number(bullet[4]) || 0) * dtSec;
+      const linearX = x1 + (Number(bullet[3]) || 0) * dtAlphaSec;
+      const linearY = y1 + (Number(bullet[4]) || 0) * dtAlphaSec;
+      const linearDist = Math.hypot((Number(bullet[3]) || 0) * dtSec, (Number(bullet[4]) || 0) * dtSec);
+      const recordedDx = x2 - x1;
+      const recordedDy = y2 - y1;
+      const recordedDist = Math.hypot(recordedDx, recordedDy);
+      const directionDot = (recordedDx * (Number(bullet[3]) || 0)) + (recordedDy * (Number(bullet[4]) || 0));
+      const impact = findReplayBulletSegmentImpact(bullet, linearFullX, linearFullY, collisionEnemies, collisionPlayers);
+      const impactSec = impact.hit ? dtSec * Math.max(0, Math.min(1, Number(impact.t) || 0)) : Infinity;
+      const useConstantSpeedImpactPath = impact.hit || directionDot <= 0 || (linearDist > 1 && recordedDist < linearDist * 0.86);
+
+      if (useConstantSpeedImpactPath) {
+        return {
+          id: String(bullet[0]),
+          ownerId: bullet[9] || '',
+          ownerPlayerId: bullet[11] || '',
+          x: dtAlphaSec >= impactSec ? impact.x : linearX,
+          y: dtAlphaSec >= impactSec ? impact.y : linearY,
+          vx: Number(bullet[3]) || 0,
+          vy: Number(bullet[4]) || 0,
+          color: bullet[5] || (bullet[7] ? '#fb7185' : ((bullet[6] || 'bullet') === 'rocket' ? '#fb923c' : '#f8fafc')),
+          kind: bullet[6] || 'bullet',
+          radius: Math.max(2, Number(bullet[8]) || ((bullet[6] || 'bullet') === 'rocket' ? 6 : 3)),
+          fromEnemy: Boolean(bullet[7]),
+          weaponKey: bullet[10] || '',
+          shooterType: bullet[12] || '',
+        };
+      }
+
       if (targetById.has(String(bullet[0]))) {
         x2 = Number(nextBullet[1]) || x1;
         y2 = Number(nextBullet[2]) || y1;
