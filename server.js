@@ -3111,6 +3111,7 @@ function fireCompanionWeapon(room, companion, owner, now) {
     ownerPlayerId: owner?.id || companion.ownerId,
     shooterType: 'companion',
     weaponKey: String(companion.weaponKey || 'pistol').toLowerCase(),
+    kind: 'bullet',
     x: companion.x,
     y: companion.y,
     vx: Math.cos(baseAngle) * eventSpeed,
@@ -3367,8 +3368,9 @@ function castHomingMissiles(room, player, def, st, now) {
     const target = targets[i];
     const angle = baseAngle + ((Math.PI * 2 * i) / Math.max(1, targets.length)) + ((Math.random() - 0.5) * 0.26);
     const spawnDist = PLAYER_RADIUS + 12 + ((i % 2) * 7);
-    room.bullets.push({
-      id: room.nextBulletId++,
+    const bulletId = room.nextBulletId++;
+    const rocket = {
+      id: bulletId,
       kind: 'rocket',
       ownerId: player.id,
       fromEnemy: false,
@@ -3390,6 +3392,22 @@ function castHomingMissiles(room, player, def, st, now) {
       retargetRange: radius * 1.15,
       explosionRadius,
       spawnAt: now,
+    };
+    room.bullets.push(rocket);
+    pushRoomShotEvent(room, {
+      bulletId,
+      ownerId: player.id,
+      ownerPlayerId: player.ownerId || '',
+      shooterType: 'player',
+      weaponKey: 'homing_missiles',
+      kind: 'rocket',
+      x: rocket.x,
+      y: rocket.y,
+      vx: rocket.vx,
+      vy: rocket.vy,
+      color: rocket.color || '#fb923c',
+      radius: Math.max(2, Number(rocket.radius) || 6),
+      at: now,
     });
   }
 
@@ -3736,6 +3754,7 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
       ownerPlayerId: event.ownerPlayerId || '',
       shooterType: event.shooterType || 'player',
       weaponKey: event.weaponKey || 'pistol',
+      kind: event.kind || 'bullet',
       x: event.x,
       y: event.y,
       vx: event.vx,
@@ -4193,6 +4212,7 @@ function fireFromPlayer(room, player, now = Date.now()) {
     ownerPlayerId: player.ownerId || '',
     shooterType: player.isCompanion ? 'companion' : 'player',
     weaponKey: String(player.weaponKey || 'pistol').toLowerCase(),
+    kind: 'bullet',
     x: player.x,
     y: player.y,
     vx: Math.cos(baseAngle) * eventSpeed,
@@ -4700,6 +4720,7 @@ function captureReplayFrame(room, replay, now, options = {}) {
       event.color || '#f59e0b',
       Math.max(2, Math.round(Number(event.radius) || BULLET_RADIUS)),
       Math.max(0, Math.round((Number(event.at) || now) - replay.startedAt)),
+      event.kind || 'bullet',
     ]));
 
   replay.frames.push({

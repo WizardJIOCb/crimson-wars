@@ -1073,6 +1073,46 @@ function processStateFx(nextState) {
   if (visuals.muzzleGroundFlashes.length > maxM) visuals.muzzleGroundFlashes.splice(0, visuals.muzzleGroundFlashes.length - maxM);
 }
 
+function processReplayInterpolatedFx(previousState, nextState) {
+  if (!replayGame?.active || replayGame.seeking || !previousState || !nextState) return;
+  const prevBullets = Array.isArray(previousState.bullets) ? previousState.bullets : [];
+  if (prevBullets.length <= 0) return;
+  const nextBulletIds = new Set(
+    (Array.isArray(nextState.bullets) ? nextState.bullets : [])
+      .map((bullet) => String(bullet?.id ?? ''))
+      .filter(Boolean),
+  );
+  for (const bullet of prevBullets) {
+    if (!bullet) continue;
+    if (String(bullet.kind || '').toLowerCase() !== 'rocket') continue;
+    const id = String(bullet.id ?? '');
+    if (!id || nextBulletIds.has(id)) continue;
+    if (visuals.rocketPrev instanceof Map) visuals.rocketPrev.delete(id);
+    if (visuals.rocketTrailLastAt instanceof Map) visuals.rocketTrailLastAt.delete(id);
+    const x = Number(bullet.x) || 0;
+    const y = Number(bullet.y) || 0;
+    registerImpactSource({
+      x,
+      y,
+      radius: 138,
+      strength: 1.62,
+      ttlMs: 280,
+      radial: true,
+      target: 'both',
+    });
+    spawnRocketExplosionFx(x, y);
+    window.cwPlaySfx?.('rocketExplosion', {
+      x,
+      y,
+      key: `replayRocketExplosion:${id}`,
+      minGapMs: 0,
+      radius: 1700,
+      volume: 1.18,
+      replay: true,
+    });
+  }
+}
+
 function updateFx(dt) {
   const hitOverlay = getHitScreenOverlayEl();
   if (hitOverlay) {

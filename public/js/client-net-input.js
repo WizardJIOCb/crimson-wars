@@ -2680,29 +2680,48 @@ function interpolateReplayBullets(currentBullets, nextBullets, alpha, currentT, 
       const y1 = Number(bullet[2]) || 0;
       let x2 = Number(nextBullet[1]) || 0;
       let y2 = Number(nextBullet[2]) || 0;
+      const kind = String(bullet[6] || 'bullet').toLowerCase();
+      const vx1 = Number(bullet[3]) || 0;
+      const vy1 = Number(bullet[4]) || 0;
+      const vx2 = Number(nextBullet[3]) || vx1;
+      const vy2 = Number(nextBullet[4]) || vy1;
       const dtAlphaSec = dtSec * Math.max(0, Math.min(1, alpha));
-      const linearFullX = x1 + (Number(bullet[3]) || 0) * dtSec;
-      const linearFullY = y1 + (Number(bullet[4]) || 0) * dtSec;
-      const linearX = x1 + (Number(bullet[3]) || 0) * dtAlphaSec;
-      const linearY = y1 + (Number(bullet[4]) || 0) * dtAlphaSec;
-      const linearDist = Math.hypot((Number(bullet[3]) || 0) * dtSec, (Number(bullet[4]) || 0) * dtSec);
+      const linearFullX = x1 + vx1 * dtSec;
+      const linearFullY = y1 + vy1 * dtSec;
+      const linearX = x1 + vx1 * dtAlphaSec;
+      const linearY = y1 + vy1 * dtAlphaSec;
+      const velocityCurveFullX = sampleReplayVelocityCurveCoord(x1, vx1, vx2, dtSec, 1);
+      const velocityCurveFullY = sampleReplayVelocityCurveCoord(y1, vy1, vy2, dtSec, 1);
+      const velocityCurveX = sampleReplayVelocityCurveCoord(x1, vx1, vx2, dtSec, alpha);
+      const velocityCurveY = sampleReplayVelocityCurveCoord(y1, vy1, vy2, dtSec, alpha);
+      const linearDist = Math.hypot(vx1 * dtSec, vy1 * dtSec);
       const recordedDx = x2 - x1;
       const recordedDy = y2 - y1;
       const recordedDist = Math.hypot(recordedDx, recordedDy);
-      const directionDot = (recordedDx * (Number(bullet[3]) || 0)) + (recordedDy * (Number(bullet[4]) || 0));
-      const impact = findReplayBulletSegmentImpact(bullet, linearFullX, linearFullY, collisionEnemies, collisionPlayers);
+      const directionDot = (recordedDx * vx1) + (recordedDy * vy1);
+      const useVelocityCurvePath = kind === 'rocket';
+      const impact = findReplayBulletSegmentImpact(
+        bullet,
+        useVelocityCurvePath ? velocityCurveFullX : linearFullX,
+        useVelocityCurvePath ? velocityCurveFullY : linearFullY,
+        collisionEnemies,
+        collisionPlayers,
+      );
       const impactSec = impact.hit ? dtSec * Math.max(0, Math.min(1, Number(impact.t) || 0)) : Infinity;
-      const useConstantSpeedImpactPath = impact.hit || directionDot <= 0 || (linearDist > 1 && recordedDist < linearDist * 0.86);
+      const compressionThreshold = kind === 'rocket' ? 0.98 : 0.93;
+      const useConstantSpeedImpactPath = impact.hit || directionDot <= 0 || (linearDist > 1 && recordedDist < linearDist * compressionThreshold);
 
-      if (useConstantSpeedImpactPath) {
+      if (useVelocityCurvePath || useConstantSpeedImpactPath) {
+        const pathX = useVelocityCurvePath ? velocityCurveX : linearX;
+        const pathY = useVelocityCurvePath ? velocityCurveY : linearY;
         return {
           id: String(bullet[0]),
           ownerId: bullet[9] || '',
           ownerPlayerId: bullet[11] || '',
-          x: dtAlphaSec >= impactSec ? impact.x : linearX,
-          y: dtAlphaSec >= impactSec ? impact.y : linearY,
-          vx: Number(bullet[3]) || 0,
-          vy: Number(bullet[4]) || 0,
+          x: dtAlphaSec >= impactSec ? impact.x : pathX,
+          y: dtAlphaSec >= impactSec ? impact.y : pathY,
+          vx: vx1,
+          vy: vy1,
           color: bullet[5] || (bullet[7] ? '#fb7185' : ((bullet[6] || 'bullet') === 'rocket' ? '#fb923c' : '#f8fafc')),
           kind: bullet[6] || 'bullet',
           radius: Math.max(2, Number(bullet[8]) || ((bullet[6] || 'bullet') === 'rocket' ? 6 : 3)),
@@ -2877,6 +2896,7 @@ function parseReplayShotEvents(frame, payload) {
     color: event?.[10] || '#f59e0b',
     radius: Math.max(2, Number(event?.[11]) || 3),
     at: startedAt + Math.max(0, Number(event?.[12]) || 0),
+    kind: event?.[13] || 'bullet',
     replayShot: true,
   }));
 }
@@ -3030,6 +3050,8 @@ function resolveReplayAimTarget(payload, ownerKeys, elapsedMs, x, y, fallbackDx 
 function getReplayShotVisualLifeMs(event, payload) {
   const captureMs = Math.max(100, Number(payload?.captureIntervalMs) || 350);
   const weaponKey = String(event?.weaponKey || '').toLowerCase();
+  const kind = String(event?.kind || '').toLowerCase();
+  if (kind === 'rocket' || weaponKey === 'homing_missiles') return Math.max(420, Math.min(980, captureMs * 2));
   if (weaponKey === 'shotgun') return Math.max(180, Math.min(360, captureMs + 40));
   if (weaponKey === 'sniper') return Math.max(260, Math.min(520, captureMs + 110));
   if (weaponKey === 'smg') return Math.max(180, Math.min(390, captureMs + 35));
@@ -3051,9 +3073,9 @@ function buildReplayShotBulletTuple(event) {
     Number(event?.vx) || 0,
     Number(event?.vy) || 0,
     event?.color || '#f59e0b',
-    'bullet',
+    event?.kind || 'bullet',
     0,
-    Math.max(2, Number(event?.radius) || 3),
+    Math.max(2, Number(event?.radius) || (String(event?.kind || '').toLowerCase() === 'rocket' ? 6 : 3)),
     event?.ownerId || '',
     event?.weaponKey || 'pistol',
     event?.ownerPlayerId || '',
@@ -3111,6 +3133,7 @@ function buildReplaySyntheticShotBullets(payload, current, next, alpha, elapsedM
     const linearY = (Number(event.y) || 0) + (Number(event.vy) || 0) * ageSec;
     const x = ageSec >= impactSec ? impact.x : linearX;
     const y = ageSec >= impactSec ? impact.y : linearY;
+    const kind = event.kind || 'bullet';
     out.push({
       id: `replay-shot:${event.id}`,
       ownerId: event.ownerId || '',
@@ -3120,8 +3143,8 @@ function buildReplaySyntheticShotBullets(payload, current, next, alpha, elapsedM
       vx: Number(event.vx) || 0,
       vy: Number(event.vy) || 0,
       color: event.color || '#f59e0b',
-      kind: 'bullet',
-      radius: Math.max(2, Number(event.radius) || 3),
+      kind,
+      radius: Math.max(2, Number(event.radius) || (String(kind).toLowerCase() === 'rocket' ? 6 : 3)),
       fromEnemy: false,
       weaponKey: event.weaponKey || 'pistol',
       shooterType: event.shooterType || 'player',
@@ -3157,6 +3180,13 @@ function buildReplayBulletsForElapsed(payload, current, next, alpha, elapsedMs) 
   return recorded
     .concat(emerging)
     .concat(buildReplaySyntheticShotBullets(payload, current, next, alpha, elapsedMs, visibleBulletIds));
+}
+
+function sampleReplayVelocityCurveCoord(x1, v1, v2, dtSec, alpha) {
+  const t = Math.max(0, Math.min(1, Number(alpha) || 0));
+  const startV = Number(v1) || 0;
+  const endV = Number(v2) || startV;
+  return (Number(x1) || 0) + (((startV * t) + ((endV - startV) * t * t * 0.5)) * dtSec);
 }
 
 function updateReplayGameSpeed(speed) {
@@ -3443,6 +3473,10 @@ function tickReplayGame(ts) {
   const totalMs = getReplayDurationMs(replayGame.payload);
   const nextState = buildReplayState(replayGame.payload, replayGame.elapsedMs);
   if (nextState) {
+    const previousState = game.state;
+    if (replayGame.playing && !replayGame.seeking && previousState && typeof processReplayInterpolatedFx === 'function') {
+      processReplayInterpolatedFx(previousState, nextState);
+    }
     if (nextState.replayFrameIndex !== replayGame.fxFrameIndex) {
       processStateFx(nextState);
       if (replayGame.playing && !replayGame.seeking) updateInGameCommentatorFromState(nextState);
