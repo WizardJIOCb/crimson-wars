@@ -217,6 +217,7 @@ const processStartedAt = Date.now();
 const REPLAY_CAPTURE_INTERVAL_MS = Math.max(100, Number(process.env.REPLAY_CAPTURE_INTERVAL_MS) || 350);
 const REPLAY_FRAME_LIMIT = 14400;
 const REPLAY_CHAT_LIMIT = 240;
+const REPLAY_BULLET_SAMPLE_LIMIT = Math.max(12, Number(process.env.REPLAY_BULLET_SAMPLE_LIMIT) || 40);
 const REPLAY_DROP_SAMPLE_LIMIT = Math.max(8, Number(process.env.REPLAY_DROP_SAMPLE_LIMIT) || 28);
 const REPLAY_XP_ORB_SAMPLE_LIMIT = Math.max(24, Number(process.env.REPLAY_XP_ORB_SAMPLE_LIMIT) || 96);
 const COMPANION_SYNC_INTERVAL_MS = Math.max(80, Number(process.env.COMPANION_SYNC_INTERVAL_MS) || 220);
@@ -239,7 +240,9 @@ const ADAPTIVE_STATE_SEND_ENABLED = (process.env.ADAPTIVE_STATE_SEND_ENABLED || 
 const REALTIME_STATIC_COLLECTION_RESEND_MS = Math.max(150, Number(process.env.REALTIME_STATIC_COLLECTION_RESEND_MS) || 900);
 const REALTIME_XP_ORB_STATIC_RESEND_MS = Math.max(100, Number(process.env.REALTIME_XP_ORB_STATIC_RESEND_MS) || 280);
 const REALTIME_XP_ORB_RADIUS = Math.max(240, Number(process.env.REALTIME_XP_ORB_RADIUS) || 960);
-const REALTIME_XP_ORB_LIMIT = Math.max(24, Number(process.env.REALTIME_XP_ORB_LIMIT) || 120);
+const REALTIME_XP_ORB_LIMIT = Math.max(24, Number(process.env.REALTIME_XP_ORB_LIMIT) || 96);
+const REALTIME_BULLET_RADIUS = Math.max(320, Number(process.env.REALTIME_BULLET_RADIUS) || 1280);
+const REALTIME_BULLET_LIMIT = Math.max(16, Number(process.env.REALTIME_BULLET_LIMIT) || 56);
 const REALTIME_DROP_RADIUS = Math.max(240, Number(process.env.REALTIME_DROP_RADIUS) || 1100);
 const REALTIME_DROP_LIMIT = Math.max(8, Number(process.env.REALTIME_DROP_LIMIT) || 40);
 
@@ -2585,15 +2588,36 @@ function sampleReplayXpOrbs(room, limit = REPLAY_XP_ORB_SAMPLE_LIMIT) {
   return moving.concat(sampleListEvenly(staticOrbs, maxItems - moving.length));
 }
 
+function sampleReplayBullets(room, limit = REPLAY_BULLET_SAMPLE_LIMIT) {
+  const source = Array.isArray(room?.bullets) ? room.bullets : [];
+  const maxItems = Math.max(1, Math.floor(Number(limit) || 0));
+  if (source.length <= maxItems) return source;
+  return selectRealtimeEntitiesByInterest(room, source, {
+    alwaysIncludeRadius: Math.max(480, Math.round(REALTIME_BULLET_RADIUS * 0.55)),
+    radius: REALTIME_BULLET_RADIUS,
+    maxItems,
+    priorityFn: (bullet) => {
+      const kind = String(bullet?.kind || '').toLowerCase();
+      if (kind === 'rocket') return -4;
+      if (bullet?.fromEnemy) return -3;
+      if (bullet?.ownerPlayerId || bullet?.ownerId) return -1;
+      return 0;
+    },
+  });
+}
+
 function getEffectiveReplayCaptureIntervalMs(replay, room) {
   const baseMs = Math.max(100, Number(replay?.captureIntervalMs) || REPLAY_CAPTURE_INTERVAL_MS);
   if (!room) return baseMs;
   const xpCount = Array.isArray(room.xpOrbs) ? room.xpOrbs.length : 0;
   const bulletCount = Array.isArray(room.bullets) ? room.bullets.length : 0;
   const enemyCount = Array.isArray(room.enemies) ? room.enemies.length : 0;
+  const movingXpOrbs = Math.max(0, Number(room?.lastTickDiag?.movingXpOrbs) || 0);
+  const lastStateBytes = Math.max(0, Number(room?.lastRuntimeDiagState?.bytes) || 0);
   let mul = 1;
-  if (xpCount >= 220 || (xpCount >= 170 && bulletCount >= 20) || enemyCount >= 120) mul = 2;
-  else if (xpCount >= 120 || bulletCount >= 28 || enemyCount >= 90) mul = 1.5;
+  if (lastStateBytes >= 28000 || xpCount >= 240 || bulletCount >= 56 || enemyCount >= 90 || movingXpOrbs >= 120) mul = 3;
+  else if (lastStateBytes >= 22000 || xpCount >= 160 || bulletCount >= 38 || enemyCount >= 65 || movingXpOrbs >= 70) mul = 2;
+  else if (lastStateBytes >= 16000 || xpCount >= 96 || bulletCount >= 24 || enemyCount >= 45 || movingXpOrbs >= 30) mul = 1.5;
   return Math.max(baseMs, Math.round(baseMs * mul));
 }
 
@@ -2694,6 +2718,19 @@ function appendRuntimeDiagLog(entry) {
   }
 }
 
+function collectSerializedStatePayloadStats(payload) {
+  const source = payload && typeof payload === 'object' ? payload : {};
+  return {
+    players: Array.isArray(source.players) ? source.players.length : 0,
+    enemies: Array.isArray(source.enemies) ? source.enemies.length : 0,
+    bullets: Array.isArray(source.bullets) ? source.bullets.length : 0,
+    xpOrbs: Array.isArray(source.xpOrbs) ? source.xpOrbs.length : 0,
+    drops: Array.isArray(source.drops) ? source.drops.length : 0,
+    skillOrbs: Array.isArray(source.skillOrbs) ? source.skillOrbs.length : 0,
+    shotEvents: Array.isArray(source.shotEvents) ? source.shotEvents.length : 0,
+  };
+}
+
 function maybeLogRoomRuntime(room, now, metrics = {}) {
   if (!RUNTIME_DIAG_ENABLED || !room) return;
   if (room.players.size <= 0) {
@@ -2738,6 +2775,13 @@ function maybeLogRoomRuntime(room, now, metrics = {}) {
     stateSkipped: Math.max(0, Number(lastState?.skipped) || 0),
     stateMaxBuffered,
     stateTotalBuffered: Math.max(0, Number(lastState?.totalBufferedAmount) || snapshot.totalBufferedAmount),
+    statePlayersSent: Math.max(0, Number(lastState?.playersSent) || 0),
+    stateEnemiesSent: Math.max(0, Number(lastState?.enemiesSent) || 0),
+    stateBulletsSent: Math.max(0, Number(lastState?.bulletsSent) || 0),
+    stateXpOrbsSent: Math.max(0, Number(lastState?.xpOrbsSent) || 0),
+    stateDropsSent: Math.max(0, Number(lastState?.dropsSent) || 0),
+    stateSkillOrbsSent: Math.max(0, Number(lastState?.skillOrbsSent) || 0),
+    stateShotEventsSent: Math.max(0, Number(lastState?.shotEventsSent) || 0),
     players: snapshot.players,
     spectators: snapshot.spectators,
     companions: snapshot.companions,
@@ -3453,6 +3497,20 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
       maxItems: REALTIME_DROP_LIMIT,
     })
     : room.drops;
+  const realtimeBullets = compactRealtime
+    ? selectRealtimeEntitiesByInterest(room, room.bullets, {
+      alwaysIncludeRadius: Math.max(520, Math.round(REALTIME_BULLET_RADIUS * 0.55)),
+      radius: REALTIME_BULLET_RADIUS,
+      maxItems: REALTIME_BULLET_LIMIT,
+      priorityFn: (bullet) => {
+        const kind = String(bullet?.kind || '').toLowerCase();
+        if (kind === 'rocket') return -4;
+        if (bullet?.fromEnemy) return -3;
+        if (bullet?.ownerPlayerId || bullet?.ownerId) return -1;
+        return 0;
+      },
+    })
+    : room.bullets;
   const realtimeXpOrbs = compactRealtime
     ? selectRealtimeEntitiesByInterest(room, room.xpOrbs, {
       alwaysIncludeRadius: realtimeXpAlwaysIncludeRadius,
@@ -3606,7 +3664,7 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
     world: { width: WORLD_WIDTH, height: WORLD_HEIGHT },
     sync: room.sync,
     players: serializedPlayers.concat(serializedCompanions),
-    bullets: room.bullets.map((b) => {
+    bullets: realtimeBullets.map((b) => {
       const radius = Math.max(2, Number(b.radius) || BULLET_RADIUS);
       const ownerId = b.ownerId || '';
       const ownerPlayerId = b.ownerPlayerId || '';
@@ -4528,7 +4586,8 @@ function buildReplayFrameBase(room, now) {
     Math.max(1, Math.round(Number(e.maxHp) || 1)),
     Math.max(ENEMY_RADIUS, Math.round(Number(e.radius) || ENEMY_RADIUS)),
   ]));
-  const bullets = room.bullets.map((b) => ([
+  const replayBullets = sampleReplayBullets(room, REPLAY_BULLET_SAMPLE_LIMIT);
+  const bullets = replayBullets.map((b) => ([
     b.id || '',
     roundReplayCoord(b.x),
     roundReplayCoord(b.y),
@@ -6670,6 +6729,7 @@ setInterval(() => {
       const serializeStartedNs = process.hrtime.bigint();
       const payload = serializeRoom(room, { includeDecor: false, compactRealtime: true });
       const serializeMs = Number(process.hrtime.bigint() - serializeStartedNs) / 1e6;
+      const payloadStats = collectSerializedStatePayloadStats(payload);
       const message = { type: 'state', payload };
       const jsonStartedNs = process.hrtime.bigint();
       const raw = JSON.stringify(message);
@@ -6689,6 +6749,13 @@ setInterval(() => {
         serializeMs,
         jsonMs,
         broadcastMs,
+        playersSent: payloadStats.players,
+        enemiesSent: payloadStats.enemies,
+        bulletsSent: payloadStats.bullets,
+        xpOrbsSent: payloadStats.xpOrbs,
+        dropsSent: payloadStats.drops,
+        skillOrbsSent: payloadStats.skillOrbs,
+        shotEventsSent: payloadStats.shotEvents,
       };
       room.shotEvents = [];
     }
