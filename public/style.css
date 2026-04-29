@@ -6556,6 +6556,14 @@ body.battle-hub-embed #join-form.cw-shell {
   gap: 16px;
 }
 
+#join-form #play-deploy-card button.secondary[data-mode="join"] {
+  border-color: rgba(138, 145, 160, 0.34);
+  background:
+    linear-gradient(180deg, rgba(23, 23, 25, 0.96), rgba(9, 9, 11, 0.98)),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05), transparent);
+  color: #f4ede8;
+}
+
 #menu-panel-characters #hero-character-panel .hero-skill-panels-row {
   display: grid !important;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
