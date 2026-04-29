@@ -2591,8 +2591,7 @@ function buildReplayEmergingRecordedBullets(payload, current, next, alpha, elaps
       const shotAt = Math.max(currentT, Math.min(nextT, Number(event.offsetMs) || currentT));
       if (nowMs < shotAt) continue;
       const denom = Math.max(1, nextT - shotAt);
-      const progress = Math.max(0, Math.min(1, (nowMs - shotAt) / denom));
-      visibleAlpha = 1 - ((1 - progress) * (1 - progress));
+      visibleAlpha = Math.max(0, Math.min(1, (nowMs - shotAt) / denom));
       startX = Number(event.x) || startX;
       startY = Number(event.y) || startY;
     }
@@ -2654,11 +2653,32 @@ function interpolateReplayBullets(currentBullets, nextBullets, alpha, currentT, 
         y2 = Number(nextBullet[2]) || y1;
       } else {
         const extrapolateSec = getReplayBulletExtrapolateSec(bullet[6], dtSec);
-        x2 = x1 + (Number(bullet[3]) || 0) * extrapolateSec;
-        y2 = y1 + (Number(bullet[4]) || 0) * extrapolateSec;
-        const impact = findReplayBulletSegmentImpact(bullet, x2, y2, collisionEnemies, collisionPlayers);
-        x2 = impact.x;
-        y2 = impact.y;
+        const dtAlphaSec = extrapolateSec * Math.max(0, Math.min(1, alpha));
+        const rawX = x1 + (Number(bullet[3]) || 0) * dtAlphaSec;
+        const rawY = y1 + (Number(bullet[4]) || 0) * dtAlphaSec;
+        const impact = findReplayBulletSegmentImpact(
+          bullet,
+          x1 + (Number(bullet[3]) || 0) * extrapolateSec,
+          y1 + (Number(bullet[4]) || 0) * extrapolateSec,
+          collisionEnemies,
+          collisionPlayers,
+        );
+        const impactSec = impact.hit ? extrapolateSec * Math.max(0, Math.min(1, Number(impact.t) || 0)) : Infinity;
+        return {
+          id: String(bullet[0]),
+          ownerId: bullet[9] || '',
+          ownerPlayerId: bullet[11] || '',
+          x: dtAlphaSec >= impactSec ? impact.x : rawX,
+          y: dtAlphaSec >= impactSec ? impact.y : rawY,
+          vx: Number(bullet[3]) || 0,
+          vy: Number(bullet[4]) || 0,
+          color: bullet[5] || (bullet[7] ? '#fb7185' : ((bullet[6] || 'bullet') === 'rocket' ? '#fb923c' : '#f8fafc')),
+          kind: bullet[6] || 'bullet',
+          radius: Math.max(2, Number(bullet[8]) || ((bullet[6] || 'bullet') === 'rocket' ? 6 : 3)),
+          fromEnemy: Boolean(bullet[7]),
+          weaponKey: bullet[10] || '',
+          shooterType: bullet[12] || '',
+        };
       }
       return {
         id: String(bullet[0]),
@@ -3015,14 +3035,18 @@ function buildReplaySyntheticShotBullets(payload, current, next, alpha, elapsedM
     if (bulletId && blockedBulletIds.has(bulletId)) continue;
     const ageSec = ageMs / 1000;
     const bulletTuple = buildReplayShotBulletTuple(event);
-    const impact = findReplayBulletImpact(bulletTuple, ageSec, collisionFrame.enemies, collisionFrame.players);
     const eventImpact = getReplayShotEventImpact(payload, event);
+    const impact = eventImpact
+      ? { x: eventImpact.x, y: eventImpact.y, hit: true }
+      : findReplayBulletImpact(bulletTuple, getReplayShotVisualLifeMs(event, payload) / 1000, collisionFrame.enemies, collisionFrame.players);
     const impactSec = eventImpact
       ? Math.max(0, Number(eventImpact.sec) || 0)
-      : ageSec * Math.max(0, Math.min(1, Number(impact.t) || 0));
+      : (impact.hit ? Math.max(0, Math.hypot((impact.x - (Number(event.x) || 0)), (impact.y - (Number(event.y) || 0))) / Math.max(1, Math.hypot(Number(event.vx) || 0, Number(event.vy) || 0))) : Infinity);
     if ((eventImpact || impact.hit) && ageSec > impactSec + 0.055) continue;
-    const x = eventImpact && ageSec >= impactSec ? eventImpact.x : impact.x;
-    const y = eventImpact && ageSec >= impactSec ? eventImpact.y : impact.y;
+    const linearX = (Number(event.x) || 0) + (Number(event.vx) || 0) * ageSec;
+    const linearY = (Number(event.y) || 0) + (Number(event.vy) || 0) * ageSec;
+    const x = ageSec >= impactSec ? impact.x : linearX;
+    const y = ageSec >= impactSec ? impact.y : linearY;
     out.push({
       id: `replay-shot:${event.id}`,
       ownerId: event.ownerId || '',
