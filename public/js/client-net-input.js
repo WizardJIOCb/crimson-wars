@@ -3820,6 +3820,9 @@ function updatePlayerInterpolation(dt) {
   if (!game.state) return;
   const liveMap = mapById(game.state.players);
   const targetMap = game.sampledNet?.players ? new Map(game.sampledNet.players) : new Map(liveMap);
+  const usingBufferedTargets = Boolean(game.sampledNet?.players);
+  const statePerfAt = usingBufferedTargets ? 0 : Math.max(0, Number(netStats?.lastStateAt) || 0);
+  const extraSec = usingBufferedTargets ? 0 : getLiveStateExtrapolationSec();
   if (game.myId && liveMap.has(game.myId)) {
     targetMap.set(game.myId, liveMap.get(game.myId));
   }
@@ -3832,15 +3835,43 @@ function updatePlayerInterpolation(dt) {
     const live = liveMap.get(id);
     const sampledAlive = (typeof p?.alive === 'boolean') ? Boolean(p.alive) : Boolean(live?.alive);
     const isAlive = Boolean(live?.alive ?? sampledAlive);
-    const targetX = (live && sampledAlive !== isAlive) ? Number(live.x) || Number(p.x) || 0 : (Number(p.x) || Number(live?.x) || 0);
-    const targetY = (live && sampledAlive !== isAlive) ? Number(live.y) || Number(p.y) || 0 : (Number(p.y) || Number(live?.y) || 0);
+    const fallbackTargetX = (live && sampledAlive !== isAlive) ? Number(live.x) || Number(p.x) || 0 : (Number(p.x) || Number(live?.x) || 0);
+    const fallbackTargetY = (live && sampledAlive !== isAlive) ? Number(live.y) || Number(p.y) || 0 : (Number(p.y) || Number(live?.y) || 0);
 
     let r = game.renderPlayers.get(id);
     if (!r) {
-      r = { x: targetX, y: targetY, vx: 0, vy: 0, alive: isAlive };
+      r = {
+        x: fallbackTargetX,
+        y: fallbackTargetY,
+        vx: 0,
+        vy: 0,
+        alive: isAlive,
+        serverVx: 0,
+        serverVy: 0,
+        serverStatePerfAt: statePerfAt,
+        serverStateX: fallbackTargetX,
+        serverStateY: fallbackTargetY,
+      };
       game.renderPlayers.set(id, r);
       continue;
     }
+
+    const maxSpeed = (() => {
+      const liveRef = live || p;
+      const baseSpeed = Math.max(0, Number(liveRef?.moveSpeed) || 0);
+      const dodgeActive = Number(liveRef?.dodgeInvulnUntil) > Date.now();
+      return Math.max(260, baseSpeed * (dodgeActive ? 2.8 : 1.9));
+    })();
+    const predictedTarget = (!usingBufferedTargets && live)
+      ? resolveLiveEntityTarget(r, live, statePerfAt, isAlive ? extraSec : 0, maxSpeed)
+      : {
+        x: fallbackTargetX,
+        y: fallbackTargetY,
+        vx: Number(p?.vx) || 0,
+        vy: Number(p?.vy) || 0,
+      };
+    const targetX = predictedTarget.x;
+    const targetY = predictedTarget.y;
 
     const wasAlive = Boolean(r.alive);
     const dx = targetX - r.x;
@@ -3867,8 +3898,8 @@ function updatePlayerInterpolation(dt) {
       const alphaPlayer = isLocalPlayer ? alpha : alphaRemote;
       const nx = r.x + (targetX - r.x) * alphaPlayer;
       const ny = r.y + (targetY - r.y) * alphaPlayer;
-      r.vx = (nx - r.x) / Math.max(0.001, dt);
-      r.vy = (ny - r.y) / Math.max(0.001, dt);
+      r.vx = usingBufferedTargets ? (nx - r.x) / Math.max(0.001, dt) : predictedTarget.vx;
+      r.vy = usingBufferedTargets ? (ny - r.y) / Math.max(0.001, dt) : predictedTarget.vy;
       r.x = nx;
       r.y = ny;
     }
@@ -4053,6 +4084,9 @@ function spawnSpectatorShotEventFx(event, state) {
 function updateEnemyInterpolation(dt) {
   if (!game.state) return;
   const targetMap = game.sampledNet?.enemies || mapById(game.state.enemies);
+  const usingBufferedTargets = Boolean(game.sampledNet?.enemies);
+  const statePerfAt = usingBufferedTargets ? 0 : Math.max(0, Number(netStats?.lastStateAt) || 0);
+  const extraSec = usingBufferedTargets ? 0 : getLiveStateExtrapolationSec();
   const alpha = 1 - Math.exp(-roomSync.entityInterpRate * dt);
   const alive = new Set();
 
@@ -4060,15 +4094,35 @@ function updateEnemyInterpolation(dt) {
     alive.add(id);
     let r = game.renderEnemies.get(id);
     if (!r) {
-      r = { x: e.x, y: e.y, vx: 0, vy: 0, faceLeft: Boolean(e.faceLeft) };
+      r = {
+        x: e.x,
+        y: e.y,
+        vx: 0,
+        vy: 0,
+        faceLeft: Boolean(e.faceLeft),
+        serverVx: 0,
+        serverVy: 0,
+        serverStatePerfAt: statePerfAt,
+        serverStateX: Number(e.x) || 0,
+        serverStateY: Number(e.y) || 0,
+      };
       game.renderEnemies.set(id, r);
       continue;
     }
 
-    const nx = r.x + (e.x - r.x) * alpha;
-    const ny = r.y + (e.y - r.y) * alpha;
-    r.vx = (nx - r.x) / Math.max(0.001, dt);
-    r.vy = (ny - r.y) / Math.max(0.001, dt);
+    const maxSpeed = (() => {
+      const type = String(e?.type || '').toLowerCase();
+      if (type === 'boss') return 900;
+      if (type === 'charger') return 720;
+      return 520;
+    })();
+    const predictedTarget = usingBufferedTargets
+      ? { x: Number(e.x) || 0, y: Number(e.y) || 0, vx: Number(e.vx) || 0, vy: Number(e.vy) || 0 }
+      : resolveLiveEntityTarget(r, e, statePerfAt, extraSec, maxSpeed);
+    const nx = r.x + (predictedTarget.x - r.x) * alpha;
+    const ny = r.y + (predictedTarget.y - r.y) * alpha;
+    r.vx = usingBufferedTargets ? (nx - r.x) / Math.max(0.001, dt) : predictedTarget.vx;
+    r.vy = usingBufferedTargets ? (ny - r.y) / Math.max(0.001, dt) : predictedTarget.vy;
     if (typeof e.faceLeft === 'boolean') r.faceLeft = e.faceLeft;
     else if (Math.abs(Number(r.vx) || 0) > 0.15) r.faceLeft = (Number(r.vx) || 0) < 0;
     r.x = nx;
@@ -4344,6 +4398,56 @@ function deriveSnapshotVelocity(prevItem, nextItem, dtMs, maxSpeed = 0) {
   }
 
   return { vx, vy };
+}
+
+function getLiveStateExtrapolationSec() {
+  const lastStateAt = Math.max(0, Number(netStats?.lastStateAt) || 0);
+  if (lastStateAt <= 0) return 0;
+  const observedIntervalMs = Math.max(1, getObservedStateIntervalMs());
+  const maxExtraMs = Math.min(
+    Math.max(16, observedIntervalMs * 0.9),
+    Math.max(20, Number(roomSync.maxExtrapolationMs) || 0),
+  );
+  const ageMs = Math.max(0, performance.now() - lastStateAt);
+  return Math.max(0, Math.min(maxExtraMs, ageMs)) / 1000;
+}
+
+function resolveLiveEntityTarget(renderEntry, item, statePerfAt, extraSec, maxSpeed = 0) {
+  const stateX = Number(item?.x) || 0;
+  const stateY = Number(item?.y) || 0;
+  if (!renderEntry || typeof renderEntry !== 'object') {
+    return { x: stateX, y: stateY, vx: 0, vy: 0 };
+  }
+
+  const prevPerfAt = Math.max(0, Number(renderEntry.serverStatePerfAt) || 0);
+  const prevStateX = Number.isFinite(Number(renderEntry.serverStateX)) ? Number(renderEntry.serverStateX) : stateX;
+  const prevStateY = Number.isFinite(Number(renderEntry.serverStateY)) ? Number(renderEntry.serverStateY) : stateY;
+  const isNewState = statePerfAt > 0 && statePerfAt !== prevPerfAt;
+
+  if (isNewState) {
+    const prevItem = prevPerfAt > 0
+      ? { x: prevStateX, y: prevStateY, vx: Number(renderEntry.serverVx) || 0, vy: Number(renderEntry.serverVy) || 0 }
+      : null;
+    const vel = deriveSnapshotVelocity(prevItem, { x: stateX, y: stateY }, Math.max(1, statePerfAt - prevPerfAt), maxSpeed);
+    renderEntry.serverVx = vel.vx;
+    renderEntry.serverVy = vel.vy;
+    renderEntry.serverStatePerfAt = statePerfAt;
+    renderEntry.serverStateX = stateX;
+    renderEntry.serverStateY = stateY;
+  } else if (prevPerfAt <= 0) {
+    renderEntry.serverVx = 0;
+    renderEntry.serverVy = 0;
+    renderEntry.serverStatePerfAt = statePerfAt;
+    renderEntry.serverStateX = stateX;
+    renderEntry.serverStateY = stateY;
+  }
+
+  return {
+    x: stateX + (Number(renderEntry.serverVx) || 0) * extraSec,
+    y: stateY + (Number(renderEntry.serverVy) || 0) * extraSec,
+    vx: Number(renderEntry.serverVx) || 0,
+    vy: Number(renderEntry.serverVy) || 0,
+  };
 }
 
 function extrapolateSnapshotMap(previousList, latestList, dtMs, extraSec, options = {}) {
