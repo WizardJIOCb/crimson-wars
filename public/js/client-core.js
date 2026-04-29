@@ -131,10 +131,18 @@ const bossProgressEl = document.getElementById('boss-progress');
 const difficultyMetaEl = document.getElementById('difficulty-meta');
 const bossSpawnAlertEl = document.getElementById('boss-spawn-alert');
 const commentatorPanelEl = document.getElementById('commentator-panel');
+const commentatorPanelCloseBtn = document.getElementById('commentator-panel-close');
 const commentatorTitleEl = document.getElementById('commentator-title');
 const commentatorTextEl = document.getElementById('commentator-text');
 const commentatorVoiceToggleEl = document.getElementById('commentator-voice-toggle');
 const commentatorVoiceStatusEl = document.getElementById('commentator-voice-status');
+const commentatorVoiceVolumeEl = document.getElementById('commentator-voice-volume');
+const commentatorVoiceVolumeValueEl = document.getElementById('commentator-voice-volume-value');
+const commentatorQueueRateEl = document.getElementById('commentator-queue-rate');
+const commentatorQueueCurrentEl = document.getElementById('commentator-queue-current');
+const commentatorQueueCountEl = document.getElementById('commentator-queue-count');
+const commentatorQueueTotalEl = document.getElementById('commentator-queue-total');
+const commentatorQueueListEl = document.getElementById('commentator-queue-list');
 const replayLoadOverlayEl = document.getElementById('replay-load-overlay');
 const replayLoadLabelEl = document.getElementById('replay-load-label');
 const replayLoadFillEl = document.getElementById('replay-load-fill');
@@ -3044,7 +3052,11 @@ function setShowCommentatorEnabled(enabled) {
 showCommentatorToggleEl?.addEventListener('change', () => {
   setShowCommentatorEnabled(showCommentatorToggleEl.checked);
 });
+commentatorPanelCloseBtn?.addEventListener('click', () => {
+  setShowCommentatorEnabled(false);
+});
 setShowCommentatorEnabled(game.showCommentatorEnabled);
+window.setShowCommentatorEnabled = setShowCommentatorEnabled;
 
 function syncCommentatorVoiceSettingToggle(enabled, disabled = false) {
   if (!(commentatorVoiceSettingToggleEl instanceof HTMLInputElement)) return;

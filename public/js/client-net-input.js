@@ -726,17 +726,29 @@ const commentatorState = {
   wasLowHp: false,
 };
 const COMMENTATOR_TTS_STORAGE_KEY = 'cw:commentatorTtsEnabled';
+const COMMENTATOR_VOLUME_STORAGE_KEY = 'cw:commentatorVoiceVolume';
+const COMMENTATOR_QUEUE_MAX = 8;
+const COMMENTATOR_QUEUE_PREVIEW_MAX = 4;
 const commentatorSpeech = {
   supported: typeof window !== 'undefined' && 'speechSynthesis' in window && typeof window.SpeechSynthesisUtterance === 'function',
   enabled: false,
+  volume: 0.92,
   lastSpokenAt: 0,
+  lastRate: 0,
   activeSinceAt: 0,
+  activeItem: null,
   lastKey: '',
   lastQueuedText: '',
   activeKey: '',
   activeText: '',
   pendingTimer: 0,
+  volumeRestartTimer: 0,
   seq: 0,
+  totalQueued: 0,
+  totalStarted: 0,
+  totalSpoken: 0,
+  totalDropped: 0,
+  peakQueueLength: 0,
   recentKeys: new Map(),
   queue: [],
 };
@@ -745,11 +757,15 @@ let pendingFinalDeathCommentary = null;
 try {
   const storedCommentatorTts = localStorage.getItem(COMMENTATOR_TTS_STORAGE_KEY);
   commentatorSpeech.enabled = storedCommentatorTts === null ? true : storedCommentatorTts === '1';
+  const storedCommentatorVolume = localStorage.getItem(COMMENTATOR_VOLUME_STORAGE_KEY);
+  if (storedCommentatorVolume !== null) {
+    commentatorSpeech.volume = Math.max(0, Math.min(1, (Number(storedCommentatorVolume) || 0) / 100));
+  }
 } catch {
   commentatorSpeech.enabled = true;
 }
 
-function setCommentatorLine(title, text, eventKey = 'generic', cooldownMs = 6000) {
+function setCommentatorLine(title, text, eventKey = 'generic', cooldownMs = 6000, options = {}) {
   if (!commentatorTitleEl || !commentatorTextEl) return false;
   const now = Date.now();
   const key = String(eventKey || 'generic');
@@ -778,7 +794,7 @@ function setCommentatorLine(title, text, eventKey = 'generic', cooldownMs = 6000
       text: nextText,
     }, window.location.origin);
   }
-  maybeSpeakCommentary(nextTitle, nextText, key);
+  if (!options?.silent) maybeSpeakCommentary(nextTitle, nextText, key);
   return true;
 }
 
@@ -888,6 +904,91 @@ function getCommentatorVoice() {
     || null;
 }
 
+function getCommentatorVoiceVolume() {
+  return Math.max(0, Math.min(1, Number(commentatorSpeech.volume) || 0));
+}
+
+function renderCommentatorVoiceVolumeUi() {
+  const percent = Math.round(getCommentatorVoiceVolume() * 100);
+  if (commentatorVoiceVolumeEl instanceof HTMLInputElement) {
+    commentatorVoiceVolumeEl.value = String(percent);
+    commentatorVoiceVolumeEl.disabled = !commentatorSpeech.supported;
+    commentatorVoiceVolumeEl.title = percent <= 0
+      ? '\u0413\u043e\u043b\u043e\u0441 \u043a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0442\u043e\u0440\u0430 \u0432 \u043d\u0443\u043b\u0435'
+      : `\u0413\u0440\u043e\u043c\u043a\u043e\u0441\u0442\u044c: ${percent}%`;
+  }
+  if (commentatorVoiceVolumeValueEl) {
+    commentatorVoiceVolumeValueEl.textContent = `${percent}%`;
+  }
+}
+
+function setCommentatorVoiceVolume(value) {
+  const normalized = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
+  commentatorSpeech.volume = normalized / 100;
+  try {
+    localStorage.setItem(COMMENTATOR_VOLUME_STORAGE_KEY, String(normalized));
+  } catch {
+    // ignore storage failures
+  }
+  renderCommentatorVoiceVolumeUi();
+  scheduleCommentatorVoiceVolumeRestart();
+}
+
+function scheduleCommentatorVoiceVolumeRestart() {
+  if (!commentatorSpeech.supported || !commentatorSpeech.enabled || game.embedMode || document.hidden) return;
+  if (!commentatorSpeech.activeText) return;
+  if (!window.speechSynthesis.speaking && !window.speechSynthesis.pending) return;
+  if (commentatorSpeech.volumeRestartTimer) {
+    window.clearTimeout(commentatorSpeech.volumeRestartTimer);
+  }
+  commentatorSpeech.volumeRestartTimer = window.setTimeout(() => {
+    commentatorSpeech.volumeRestartTimer = 0;
+    restartActiveCommentarySpeechWithCurrentVolume();
+  }, 140);
+}
+
+function restartActiveCommentarySpeechWithCurrentVolume() {
+  if (!commentatorSpeech.supported || !commentatorSpeech.enabled || !commentatorSpeech.activeText) return;
+  const activeText = commentatorSpeech.activeText;
+  const activeItem = commentatorSpeech.activeItem || {
+    id: commentatorSpeech.totalQueued || 1,
+    key: commentatorSpeech.activeKey || 'commentator_volume_restart',
+    text: activeText,
+    queuedAt: Date.now(),
+    urgent: false,
+  };
+  commentatorSpeech.seq += 1;
+  try {
+    window.speechSynthesis.cancel();
+  } catch {
+    // ignore cancel failures
+  }
+  clearActiveCommentarySpeech();
+  if (commentatorSpeech.pendingTimer) {
+    window.clearTimeout(commentatorSpeech.pendingTimer);
+    commentatorSpeech.pendingTimer = 0;
+  }
+  if (getCommentatorVoiceVolume() > 0) {
+    commentatorSpeech.queue.unshift({
+      ...activeItem,
+      text: activeText,
+      queuedAt: Date.now(),
+      restartedForVolume: true,
+    });
+    while (commentatorSpeech.queue.length > COMMENTATOR_QUEUE_MAX) {
+      commentatorSpeech.queue.pop();
+      commentatorSpeech.totalDropped += 1;
+    }
+    commentatorSpeech.pendingTimer = window.setTimeout(() => {
+      commentatorSpeech.pendingTimer = 0;
+      flushCommentarySpeechQueue();
+    }, 90);
+  } else {
+    window.setTimeout(flushCommentarySpeechQueue, 90);
+  }
+  renderCommentatorSpeechMonitor();
+}
+
 function renderCommentatorVoiceUi() {
   if (commentatorVoiceToggleEl) {
     commentatorVoiceToggleEl.disabled = !commentatorSpeech.supported;
@@ -905,6 +1006,23 @@ function renderCommentatorVoiceUi() {
       ? 'Браузер не дал speech synthesis для озвучки.'
       : (commentatorSpeech.enabled ? 'Комментатор теперь говорит вслух.' : 'Нажми, чтобы комментатор начал говорить вслух.');
   }
+  if (commentatorVoiceToggleEl) {
+    commentatorVoiceToggleEl.textContent = commentatorSpeech.supported && commentatorSpeech.enabled
+      ? '\u041e\u0437\u0432\u0443\u0447\u043a\u0430: \u0432\u043a\u043b'
+      : '\u041e\u0437\u0432\u0443\u0447\u043a\u0430: \u0432\u044b\u043a\u043b';
+    commentatorVoiceToggleEl.title = commentatorSpeech.enabled
+      ? '\u0412\u044b\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u043e\u0437\u0432\u0443\u0447\u043a\u0443 \u043a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0442\u043e\u0440\u0430'
+      : '\u0412\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u043e\u0437\u0432\u0443\u0447\u043a\u0443 \u043a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0442\u043e\u0440\u0430';
+  }
+  if (commentatorVoiceStatusEl) {
+    commentatorVoiceStatusEl.textContent = !commentatorSpeech.supported
+      ? '\u0411\u0440\u0430\u0443\u0437\u0435\u0440 \u043d\u0435 \u0434\u0430\u043b speech synthesis \u0434\u043b\u044f \u043e\u0437\u0432\u0443\u0447\u043a\u0438.'
+      : (commentatorSpeech.enabled
+        ? '\u041a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0442\u043e\u0440 \u0433\u043e\u0442\u043e\u0432. \u041e\u0447\u0435\u0440\u0435\u0434\u044c \u0440\u0430\u0441\u0442\u0435\u0442 - \u0442\u0435\u043c\u043f \u0443\u0441\u043a\u043e\u0440\u044f\u0435\u0442\u0441\u044f.'
+        : '\u041d\u0430\u0436\u043c\u0438, \u0447\u0442\u043e\u0431\u044b \u043a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0442\u043e\u0440 \u043d\u0430\u0447\u0430\u043b \u0433\u043e\u0432\u043e\u0440\u0438\u0442\u044c \u0432\u0441\u043b\u0443\u0445.');
+  }
+  renderCommentatorVoiceVolumeUi();
+  renderCommentatorSpeechMonitor();
 }
 
 function setCommentatorVoiceEnabled(enabled) {
@@ -918,18 +1036,23 @@ function setCommentatorVoiceEnabled(enabled) {
     window.clearTimeout(commentatorSpeech.pendingTimer);
     commentatorSpeech.pendingTimer = 0;
   }
+  if (commentatorSpeech.volumeRestartTimer) {
+    window.clearTimeout(commentatorSpeech.volumeRestartTimer);
+    commentatorSpeech.volumeRestartTimer = 0;
+  }
   if (!commentatorSpeech.enabled && commentatorSpeech.supported) {
     commentatorSpeech.seq += 1;
-    commentatorSpeech.activeSinceAt = 0;
     commentatorSpeech.lastQueuedText = '';
-    commentatorSpeech.activeKey = '';
-    commentatorSpeech.activeText = '';
+    clearActiveCommentarySpeech();
     commentatorSpeech.queue = [];
     window.speechSynthesis.cancel();
   }
+  trimCommentarySpeechQueue();
+  renderCommentatorSpeechMonitor();
   renderCommentatorVoiceUi();
 }
 window.setCommentatorVoiceEnabled = setCommentatorVoiceEnabled;
+window.setCommentatorVoiceVolume = setCommentatorVoiceVolume;
 window.renderCommentatorVoiceUi = renderCommentatorVoiceUi;
 
 function normalizeCommentarySpeechKeyPart(value) {
@@ -947,7 +1070,89 @@ function isCommentaryUrgent(key, spokenText) {
   return /final_death|player_final_death|death|boss|downed|respawn_wait|respawn|critical|low hp|нокаут|нокдаун|умер|смерт|босс/.test(sample);
 }
 
+function getCommentatorSpeechRate(pressure = null) {
+  const queuePressure = Number.isFinite(Number(pressure))
+    ? Math.max(0, Number(pressure) || 0)
+    : Math.max(0, commentatorSpeech.queue.length + (commentatorSpeech.activeText ? 1 : 0));
+  const extra = Math.max(0, queuePressure - 1);
+  return Math.max(1.7, Math.min(3.35, 2.18 + Math.min(1.17, extra * 0.17)));
+}
+
+function summarizeCommentarySpeechText(value, maxLen = 74) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (text.length <= maxLen) return text;
+  return `${text.slice(0, Math.max(0, maxLen - 1)).trim()}...`;
+}
+
+function renderCommentatorSpeechMonitor() {
+  const queueCount = commentatorSpeech.queue.length;
+  const activeItem = commentatorSpeech.activeItem || null;
+  const activeId = activeItem?.id ? `#${activeItem.id}` : (commentatorSpeech.activeText ? '#' : '-');
+  const rate = commentatorSpeech.activeText
+    ? Math.max(0, Number(commentatorSpeech.lastRate) || getCommentatorSpeechRate())
+    : getCommentatorSpeechRate(queueCount);
+  if (commentatorQueueRateEl) commentatorQueueRateEl.textContent = commentatorSpeech.enabled ? `x${rate.toFixed(2)}` : 'off';
+  if (commentatorQueueCurrentEl) commentatorQueueCurrentEl.textContent = activeId;
+  if (commentatorQueueCountEl) commentatorQueueCountEl.textContent = String(queueCount);
+  if (commentatorQueueTotalEl) {
+    commentatorQueueTotalEl.textContent = `${commentatorSpeech.totalQueued}/${commentatorSpeech.totalSpoken}`;
+    commentatorQueueTotalEl.title = `Queued total: ${commentatorSpeech.totalQueued}; spoken: ${commentatorSpeech.totalSpoken}; dropped: ${commentatorSpeech.totalDropped}; peak: ${commentatorSpeech.peakQueueLength}`;
+  }
+  if (!commentatorQueueListEl) return;
+  const rows = [];
+  if (activeItem?.text || commentatorSpeech.activeText) {
+    rows.push({
+      cls: 'is-active',
+      label: '\u0413\u043e\u0432\u043e\u0440\u0438\u0442',
+      text: activeItem?.text || commentatorSpeech.activeText,
+    });
+  }
+  for (const item of commentatorSpeech.queue.slice(0, COMMENTATOR_QUEUE_PREVIEW_MAX)) {
+    rows.push({
+      cls: item.urgent ? 'is-urgent' : '',
+      label: item.urgent ? '\u0421\u0440\u043e\u0447\u043d\u043e' : `#${item.id || '?'}`,
+      text: item.text,
+    });
+  }
+  if (!rows.length) {
+    commentatorQueueListEl.innerHTML = '<div class="commentator-queue-empty">\u041e\u0447\u0435\u0440\u0435\u0434\u044c \u043e\u0437\u0432\u0443\u0447\u043a\u0438 \u043f\u0443\u0441\u0442\u0430</div>';
+    return;
+  }
+  const hiddenCount = Math.max(0, queueCount - COMMENTATOR_QUEUE_PREVIEW_MAX);
+  const itemsHtml = rows.map((row) => `
+    <div class="commentator-queue-item ${row.cls}">
+      <span class="commentator-queue-label">${escapeHtml(row.label)}</span>
+      <span class="commentator-queue-text">${escapeHtml(summarizeCommentarySpeechText(row.text))}</span>
+    </div>
+  `).join('');
+  const moreHtml = hiddenCount > 0
+    ? `<div class="commentator-queue-more">+\u0435\u0449\u0435 ${hiddenCount}</div>`
+    : '';
+  commentatorQueueListEl.innerHTML = itemsHtml + moreHtml;
+}
+
+function clearActiveCommentarySpeech({ countDropped = false } = {}) {
+  if (countDropped && (commentatorSpeech.activeText || commentatorSpeech.activeItem)) {
+    commentatorSpeech.totalDropped += 1;
+  }
+  commentatorSpeech.activeSinceAt = 0;
+  commentatorSpeech.activeKey = '';
+  commentatorSpeech.activeText = '';
+  commentatorSpeech.activeItem = null;
+  commentatorSpeech.lastRate = 0;
+  renderCommentatorSpeechMonitor();
+}
+
+function trimCommentarySpeechQueue() {
+  while (commentatorSpeech.queue.length > COMMENTATOR_QUEUE_MAX) {
+    commentatorSpeech.queue.shift();
+    commentatorSpeech.totalDropped += 1;
+  }
+  commentatorSpeech.peakQueueLength = Math.max(commentatorSpeech.peakQueueLength, commentatorSpeech.queue.length);
+}
+
 function flushCommentarySpeechQueue() {
+  renderCommentatorSpeechMonitor();
   if (!commentatorSpeech.supported || !commentatorSpeech.enabled || game.embedMode || document.hidden) return;
   if (commentatorSpeech.pendingTimer) return;
   if (commentatorSpeech.activeText) return;
@@ -959,6 +1164,7 @@ function flushCommentarySpeechQueue() {
     }, 80);
     return;
   }
+  const speechRate = getCommentatorSpeechRate(commentatorSpeech.queue.length + 1);
   const nextItem = commentatorSpeech.queue.shift();
   if (!nextItem?.text) return;
   const { key, text: queuedText } = nextItem;
@@ -967,6 +1173,10 @@ function flushCommentarySpeechQueue() {
   commentatorSpeech.activeSinceAt = Date.now();
   commentatorSpeech.activeKey = key || '';
   commentatorSpeech.activeText = spokenText;
+  commentatorSpeech.activeItem = { ...nextItem, text: spokenText };
+  commentatorSpeech.totalStarted += 1;
+  commentatorSpeech.lastRate = speechRate;
+  renderCommentatorSpeechMonitor();
   const voice = getCommentatorVoice();
   const utterance = new SpeechSynthesisUtterance(spokenText);
   if (voice) {
@@ -975,34 +1185,30 @@ function flushCommentarySpeechQueue() {
   } else {
     utterance.lang = 'ru-RU';
   }
-  utterance.rate = 2.8;
+  utterance.rate = speechRate;
   utterance.pitch = 0.92;
-  utterance.volume = 0.92;
+  utterance.volume = getCommentatorVoiceVolume();
   utterance.onstart = () => {
     if (speakSeq !== commentatorSpeech.seq) return;
     commentatorSpeech.lastSpokenAt = Date.now();
+    renderCommentatorSpeechMonitor();
   };
   utterance.onend = () => {
     if (speakSeq !== commentatorSpeech.seq) return;
-    commentatorSpeech.activeSinceAt = 0;
-    commentatorSpeech.activeKey = '';
-    commentatorSpeech.activeText = '';
+    commentatorSpeech.totalSpoken += 1;
+    clearActiveCommentarySpeech();
     window.setTimeout(flushCommentarySpeechQueue, 40);
   };
   utterance.onerror = () => {
     if (speakSeq !== commentatorSpeech.seq) return;
-    commentatorSpeech.activeSinceAt = 0;
-    commentatorSpeech.activeKey = '';
-    commentatorSpeech.activeText = '';
+    clearActiveCommentarySpeech();
     window.setTimeout(flushCommentarySpeechQueue, 40);
   };
   try {
     if (window.speechSynthesis.paused) window.speechSynthesis.resume();
     window.speechSynthesis.speak(utterance);
   } catch {
-    commentatorSpeech.activeSinceAt = 0;
-    commentatorSpeech.activeKey = '';
-    commentatorSpeech.activeText = '';
+    clearActiveCommentarySpeech();
     return;
   }
 }
@@ -1032,26 +1238,32 @@ function maybeSpeakCommentary(title, text, eventKey) {
     const oldestKey = commentatorSpeech.recentKeys.keys().next().value;
     if (oldestKey) commentatorSpeech.recentKeys.delete(oldestKey);
   }
+  const queueItem = {
+    id: commentatorSpeech.totalQueued + 1,
+    key,
+    text: spokenText,
+    queuedAt: now,
+    urgent,
+  };
+  commentatorSpeech.totalQueued = queueItem.id;
   if (urgent) {
-    commentatorSpeech.queue = [{ key, text: spokenText }];
+    commentatorSpeech.totalDropped += commentatorSpeech.queue.length;
+    commentatorSpeech.queue = [queueItem];
     if (commentatorSpeech.activeText) {
+      commentatorSpeech.seq += 1;
       try {
         window.speechSynthesis.cancel();
       } catch {
         // ignore cancel failures
       }
-      commentatorSpeech.activeSinceAt = 0;
-      commentatorSpeech.activeKey = '';
-      commentatorSpeech.activeText = '';
+      clearActiveCommentarySpeech({ countDropped: true });
     }
-  } else if (commentatorSpeech.activeText) {
-    commentatorSpeech.queue = [{ key, text: spokenText }];
   } else {
-    commentatorSpeech.queue.push({ key, text: spokenText });
-    if (commentatorSpeech.queue.length > 2) {
-      commentatorSpeech.queue.splice(0, commentatorSpeech.queue.length - 2);
-    }
+    commentatorSpeech.queue.push(queueItem);
+    trimCommentarySpeechQueue();
   }
+  commentatorSpeech.peakQueueLength = Math.max(commentatorSpeech.peakQueueLength, commentatorSpeech.queue.length);
+  renderCommentatorSpeechMonitor();
   if (commentatorSpeech.pendingTimer) {
     window.clearTimeout(commentatorSpeech.pendingTimer);
     commentatorSpeech.pendingTimer = 0;
@@ -1354,10 +1566,10 @@ function getExtraCommentaryVariants(eventKey = 'generic') {
   return [];
 }
 
-function setCommentaryVariant(variants, eventKey = 'generic', cooldownMs = 6000) {
+function setCommentaryVariant(variants, eventKey = 'generic', cooldownMs = 6000, options = {}) {
   const selected = pickCommentaryVariant([...(Array.isArray(variants) ? variants : []), ...getExtraCommentaryVariants(eventKey)], null);
   if (!selected) return false;
-  return setCommentatorLine(selected.title, selected.text, eventKey, cooldownMs);
+  return setCommentatorLine(selected.title, selected.text, eventKey, cooldownMs, options);
 }
 
 function maybeCommentateSystemMessage(message) {
@@ -1681,6 +1893,9 @@ function updateInGameCommentatorFromState(state) {
 commentatorVoiceToggleEl?.addEventListener('click', () => {
   setCommentatorVoiceEnabled(!commentatorSpeech.enabled);
 });
+commentatorVoiceVolumeEl?.addEventListener('input', () => {
+  setCommentatorVoiceVolume(commentatorVoiceVolumeEl.value);
+});
 if (commentatorSpeech.supported) {
   if (typeof window.speechSynthesis?.addEventListener === 'function') {
     window.speechSynthesis.addEventListener('voiceschanged', renderCommentatorVoiceUi);
@@ -1691,13 +1906,12 @@ if (commentatorSpeech.supported) {
 renderCommentatorVoiceUi();
 
 window.setInterval(() => {
+  renderCommentatorSpeechMonitor();
   if (!commentatorSpeech.supported || !commentatorSpeech.enabled || game.embedMode) return;
   const activeForMs = Date.now() - Math.max(0, commentatorSpeech.activeSinceAt || 0);
   const speechBusy = Boolean(window.speechSynthesis.speaking || window.speechSynthesis.pending);
   if (commentatorSpeech.activeText && !speechBusy && activeForMs > 1200) {
-    commentatorSpeech.activeSinceAt = 0;
-    commentatorSpeech.activeKey = '';
-    commentatorSpeech.activeText = '';
+    clearActiveCommentarySpeech();
     flushCommentarySpeechQueue();
     return;
   }
@@ -1707,9 +1921,7 @@ window.setInterval(() => {
     } catch {
       // ignore cancel failures
     }
-    commentatorSpeech.activeSinceAt = 0;
-    commentatorSpeech.activeKey = '';
-    commentatorSpeech.activeText = '';
+    clearActiveCommentarySpeech({ countDropped: true });
     window.setTimeout(flushCommentarySpeechQueue, 60);
   }
 }, 1200);
@@ -7567,15 +7779,27 @@ function clearLocalSessionState() {
     window.clearTimeout(commentatorSpeech.pendingTimer);
     commentatorSpeech.pendingTimer = 0;
   }
+  if (commentatorSpeech.volumeRestartTimer) {
+    window.clearTimeout(commentatorSpeech.volumeRestartTimer);
+    commentatorSpeech.volumeRestartTimer = 0;
+  }
   commentatorSpeech.lastKey = '';
   commentatorSpeech.activeSinceAt = 0;
+  commentatorSpeech.activeItem = null;
   commentatorSpeech.lastQueuedText = '';
   commentatorSpeech.activeKey = '';
   commentatorSpeech.activeText = '';
+  commentatorSpeech.lastRate = 0;
   commentatorSpeech.queue = [];
+  commentatorSpeech.totalQueued = 0;
+  commentatorSpeech.totalStarted = 0;
+  commentatorSpeech.totalSpoken = 0;
+  commentatorSpeech.totalDropped = 0;
+  commentatorSpeech.peakQueueLength = 0;
   commentatorSpeech.recentKeys.clear();
   commentatorSpeech.seq += 1;
   if (commentatorSpeech.supported) window.speechSynthesis.cancel();
+  renderCommentatorSpeechMonitor();
   if (commentatorTitleEl) commentatorTitleEl.textContent = 'Матч загружается. Сарказм прогревается.';
   if (commentatorTextEl) commentatorTextEl.textContent = 'Как только на карте начнётся хоть какая-то драма, я сразу это отмечу.';
   game.myId = null;
@@ -7701,6 +7925,10 @@ function openDeathOverlay(result) {
   }
   leaveActiveRoom();
   if (pendingFinalDeathCommentary?.title && pendingFinalDeathCommentary?.text) {
+    commentatorState.lastTitle = pendingFinalDeathCommentary.title;
+    commentatorState.lastText = pendingFinalDeathCommentary.text;
+    if (commentatorTitleEl) commentatorTitleEl.textContent = pendingFinalDeathCommentary.title;
+    if (commentatorTextEl) commentatorTextEl.textContent = pendingFinalDeathCommentary.text;
     maybeSpeakCommentary(
       pendingFinalDeathCommentary.title,
       pendingFinalDeathCommentary.text,
@@ -8184,7 +8412,7 @@ message: (ev) => {
               title: 'Очень смелое решение умереть именно здесь.',
               text: 'Зрелищно, внезапно и с тем самым послевкусием, когда хочется винить всё, кроме собственного позиционирования.',
             },
-          ], 'player_final_death', 6000);
+          ], 'player_final_death', 6000, { silent: true });
           pendingFinalDeathCommentary = {
             title: commentatorState.lastTitle,
             text: commentatorState.lastText,
