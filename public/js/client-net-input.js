@@ -2314,6 +2314,37 @@ function lerp(a, b, alpha) {
   return a + (b - a) * alpha;
 }
 
+function catmullRom1D(p0, p1, p2, p3, alpha) {
+  const t = Math.max(0, Math.min(1, Number(alpha) || 0));
+  const t2 = t * t;
+  const t3 = t2 * t;
+  return 0.5 * (
+    (2 * p1)
+    + (-p0 + p2) * t
+    + ((2 * p0) - (5 * p1) + (4 * p2) - p3) * t2
+    + (-p0 + (3 * p1) - (3 * p2) + p3) * t3
+  );
+}
+
+function sampleReplaySmoothCoord(prevItem, currentItem, nextItem, next2Item, coordIndex, alpha) {
+  const currentValue = Number(currentItem?.[coordIndex]) || 0;
+  const nextValue = Number(nextItem?.[coordIndex]);
+  if (!Number.isFinite(nextValue)) return currentValue;
+  const linear = lerp(currentValue, nextValue, alpha);
+  if (!Array.isArray(currentItem) || !Array.isArray(nextItem) || alpha <= 0 || alpha >= 1) return linear;
+
+  const prevValue = Number.isFinite(Number(prevItem?.[coordIndex])) ? (Number(prevItem?.[coordIndex]) || currentValue) : currentValue;
+  const next2Value = Number.isFinite(Number(next2Item?.[coordIndex])) ? (Number(next2Item?.[coordIndex]) || nextValue) : nextValue;
+  const curved = catmullRom1D(prevValue, currentValue, nextValue, next2Value, alpha);
+  if (!Number.isFinite(curved)) return linear;
+
+  const seg = Math.abs(nextValue - currentValue);
+  const pad = Math.min(180, Math.max(18, seg * 0.5));
+  const min = Math.min(currentValue, nextValue) - pad;
+  const max = Math.max(currentValue, nextValue) + pad;
+  return Math.max(min, Math.min(max, curved));
+}
+
 function getReplayDurationMs(payload) {
   const secondsMs = Math.max(0, Number(payload?.durationSec || 0) * 1000);
   const lastFrameMs = Math.max(0, Number(payload?.frames?.at(-1)?.t || 0));
@@ -2531,6 +2562,58 @@ function buildReplayCollisionFrame(current, next, alpha) {
     enemies: interpolateReplayRawTuples(current?.e, next?.e, alpha, 2, 3),
     players: interpolateReplayRawTuples(current?.p, next?.p, alpha, 1, 2),
   };
+}
+
+function buildReplayEmergingRecordedBullets(payload, current, next, alpha, elapsedMs) {
+  const target = Array.isArray(next?.b) ? next.b : [];
+  if (target.length <= 0) return [];
+  const sourceById = buildReplayRawTupleMap(current?.b);
+  const byBulletId = getReplayShotTimelineByBulletId(payload);
+  const currentT = Math.max(0, Number(current?.t) || 0);
+  const nextT = Math.max(currentT, Number(next?.t) || currentT);
+  const nowMs = Math.max(0, Number(elapsedMs) || 0);
+  const fallbackDtSec = Math.max(0.001, (nextT - currentT) / 1000 || 0.2);
+  const out = [];
+
+  for (const bullet of target) {
+    if (!isNewReplayBulletTuple(bullet)) continue;
+    const bulletId = String(bullet[0] ?? '');
+    if (!bulletId || sourceById.has(bulletId)) continue;
+
+    const event = byBulletId.get(bulletId);
+    const targetX = Number(bullet[1]) || 0;
+    const targetY = Number(bullet[2]) || 0;
+    let startX = targetX - (Number(bullet[3]) || 0) * Math.min(fallbackDtSec, 0.18);
+    let startY = targetY - (Number(bullet[4]) || 0) * Math.min(fallbackDtSec, 0.18);
+    let visibleAlpha = alpha;
+
+    if (event) {
+      const shotAt = Math.max(currentT, Math.min(nextT, Number(event.offsetMs) || currentT));
+      if (nowMs < shotAt) continue;
+      const denom = Math.max(1, nextT - shotAt);
+      visibleAlpha = Math.max(0, Math.min(1, (nowMs - shotAt) / denom));
+      startX = Number(event.x) || startX;
+      startY = Number(event.y) || startY;
+    }
+
+    out.push({
+      id: bulletId,
+      ownerId: bullet[9] || '',
+      ownerPlayerId: bullet[11] || '',
+      x: lerp(startX, targetX, visibleAlpha),
+      y: lerp(startY, targetY, visibleAlpha),
+      vx: Number(bullet[3]) || 0,
+      vy: Number(bullet[4]) || 0,
+      color: bullet[5] || (bullet[7] ? '#fb7185' : ((bullet[6] || 'bullet') === 'rocket' ? '#fb923c' : '#f8fafc')),
+      kind: bullet[6] || 'bullet',
+      radius: Math.max(2, Number(bullet[8]) || ((bullet[6] || 'bullet') === 'rocket' ? 6 : 3)),
+      fromEnemy: Boolean(bullet[7]),
+      weaponKey: bullet[10] || '',
+      shooterType: bullet[12] || '',
+    });
+  }
+
+  return out;
 }
 
 function interpolateReplayBullets(currentBullets, nextBullets, alpha, currentT, nextT, currentEnemies, nextEnemies, currentPlayers, nextPlayers) {
@@ -2912,21 +2995,23 @@ function getReplayShotEventImpact(payload, event) {
   return event.__replayImpact;
 }
 
-function buildReplaySyntheticShotBullets(payload, current, next, alpha, elapsedMs) {
+function buildReplaySyntheticShotBullets(payload, current, next, alpha, elapsedMs, visibleBulletIds = null) {
   const timeline = getReplayShotTimeline(payload);
   const out = [];
   const nowMs = Math.max(0, Number(elapsedMs) || 0);
   const collisionFrame = buildReplayCollisionFrame(current, next, alpha);
-  const currentBulletIds = new Set(
-    (Array.isArray(current?.b) ? current.b : [])
-      .map((bullet) => (Array.isArray(bullet) ? String(bullet[0] ?? '') : ''))
-      .filter(Boolean),
-  );
+  const blockedBulletIds = visibleBulletIds instanceof Set
+    ? visibleBulletIds
+    : new Set(
+      (Array.isArray(current?.b) ? current.b : [])
+        .map((bullet) => (Array.isArray(bullet) ? String(bullet[0] ?? '') : ''))
+        .filter(Boolean),
+    );
   for (const event of timeline) {
     const ageMs = nowMs - Math.max(0, Number(event.offsetMs) || 0);
     if (ageMs < 0 || ageMs > getReplayShotVisualLifeMs(event, payload)) continue;
     const bulletId = String(event?.bulletId ?? '');
-    if (bulletId && currentBulletIds.has(bulletId)) continue;
+    if (bulletId && blockedBulletIds.has(bulletId)) continue;
     const ageSec = ageMs / 1000;
     const bulletTuple = buildReplayShotBulletTuple(event);
     const impact = findReplayBulletImpact(bulletTuple, ageSec, collisionFrame.enemies, collisionFrame.players);
@@ -2970,7 +3055,19 @@ function buildReplayBulletsForElapsed(payload, current, next, alpha, elapsedMs) 
     next?.p,
   );
   if (getReplayShotTimelineByBulletId(payload).size <= 0) return recorded;
-  return recorded.concat(buildReplaySyntheticShotBullets(payload, current, next, alpha, elapsedMs));
+  const emerging = buildReplayEmergingRecordedBullets(payload, current, next, alpha, elapsedMs);
+  const visibleBulletIds = new Set();
+  for (const bullet of recorded) {
+    const bulletId = String(bullet?.id ?? '');
+    if (bulletId) visibleBulletIds.add(bulletId);
+  }
+  for (const bullet of emerging) {
+    const bulletId = String(bullet?.id ?? '');
+    if (bulletId) visibleBulletIds.add(bulletId);
+  }
+  return recorded
+    .concat(emerging)
+    .concat(buildReplaySyntheticShotBullets(payload, current, next, alpha, elapsedMs, visibleBulletIds));
 }
 
 function updateReplayGameSpeed(speed) {
@@ -2993,28 +3090,36 @@ function buildReplayState(payload, elapsedMs) {
   if (!current) return null;
 
   const nowMs = Number(payload?.startedAt || Date.now()) + Math.max(0, Number(elapsedMs) || 0);
+  const prevFrame = frames[Math.max(0, index - 1)] || current;
+  const next2Frame = frames[Math.min(frames.length - 1, index + 2)] || next;
+  const prevPlayers = frameEntityMap(prevFrame?.p);
   const nextPlayers = frameEntityMap(next?.p);
+  const next2Players = frameEntityMap(next2Frame?.p);
+  const prevEnemies = frameEntityMap(prevFrame?.e);
   const nextEnemies = frameEntityMap(next?.e);
+  const next2Enemies = frameEntityMap(next2Frame?.e);
+  const prevCompanions = frameEntityMap(prevFrame?.c);
   const nextCompanions = frameEntityMap(next?.c);
+  const next2Companions = frameEntityMap(next2Frame?.c);
   const playerList = [];
 
   for (const player of Array.isArray(current.p) ? current.p : []) {
     const nextPlayer = nextPlayers.get(player[0]) || player;
-    const x = lerp(player[1], nextPlayer[1], alpha);
-    const y = lerp(player[2], nextPlayer[2], alpha);
+    const prevPlayer = prevPlayers.get(player[0]) || player;
+    const next2Player = next2Players.get(player[0]) || nextPlayer;
+    const x = sampleReplaySmoothCoord(prevPlayer, player, nextPlayer, next2Player, 1, alpha);
+    const y = sampleReplaySmoothCoord(prevPlayer, player, nextPlayer, next2Player, 2, alpha);
     const level = Math.max(1, Math.floor(Number(player[14]) || 1));
     const xpToNext = Math.max(1, Math.floor(Number(player[16]) || 1));
     const hasRecordedAim = Number.isFinite(Number(player[20])) || Number.isFinite(Number(player[21]))
       || Number.isFinite(Number(nextPlayer[20])) || Number.isFinite(Number(nextPlayer[21]));
     const moveDx = (Number(nextPlayer[1]) || x) - (Number(player[1]) || x);
     const moveDy = (Number(nextPlayer[2]) || y) - (Number(player[2]) || y);
-    const aimStartX = Number.isFinite(Number(player[20])) ? (Number(player[20]) || x) : x;
-    const aimStartY = Number.isFinite(Number(player[21])) ? (Number(player[21]) || y) : y;
-    const aimEndX = Number.isFinite(Number(nextPlayer[20])) ? (Number(nextPlayer[20]) || Number(nextPlayer[1]) || x) : (Number(nextPlayer[1]) || x);
-    const aimEndY = Number.isFinite(Number(nextPlayer[21])) ? (Number(nextPlayer[21]) || Number(nextPlayer[2]) || y) : (Number(nextPlayer[2]) || y);
+    const aimXRecorded = sampleReplaySmoothCoord(prevPlayer, player, nextPlayer, next2Player, 20, alpha);
+    const aimYRecorded = sampleReplaySmoothCoord(prevPlayer, player, nextPlayer, next2Player, 21, alpha);
     const fallbackAim = resolveReplayAimTarget(payload, [player[0]], elapsedMs, x, y, moveDx, moveDy);
-    const aimX = hasRecordedAim ? lerp(aimStartX, aimEndX, alpha) : fallbackAim.x;
-    const aimY = hasRecordedAim ? lerp(aimStartY, aimEndY, alpha) : fallbackAim.y;
+    const aimX = hasRecordedAim ? aimXRecorded : fallbackAim.x;
+    const aimY = hasRecordedAim ? aimYRecorded : fallbackAim.y;
     const skills = (Array.isArray(player[9]) ? player[9] : []).map((skill) => ({
       id: skill[0] || '',
       level: Math.max(0, Number(skill[1]) || 0),
@@ -3074,14 +3179,14 @@ function buildReplayState(payload, elapsedMs) {
 
   for (const companion of Array.isArray(current.c) ? current.c : []) {
     const nextCompanion = nextCompanions.get(companion[0]) || companion;
-    const cx = lerp(companion[1], nextCompanion[1], alpha);
-    const cy = lerp(companion[2], nextCompanion[2], alpha);
+    const prevCompanion = prevCompanions.get(companion[0]) || companion;
+    const next2Companion = next2Companions.get(companion[0]) || nextCompanion;
+    const cx = sampleReplaySmoothCoord(prevCompanion, companion, nextCompanion, next2Companion, 1, alpha);
+    const cy = sampleReplaySmoothCoord(prevCompanion, companion, nextCompanion, next2Companion, 2, alpha);
     const hasRecordedCompanionAim = Number.isFinite(Number(companion[5])) || Number.isFinite(Number(companion[6]))
       || Number.isFinite(Number(nextCompanion[5])) || Number.isFinite(Number(nextCompanion[6]));
-    const companionAimStartX = Number.isFinite(Number(companion[5])) ? (Number(companion[5]) || cx) : (cx + 10);
-    const companionAimStartY = Number.isFinite(Number(companion[6])) ? (Number(companion[6]) || cy) : cy;
-    const companionAimEndX = Number.isFinite(Number(nextCompanion[5])) ? (Number(nextCompanion[5]) || Number(nextCompanion[1]) || cx) : ((Number(nextCompanion[1]) || cx) + 10);
-    const companionAimEndY = Number.isFinite(Number(nextCompanion[6])) ? (Number(nextCompanion[6]) || Number(nextCompanion[2]) || cy) : (Number(nextCompanion[2]) || cy);
+    const companionAimRecordedX = sampleReplaySmoothCoord(prevCompanion, companion, nextCompanion, next2Companion, 5, alpha);
+    const companionAimRecordedY = sampleReplaySmoothCoord(prevCompanion, companion, nextCompanion, next2Companion, 6, alpha);
     const companionFallbackAim = resolveReplayAimTarget(
       payload,
       [companion[0], companion[4]],
@@ -3104,8 +3209,8 @@ function buildReplayState(payload, elapsedMs) {
       weaponKey: companion[3] || 'pistol',
       weaponLabel: companion[3] || 'pistol',
       ammo: null,
-      aimX: hasRecordedCompanionAim ? lerp(companionAimStartX, companionAimEndX, alpha) : companionFallbackAim.x,
-      aimY: hasRecordedCompanionAim ? lerp(companionAimStartY, companionAimEndY, alpha) : companionFallbackAim.y,
+      aimX: hasRecordedCompanionAim ? companionAimRecordedX : companionFallbackAim.x,
+      aimY: hasRecordedCompanionAim ? companionAimRecordedY : companionFallbackAim.y,
       shooting: false,
       damageMul: 1,
       fireRateMul: 1,
@@ -3137,11 +3242,13 @@ function buildReplayState(payload, elapsedMs) {
 
   const enemies = (Array.isArray(current.e) ? current.e : []).map((enemy) => {
     const nextEnemy = nextEnemies.get(enemy[0]) || enemy;
+    const prevEnemy = prevEnemies.get(enemy[0]) || enemy;
+    const next2Enemy = next2Enemies.get(enemy[0]) || nextEnemy;
     return {
       id: enemy[0],
       type: enemy[1] || 'normal',
-      x: lerp(enemy[2], nextEnemy[2], alpha),
-      y: lerp(enemy[3], nextEnemy[3], alpha),
+      x: sampleReplaySmoothCoord(prevEnemy, enemy, nextEnemy, next2Enemy, 2, alpha),
+      y: sampleReplaySmoothCoord(prevEnemy, enemy, nextEnemy, next2Enemy, 3, alpha),
       hp: Math.max(0, Number(enemy[4]) || 0),
       maxHp: Math.max(1, Number(enemy[5]) || 1),
       radius: Math.max(18, Number(enemy[6]) || 18),
