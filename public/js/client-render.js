@@ -92,6 +92,143 @@ function drawCircle(x, y, r, fill) {
   ctx.fill();
 }
 
+function getProjectilePalette(projectile, fallback = '#f59e0b') {
+  const weaponKey = String(projectile?.weaponKey || '').toLowerCase();
+  const base = projectile?.color || fallback;
+  if (weaponKey.includes('sniper')) return { core: '#ffffff', hot: '#e0f2fe', edge: '#93c5fd', glow: '#38bdf8' };
+  if (weaponKey.includes('smg')) return { core: '#ecfeff', hot: '#a5f3fc', edge: '#22d3ee', glow: '#0891b2' };
+  if (weaponKey.includes('shotgun')) return { core: '#fff7ed', hot: '#fed7aa', edge: '#fb923c', glow: '#ef4444' };
+  return { core: '#fff7d6', hot: '#fde68a', edge: base, glow: '#fb923c' };
+}
+
+function drawEnergyProjectile(projectile) {
+  const speed = Math.hypot(Number(projectile.vx) || 0, Number(projectile.vy) || 0);
+  const dirX = speed > 0.001 ? (Number(projectile.vx) || 0) / speed : 1;
+  const dirY = speed > 0.001 ? (Number(projectile.vy) || 0) / speed : 0;
+  const sx = (Number(projectile.x) || 0) - camera.x;
+  const sy = (Number(projectile.y) || 0) - camera.y;
+  const radius = Math.max(2, Number(projectile.radius) || 3);
+  const palette = getProjectilePalette(projectile, projectile.color || '#f59e0b');
+  const weaponKey = String(projectile.weaponKey || '').toLowerCase();
+  const tracerLen = game.bulletTracersEnabled
+    ? Math.min(48, Math.max(18, speed * (weaponKey.includes('sniper') ? 0.018 : 0.034)))
+    : Math.max(8, radius * 2.4);
+  const tailX = sx - dirX * tracerLen;
+  const tailY = sy - dirY * tracerLen;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineCap = 'round';
+
+  if (game.bulletTracersEnabled) {
+    const beam = ctx.createLinearGradient(tailX, tailY, sx, sy);
+    beam.addColorStop(0, hexToRgba(palette.glow, 0));
+    beam.addColorStop(0.42, hexToRgba(palette.edge, 0.22));
+    beam.addColorStop(0.78, hexToRgba(palette.hot, 0.62));
+    beam.addColorStop(1, hexToRgba(palette.core, 0.95));
+
+    ctx.strokeStyle = hexToRgba(palette.glow, 0.18);
+    ctx.lineWidth = Math.max(4, radius * 2.4);
+    ctx.beginPath();
+    ctx.moveTo(tailX, tailY);
+    ctx.lineTo(sx, sy);
+    ctx.stroke();
+
+    ctx.strokeStyle = beam;
+    ctx.lineWidth = Math.max(2.2, radius * 1.25);
+    ctx.beginPath();
+    ctx.moveTo(tailX, tailY);
+    ctx.lineTo(sx, sy);
+    ctx.stroke();
+
+    ctx.strokeStyle = hexToRgba('#ffffff', weaponKey.includes('sniper') ? 0.75 : 0.52);
+    ctx.lineWidth = Math.max(0.9, radius * 0.42);
+    ctx.beginPath();
+    ctx.moveTo(sx - dirX * tracerLen * 0.36, sy - dirY * tracerLen * 0.36);
+    ctx.lineTo(sx + dirX * radius * 1.2, sy + dirY * radius * 1.2);
+    ctx.stroke();
+  }
+
+  const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, Math.max(8, radius * 4.2));
+  glow.addColorStop(0, hexToRgba(palette.core, 0.72));
+  glow.addColorStop(0.42, hexToRgba(palette.edge, 0.3));
+  glow.addColorStop(1, hexToRgba(palette.glow, 0));
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(sx, sy, Math.max(8, radius * 4.2), 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.translate(sx, sy);
+  ctx.rotate(Math.atan2(dirY, dirX));
+  ctx.fillStyle = palette.core;
+  ctx.beginPath();
+  ctx.moveTo(radius * 2.15, 0);
+  ctx.lineTo(-radius * 0.55, -radius * 0.78);
+  ctx.lineTo(-radius * 1.38, 0);
+  ctx.lineTo(-radius * 0.55, radius * 0.78);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = palette.hot;
+  ctx.fillRect(-radius * 0.65, -Math.max(0.7, radius * 0.22), radius * 1.9, Math.max(1.4, radius * 0.44));
+  ctx.restore();
+}
+
+function drawRocketProjectile(projectile) {
+  const angle = Math.atan2(Number(projectile.vy) || 0, Number(projectile.vx) || 1);
+  const sx = (Number(projectile.x) || 0) - camera.x;
+  const sy = (Number(projectile.y) || 0) - camera.y;
+  const color = projectile.color || '#fb923c';
+  drawShadowAtScreen(sx, sy + 5, 8, 3.5, 0.22);
+
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.rotate(angle);
+
+  ctx.globalCompositeOperation = 'lighter';
+  const flame = ctx.createLinearGradient(-22, 0, 0, 0);
+  flame.addColorStop(0, 'rgba(248,113,113,0)');
+  flame.addColorStop(0.45, hexToRgba(color, 0.3));
+  flame.addColorStop(1, 'rgba(255,245,180,0.82)');
+  ctx.fillStyle = flame;
+  ctx.beginPath();
+  ctx.moveTo(-23, 0);
+  ctx.lineTo(-8, -5.2);
+  ctx.lineTo(-3, 0);
+  ctx.lineTo(-8, 5.2);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = '#475569';
+  ctx.beginPath();
+  ctx.moveTo(-9, -4);
+  ctx.lineTo(6, -3.5);
+  ctx.lineTo(11, 0);
+  ctx.lineTo(6, 3.5);
+  ctx.lineTo(-9, 4);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = color;
+  ctx.fillRect(-5.5, -2.2, 9.5, 4.4);
+  ctx.fillStyle = '#f8fafc';
+  ctx.beginPath();
+  ctx.moveTo(4, -3.1);
+  ctx.lineTo(11, 0);
+  ctx.lineTo(4, 3.1);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = hexToRgba('#ffffff', 0.42);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(-6, -2.5);
+  ctx.lineTo(5.5, -2);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawShadowAtScreen(sx, sy, rx, ry, alpha = 0.28) {
   if (!game.shadowsEnabled) return;
   ctx.fillStyle = `rgba(0,0,0,${alpha})`;
@@ -1435,61 +1572,12 @@ function render(ts) {
     if (b?.replayHidden) continue;
     const rb = getBulletRenderPos(b);
     if (!rb) continue;
-    const bulletRadius = Math.max(2, Number(rb.radius) || Number(b.radius) || 3);
     const isRocket = String(rb.kind || b.kind || '').toLowerCase() === 'rocket';
     if (!isVisibleWorld(rb.x, rb.y, isRocket ? 24 : 12)) continue;
-    if (!isRocket && game.bulletTracersEnabled) {
-      const speed = Math.hypot(Number(rb.vx) || 0, Number(rb.vy) || 0);
-      if (speed > 8) {
-        const tracerLen = Math.min(26, Math.max(10, speed * 0.028));
-        const dirX = (Number(rb.vx) || 0) / speed;
-        const dirY = (Number(rb.vy) || 0) / speed;
-        const sx = rb.x - camera.x;
-        const sy = rb.y - camera.y;
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(sx, sy);
-        ctx.lineTo(sx - dirX * tracerLen, sy - dirY * tracerLen);
-        ctx.strokeStyle = b.color || rb.color || '#f59e0b';
-        ctx.globalAlpha = 0.4;
-        ctx.lineWidth = 2;
-        ctx.lineCap = 'round';
-        ctx.stroke();
-        ctx.restore();
-      }
-    }
     if (isRocket) {
-      const angle = Math.atan2(Number(rb.vy) || 0, Number(rb.vx) || 1);
-      const sx = rb.x - camera.x;
-      const sy = rb.y - camera.y;
-      drawShadowAtScreen(sx, sy + 5, 7, 3, 0.2);
-
-      ctx.save();
-      ctx.translate(sx, sy);
-      ctx.rotate(angle);
-      ctx.fillStyle = '#475569';
-      ctx.beginPath();
-      ctx.moveTo(-8, -3.4);
-      ctx.lineTo(6, -3);
-      ctx.lineTo(9, 0);
-      ctx.lineTo(6, 3);
-      ctx.lineTo(-8, 3.4);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.fillStyle = rb.color || b.color || '#fb923c';
-      ctx.fillRect(-5, -2, 9, 4);
-      ctx.fillStyle = '#e2e8f0';
-      ctx.beginPath();
-      ctx.moveTo(4, -2.8);
-      ctx.lineTo(9, 0);
-      ctx.lineTo(4, 2.8);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
+      drawRocketProjectile({ ...b, ...rb, color: rb.color || b.color || '#fb923c' });
     } else {
-      drawShadowAtScreen(rb.x - camera.x, rb.y - camera.y + 3, 3, 1.8, 0.18);
-      drawCircle(rb.x, rb.y, bulletRadius, rb.color || b.color || '#f59e0b');
+      drawEnergyProjectile({ ...b, ...rb, color: rb.color || b.color || '#f59e0b' });
     }
   }
   drawEnemies(game.state.enemies, ts / 1000);

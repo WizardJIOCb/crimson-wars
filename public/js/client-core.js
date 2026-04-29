@@ -3004,7 +3004,7 @@ function playGameSfx(name, options = {}) {
     normalized.voiceGroup = 'reload:all';
     normalized.maxVoices = 6;
     normalized.minGapMs = 0;
-    normalized.volume = (Number(normalized.volume) || 1) * 0.45;
+    normalized.volume = (Number(normalized.volume) || 1) * 0.34;
     normalized.rateMin = 0.98;
     normalized.rateMax = 1.02;
   }
