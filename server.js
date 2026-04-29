@@ -4614,6 +4614,11 @@ function buildReplayFrameBase(room, now) {
       Math.max(0, Math.round((Number(p.dodgeInvulnUntil) || 0) - now)),
       roundReplayCoord(Number(p.aimX) || p.x),
       roundReplayCoord(Number(p.aimY) || p.y),
+      Math.max(0, Math.floor(Number(p.weaponMagazine) || 0)),
+      Math.max(1, Math.floor(Number(WEAPONS[p.weaponKey]?.magazineSize) || 1)),
+      Number.isFinite(Number(p.weaponReserveAmmo)) ? Math.max(0, Math.floor(Number(p.weaponReserveAmmo) || 0)) : -1,
+      Math.max(0, Math.round(Number(p.weaponReloadLeftMs) || 0)),
+      Math.max(120, Math.round(Number(WEAPONS[p.weaponKey]?.reloadMs) || 900)),
     ];
   });
   const companions = (room.companions || []).map((companion) => ([
@@ -4624,6 +4629,10 @@ function buildReplayFrameBase(room, now) {
     companion.ownerId || '',
     roundReplayCoord(Number(companion.aimX) || companion.x),
     roundReplayCoord(Number(companion.aimY) || companion.y),
+    Math.max(0, Math.floor(Number(companion.weaponMagazine) || 0)),
+    getWeaponMagazineSize(companion.weaponKey),
+    Math.max(0, Math.round(Number(companion.weaponReloadLeftMs) || 0)),
+    getWeaponReloadMs(companion.weaponKey),
   ]));
   const enemies = room.enemies.map((e) => ([
     e.id,

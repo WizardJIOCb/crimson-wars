@@ -2345,6 +2345,29 @@ function sampleReplaySmoothCoord(prevItem, currentItem, nextItem, next2Item, coo
   return Math.max(min, Math.min(max, curved));
 }
 
+function getReplayFallbackMagazineSize(weaponKey) {
+  const normalized = String(weaponKey || 'pistol').toLowerCase();
+  if (normalized === 'sniper') return 5;
+  if (normalized === 'shotgun') return 8;
+  if (normalized === 'smg') return 36;
+  return 12;
+}
+
+function getReplayFallbackReloadMs(weaponKey) {
+  const normalized = String(weaponKey || 'pistol').toLowerCase();
+  if (normalized === 'sniper') return 1400;
+  if (normalized === 'shotgun') return 1100;
+  if (normalized === 'smg') return 1250;
+  return 900;
+}
+
+function sampleReplayDiscreteValue(currentItem, nextItem, index, alpha, fallbackValue = 0) {
+  const useNext = Math.max(0, Math.min(1, Number(alpha) || 0)) >= 0.5;
+  const value = useNext ? nextItem?.[index] : currentItem?.[index];
+  if (value === undefined || value === null || value === '') return fallbackValue;
+  return value;
+}
+
 function getReplayDurationMs(payload) {
   const secondsMs = Math.max(0, Number(payload?.durationSec || 0) * 1000);
   const lastFrameMs = Math.max(0, Number(payload?.frames?.at(-1)?.t || 0));
@@ -3228,6 +3251,9 @@ function buildReplayState(payload, elapsedMs) {
     const next2Player = next2Players.get(player[0]) || nextPlayer;
     const x = sampleReplaySmoothCoord(prevPlayer, player, nextPlayer, next2Player, 1, alpha);
     const y = sampleReplaySmoothCoord(prevPlayer, player, nextPlayer, next2Player, 2, alpha);
+    const weaponKey = player[5] || 'pistol';
+    const fallbackMagazineSize = getReplayFallbackMagazineSize(weaponKey);
+    const fallbackReloadTotalMs = getReplayFallbackReloadMs(weaponKey);
     const level = Math.max(1, Math.floor(Number(player[14]) || 1));
     const xpToNext = Math.max(1, Math.floor(Number(player[16]) || 1));
     const hasRecordedAim = Number.isFinite(Number(player[20])) || Number.isFinite(Number(player[21]))
@@ -3252,6 +3278,12 @@ function buildReplayState(payload, elapsedMs) {
     const dodgeInvulnLeftMs = Math.max(0, Number(player[19]) || 0);
     const frameNowMs = Number(payload?.startedAt || Date.now()) + Math.max(0, Number(current?.t) || 0);
     const dodgeInvulnUntil = dodgeInvulnLeftMs > 0 ? (frameNowMs + dodgeInvulnLeftMs) : 0;
+    const magazineSize = Math.max(1, Math.floor(Number(sampleReplayDiscreteValue(player, nextPlayer, 23, alpha, fallbackMagazineSize)) || fallbackMagazineSize));
+    const magazineAmmo = Math.max(0, Math.floor(Number(sampleReplayDiscreteValue(player, nextPlayer, 22, alpha, magazineSize)) || 0));
+    const reserveAmmoRaw = Number(sampleReplayDiscreteValue(player, nextPlayer, 24, alpha, -1));
+    const reserveAmmo = Number.isFinite(reserveAmmoRaw) && reserveAmmoRaw >= 0 ? Math.max(0, Math.floor(reserveAmmoRaw)) : null;
+    const reloadLeftMs = Math.max(0, Math.round(lerp(Number(player[25]) || 0, Number(nextPlayer[25]) || 0, alpha)));
+    const reloadTotalMs = Math.max(1, Math.round(Number(sampleReplayDiscreteValue(player, nextPlayer, 26, alpha, fallbackReloadTotalMs)) || fallbackReloadTotalMs));
     playerList.push({
       id: player[0],
       name: player[0] === payload?.playerId ? (payload?.playerName || 'Replay') : `Player ${String(player[0]).slice(0, 4)}`,
@@ -3262,9 +3294,14 @@ function buildReplayState(payload, elapsedMs) {
       alive: Boolean(player[4]),
       score: Math.max(0, Number(player[8]) || 0),
       kills: Math.max(0, Number(player[7]) || 0),
-      weaponKey: player[5] || 'pistol',
-      weaponLabel: player[5] || 'pistol',
-      ammo: null,
+      weaponKey,
+      weaponLabel: weaponKey,
+      ammo: reserveAmmo,
+      magazineAmmo,
+      magazineSize,
+      reserveAmmo,
+      reloadLeftMs,
+      reloadTotalMs,
       aimX,
       aimY,
       shooting: false,
@@ -3302,6 +3339,9 @@ function buildReplayState(payload, elapsedMs) {
     const next2Companion = next2Companions.get(companion[0]) || nextCompanion;
     const cx = sampleReplaySmoothCoord(prevCompanion, companion, nextCompanion, next2Companion, 1, alpha);
     const cy = sampleReplaySmoothCoord(prevCompanion, companion, nextCompanion, next2Companion, 2, alpha);
+    const companionWeaponKey = companion[3] || 'pistol';
+    const companionFallbackMagazineSize = getReplayFallbackMagazineSize(companionWeaponKey);
+    const companionFallbackReloadTotalMs = getReplayFallbackReloadMs(companionWeaponKey);
     const hasRecordedCompanionAim = Number.isFinite(Number(companion[5])) || Number.isFinite(Number(companion[6]))
       || Number.isFinite(Number(nextCompanion[5])) || Number.isFinite(Number(nextCompanion[6]));
     const companionAimRecordedX = sampleReplaySmoothCoord(prevCompanion, companion, nextCompanion, next2Companion, 5, alpha);
@@ -3325,9 +3365,14 @@ function buildReplayState(payload, elapsedMs) {
       alive: true,
       score: 0,
       kills: 0,
-      weaponKey: companion[3] || 'pistol',
-      weaponLabel: companion[3] || 'pistol',
+      weaponKey: companionWeaponKey,
+      weaponLabel: companionWeaponKey,
       ammo: null,
+      magazineAmmo: Math.max(0, Math.floor(Number(sampleReplayDiscreteValue(companion, nextCompanion, 7, alpha, companionFallbackMagazineSize)) || 0)),
+      magazineSize: Math.max(1, Math.floor(Number(sampleReplayDiscreteValue(companion, nextCompanion, 8, alpha, companionFallbackMagazineSize)) || companionFallbackMagazineSize)),
+      reserveAmmo: null,
+      reloadLeftMs: Math.max(0, Math.round(lerp(Number(companion[9]) || 0, Number(nextCompanion[9]) || 0, alpha))),
+      reloadTotalMs: Math.max(1, Math.round(Number(sampleReplayDiscreteValue(companion, nextCompanion, 10, alpha, companionFallbackReloadTotalMs)) || companionFallbackReloadTotalMs)),
       aimX: hasRecordedCompanionAim ? companionAimRecordedX : companionFallbackAim.x,
       aimY: hasRecordedCompanionAim ? companionAimRecordedY : companionFallbackAim.y,
       shooting: false,
