@@ -4287,9 +4287,16 @@ function pushNetSnapshot(state) {
       x: p.x,
       y: p.y,
       alive: Boolean(p.alive),
+      moveSpeed: Math.max(0, Number(p.moveSpeed) || 0),
       dodgeInvulnUntil: Number(p.dodgeInvulnUntil) || 0,
     })),
-    enemies: state.enemies.map((e) => ({ id: e.id, x: e.x, y: e.y, faceLeft: Boolean(e.faceLeft) })),
+    enemies: state.enemies.map((e) => ({
+      id: e.id,
+      type: e.type || 'normal',
+      x: e.x,
+      y: e.y,
+      faceLeft: Boolean(e.faceLeft),
+    })),
     bullets: state.bullets.map((b) => ({
       id: b.id ?? `${b.x.toFixed(1)}:${b.y.toFixed(1)}`,
       ownerId: b.ownerId || '',
@@ -4317,6 +4324,54 @@ function mapById(list) {
   return out;
 }
 
+function deriveSnapshotVelocity(prevItem, nextItem, dtMs, maxSpeed = 0) {
+  const fallback = {
+    vx: Number(nextItem?.vx) || 0,
+    vy: Number(nextItem?.vy) || 0,
+  };
+  if (!prevItem || dtMs <= 0) return fallback;
+
+  let vx = ((Number(nextItem?.x) || 0) - (Number(prevItem?.x) || 0)) / Math.max(0.001, dtMs / 1000);
+  let vy = ((Number(nextItem?.y) || 0) - (Number(prevItem?.y) || 0)) / Math.max(0.001, dtMs / 1000);
+
+  const speed = Math.hypot(vx, vy);
+  const cappedSpeed = Math.max(0, Number(maxSpeed) || 0);
+  if (cappedSpeed > 0 && speed > cappedSpeed) {
+    const scale = cappedSpeed / Math.max(0.001, speed);
+    vx *= scale;
+    vy *= scale;
+  }
+
+  return { vx, vy };
+}
+
+function extrapolateSnapshotMap(previousList, latestList, dtMs, extraSec, options = {}) {
+  const latest = Array.isArray(latestList) ? latestList : [];
+  const previous = mapById(Array.isArray(previousList) ? previousList : []);
+  const out = new Map();
+  const resolveMaxSpeed = typeof options.resolveMaxSpeed === 'function' ? options.resolveMaxSpeed : null;
+  const includeVelocity = options.withVel === true;
+
+  for (const item of latest) {
+    const prevItem = previous.get(item.id);
+    const aliveKnown = typeof prevItem?.alive === 'boolean' && typeof item?.alive === 'boolean';
+    const aliveChanged = aliveKnown && (Boolean(prevItem.alive) !== Boolean(item.alive));
+    const maxSpeed = resolveMaxSpeed ? Math.max(0, Number(resolveMaxSpeed(item, prevItem)) || 0) : 0;
+    const vel = deriveSnapshotVelocity(prevItem, item, dtMs, maxSpeed);
+    const canAdvance = extraSec > 0 && !aliveChanged && (typeof item?.alive !== 'boolean' || Boolean(item.alive));
+
+    out.set(item.id, {
+      ...item,
+      x: canAdvance ? ((Number(item.x) || 0) + vel.vx * extraSec) : (Number(item.x) || 0),
+      y: canAdvance ? ((Number(item.y) || 0) + vel.vy * extraSec) : (Number(item.y) || 0),
+      vx: includeVelocity ? vel.vx : (Number(item.vx) || 0),
+      vy: includeVelocity ? vel.vy : (Number(item.vy) || 0),
+    });
+  }
+
+  return out;
+}
+
 function sampleBufferedState() {
   const snaps = game.netSnapshots;
   if (snaps.length === 0) return null;
@@ -4335,6 +4390,8 @@ function sampleBufferedState() {
 
   if (target >= snaps[snaps.length - 1].t) {
     const latest = snaps[snaps.length - 1];
+    const previous = snaps.length > 1 ? snaps[snaps.length - 2] : null;
+    const latestDtMs = previous ? Math.max(1, latest.t - previous.t) : 0;
     const extraMs = Math.min(roomSync.maxExtrapolationMs, target - latest.t);
     const extraSec = Math.max(0, extraMs / 1000);
 
@@ -4345,10 +4402,23 @@ function sampleBufferedState() {
     }));
 
     return {
-      players: mapById(latest.players),
-      enemies: mapById(latest.enemies),
+      players: extrapolateSnapshotMap(previous?.players, latest.players, latestDtMs, extraSec, {
+        resolveMaxSpeed: (item) => {
+          const baseSpeed = Math.max(0, Number(item?.moveSpeed) || 0);
+          const dodgeActive = Number(item?.dodgeInvulnUntil) > Date.now();
+          return Math.max(260, baseSpeed * (dodgeActive ? 2.8 : 1.9));
+        },
+      }),
+      enemies: extrapolateSnapshotMap(previous?.enemies, latest.enemies, latestDtMs, extraSec, {
+        resolveMaxSpeed: (item) => {
+          const type = String(item?.type || '').toLowerCase();
+          if (type === 'boss') return 900;
+          if (type === 'charger') return 720;
+          return 520;
+        },
+      }),
       bullets: mapById(bullets),
-      xpOrbs: mapById(latest.xpOrbs || []),
+      xpOrbs: extrapolateSnapshotMap(previous?.xpOrbs || [], latest.xpOrbs || [], latestDtMs, extraSec),
     };
   }
 

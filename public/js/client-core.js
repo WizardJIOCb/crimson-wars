@@ -680,9 +680,24 @@ function isSpectatorSmoothingView() {
   return Boolean(game?.spectating);
 }
 
+function getObservedStateIntervalMs() {
+  const samples = Array.isArray(netStats?.stateIntervals) ? netStats.stateIntervals.filter((value) => Number.isFinite(value) && value > 0) : [];
+  if (samples.length > 0) {
+    const sorted = [...samples].sort((a, b) => a - b);
+    const p75Index = Math.min(sorted.length - 1, Math.floor(sorted.length * 0.75));
+    return Math.max(1, Number(sorted[p75Index]) || 0);
+  }
+  const fallbackHz = Math.max(1, Number(netStats?.stateHz) || Number(roomSync.stateSendHz) || ROOM_SYNC_PRESETS.normal.stateSendHz);
+  return 1000 / fallbackHz;
+}
+
 function getEffectiveNetRenderDelayMs() {
   const base = Math.max(0, Number(roomSync.netRenderDelayMs) || ROOM_SYNC_PRESETS.normal.netRenderDelayMs);
-  return isSpectatorSmoothingView() ? Math.max(base, SPECTATOR_RENDER_DELAY_MIN_MS) : base;
+  const observedIntervalMs = getObservedStateIntervalMs();
+  const jitterPadMs = Math.min(42, Math.max(0, Number(netStats?.jitterMs) || 0) * 1.35);
+  const adaptiveDelayMs = Math.min(250, observedIntervalMs * 1.08 + jitterPadMs);
+  const desiredDelayMs = Math.max(base, adaptiveDelayMs);
+  return isSpectatorSmoothingView() ? Math.max(desiredDelayMs, SPECTATOR_RENDER_DELAY_MIN_MS) : desiredDelayMs;
 }
 
 function getEffectiveEntityInterpRate() {
@@ -2192,8 +2207,8 @@ function updateStateDelayEstimate() {
   }
   const nowPerf = performance.now();
   const stalenessMs = Math.max(0, nowPerf - netStats.lastStateAt);
-  const expectedTickMs = 1000 / Math.max(1, roomSync.tickRate || 45);
-  const backlogMs = Math.max(0, stalenessMs - expectedTickMs * 1.2);
+  const expectedStateMs = getObservedStateIntervalMs();
+  const backlogMs = Math.max(0, stalenessMs - expectedStateMs * 1.15);
   netStats.stateDelayMs = getEffectiveNetRenderDelayMs() + backlogMs;
 }
 
