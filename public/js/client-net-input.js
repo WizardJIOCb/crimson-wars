@@ -4507,6 +4507,38 @@ function isCompactLiveSkillOrbTuple(orb) {
   return Array.isArray(orb) && orb.length >= 6;
 }
 
+function ageLiveTimedList(list, deltaMs, options = {}) {
+  const source = Array.isArray(list) ? list : [];
+  const dtMs = Math.max(0, Number(deltaMs) || 0);
+  const ttlMaxMsDefault = Math.max(0, Number(options.ttlMaxMsDefault) || 0);
+  const keepExpired = options.keepExpired === true;
+  const out = [];
+  for (const item of source) {
+    if (!item || typeof item !== 'object') continue;
+    const next = { ...item };
+    if (Number.isFinite(Number(next.ttlMs))) next.ttlMs = Math.max(0, Number(next.ttlMs) - dtMs);
+    if (!Number.isFinite(Number(next.ttlMaxMs)) && ttlMaxMsDefault > 0) next.ttlMaxMs = ttlMaxMsDefault;
+    if (!keepExpired && Number.isFinite(Number(next.ttlMs)) && next.ttlMs <= 0) continue;
+    out.push(next);
+  }
+  return out;
+}
+
+function carryForwardOmittedRealtimeCollections(state, previousState = null) {
+  if (!state || typeof state !== 'object' || !previousState || typeof previousState !== 'object') return state;
+  const deltaMs = Math.max(0, (Number(state.now) || 0) - (Number(previousState.now) || 0));
+  if (!Array.isArray(state.drops) && Array.isArray(previousState.drops)) {
+    state.drops = ageLiveTimedList(previousState.drops, deltaMs, { ttlMaxMsDefault: 20000 });
+  }
+  if (!Array.isArray(state.xpOrbs) && Array.isArray(previousState.xpOrbs)) {
+    state.xpOrbs = ageLiveTimedList(previousState.xpOrbs, deltaMs, { ttlMaxMsDefault: 14000 });
+  }
+  if (!Array.isArray(state.skillOrbs) && Array.isArray(previousState.skillOrbs)) {
+    state.skillOrbs = ageLiveTimedList(previousState.skillOrbs, deltaMs, { ttlMaxMsDefault: 15000 });
+  }
+  return state;
+}
+
 function normalizeLiveStatePayload(state) {
   if (!state || typeof state !== 'object') return state;
 
@@ -4534,6 +4566,7 @@ function normalizeLiveStatePayload(state) {
         x: Number(orb[1]) || 0,
         y: Number(orb[2]) || 0,
         ttlMs: Math.max(0, Number(orb[3]) || 0),
+        ttlMaxMs: 14000,
       };
     });
   }
@@ -4551,6 +4584,7 @@ function normalizeLiveStatePayload(state) {
         weaponKey: kind === 'xp_vacuum' ? null : weaponKey,
         weaponLabel: kind === 'xp_vacuum' ? 'XP Surge' : (weaponKey || 'Weapon'),
         ttlMs: Math.max(0, Number(drop[5]) || 0),
+        ttlMaxMs: 20000,
       };
     });
   }
@@ -4565,6 +4599,7 @@ function normalizeLiveStatePayload(state) {
         x: Number(orb[3]) || 0,
         y: Number(orb[4]) || 0,
         ttlMs: Math.max(0, Number(orb[5]) || 0),
+        ttlMaxMs: 15000,
       };
     });
   }
@@ -5399,7 +5434,9 @@ message: (ev) => {
   if (msg.type === 'state') {
     waitingForFirstState = false;
     waitingForFirstStateSince = 0;
+    const previousState = game.state;
     const s = normalizeLiveStatePayload(msg.payload);
+    carryForwardOmittedRealtimeCollections(s, previousState);
     if ((!s.decor || !Array.isArray(s.decor.trees)) && game.state?.decor) {
       s.decor = game.state.decor;
     }

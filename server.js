@@ -217,6 +217,8 @@ const processStartedAt = Date.now();
 const REPLAY_CAPTURE_INTERVAL_MS = Math.max(100, Number(process.env.REPLAY_CAPTURE_INTERVAL_MS) || 350);
 const REPLAY_FRAME_LIMIT = 14400;
 const REPLAY_CHAT_LIMIT = 240;
+const REPLAY_DROP_SAMPLE_LIMIT = Math.max(8, Number(process.env.REPLAY_DROP_SAMPLE_LIMIT) || 28);
+const REPLAY_XP_ORB_SAMPLE_LIMIT = Math.max(24, Number(process.env.REPLAY_XP_ORB_SAMPLE_LIMIT) || 96);
 const COMPANION_SYNC_INTERVAL_MS = Math.max(80, Number(process.env.COMPANION_SYNC_INTERVAL_MS) || 220);
 const WS_STATE_BACKPRESSURE_BYTES = Math.max(64 * 1024, Number(process.env.WS_STATE_BACKPRESSURE_BYTES) || (256 * 1024));
 const XP_SURGE_DURATION_MS = 3200;
@@ -234,6 +236,8 @@ const RUNTIME_DIAG_STATE_BYTES = Math.max(1024, Number(process.env.RUNTIME_DIAG_
 const RUNTIME_DIAG_BUFFERED_BYTES = Math.max(1024, Number(process.env.RUNTIME_DIAG_BUFFERED_BYTES) || WS_STATE_BACKPRESSURE_BYTES);
 const runtimeDiagLastRoomLogAt = new Map();
 const ADAPTIVE_STATE_SEND_ENABLED = (process.env.ADAPTIVE_STATE_SEND_ENABLED || '1') !== '0';
+const REALTIME_STATIC_COLLECTION_RESEND_MS = Math.max(150, Number(process.env.REALTIME_STATIC_COLLECTION_RESEND_MS) || 900);
+const REALTIME_XP_ORB_STATIC_RESEND_MS = Math.max(100, Number(process.env.REALTIME_XP_ORB_STATIC_RESEND_MS) || 280);
 
 setMysqlSyncMonitor(USE_MYSQL_STORE ? {
   enabled: true,
@@ -2434,6 +2438,7 @@ function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode, reques
       drops: [],
       xpOrbs: [],
       skillOrbs: [],
+      hasMovingXpOrbs: false,
       chatHistory: [],
       xpMagnetPlayerId: '',
       xpMagnetUntil: 0,
@@ -2456,6 +2461,12 @@ function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode, reques
       lastCompanionSyncAt: 0,
       startedAt,
       trees: generateTrees(),
+      realtimeCollectionState: {
+        drops: { version: 1, lastSentVersion: 0, lastSentAt: 0 },
+        xpOrbs: { version: 1, lastSentVersion: 0, lastSentAt: 0 },
+        skillOrbs: { version: 1, lastSentVersion: 0, lastSentAt: 0 },
+      },
+      lastTickDiag: null,
     });
     publishRuntimeRegistry();
   }
@@ -2505,6 +2516,7 @@ function collectRoomRuntimeSnapshot(room) {
     enemies: Array.isArray(room.enemies) ? room.enemies.length : 0,
     bullets: Array.isArray(room.bullets) ? room.bullets.length : 0,
     xpOrbs: Array.isArray(room.xpOrbs) ? room.xpOrbs.length : 0,
+    movingXpOrbs: Math.max(0, Number(room?.lastTickDiag?.movingXpOrbs) || 0),
     drops: Array.isArray(room.drops) ? room.drops.length : 0,
     skillOrbs: Array.isArray(room.skillOrbs) ? room.skillOrbs.length : 0,
     shotEvents: Array.isArray(room.shotEvents) ? room.shotEvents.length : 0,
@@ -2514,6 +2526,71 @@ function collectRoomRuntimeSnapshot(room) {
     maxBufferedAmount: socketStats.maxBufferedAmount,
     totalBufferedAmount: socketStats.totalBufferedAmount,
   };
+}
+
+function ensureRealtimeCollectionState(room, key) {
+  if (!room || !key) return { version: 1, lastSentVersion: 0, lastSentAt: 0 };
+  if (!room.realtimeCollectionState || typeof room.realtimeCollectionState !== 'object') room.realtimeCollectionState = {};
+  if (!room.realtimeCollectionState[key] || typeof room.realtimeCollectionState[key] !== 'object') {
+    room.realtimeCollectionState[key] = { version: 1, lastSentVersion: 0, lastSentAt: 0 };
+  }
+  return room.realtimeCollectionState[key];
+}
+
+function bumpRealtimeCollectionVersion(room, key) {
+  const state = ensureRealtimeCollectionState(room, key);
+  state.version = Math.max(1, Number(state.version) || 1) + 1;
+  return state.version;
+}
+
+function shouldIncludeRealtimeCollection(room, key, now, options = {}) {
+  const state = ensureRealtimeCollectionState(room, key);
+  const resendMs = Math.max(0, Number(options.resendMs) || REALTIME_STATIC_COLLECTION_RESEND_MS);
+  const force = options.force === true;
+  if (force || state.lastSentVersion !== state.version || (now - Math.max(0, Number(state.lastSentAt) || 0)) >= resendMs) {
+    state.lastSentVersion = state.version;
+    state.lastSentAt = now;
+    return true;
+  }
+  return false;
+}
+
+function sampleListEvenly(list, limit) {
+  const source = Array.isArray(list) ? list : [];
+  const maxItems = Math.max(1, Math.floor(Number(limit) || 0));
+  if (source.length <= maxItems) return source;
+  const out = [];
+  const step = source.length / maxItems;
+  for (let i = 0; out.length < maxItems && i < source.length; i += step) {
+    out.push(source[Math.min(source.length - 1, Math.floor(i))]);
+  }
+  return out;
+}
+
+function sampleReplayXpOrbs(room, limit = REPLAY_XP_ORB_SAMPLE_LIMIT) {
+  const source = Array.isArray(room?.xpOrbs) ? room.xpOrbs : [];
+  const maxItems = Math.max(1, Math.floor(Number(limit) || 0));
+  if (source.length <= maxItems) return source;
+  const moving = [];
+  const staticOrbs = [];
+  for (const orb of source) {
+    if ((Number(orb?.pullSpeed) || 0) > 1) moving.push(orb);
+    else staticOrbs.push(orb);
+  }
+  if (moving.length >= maxItems) return sampleListEvenly(moving, maxItems);
+  return moving.concat(sampleListEvenly(staticOrbs, maxItems - moving.length));
+}
+
+function getEffectiveReplayCaptureIntervalMs(replay, room) {
+  const baseMs = Math.max(100, Number(replay?.captureIntervalMs) || REPLAY_CAPTURE_INTERVAL_MS);
+  if (!room) return baseMs;
+  const xpCount = Array.isArray(room.xpOrbs) ? room.xpOrbs.length : 0;
+  const bulletCount = Array.isArray(room.bullets) ? room.bullets.length : 0;
+  const enemyCount = Array.isArray(room.enemies) ? room.enemies.length : 0;
+  let mul = 1;
+  if (xpCount >= 220 || (xpCount >= 170 && bulletCount >= 20) || enemyCount >= 120) mul = 2;
+  else if (xpCount >= 120 || bulletCount >= 28 || enemyCount >= 90) mul = 1.5;
+  return Math.max(baseMs, Math.round(baseMs * mul));
 }
 
 function getAdaptiveStateSendHz(room) {
@@ -2598,11 +2675,21 @@ function maybeLogRoomRuntime(room, now, metrics = {}) {
     enemies: snapshot.enemies,
     bullets: snapshot.bullets,
     xpOrbs: snapshot.xpOrbs,
+    movingXpOrbs: snapshot.movingXpOrbs,
     drops: snapshot.drops,
     skillOrbs: snapshot.skillOrbs,
     shotEvents: snapshot.shotEvents,
     replayShotEvents: snapshot.replayShotEvents,
     replayFrames: snapshot.replayFrames,
+    tickPlayersMs: Number((Math.max(0, Number(room?.lastTickDiag?.playersMs) || 0)).toFixed(3)),
+    tickCompanionsMs: Number((Math.max(0, Number(room?.lastTickDiag?.companionsMs) || 0)).toFixed(3)),
+    tickBulletsMs: Number((Math.max(0, Number(room?.lastTickDiag?.bulletsMs) || 0)).toFixed(3)),
+    tickEnemiesMs: Number((Math.max(0, Number(room?.lastTickDiag?.enemiesMs) || 0)).toFixed(3)),
+    tickXpOrbsMs: Number((Math.max(0, Number(room?.lastTickDiag?.xpOrbsMs) || 0)).toFixed(3)),
+    tickDropsMs: Number((Math.max(0, Number(room?.lastTickDiag?.dropsMs) || 0)).toFixed(3)),
+    tickSkillOrbsMs: Number((Math.max(0, Number(room?.lastTickDiag?.skillOrbsMs) || 0)).toFixed(3)),
+    tickReplayMs: Number((Math.max(0, Number(room?.lastTickDiag?.replayMs) || 0)).toFixed(3)),
+    tickSystemMs: Number((Math.max(0, Number(room?.lastTickDiag?.systemMs) || 0)).toFixed(3)),
   });
 }
 
@@ -3282,6 +3369,16 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
   const now = Date.now();
   const difficulty = getRoomDifficulty(room, now);
   const nextPortal = room.bossPortals.length > 0 ? room.bossPortals[0] : null;
+  const includeRealtimeDrops = !compactRealtime || shouldIncludeRealtimeCollection(room, 'drops', now, {
+    resendMs: REALTIME_STATIC_COLLECTION_RESEND_MS,
+  });
+  const includeRealtimeXpOrbs = !compactRealtime || shouldIncludeRealtimeCollection(room, 'xpOrbs', now, {
+    force: Boolean(room?.hasMovingXpOrbs),
+    resendMs: REALTIME_XP_ORB_STATIC_RESEND_MS,
+  });
+  const includeRealtimeSkillOrbs = !compactRealtime || shouldIncludeRealtimeCollection(room, 'skillOrbs', now, {
+    resendMs: REALTIME_STATIC_COLLECTION_RESEND_MS,
+  });
   const serializedPlayers = Array.from(room.players.values()).map((p) => ({
     id: p.id,
     name: p.name,
@@ -3491,7 +3588,7 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
       spawnAt: bp.spawnAt,
       ttlMs: Math.max(0, bp.spawnAt - now),
     })),
-    drops: room.drops.map((d) => {
+    drops: includeRealtimeDrops ? room.drops.map((d) => {
       const ttlMs = Math.max(0, Math.round(d.ttlMs || 0));
       const kind = d.kind || 'weapon';
       const weaponKey = d.weaponKey || null;
@@ -3506,8 +3603,8 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
         ttlMs,
         ttlMaxMs: DROP_LIFETIME_MS,
       };
-    }),
-    xpOrbs: room.xpOrbs.map((o) => {
+    }) : undefined,
+    xpOrbs: includeRealtimeXpOrbs ? room.xpOrbs.map((o) => {
       const ttlMs = Math.max(0, Math.round(o.ttlMs || 0));
       if (compactRealtime) return [o.id, o.x, o.y, ttlMs];
       return {
@@ -3518,8 +3615,8 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
         ttlMs,
         ttlMaxMs: XP_ORB_LIFETIME_MS,
       };
-    }),
-    skillOrbs: room.skillOrbs.map((o) => {
+    }) : undefined,
+    skillOrbs: includeRealtimeSkillOrbs ? room.skillOrbs.map((o) => {
       const ttlMs = Math.max(0, Math.round(o.ttlMs || 0));
       if (compactRealtime) return [o.id, o.ownerId, o.skillId, o.x, o.y, ttlMs];
       return {
@@ -3531,7 +3628,7 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
         ttlMs,
         ttlMaxMs: Math.max(1, Math.round(o.ttlMaxMs || SKILL_OFFER_TTL_MS)),
       };
-    }),
+    }) : undefined,
     decor: includeDecor ? {
       trees: room.trees,
     } : undefined,
@@ -3772,6 +3869,7 @@ function maybeSpawnDrop(room, x, y) {
       weaponKey: null,
       ttlMs: DROP_LIFETIME_MS,
     });
+    bumpRealtimeCollectionVersion(room, 'drops');
     return;
   }
 
@@ -3785,6 +3883,7 @@ function maybeSpawnDrop(room, x, y) {
     weaponKey,
     ttlMs: DROP_LIFETIME_MS,
   });
+  bumpRealtimeCollectionVersion(room, 'drops');
 }
 
 function setPlayerWeapon(player, weaponKey) {
@@ -4255,10 +4354,11 @@ function applyPlayerHitToPlayer(room, attacker, target, damage, now, options = {
   return true;
 }
 
-function shouldCaptureReplayFrame(replay, now, force = false) {
+function shouldCaptureReplayFrame(replay, now, force = false, effectiveIntervalMs = null) {
   if (!replay || replay.truncated) return false;
   if (force) return true;
-  return !(replay.frames.length > 0 && now - replay.lastCaptureAt < replay.captureIntervalMs);
+  const intervalMs = Math.max(100, Number(effectiveIntervalMs) || Number(replay.captureIntervalMs) || REPLAY_CAPTURE_INTERVAL_MS);
+  return !(replay.frames.length > 0 && now - replay.lastCaptureAt < intervalMs);
 }
 
 function buildReplayFrameBase(room, now) {
@@ -4335,13 +4435,15 @@ function buildReplayFrameBase(room, now) {
     b.ownerPlayerId || '',
     b.shooterType || '',
   ]));
-  const drops = room.drops.map((d) => ([
+  const replayDrops = sampleListEvenly(room.drops, REPLAY_DROP_SAMPLE_LIMIT);
+  const replayXpOrbs = sampleReplayXpOrbs(room, REPLAY_XP_ORB_SAMPLE_LIMIT);
+  const drops = replayDrops.map((d) => ([
     roundReplayCoord(d.x),
     roundReplayCoord(d.y),
     d.weaponKey || 'pistol',
     d.kind || 'weapon',
   ]));
-  const xpOrbs = room.xpOrbs.map((o) => ([
+  const xpOrbs = replayXpOrbs.map((o) => ([
     Math.max(0, Math.floor(Number(o.id) || 0)),
     roundReplayCoord(o.x),
     roundReplayCoord(o.y),
@@ -4371,7 +4473,8 @@ function buildReplayFrameBase(room, now) {
 
 function captureReplayFrame(room, replay, now, options = {}) {
   const force = options.force === true;
-  if (!shouldCaptureReplayFrame(replay, now, force)) return;
+  const effectiveIntervalMs = Math.max(100, Number(options.effectiveIntervalMs) || 0);
+  if (!shouldCaptureReplayFrame(replay, now, force, effectiveIntervalMs || null)) return;
   if (replay.frames.length >= REPLAY_FRAME_LIMIT) {
     replay.truncated = true;
     replay.endedAt = now;
@@ -4482,7 +4585,9 @@ function clearSkillOffersForOwner(room, playerId) {
   if (!room || !playerId) return 0;
   const before = room.skillOrbs.length;
   room.skillOrbs = room.skillOrbs.filter((orb) => orb.ownerId !== playerId);
-  return Math.max(0, before - room.skillOrbs.length);
+  const removed = Math.max(0, before - room.skillOrbs.length);
+  if (removed > 0) bumpRealtimeCollectionVersion(room, 'skillOrbs');
+  return removed;
 }
 
 function randomSkillOfferPosition(player, used = []) {
@@ -4524,6 +4629,7 @@ function ensureSkillOffer(room, player, now = Date.now()) {
       createdAt: now,
     });
   }
+  bumpRealtimeCollectionVersion(room, 'skillOrbs');
   return true;
 }
 
@@ -4560,6 +4666,7 @@ function spawnXpOrbs(room, x, y, amount) {
       ttlMs: XP_ORB_LIFETIME_MS,
     });
   }
+  bumpRealtimeCollectionVersion(room, 'xpOrbs');
 }
 
 function getEnemyXpValue(enemy) {
@@ -5853,6 +5960,26 @@ wss.on('connection', (ws, req) => {
 });
 
 function tickRoom(room, dtSec, now) {
+  const tickDiag = RUNTIME_DIAG_ENABLED ? {
+    systemMs: 0,
+    playersMs: 0,
+    companionsMs: 0,
+    bulletsMs: 0,
+    enemiesMs: 0,
+    xpOrbsMs: 0,
+    dropsMs: 0,
+    skillOrbsMs: 0,
+    replayMs: 0,
+    movingXpOrbs: 0,
+  } : null;
+  const phaseStart = () => (tickDiag ? process.hrtime.bigint() : 0n);
+  const phaseEnd = (key, startedNs) => {
+    if (!tickDiag || !startedNs) return;
+    tickDiag[key] = (Number(tickDiag[key]) || 0) + (Number(process.hrtime.bigint() - startedNs) / 1e6);
+  };
+  const finishTickDiag = () => {
+    if (tickDiag) room.lastTickDiag = tickDiag;
+  };
   if (normalizeGameMode(room.gameMode) === 'pvp' && !room.pvpMatchEnded) {
     const matchEndsAt = Math.max(0, Number(room.matchEndsAt) || 0);
     if (matchEndsAt > 0 && now >= matchEndsAt) {
@@ -5869,10 +5996,12 @@ function tickRoom(room, dtSec, now) {
           pvpPlacement: { place: index + 1, total: ranked.length },
         });
       });
+      finishTickDiag();
       return;
     }
   }
 
+  let phaseStartedNs = phaseStart();
   if (!room.lastCompanionSyncAt || now - room.lastCompanionSyncAt >= COMPANION_SYNC_INTERVAL_MS) {
     syncRoomCompanions(room);
     room.lastCompanionSyncAt = now;
@@ -5899,7 +6028,9 @@ function tickRoom(room, dtSec, now) {
       room.bossPortals.splice(i, 1);
     }
   }
+  phaseEnd('systemMs', phaseStartedNs);
 
+  phaseStartedNs = phaseStart();
   for (const p of room.players.values()) {
     p.lastProcessedInputSeq = Math.max(
       Math.max(0, Number(p.lastProcessedInputSeq) || 0),
@@ -5948,9 +6079,13 @@ function tickRoom(room, dtSec, now) {
 
     tickPlayerSkills(room, p, dtSec, now);
   }
+  phaseEnd('playersMs', phaseStartedNs);
 
+  phaseStartedNs = phaseStart();
   tickCompanions(room, dtSec, now);
+  phaseEnd('companionsMs', phaseStartedNs);
 
+  phaseStartedNs = phaseStart();
   for (let i = room.bullets.length - 1; i >= 0; i -= 1) {
     const b = room.bullets[i];
     if (b.kind === 'rocket' && !b.fromEnemy) {
@@ -6067,7 +6202,9 @@ function tickRoom(room, dtSec, now) {
       room.bullets.splice(i, 1);
     }
   }
+  phaseEnd('bulletsMs', phaseStartedNs);
 
+  phaseStartedNs = phaseStart();
   for (const e of room.enemies) {
     if (e.attackCooldownMs > 0) e.attackCooldownMs = Math.max(0, e.attackCooldownMs - dtSec * 1000);
 
@@ -6186,6 +6323,7 @@ function tickRoom(room, dtSec, now) {
     e.x = clamp(e.x + e.vx * dtSec, er, WORLD_WIDTH - er);
     e.y = clamp(e.y + e.vy * dtSec, er, WORLD_HEIGHT - er);
   }
+  phaseEnd('enemiesMs', phaseStartedNs);
 
 
   let magnetTarget = null;
@@ -6205,11 +6343,15 @@ function tickRoom(room, dtSec, now) {
     }
   }
 
+  let xpOrbsChanged = false;
+  let movingXpOrbs = 0;
+  phaseStartedNs = phaseStart();
   for (let i = room.xpOrbs.length - 1; i >= 0; i -= 1) {
     const orb = room.xpOrbs[i];
     orb.ttlMs -= dtSec * 1000;
     if (orb.ttlMs <= 0) {
       room.xpOrbs.splice(i, 1);
+      xpOrbsChanged = true;
       continue;
     }
 
@@ -6242,6 +6384,7 @@ function tickRoom(room, dtSec, now) {
     if (dist <= collectR) {
       gainPlayerXp(room, target, orb.xp, now);
       room.xpOrbs.splice(i, 1);
+      xpOrbsChanged = true;
       continue;
     }
 
@@ -6267,24 +6410,33 @@ function tickRoom(room, dtSec, now) {
         orb.x += nx * step;
         orb.y += ny * step;
       }
+      if (step > 0 || nextPullSpeed > 1) movingXpOrbs += 1;
 
       const dxAfter = target.x - orb.x;
       const dyAfter = target.y - orb.y;
       if (dxAfter * dxAfter + dyAfter * dyAfter <= collectR2) {
         gainPlayerXp(room, target, orb.xp, now);
         room.xpOrbs.splice(i, 1);
+        xpOrbsChanged = true;
         continue;
       }
     } else {
       orb.pullSpeed = 0;
     }
   }
+  room.hasMovingXpOrbs = movingXpOrbs > 0;
+  if (tickDiag) tickDiag.movingXpOrbs = movingXpOrbs;
+  if (xpOrbsChanged) bumpRealtimeCollectionVersion(room, 'xpOrbs');
+  phaseEnd('xpOrbsMs', phaseStartedNs);
 
+  let dropsChanged = false;
+  phaseStartedNs = phaseStart();
   for (let i = room.drops.length - 1; i >= 0; i -= 1) {
     const drop = room.drops[i];
     drop.ttlMs -= dtSec * 1000;
     if (drop.ttlMs <= 0) {
       room.drops.splice(i, 1);
+      dropsChanged = true;
       continue;
     }
 
@@ -6309,6 +6461,7 @@ function tickRoom(room, dtSec, now) {
           broadcastRoom(room, { type: 'system', message: `${p.name} picked ${weaponLabel}.` });
         }
         room.drops.splice(i, 1);
+        dropsChanged = true;
         picked = true;
         break;
       }
@@ -6316,11 +6469,18 @@ function tickRoom(room, dtSec, now) {
 
     if (picked) continue;
   }
+  if (dropsChanged) bumpRealtimeCollectionVersion(room, 'drops');
+  phaseEnd('dropsMs', phaseStartedNs);
 
+  let skillOrbsChanged = false;
+  phaseStartedNs = phaseStart();
   for (let i = room.skillOrbs.length - 1; i >= 0; i -= 1) {
     const orb = room.skillOrbs[i];
     orb.ttlMs -= dtSec * 1000;
-    if (orb.ttlMs <= 0) room.skillOrbs.splice(i, 1);
+    if (orb.ttlMs <= 0) {
+      room.skillOrbs.splice(i, 1);
+      skillOrbsChanged = true;
+    }
   }
 
   const pickupReach = PLAYER_RADIUS + Math.max(6, Number(SKILL_OFFER_PICKUP_RADIUS) || 22);
@@ -6348,17 +6508,23 @@ function tickRoom(room, dtSec, now) {
     if (!p.alive) continue;
     if ((Number(p.unspentLevelUps) || 0) > 0) ensureSkillOffer(room, p, now);
   }
+  if (skillOrbsChanged) bumpRealtimeCollectionVersion(room, 'skillOrbs');
+  phaseEnd('skillOrbsMs', phaseStartedNs);
 
+  phaseStartedNs = phaseStart();
   let sharedReplayBase = null;
   for (const p of room.players.values()) {
-    if (!shouldCaptureReplayFrame(p.runReplay, now)) continue;
+    const effectiveCaptureMs = getEffectiveReplayCaptureIntervalMs(p.runReplay, room);
+    if (!shouldCaptureReplayFrame(p.runReplay, now, false, effectiveCaptureMs)) continue;
     if (!sharedReplayBase) sharedReplayBase = buildReplayFrameBase(room, now);
-    captureReplayFrame(room, p.runReplay, now, { baseFrame: sharedReplayBase });
+    captureReplayFrame(room, p.runReplay, now, { baseFrame: sharedReplayBase, effectiveIntervalMs: effectiveCaptureMs });
   }
   if (Array.isArray(room.replayShotEvents) && room.replayShotEvents.length > 0) {
     const oldestKeepAt = Math.max(0, now - 8000);
     room.replayShotEvents = room.replayShotEvents.filter((event) => Math.max(0, Number(event?.at) || 0) >= oldestKeepAt);
   }
+  phaseEnd('replayMs', phaseStartedNs);
+  finishTickDiag();
 }
 
 let lastLoopAt = Date.now();
