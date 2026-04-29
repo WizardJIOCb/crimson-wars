@@ -2578,14 +2578,38 @@ function sampleReplayXpOrbs(room, limit = REPLAY_XP_ORB_SAMPLE_LIMIT) {
   const source = Array.isArray(room?.xpOrbs) ? room.xpOrbs : [];
   const maxItems = Math.max(1, Math.floor(Number(limit) || 0));
   if (source.length <= maxItems) return source;
-  const moving = [];
-  const staticOrbs = [];
-  for (const orb of source) {
-    if ((Number(orb?.pullSpeed) || 0) > 1) moving.push(orb);
-    else staticOrbs.push(orb);
-  }
-  if (moving.length >= maxItems) return sampleListEvenly(moving, maxItems);
-  return moving.concat(sampleListEvenly(staticOrbs, maxItems - moving.length));
+  const replayXpAlwaysIncludeRadius = Math.max(
+    PLAYER_PICKUP_RADIUS_BASE + 128,
+    ...Array.from(room?.players?.values?.() || []).map((player) => Math.max(0, Number(player?.pickupRadius) || PLAYER_PICKUP_RADIUS_BASE) + 128),
+  );
+  return selectRealtimeEntitiesByInterest(room, source, {
+    alwaysIncludeRadius: replayXpAlwaysIncludeRadius,
+    radius: Math.max(1200, Math.round(REALTIME_XP_ORB_RADIUS * 1.15)),
+    maxItems,
+    priorityFn: (orb) => {
+      if ((Number(orb?.pullSpeed) || 0) > 1) return -4;
+      const xpValue = Math.max(0, Number(orb?.xp) || 0);
+      if (xpValue >= 12) return -2;
+      if (xpValue >= 6) return -1;
+      return 0;
+    },
+  });
+}
+
+function sampleReplayDrops(room, limit = REPLAY_DROP_SAMPLE_LIMIT) {
+  const source = Array.isArray(room?.drops) ? room.drops : [];
+  const maxItems = Math.max(1, Math.floor(Number(limit) || 0));
+  if (source.length <= maxItems) return source;
+  return selectRealtimeEntitiesByInterest(room, source, {
+    alwaysIncludeRadius: Math.max(DROP_RADIUS + 180, Math.round(REALTIME_DROP_RADIUS * 0.42)),
+    radius: Math.max(900, Math.round(REALTIME_DROP_RADIUS * 0.95)),
+    maxItems,
+    priorityFn: (drop) => {
+      const kind = String(drop?.kind || '').toLowerCase();
+      if (kind === 'xp_vacuum') return -3;
+      return 0;
+    },
+  });
 }
 
 function sampleReplayBullets(room, limit = REPLAY_BULLET_SAMPLE_LIMIT) {
@@ -2615,9 +2639,9 @@ function getEffectiveReplayCaptureIntervalMs(replay, room) {
   const movingXpOrbs = Math.max(0, Number(room?.lastTickDiag?.movingXpOrbs) || 0);
   const lastStateBytes = Math.max(0, Number(room?.lastRuntimeDiagState?.bytes) || 0);
   let mul = 1;
-  if (lastStateBytes >= 28000 || xpCount >= 240 || bulletCount >= 56 || enemyCount >= 90 || movingXpOrbs >= 120) mul = 3;
-  else if (lastStateBytes >= 22000 || xpCount >= 160 || bulletCount >= 38 || enemyCount >= 65 || movingXpOrbs >= 70) mul = 2;
-  else if (lastStateBytes >= 16000 || xpCount >= 96 || bulletCount >= 24 || enemyCount >= 45 || movingXpOrbs >= 30) mul = 1.5;
+  if (lastStateBytes >= 32000 || xpCount >= 260 || bulletCount >= 64 || enemyCount >= 96 || movingXpOrbs >= 140) mul = 2;
+  else if (lastStateBytes >= 24000 || xpCount >= 180 || bulletCount >= 42 || enemyCount >= 72 || movingXpOrbs >= 80) mul = 1.5;
+  else if (lastStateBytes >= 18000 || xpCount >= 110 || bulletCount >= 28 || enemyCount >= 50 || movingXpOrbs >= 36) mul = 1.25;
   return Math.max(baseMs, Math.round(baseMs * mul));
 }
 
@@ -4568,6 +4592,8 @@ function buildReplayFrameBase(room, now) {
       Math.max(1, Math.round(Number(p.maxHp) || PLAYER_HP_MAX)),
       Math.max(0, Math.floor(Number(p.bossKills) || 0)),
       Math.max(0, Math.round((Number(p.dodgeInvulnUntil) || 0) - now)),
+      roundReplayCoord(Number(p.aimX) || p.x),
+      roundReplayCoord(Number(p.aimY) || p.y),
     ];
   });
   const companions = (room.companions || []).map((companion) => ([
@@ -4576,6 +4602,8 @@ function buildReplayFrameBase(room, now) {
     roundReplayCoord(companion.y),
     companion.weaponKey || 'pistol',
     companion.ownerId || '',
+    roundReplayCoord(Number(companion.aimX) || companion.x),
+    roundReplayCoord(Number(companion.aimY) || companion.y),
   ]));
   const enemies = room.enemies.map((e) => ([
     e.id,
@@ -4602,13 +4630,15 @@ function buildReplayFrameBase(room, now) {
     b.ownerPlayerId || '',
     b.shooterType || '',
   ]));
-  const replayDrops = sampleListEvenly(room.drops, REPLAY_DROP_SAMPLE_LIMIT);
+  const replayDrops = sampleReplayDrops(room, REPLAY_DROP_SAMPLE_LIMIT);
   const replayXpOrbs = sampleReplayXpOrbs(room, REPLAY_XP_ORB_SAMPLE_LIMIT);
   const drops = replayDrops.map((d) => ([
     roundReplayCoord(d.x),
     roundReplayCoord(d.y),
     d.weaponKey || 'pistol',
     d.kind || 'weapon',
+    Math.max(0, Number(d.id) || 0),
+    Math.max(0, Math.round(Number(d.ttlMs) || 0)),
   ]));
   const xpOrbs = replayXpOrbs.map((o) => ([
     Math.max(0, Math.floor(Number(o.id) || 0)),

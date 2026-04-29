@@ -551,8 +551,9 @@ function drawPlayer(p, t, isMe, rx, ry) {
     const aimDx = (Number(displayPlayer.aimX) || rx) - rx;
     const aimDy = (Number(displayPlayer.aimY) || ry) - ry;
     const hasAim = Math.hypot(aimDx, aimDy) > 0.001;
-    const lookDx = hasAim ? aimDx : (isMe ? (input.pointerX - x) : (rv?.vx || 0));
-    const lookDy = hasAim ? aimDy : (isMe ? (input.pointerY - y) : (rv?.vy || 0));
+    const useLocalPointerLook = isMe && !replayGame.active;
+    const lookDx = hasAim ? aimDx : (useLocalPointerLook ? (input.pointerX - x) : (rv?.vx || 0));
+    const lookDy = hasAim ? aimDy : (useLocalPointerLook ? (input.pointerY - y) : (rv?.vy || 0));
     let dir = 'down';
     if (Math.abs(lookDx) > Math.abs(lookDy)) dir = lookDx < 0 ? 'left' : 'right';
     else if (Math.abs(lookDy) > 0.0001) dir = lookDy < 0 ? 'up' : 'down';

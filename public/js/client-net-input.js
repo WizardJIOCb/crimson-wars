@@ -2925,8 +2925,12 @@ function buildReplayState(payload, elapsedMs) {
     const y = lerp(player[2], nextPlayer[2], alpha);
     const level = Math.max(1, Math.floor(Number(player[14]) || 1));
     const xpToNext = Math.max(1, Math.floor(Number(player[16]) || 1));
-    const aimX = lerp(x, nextPlayer[1], 0.65);
-    const aimY = lerp(y, nextPlayer[2], 0.65);
+    const aimStartX = Number.isFinite(Number(player[20])) ? (Number(player[20]) || x) : x;
+    const aimStartY = Number.isFinite(Number(player[21])) ? (Number(player[21]) || y) : y;
+    const aimEndX = Number.isFinite(Number(nextPlayer[20])) ? (Number(nextPlayer[20]) || Number(nextPlayer[1]) || x) : (Number(nextPlayer[1]) || x);
+    const aimEndY = Number.isFinite(Number(nextPlayer[21])) ? (Number(nextPlayer[21]) || Number(nextPlayer[2]) || y) : (Number(nextPlayer[2]) || y);
+    const aimX = lerp(aimStartX, aimEndX, alpha);
+    const aimY = lerp(aimStartY, aimEndY, alpha);
     const skills = (Array.isArray(player[9]) ? player[9] : []).map((skill) => ({
       id: skill[0] || '',
       level: Math.max(0, Number(skill[1]) || 0),
@@ -2986,11 +2990,17 @@ function buildReplayState(payload, elapsedMs) {
 
   for (const companion of Array.isArray(current.c) ? current.c : []) {
     const nextCompanion = nextCompanions.get(companion[0]) || companion;
+    const cx = lerp(companion[1], nextCompanion[1], alpha);
+    const cy = lerp(companion[2], nextCompanion[2], alpha);
+    const companionAimStartX = Number.isFinite(Number(companion[5])) ? (Number(companion[5]) || cx) : (cx + 10);
+    const companionAimStartY = Number.isFinite(Number(companion[6])) ? (Number(companion[6]) || cy) : cy;
+    const companionAimEndX = Number.isFinite(Number(nextCompanion[5])) ? (Number(nextCompanion[5]) || Number(nextCompanion[1]) || cx) : ((Number(nextCompanion[1]) || cx) + 10);
+    const companionAimEndY = Number.isFinite(Number(nextCompanion[6])) ? (Number(nextCompanion[6]) || Number(nextCompanion[2]) || cy) : (Number(nextCompanion[2]) || cy);
     playerList.push({
       id: companion[0],
       name: '',
-      x: lerp(companion[1], nextCompanion[1], alpha),
-      y: lerp(companion[2], nextCompanion[2], alpha),
+      x: cx,
+      y: cy,
       hp: 1,
       maxHp: 1,
       alive: true,
@@ -2999,8 +3009,8 @@ function buildReplayState(payload, elapsedMs) {
       weaponKey: companion[3] || 'pistol',
       weaponLabel: companion[3] || 'pistol',
       ammo: null,
-      aimX: lerp(companion[1], nextCompanion[1], alpha) + 10,
-      aimY: lerp(companion[2], nextCompanion[2], alpha),
+      aimX: lerp(companionAimStartX, companionAimEndX, alpha),
+      aimY: lerp(companionAimStartY, companionAimEndY, alpha),
       shooting: false,
       damageMul: 1,
       fireRateMul: 1,
@@ -3049,15 +3059,18 @@ function buildReplayState(payload, elapsedMs) {
   const drops = (Array.isArray(current.d) ? current.d : []).map((drop, index) => {
     const kind = drop[3] || 'weapon';
     const weaponKey = drop[2] || 'pistol';
+    const dropId = Math.max(0, Number(drop[4]) || 0) || index;
+    const hasReplayTtl = Number.isFinite(Number(drop[5]));
+    const ttlMs = hasReplayTtl ? Math.max(0, Number(drop[5]) || 0) : 999999;
     return {
-      id: `rd-${index}`,
+      id: `rd-${dropId}`,
       x: Number(drop[0]) || 0,
       y: Number(drop[1]) || 0,
       kind,
       weaponKey: kind === 'xp_vacuum' ? null : weaponKey,
       weaponLabel: kind === 'xp_vacuum' ? 'XP Surge' : weaponKey,
-      ttlMs: 999999,
-      ttlMaxMs: 999999,
+      ttlMs,
+      ttlMaxMs: hasReplayTtl ? Math.max(1, ttlMs) : 999999,
     };
   });
 
@@ -3884,6 +3897,20 @@ function updatePlayerInterpolation(dt) {
     // Keep respawn instant, but do not snap dodge-jumps: they should look smooth.
     const longJumpSnap = !dodgeActive && d2 > (340 * 340);
 
+    if (replayGame.active) {
+      if (respawnSnap || longJumpSnap) {
+        r.vx = 0;
+        r.vy = 0;
+      } else {
+        r.vx = (fallbackTargetX - r.x) / Math.max(0.001, dt);
+        r.vy = (fallbackTargetY - r.y) / Math.max(0.001, dt);
+      }
+      r.x = fallbackTargetX;
+      r.y = fallbackTargetY;
+      r.alive = isAlive;
+      continue;
+    }
+
     if (respawnSnap || longJumpSnap) {
       r.vx = 0;
       r.vy = 0;
@@ -4107,6 +4134,25 @@ function updateEnemyInterpolation(dt) {
         serverStateY: Number(e.y) || 0,
       };
       game.renderEnemies.set(id, r);
+      continue;
+    }
+
+    if (replayGame.active) {
+      const targetX = Number(e.x) || 0;
+      const targetY = Number(e.y) || 0;
+      const dx = targetX - r.x;
+      const dy = targetY - r.y;
+      if (dx * dx + dy * dy > (320 * 320)) {
+        r.vx = 0;
+        r.vy = 0;
+      } else {
+        r.vx = dx / Math.max(0.001, dt);
+        r.vy = dy / Math.max(0.001, dt);
+      }
+      if (typeof e.faceLeft === 'boolean') r.faceLeft = e.faceLeft;
+      else if (Math.abs(Number(r.vx) || 0) > 0.15) r.faceLeft = (Number(r.vx) || 0) < 0;
+      r.x = targetX;
+      r.y = targetY;
       continue;
     }
 
