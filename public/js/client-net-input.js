@@ -2621,6 +2621,7 @@ function buildReplayEmergingRecordedBullets(payload, current, next, alpha, elaps
       if (nowMs < shotAt) continue;
       const horizonSec = Math.max(0.001, (nextT - shotAt) / 1000);
       const ageSec = Math.max(0, (nowMs - shotAt) / 1000);
+      const kind = String(bullet[6] || getReplayShotResolvedKind(event) || 'bullet').toLowerCase();
       const bulletTuple = [
         bulletId,
         Number(event.x) || startX,
@@ -2628,7 +2629,7 @@ function buildReplayEmergingRecordedBullets(payload, current, next, alpha, elaps
         Number(event.vx) || Number(bullet[3]) || 0,
         Number(event.vy) || Number(bullet[4]) || 0,
         bullet[5] || event.color || '#f59e0b',
-        bullet[6] || 'bullet',
+        kind,
         bullet[7] ? 1 : 0,
         Math.max(2, Number(bullet[8]) || Number(event.radius) || 3),
         bullet[9] || event.ownerId || '',
@@ -2640,17 +2641,31 @@ function buildReplayEmergingRecordedBullets(payload, current, next, alpha, elaps
       const impactSec = impact.hit ? horizonSec * Math.max(0, Math.min(1, Number(impact.t) || 0)) : Infinity;
       const linearX = (Number(event.x) || startX) + (Number(event.vx) || Number(bullet[3]) || 0) * ageSec;
       const linearY = (Number(event.y) || startY) + (Number(event.vy) || Number(bullet[4]) || 0) * ageSec;
+      const guidedPoint = kind === 'rocket'
+        ? sampleReplayRocketArcPoint(
+          Number(event.x) || startX,
+          Number(event.y) || startY,
+          targetX,
+          targetY,
+          Number(event.vx) || Number(bullet[3]) || 0,
+          Number(event.vy) || Number(bullet[4]) || 0,
+          Number(bullet[3]) || 0,
+          Number(bullet[4]) || 0,
+          horizonSec,
+          ageSec,
+        )
+        : null;
       out.push({
         id: bulletId,
         ownerId: bullet[9] || '',
         ownerPlayerId: bullet[11] || '',
-        x: ageSec >= impactSec ? impact.x : linearX,
-        y: ageSec >= impactSec ? impact.y : linearY,
+        x: ageSec >= impactSec ? impact.x : (guidedPoint?.x ?? linearX),
+        y: ageSec >= impactSec ? impact.y : (guidedPoint?.y ?? linearY),
         vx: Number(bullet[3]) || 0,
         vy: Number(bullet[4]) || 0,
         color: bullet[5] || (bullet[7] ? '#fb7185' : ((bullet[6] || 'bullet') === 'rocket' ? '#fb923c' : '#f8fafc')),
-        kind: bullet[6] || 'bullet',
-        radius: Math.max(2, Number(bullet[8]) || ((bullet[6] || 'bullet') === 'rocket' ? 6 : 3)),
+        kind,
+        radius: Math.max(2, Number(bullet[8]) || (kind === 'rocket' ? 6 : 3)),
         fromEnemy: Boolean(bullet[7]),
         weaponKey: bullet[10] || '',
         shooterType: bullet[12] || '',
@@ -2951,6 +2966,7 @@ function getReplayShotTimeline(payload) {
       const dedupeKey = String(id);
       if (seen.has(dedupeKey)) continue;
       seen.add(dedupeKey);
+      const kind = event?.[13] || (String(event?.[5] || '').toLowerCase() === 'homing_missiles' ? 'rocket' : 'bullet');
       timeline.push({
         id,
         bulletId: event?.[1],
@@ -2965,6 +2981,7 @@ function getReplayShotTimeline(payload) {
         color: event?.[10] || '#f59e0b',
         radius: Math.max(2, Number(event?.[11]) || 3),
         offsetMs: Math.max(0, Number(event?.[12]) || Number(frame?.t) || 0),
+        kind,
       });
     }
   }
@@ -3095,6 +3112,7 @@ function isReplayRecordedWeaponBullet(bullet) {
 }
 
 function buildReplayShotBulletTuple(event) {
+  const kind = getReplayShotResolvedKind(event);
   return [
     event?.id,
     Number(event?.x) || 0,
@@ -3102,14 +3120,45 @@ function buildReplayShotBulletTuple(event) {
     Number(event?.vx) || 0,
     Number(event?.vy) || 0,
     event?.color || '#f59e0b',
-    event?.kind || 'bullet',
+    kind,
     0,
-    Math.max(2, Number(event?.radius) || (String(event?.kind || '').toLowerCase() === 'rocket' ? 6 : 3)),
+    Math.max(2, Number(event?.radius) || (kind === 'rocket' ? 6 : 3)),
     event?.ownerId || '',
     event?.weaponKey || 'pistol',
     event?.ownerPlayerId || '',
     event?.shooterType || 'player',
   ];
+}
+
+function getReplayShotResolvedKind(event) {
+  const kind = String(event?.kind || '').toLowerCase();
+  if (kind) return kind;
+  return String(event?.weaponKey || '').toLowerCase() === 'homing_missiles' ? 'rocket' : 'bullet';
+}
+
+function sampleReplayHermiteCoord(p0, p1, m0, m1, alpha) {
+  const t = Math.max(0, Math.min(1, Number(alpha) || 0));
+  const tt = t * t;
+  const ttt = tt * t;
+  const h00 = (2 * ttt) - (3 * tt) + 1;
+  const h10 = ttt - (2 * tt) + t;
+  const h01 = (-2 * ttt) + (3 * tt);
+  const h11 = ttt - tt;
+  return (h00 * (Number(p0) || 0))
+    + (h10 * (Number(m0) || 0))
+    + (h01 * (Number(p1) || 0))
+    + (h11 * (Number(m1) || 0));
+}
+
+function sampleReplayRocketArcPoint(startX, startY, endX, endY, startVx, startVy, endVx, endVy, durationSec, ageSec) {
+  const safeDurationSec = Math.max(0.001, Number(durationSec) || 0);
+  const alpha = Math.max(0, Math.min(1, (Number(ageSec) || 0) / safeDurationSec));
+  const startTangentScale = safeDurationSec * 0.82;
+  const endTangentScale = safeDurationSec * 0.46;
+  return {
+    x: sampleReplayHermiteCoord(startX, endX, (Number(startVx) || 0) * startTangentScale, (Number(endVx) || 0) * endTangentScale, alpha),
+    y: sampleReplayHermiteCoord(startY, endY, (Number(startVy) || 0) * startTangentScale, (Number(endVy) || 0) * endTangentScale, alpha),
+  };
 }
 
 function getReplayShotEventImpact(payload, event) {
@@ -3160,9 +3209,26 @@ function buildReplaySyntheticShotBullets(payload, current, next, alpha, elapsedM
     if ((eventImpact || impact.hit) && ageSec > impactSec + 0.055) continue;
     const linearX = (Number(event.x) || 0) + (Number(event.vx) || 0) * ageSec;
     const linearY = (Number(event.y) || 0) + (Number(event.vy) || 0) * ageSec;
-    const x = ageSec >= impactSec ? impact.x : linearX;
-    const y = ageSec >= impactSec ? impact.y : linearY;
-    const kind = event.kind || 'bullet';
+    const kind = getReplayShotResolvedKind(event);
+    const guidedDurationSec = Math.max(0.001, Number.isFinite(impactSec) ? impactSec : 0.001);
+    const guidedEndVx = (impact.x - (Number(event.x) || 0)) / guidedDurationSec;
+    const guidedEndVy = (impact.y - (Number(event.y) || 0)) / guidedDurationSec;
+    const guidedPoint = kind === 'rocket' && Number.isFinite(impactSec)
+      ? sampleReplayRocketArcPoint(
+        Number(event.x) || 0,
+        Number(event.y) || 0,
+        impact.x,
+        impact.y,
+        Number(event.vx) || 0,
+        Number(event.vy) || 0,
+        guidedEndVx,
+        guidedEndVy,
+        guidedDurationSec,
+        ageSec,
+      )
+      : null;
+    const x = ageSec >= impactSec ? impact.x : (guidedPoint?.x ?? linearX);
+    const y = ageSec >= impactSec ? impact.y : (guidedPoint?.y ?? linearY);
     out.push({
       id: `replay-shot:${event.id}`,
       ownerId: event.ownerId || '',
