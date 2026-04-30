@@ -6500,6 +6500,88 @@ message: (ev) => {
 
 void connectGameSocket(APP_ORIGIN);
 
+function buildClientMapObjectRect(obj, pad = 0) {
+  const width = Math.max(16, Number(obj?.collisionW) || Number(obj?.w) || 0);
+  const height = Math.max(16, Number(obj?.collisionH) || Number(obj?.h) || 0);
+  const offsetY = Number(obj?.collisionOffsetY) || 0;
+  return {
+    minX: (Number(obj?.x) || 0) - width * 0.5 - pad,
+    maxX: (Number(obj?.x) || 0) + width * 0.5 + pad,
+    minY: (Number(obj?.y) || 0) + offsetY - height * 0.5 - pad,
+    maxY: (Number(obj?.y) || 0) + offsetY + height * 0.5 + pad,
+  };
+}
+
+function clientSegmentIntersectsExpandedRect(x1, y1, x2, y2, rect, pad = 0) {
+  let t0 = 0;
+  let t1 = 1;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const minX = rect.minX - pad;
+  const maxX = rect.maxX + pad;
+  const minY = rect.minY - pad;
+  const maxY = rect.maxY + pad;
+  const tests = [
+    [-dx, x1 - minX],
+    [dx, maxX - x1],
+    [-dy, y1 - minY],
+    [dy, maxY - y1],
+  ];
+  for (const [p, q] of tests) {
+    if (Math.abs(p) < 0.000001) {
+      if (q < 0) return false;
+      continue;
+    }
+    const r = q / p;
+    if (p < 0) {
+      if (r > t1) return false;
+      if (r > t0) t0 = r;
+    } else {
+      if (r < t0) return false;
+      if (r < t1) t1 = r;
+    }
+  }
+  return true;
+}
+
+function hasAutoFireLineOfSight(fromX, fromY, toX, toY, objects) {
+  const solidObjects = Array.isArray(objects) ? objects : [];
+  for (const obj of solidObjects) {
+    if (!obj || !obj.solid) continue;
+    const rect = buildClientMapObjectRect(obj);
+    if (clientSegmentIntersectsExpandedRect(fromX, fromY, toX, toY, rect, 4)) return false;
+  }
+  return true;
+}
+
+function findBestAutoFireTarget(me, state) {
+  if (!me || !state) return null;
+  const pvpMode = normalizeGameMode(game.gameMode) === 'pvp';
+  const candidates = [];
+  for (const enemy of state.enemies || []) {
+    if (!enemy || Number(enemy.hp) <= 0) continue;
+    candidates.push(enemy);
+  }
+  if (pvpMode) {
+    for (const player of state.players || []) {
+      if (!player || player.id === me.id || player.isCompanion || !player.alive) continue;
+      candidates.push(player);
+    }
+  }
+  candidates.sort((a, b) => {
+    const da = ((Number(a?.x) || 0) - me.x) ** 2 + ((Number(a?.y) || 0) - me.y) ** 2;
+    const db = ((Number(b?.x) || 0) - me.x) ** 2 + ((Number(b?.y) || 0) - me.y) ** 2;
+    return da - db;
+  });
+  const mapObjects = state.decor?.objects || [];
+  for (const candidate of candidates) {
+    if (hasAutoFireLineOfSight(me.x, me.y, Number(candidate.x) || 0, Number(candidate.y) || 0, mapObjects)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
 function buildCurrentInputPayload(includeJump = true) {
   if (!game.connected || !game.myId || !game.state) return null;
   const me = game.state.players.find((p) => p.id === game.myId);
@@ -6533,38 +6615,10 @@ function buildCurrentInputPayload(includeJump = true) {
   const manualAimOverride = Boolean(input.shooting || (mobile.enabled && mobile.aimStrength > 0.2));
 
   if (game.autoFireEnabled && !manualAimOverride) {
-    const pvpMode = normalizeGameMode(game.gameMode) === 'pvp';
-    let nearest = null;
-    let bestD2 = Infinity;
-
-    // Monsters are always valid targets.
-    for (const e of game.state.enemies || []) {
-      const dx = e.x - me.x;
-      const dy = e.y - me.y;
-      const d2 = dx * dx + dy * dy;
-      if (d2 < bestD2) {
-        bestD2 = d2;
-        nearest = e;
-      }
-    }
-
-    // In PvP, include other players into the same nearest-target search.
-    if (pvpMode) {
-      for (const p of game.state.players || []) {
-        if (!p || p.id === me.id || p.isCompanion || !p.alive) continue;
-        const dx = p.x - me.x;
-        const dy = p.y - me.y;
-        const d2 = dx * dx + dy * dy;
-        if (d2 < bestD2) {
-          bestD2 = d2;
-          nearest = p;
-        }
-      }
-    }
-
-    if (nearest) {
-      aimX = nearest.x;
-      aimY = nearest.y;
+    const target = findBestAutoFireTarget(me, game.state);
+    if (target) {
+      aimX = target.x;
+      aimY = target.y;
       shooting = true;
     } else {
       shooting = false;

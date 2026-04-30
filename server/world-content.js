@@ -36,14 +36,15 @@ const MAP_DEFS = [
     },
     scene: {
       themeId: 'mall',
-      baseMaterial: 'asphalt_wet',
+      baseMaterial: 'grass',
       terrainZones: [
-        zone('concrete', 'rect', 0.5, 0.12, 0.48, 0.19, { feather: 0.12, alpha: 0.92, angle: 0.01 }),
-        zone('concrete', 'band', 0.5, 0.34, 0.92, 0.12, { feather: 0.18, alpha: 0.52, angle: 0 }),
-        zone('grass', 'ellipse', 0.1, 0.12, 0.16, 0.14, { feather: 0.26, alpha: 0.74 }),
-        zone('grass', 'ellipse', 0.9, 0.13, 0.16, 0.15, { feather: 0.26, alpha: 0.74 }),
-        zone('dirt', 'ellipse', 0.18, 0.82, 0.2, 0.15, { feather: 0.28, alpha: 0.42 }),
-        zone('dirt', 'ellipse', 0.84, 0.76, 0.18, 0.14, { feather: 0.28, alpha: 0.38 }),
+        zone('concrete', 'rect', 0.5, 0.108, 0.58, 0.16, { feather: 0.07, alpha: 1, angle: 0.01 }),
+        zone('asphalt_wet', 'band', 0.5, 0.235, 0.86, 0.065, { feather: 0.08, alpha: 1, angle: 0 }),
+        zone('asphalt_wet', 'band', 0.5, 0.49, 1.06, 0.2, { feather: 0.08, alpha: 1, angle: 0, centerStripe: true }),
+        zone('dirt', 'ellipse', 0.18, 0.16, 0.18, 0.12, { feather: 0.28, alpha: 0.24 }),
+        zone('dirt', 'ellipse', 0.82, 0.14, 0.18, 0.12, { feather: 0.28, alpha: 0.24 }),
+        zone('dirt', 'ellipse', 0.18, 0.82, 0.22, 0.16, { feather: 0.28, alpha: 0.4 }),
+        zone('dirt', 'ellipse', 0.84, 0.76, 0.18, 0.14, { feather: 0.28, alpha: 0.36 }),
       ],
       plannedObjects: [
         prop('mall_block', 0.5, 0.055, { scale: 1.28 }),

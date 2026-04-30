@@ -2554,16 +2554,37 @@ function getQ() {
   return QUALITY[game.qualityKey] || QUALITY.medium;
 }
 
-function fillGroundNoise(g, size, count, colors, radiusMin = 2, radiusMax = 6, alphaMul = 1) {
+function hashGroundSeed(value) {
+  const text = String(value || '');
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function createGroundRng(seed) {
+  let state = (Number(seed) || 0) >>> 0;
+  return () => {
+    state = (state + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(state ^ (state >>> 15), 1 | state);
+    t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function fillGroundNoise(g, size, count, colors, radiusMin = 2, radiusMax = 6, alphaMul = 1, rng = Math.random) {
   const palette = Array.isArray(colors) ? colors.filter(Boolean) : [];
   if (palette.length <= 0) return;
+  const random = typeof rng === 'function' ? rng : Math.random;
   for (let i = 0; i < count; i += 1) {
     const color = palette[i % palette.length];
-    const x = Math.random() * size;
-    const y = Math.random() * size;
-    const r = radiusMin + Math.random() * Math.max(0.1, radiusMax - radiusMin);
+    const x = random() * size;
+    const y = random() * size;
+    const r = radiusMin + random() * Math.max(0.1, radiusMax - radiusMin);
     g.fillStyle = color;
-    g.globalAlpha = alphaMul * (0.22 + Math.random() * 0.32);
+    g.globalAlpha = alphaMul * (0.22 + random() * 0.32);
     g.beginPath();
     g.arc(x, y, r, 0, Math.PI * 2);
     g.fill();
@@ -2571,64 +2592,234 @@ function fillGroundNoise(g, size, count, colors, radiusMin = 2, radiusMax = 6, a
   g.globalAlpha = 1;
 }
 
-function buildGroundMaterialTile(material, size) {
+function getGroundMaterialTheme(material) {
+  const materials = {
+    asphalt_wet: {
+      tint: 'rgba(22, 28, 34, 0.34)',
+      stroke: 'rgba(148, 163, 184, 0.06)',
+      spots: ['#111827', '#1f2937', '#334155'],
+      clouds: ['rgba(71, 85, 105, 0.12)', 'rgba(15, 23, 42, 0.08)', 'rgba(148, 163, 184, 0.05)'],
+      macro: [],
+      baseFill: '#2a3036',
+    },
+    asphalt: {
+      tint: 'rgba(28, 34, 40, 0.26)',
+      stroke: 'rgba(148, 163, 184, 0.055)',
+      spots: ['#111827', '#1f2937', '#4b5563'],
+      clouds: ['rgba(71, 85, 105, 0.1)', 'rgba(148, 163, 184, 0.05)'],
+      macro: [],
+      baseFill: '#353b41',
+    },
+    concrete: {
+      tint: 'rgba(70, 79, 87, 0.2)',
+      stroke: 'rgba(226, 232, 240, 0.065)',
+      spots: ['#475569', '#64748b', '#94a3b8'],
+      clouds: ['rgba(100, 116, 139, 0.1)', 'rgba(226, 232, 240, 0.04)'],
+      macro: [],
+      baseFill: '#535a61',
+    },
+    concrete_tiles: {
+      tint: 'rgba(70, 79, 87, 0.22)',
+      stroke: 'rgba(226, 232, 240, 0.065)',
+      spots: ['#475569', '#64748b', '#94a3b8'],
+      clouds: ['rgba(100, 116, 139, 0.1)', 'rgba(226, 232, 240, 0.04)'],
+      macro: [],
+      baseFill: '#535a61',
+    },
+    dirt: {
+      tint: 'rgba(50, 34, 22, 0.56)',
+      stroke: 'rgba(251, 191, 36, 0.04)',
+      spots: ['#4a2c1d', '#6b3f28', '#7c4a2c'],
+      clouds: ['rgba(123, 79, 44, 0.22)', 'rgba(79, 54, 31, 0.18)', 'rgba(146, 112, 64, 0.12)'],
+      macro: ['rgba(102, 69, 40, 0.18)', 'rgba(60, 40, 22, 0.14)'],
+    },
+    grass: {
+      tint: 'rgba(20, 36, 16, 0.34)',
+      stroke: 'rgba(74, 222, 128, 0.04)',
+      spots: ['#405228', '#4f652d', '#64743c'],
+      clouds: ['rgba(87, 111, 49, 0.22)', 'rgba(116, 96, 58, 0.12)', 'rgba(57, 78, 34, 0.18)'],
+      macro: ['rgba(92, 118, 52, 0.18)', 'rgba(83, 68, 38, 0.14)'],
+    },
+    toxic: {
+      tint: 'rgba(22, 52, 18, 0.42)',
+      stroke: 'rgba(190, 242, 100, 0.12)',
+      spots: ['#65a30d', '#84cc16', '#bef264'],
+      clouds: ['rgba(132, 204, 22, 0.18)', 'rgba(190, 242, 100, 0.12)', 'rgba(61, 94, 16, 0.18)'],
+      macro: ['rgba(132, 204, 22, 0.18)', 'rgba(217, 249, 157, 0.14)'],
+    },
+  };
+  return materials[material] || materials.asphalt_wet;
+}
+
+function paintGroundClouds(g, size, colors, rng, count, alphaMul = 1) {
+  const palette = Array.isArray(colors) ? colors.filter(Boolean) : [];
+  if (palette.length <= 0) return;
+  const random = typeof rng === 'function' ? rng : Math.random;
+  for (let i = 0; i < count; i += 1) {
+    const color = palette[i % palette.length];
+    const x = random() * size;
+    const y = random() * size;
+    const rx = size * (0.12 + random() * 0.2);
+    const ry = rx * (0.58 + random() * 0.7);
+    g.save();
+    g.translate(x, y);
+    g.rotate(random() * Math.PI * 2);
+    g.scale(1, ry / Math.max(1, rx));
+    const gradient = g.createRadialGradient(0, 0, rx * 0.1, 0, 0, rx);
+    gradient.addColorStop(0, color);
+    gradient.addColorStop(1, 'rgba(0,0,0,0)');
+    g.globalAlpha = alphaMul * (0.3 + random() * 0.34);
+    g.fillStyle = gradient;
+    g.beginPath();
+    g.arc(0, 0, rx, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
+  }
+  g.globalAlpha = 1;
+}
+
+function drawGroundSourceTexture(g, size, material, rng) {
+  const theme = getGroundMaterialTheme(material);
+  const organic = material === 'grass' || material === 'dirt' || material === 'toxic';
+  if (!organic) {
+    g.fillStyle = theme.baseFill || '#30363d';
+    g.fillRect(0, 0, size, size);
+    return;
+  }
+  if (!(sprites.ground.complete && sprites.ground.naturalWidth > 0)) {
+    g.fillStyle = '#25301e';
+    g.fillRect(0, 0, size, size);
+    return;
+  }
+  const half = size * 0.5;
+  const drawQuarter = (destX, destY, flipX, flipY) => {
+    g.save();
+    g.translate(destX + half * 0.5, destY + half * 0.5);
+    g.scale(flipX ? -1 : 1, flipY ? -1 : 1);
+    g.drawImage(sprites.ground, -half * 0.5, -half * 0.5, half, half);
+    g.restore();
+  };
+  drawQuarter(0, 0, false, false);
+  drawQuarter(half, 0, true, false);
+  drawQuarter(0, half, false, true);
+  drawQuarter(half, half, true, true);
+}
+
+function buildGroundMaterialTile(material, size, variantIndex = 0) {
   const c = document.createElement('canvas');
   c.width = size;
   c.height = size;
   const g = c.getContext('2d');
   g.imageSmoothingEnabled = true;
+  const rng = createGroundRng(hashGroundSeed(`tile:${material}:${size}:${variantIndex}`));
+  const theme = getGroundMaterialTheme(material);
 
-  if (sprites.ground.complete && sprites.ground.naturalWidth > 0) {
-    g.drawImage(sprites.ground, 0, 0, size, size);
-  } else {
-    g.fillStyle = '#1a2328';
-    g.fillRect(0, 0, size, size);
-  }
-
-  const materials = {
-    asphalt_wet: { tint: 'rgba(8, 12, 18, 0.78)', stroke: 'rgba(148, 163, 184, 0.12)', spots: ['#111827', '#1f2937', '#334155'] },
-    asphalt: { tint: 'rgba(16, 20, 28, 0.64)', stroke: 'rgba(148, 163, 184, 0.08)', spots: ['#111827', '#1f2937', '#4b5563'] },
-    concrete: { tint: 'rgba(48, 59, 68, 0.48)', stroke: 'rgba(226, 232, 240, 0.09)', spots: ['#475569', '#64748b', '#94a3b8'] },
-    dirt: { tint: 'rgba(50, 34, 22, 0.6)', stroke: 'rgba(251, 191, 36, 0.06)', spots: ['#4a2c1d', '#6b3f28', '#7c4a2c'] },
-    grass: { tint: 'rgba(14, 44, 22, 0.44)', stroke: 'rgba(74, 222, 128, 0.08)', spots: ['#14532d', '#166534', '#22c55e'] },
-    toxic: { tint: 'rgba(22, 52, 18, 0.42)', stroke: 'rgba(190, 242, 100, 0.15)', spots: ['#65a30d', '#84cc16', '#bef264'] },
-  };
-  const theme = materials[material] || materials.asphalt_wet;
+  drawGroundSourceTexture(g, size, material, rng);
 
   g.fillStyle = theme.tint;
   g.fillRect(0, 0, size, size);
-  fillGroundNoise(g, size, material === 'toxic' ? 18 : 28, theme.spots, 2, material === 'grass' ? 9 : 6, material === 'grass' ? 0.44 : 0.26);
-
-  g.strokeStyle = theme.stroke;
-  g.lineWidth = Math.max(1, size * 0.012);
-  for (let i = 0; i < 4; i += 1) {
-    const y = ((i + 1) / 5) * size + (Math.random() * size * 0.06 - size * 0.03);
-    g.beginPath();
-    g.moveTo(0, y);
-    g.lineTo(size, y + (Math.random() * size * 0.06 - size * 0.03));
-    g.stroke();
-  }
+  paintGroundClouds(
+    g,
+    size,
+    theme.clouds,
+    rng,
+    material === 'grass' || material === 'dirt' ? 8 : 5,
+    material === 'grass' ? 0.62 : 0.48,
+  );
+  fillGroundNoise(
+    g,
+    size,
+    material === 'toxic' ? 18 : (material === 'grass' || material === 'dirt' ? 36 : 24),
+    theme.spots,
+    2,
+    material === 'grass' ? 8 : 6,
+    material === 'grass' ? 0.42 : 0.24,
+    rng,
+  );
 
   if (material === 'concrete') {
+    g.strokeStyle = 'rgba(226, 232, 240, 0.045)';
+    g.lineWidth = Math.max(1, size * 0.01);
+    for (let i = 0; i < 4; i += 1) {
+      const startX = rng() * size * 0.9;
+      const startY = rng() * size;
+      const len = size * (0.14 + rng() * 0.24);
+      g.beginPath();
+      g.moveTo(startX, startY);
+      g.lineTo(startX + len, startY + (rng() - 0.5) * size * 0.08);
+      g.stroke();
+    }
+    g.fillStyle = 'rgba(255,255,255,0.03)';
+    for (let i = 0; i < 3; i += 1) {
+      const x = rng() * size * 0.8;
+      const y = rng() * size * 0.8;
+      const w = size * (0.12 + rng() * 0.18);
+      const h = size * (0.06 + rng() * 0.1);
+      g.fillRect(x, y, w, h);
+    }
+  } else if (material === 'concrete_tiles') {
+    g.strokeStyle = theme.stroke;
+    g.lineWidth = Math.max(1, size * 0.012);
+    for (let i = 0; i < 3; i += 1) {
+      const y = ((i + 1) / 4) * size + (rng() * size * 0.05 - size * 0.025);
+      g.beginPath();
+      g.moveTo(0, y);
+      g.lineTo(size, y + (rng() * size * 0.04 - size * 0.02));
+      g.stroke();
+    }
     g.strokeStyle = 'rgba(241, 245, 249, 0.08)';
     g.lineWidth = Math.max(1, size * 0.018);
     g.strokeRect(size * 0.08, size * 0.08, size * 0.84, size * 0.84);
   } else if (material === 'asphalt' || material === 'asphalt_wet') {
-    g.strokeStyle = material === 'asphalt_wet' ? 'rgba(248, 250, 252, 0.04)' : 'rgba(248, 250, 252, 0.06)';
-    g.setLineDash([size * 0.1, size * 0.08]);
-    g.lineWidth = Math.max(1, size * 0.026);
-    g.beginPath();
-    g.moveTo(size * 0.08, size * 0.5);
-    g.lineTo(size * 0.92, size * 0.5);
-    g.stroke();
-    g.setLineDash([]);
+    g.strokeStyle = theme.stroke;
+    g.lineWidth = Math.max(1, size * 0.01);
+    for (let i = 0; i < 2; i += 1) {
+      const y = ((i + 1) / 3) * size + (rng() * size * 0.06 - size * 0.03);
+      g.beginPath();
+      g.moveTo(0, y);
+      g.lineTo(size, y + (rng() * size * 0.05 - size * 0.025));
+      g.stroke();
+    }
   } else if (material === 'toxic') {
     g.globalCompositeOperation = 'lighter';
-    fillGroundNoise(g, size, 12, ['#d9f99d', '#bef264'], 5, 14, 0.22);
+    fillGroundNoise(g, size, 12, ['#d9f99d', '#bef264'], 5, 14, 0.22, rng);
     g.globalCompositeOperation = 'source-over';
   }
 
   return c;
+}
+
+function buildGroundMacroStamp(material, size, variantIndex = 0) {
+  const c = document.createElement('canvas');
+  c.width = size;
+  c.height = size;
+  const g = c.getContext('2d');
+  const rng = createGroundRng(hashGroundSeed(`macro:${material}:${size}:${variantIndex}`));
+  const theme = getGroundMaterialTheme(material);
+  paintGroundClouds(
+    g,
+    size,
+    theme.macro,
+    rng,
+    material === 'grass' || material === 'dirt' ? 10 : 7,
+    material === 'grass' || material === 'dirt' ? 0.86 : 0.72,
+  );
+  if (material === 'grass' || material === 'dirt' || material === 'toxic') {
+    fillGroundNoise(g, size, 18, theme.spots, 4, size * 0.05, 0.08, rng);
+  }
+  return c;
+}
+
+function buildGroundMaterialSet(material, size) {
+  const soft = material === 'grass' || material === 'dirt' || material === 'toxic';
+  const variantCount = soft ? 1 : 3;
+  const macroCount = soft ? 3 : 0;
+  const macroSize = Math.max(196, Math.round(size * (soft ? 2.2 : 1.9)));
+  return {
+    salt: hashGroundSeed(`material:${material}`),
+    variants: Array.from({ length: variantCount }, (_, index) => buildGroundMaterialTile(material, size, index)),
+    macroStamps: Array.from({ length: macroCount }, (_, index) => buildGroundMacroStamp(material, macroSize, index)),
+  };
 }
 
 function rebuildGroundTile() {
@@ -2637,11 +2828,11 @@ function rebuildGroundTile() {
   if (!getQ().groundTexture) return;
 
   const size = getQ().groundTileSize;
-  const materials = ['asphalt_wet', 'asphalt', 'concrete', 'dirt', 'grass', 'toxic'];
+  const materials = ['asphalt_wet', 'asphalt', 'concrete', 'concrete_tiles', 'dirt', 'grass', 'toxic'];
   for (const material of materials) {
-    visuals.groundTiles[material] = buildGroundMaterialTile(material, size);
+    visuals.groundTiles[material] = buildGroundMaterialSet(material, size);
   }
-  visuals.groundTileCanvas = visuals.groundTiles.asphalt_wet || null;
+  visuals.groundTileCanvas = visuals.groundTiles.asphalt_wet?.variants?.[0] || null;
   visuals.groundTileSize = size;
 }
 

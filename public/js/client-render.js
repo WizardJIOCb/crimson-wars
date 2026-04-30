@@ -64,26 +64,87 @@ function getSceneTheme() {
 }
 
 function getGroundFallbackColor(material) {
-  if (material === 'grass') return '#173224';
-  if (material === 'dirt') return '#2a1e16';
-  if (material === 'concrete') return '#2a3640';
-  if (material === 'toxic') return '#233718';
-  if (material === 'asphalt') return '#161c26';
-  return '#121821';
+  if (material === 'grass') return '#21371d';
+  if (material === 'dirt') return '#3a2a1f';
+  if (material === 'concrete') return '#616a73';
+  if (material === 'concrete_tiles') return '#616a73';
+  if (material === 'toxic') return '#304421';
+  if (material === 'asphalt') return '#3a4047';
+  if (material === 'asphalt_wet') return '#2e353c';
+  return '#2e353c';
 }
 
-function getGroundTileForMaterial(material) {
-  return visuals.groundTiles?.[material] || visuals.groundTileCanvas || null;
+function getGroundTileSetForMaterial(material) {
+  const set = visuals.groundTiles?.[material];
+  if (set && Array.isArray(set.variants) && set.variants.length > 0) return set;
+  if (visuals.groundTileCanvas) {
+    return { salt: 0, variants: [visuals.groundTileCanvas], macroStamps: [] };
+  }
+  return null;
 }
 
-function drawMaterialTileField(tileCanvas, startX, startY, endX, endY) {
-  if (!tileCanvas) return;
-  const t = visuals.groundTileSize || tileCanvas.width || 128;
-  const tileStartX = Math.floor(startX / t) * t;
-  const tileStartY = Math.floor(startY / t) * t;
-  for (let y = tileStartY; y < endY; y += t) {
-    for (let x = tileStartX; x < endX; x += t) {
-      ctx.drawImage(tileCanvas, x - camera.x, y - camera.y, t, t);
+function hashGroundCell(x, y, salt = 0) {
+  let hash = Math.imul((Number(x) || 0) ^ 0x9e3779b9, 374761393);
+  hash = Math.imul(hash ^ ((Number(y) || 0) + 0x85ebca6b), 668265263);
+  hash ^= Number(salt) || 0;
+  hash = Math.imul(hash ^ (hash >>> 13), 1274126177);
+  return (hash ^ (hash >>> 16)) >>> 0;
+}
+
+function drawMaterialTileField(material, startX, startY, endX, endY, options = {}) {
+  const tileSet = getGroundTileSetForMaterial(material);
+  const variants = Array.isArray(tileSet?.variants) ? tileSet.variants.filter(Boolean) : [];
+  if (variants.length <= 0) return;
+  const t = visuals.groundTileSize || variants[0].width || 128;
+  const organic = material === 'grass' || material === 'dirt' || material === 'toxic';
+  const overlapPx = organic ? Math.max(10, Math.min(26, Math.round(t * 0.16))) : 0;
+  const tileStartX = Math.floor((startX - overlapPx) / t) * t;
+  const tileStartY = Math.floor((startY - overlapPx) / t) * t;
+  const offsetX = Number.isFinite(Number(options.offsetX)) ? Number(options.offsetX) : camera.x;
+  const offsetY = Number.isFinite(Number(options.offsetY)) ? Number(options.offsetY) : camera.y;
+  const salt = Number(tileSet?.salt) || 0;
+  for (let y = tileStartY; y < endY + overlapPx; y += t) {
+    const cellY = Math.floor(y / t);
+    for (let x = tileStartX; x < endX + overlapPx; x += t) {
+      const hash = hashGroundCell(Math.floor(x / t), cellY, salt);
+      const tileCanvas = variants[hash % variants.length] || variants[0];
+      const drawX = x - offsetX - overlapPx * 0.5;
+      const drawY = y - offsetY - overlapPx * 0.5;
+      ctx.drawImage(tileCanvas, drawX, drawY, t + overlapPx, t + overlapPx);
+    }
+  }
+}
+
+function drawMaterialMacroField(material, startX, startY, endX, endY, options = {}) {
+  const tileSet = getGroundTileSetForMaterial(material);
+  const stamps = Array.isArray(tileSet?.macroStamps) ? tileSet.macroStamps.filter(Boolean) : [];
+  if (stamps.length <= 0) return;
+  const offsetX = Number.isFinite(Number(options.offsetX)) ? Number(options.offsetX) : camera.x;
+  const offsetY = Number.isFinite(Number(options.offsetY)) ? Number(options.offsetY) : camera.y;
+  const salt = (Number(tileSet?.salt) || 0) ^ 0x9e3779b9;
+  const cellSize = Math.max(220, Math.round((visuals.groundTileSize || stamps[0].width || 128) * 3.35));
+  const cellStartX = Math.floor(startX / cellSize) - 1;
+  const cellEndX = Math.ceil(endX / cellSize) + 1;
+  const cellStartY = Math.floor(startY / cellSize) - 1;
+  const cellEndY = Math.ceil(endY / cellSize) + 1;
+  for (let gy = cellStartY; gy <= cellEndY; gy += 1) {
+    for (let gx = cellStartX; gx <= cellEndX; gx += 1) {
+      const hash = hashGroundCell(gx, gy, salt);
+      if ((hash & 7) < 3) continue;
+      const stamp = stamps[(hash >>> 3) % stamps.length] || stamps[0];
+      const centerX = (gx + 0.5) * cellSize + ((((hash >>> 11) & 255) / 255) - 0.5) * cellSize * 0.5;
+      const centerY = (gy + 0.5) * cellSize + ((((hash >>> 19) & 255) / 255) - 0.5) * cellSize * 0.5;
+      const scale = 0.9 + ((((hash >>> 7) & 255) / 255) * 0.9);
+      const alpha = 0.045 + ((((hash >>> 15) & 255) / 255) * 0.08);
+      const rotation = ((hash >>> 23) / 511) * Math.PI * 2;
+      const drawW = stamp.width * scale;
+      const drawH = stamp.height * scale;
+      ctx.save();
+      ctx.globalAlpha *= alpha;
+      ctx.translate(centerX - offsetX, centerY - offsetY);
+      ctx.rotate(rotation);
+      ctx.drawImage(stamp, -drawW * 0.5, -drawH * 0.5, drawW, drawH);
+      ctx.restore();
     }
   }
 }
@@ -108,7 +169,7 @@ function isTerrainZoneVisible(zone) {
 
 function drawTerrainZone(zone) {
   if (!zone || !isTerrainZoneVisible(zone)) return;
-  const tile = getGroundTileForMaterial(zone.material);
+  const tileSet = getGroundTileSetForMaterial(zone.material);
   const worldX = Number(zone.x) || 0;
   const worldY = Number(zone.y) || 0;
   const blurPx = Math.max(10, Math.min(42, Math.min(Number(zone.w) || 0, Number(zone.h) || 0) * Math.max(0.04, Number(zone.feather) || 0.18) * 0.12));
@@ -122,17 +183,13 @@ function drawTerrainZone(zone) {
   buildTerrainZonePath(zone, 1);
   ctx.clip();
   ctx.globalAlpha = alpha;
-  if (tile) {
-    const t = visuals.groundTileSize || tile.width || 128;
-    const startX = Math.floor((worldX - halfW - blurPx) / t) * t;
-    const startY = Math.floor((worldY - halfH - blurPx) / t) * t;
-    const endX = worldX + halfW + blurPx;
-    const endY = worldY + halfH + blurPx;
-    for (let y = startY; y < endY; y += t) {
-      for (let x = startX; x < endX; x += t) {
-        ctx.drawImage(tile, x - worldX, y - worldY, t, t);
-      }
-    }
+  const startX = worldX - halfW - blurPx;
+  const startY = worldY - halfH - blurPx;
+  const endX = worldX + halfW + blurPx;
+  const endY = worldY + halfH + blurPx;
+  if (tileSet) {
+    drawMaterialTileField(zone.material, startX, startY, endX, endY, { offsetX: worldX, offsetY: worldY });
+    drawMaterialMacroField(zone.material, startX, startY, endX, endY, { offsetX: worldX, offsetY: worldY });
   } else {
     ctx.fillStyle = getGroundFallbackColor(zone.material);
     ctx.fillRect(-halfW - blurPx, -halfH - blurPx, (halfW + blurPx) * 2, (halfH + blurPx) * 2);
@@ -148,6 +205,27 @@ function drawTerrainZone(zone) {
   buildTerrainZonePath(zone, 1.1 + Math.max(0.04, Number(zone.feather) || 0.18));
   ctx.fill();
   ctx.restore();
+
+  if (zone.centerStripe === true && (zone.material === 'asphalt' || zone.material === 'asphalt_wet') && zone.shape === 'band') {
+    const stripeWidth = Math.max(2, Math.min(6, halfH * 0.08));
+    const dash = Math.max(16, Math.round(Math.min(42, halfW * 0.12)));
+    const gap = Math.max(10, Math.round(dash * 0.72));
+    ctx.save();
+    ctx.translate(worldX - camera.x, worldY - camera.y);
+    ctx.rotate(Number(zone.angle) || 0);
+    buildTerrainZonePath(zone, 1);
+    ctx.clip();
+    ctx.strokeStyle = zone.material === 'asphalt_wet' ? 'rgba(237, 229, 190, 0.34)' : 'rgba(237, 229, 190, 0.42)';
+    ctx.lineWidth = stripeWidth;
+    ctx.lineCap = 'round';
+    ctx.setLineDash([dash, gap]);
+    ctx.beginPath();
+    ctx.moveTo(-halfW * 0.9, 0);
+    ctx.lineTo(halfW * 0.9, 0);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
 }
 
 function drawGround() {
@@ -158,10 +236,15 @@ function drawGround() {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   if (q.groundTexture) {
-    const tile = getGroundTileForMaterial(baseMaterial);
-    if (tile) {
-      const pad = visuals.groundTileSize || tile.width || 128;
-      drawMaterialTileField(tile, camera.x - pad, camera.y - pad, camera.x + canvas.width + pad, camera.y + canvas.height + pad);
+    const tileSet = getGroundTileSetForMaterial(baseMaterial);
+    if (tileSet) {
+      const pad = visuals.groundTileSize || tileSet.variants?.[0]?.width || 128;
+      const startX = camera.x - pad;
+      const startY = camera.y - pad;
+      const endX = camera.x + canvas.width + pad;
+      const endY = camera.y + canvas.height + pad;
+      drawMaterialTileField(baseMaterial, startX, startY, endX, endY);
+      drawMaterialMacroField(baseMaterial, startX, startY, endX, endY);
     }
   }
 
@@ -665,20 +748,32 @@ function drawMapObjectHpBar(obj, screenX, screenY) {
   ctx.restore();
 }
 
-function drawMapObjects(nowMs = Date.now()) {
-  const objects = Array.isArray(game.sortedMapObjects) ? game.sortedMapObjects : [];
-  for (const obj of objects) {
-    const radius = Math.max(Number(obj.w) || 0, Number(obj.h) || 0) * 0.55;
-    if (!isVisibleWorld(Number(obj.x) || 0, Number(obj.y) || 0, radius + 40)) continue;
-    const screenX = (Number(obj.x) || 0) - camera.x;
-    const screenY = (Number(obj.y) || 0) - camera.y;
-    const width = Math.max(22, Number(obj.w) || 22);
-    const height = Math.max(22, Number(obj.h) || 22);
-    const anchorY = Math.max(0.45, Math.min(0.72, Number(obj.anchorY) || 0.56));
-    const sprite = sprites.mapProps?.[obj.spriteKey] || null;
-    const damaged = obj.destructible && (Number(obj.hp) || 0) < Math.max(1, Number(obj.maxHp) || 1);
-    const recentlyHit = Math.max(0, Number(obj.lastHitAt) || 0) > 0 && (nowMs - Number(obj.lastHitAt) <= 120);
+function getMapObjectBaseY(obj) {
+  const anchorY = Math.max(0.45, Math.min(0.72, Number(obj?.anchorY) || 0.56));
+  return (Number(obj?.y) || 0) + Math.max(22, Number(obj?.h) || 22) * (1 - anchorY);
+}
 
+function getMapObjectTopY(obj) {
+  const anchorY = Math.max(0.45, Math.min(0.72, Number(obj?.anchorY) || 0.56));
+  return (Number(obj?.y) || 0) - Math.max(22, Number(obj?.h) || 22) * anchorY;
+}
+
+function drawSingleMapObject(obj, nowMs = Date.now(), options = {}) {
+  if (!obj) return;
+  const drawShadow = options.drawShadow !== false;
+  const drawHp = options.drawHp !== false;
+  const radius = Math.max(Number(obj.w) || 0, Number(obj.h) || 0) * 0.55;
+  if (!isVisibleWorld(Number(obj.x) || 0, Number(obj.y) || 0, radius + 40)) return;
+  const screenX = (Number(obj.x) || 0) - camera.x;
+  const screenY = (Number(obj.y) || 0) - camera.y;
+  const width = Math.max(22, Number(obj.w) || 22);
+  const height = Math.max(22, Number(obj.h) || 22);
+  const anchorY = Math.max(0.45, Math.min(0.72, Number(obj.anchorY) || 0.56));
+  const sprite = sprites.mapProps?.[obj.spriteKey] || null;
+  const damaged = obj.destructible && (Number(obj.hp) || 0) < Math.max(1, Number(obj.maxHp) || 1);
+  const recentlyHit = Math.max(0, Number(obj.lastHitAt) || 0) > 0 && (nowMs - Number(obj.lastHitAt) <= 120);
+
+  if (drawShadow) {
     if (obj.destroyed) {
       drawShadowAtScreen(screenX, screenY + 10, Math.max(18, width * 0.22), Math.max(6, height * 0.09), 0.14);
       ctx.save();
@@ -690,43 +785,74 @@ function drawMapObjects(nowMs = Date.now()) {
     } else {
       drawShadowAtScreen(screenX, screenY + 10, Math.max(16, width * 0.22 * (Number(obj.shadowScale) || 1)), Math.max(6, height * 0.1), 0.22);
     }
-
-    ctx.save();
-    ctx.translate(screenX, screenY);
-    ctx.rotate(Number(obj.angle) || 0);
-    if (recentlyHit) ctx.filter = 'brightness(1.18) saturate(1.2)';
-    else if (obj.destroyed) ctx.filter = 'grayscale(0.65) brightness(0.48) saturate(0.4)';
-    else if (damaged) ctx.filter = 'brightness(0.94) saturate(0.92)';
-
-    if (sprite?.complete && sprite.naturalWidth > 0) {
-      ctx.drawImage(sprite, -width * 0.5, -height * anchorY, width, height);
-    } else {
-      ctx.fillStyle = obj.destroyed ? '#3f3f46' : '#64748b';
-      ctx.fillRect(-width * 0.5, -height * 0.5, width, height);
-    }
-
-    if (damaged && !obj.destroyed) {
-      ctx.strokeStyle = 'rgba(248, 250, 252, 0.2)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(-width * 0.18, -height * 0.06);
-      ctx.lineTo(width * 0.12, height * 0.16);
-      ctx.moveTo(width * 0.06, -height * 0.2);
-      ctx.lineTo(width * 0.18, height * 0.08);
-      ctx.stroke();
-    }
-
-    if (obj.destroyed && obj.explosive) {
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.fillStyle = 'rgba(251, 146, 60, 0.16)';
-      ctx.beginPath();
-      ctx.ellipse(0, 0, Math.max(10, width * 0.15), Math.max(10, height * 0.12), 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    ctx.restore();
-    drawMapObjectHpBar(obj, screenX, screenY);
   }
+
+  ctx.save();
+  ctx.translate(screenX, screenY);
+  if (recentlyHit) ctx.filter = 'brightness(1.18) saturate(1.2)';
+  else if (obj.destroyed) ctx.filter = 'grayscale(0.65) brightness(0.48) saturate(0.4)';
+  else if (damaged) ctx.filter = 'brightness(0.94) saturate(0.92)';
+
+  if (sprite?.complete && sprite.naturalWidth > 0) {
+    ctx.drawImage(sprite, -width * 0.5, -height * anchorY, width, height);
+  } else {
+    ctx.fillStyle = obj.destroyed ? '#3f3f46' : '#64748b';
+    ctx.fillRect(-width * 0.5, -height * 0.5, width, height);
+  }
+
+  if (damaged && !obj.destroyed) {
+    ctx.strokeStyle = 'rgba(248, 250, 252, 0.2)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-width * 0.18, -height * 0.06);
+    ctx.lineTo(width * 0.12, height * 0.16);
+    ctx.moveTo(width * 0.06, -height * 0.2);
+    ctx.lineTo(width * 0.18, height * 0.08);
+    ctx.stroke();
+  }
+
+  if (obj.destroyed && obj.explosive) {
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = 'rgba(251, 146, 60, 0.16)';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, Math.max(10, width * 0.15), Math.max(10, height * 0.12), 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+  if (drawHp) drawMapObjectHpBar(obj, screenX, screenY);
+}
+
+function drawMapObjects(nowMs = Date.now()) {
+  const objects = Array.isArray(game.sortedMapObjects) ? game.sortedMapObjects : [];
+  for (const obj of objects) drawSingleMapObject(obj, nowMs, { drawShadow: true, drawHp: true });
+}
+
+function shouldObjectOccludeActor(obj, actor) {
+  if (!obj || obj.destroyed || !actor) return false;
+  const actorX = Number(actor.x) || 0;
+  const actorY = Number(actor.y) || 0;
+  const topY = getMapObjectTopY(obj);
+  const baseY = getMapObjectBaseY(obj);
+  if (actorY <= topY + 4 || actorY >= baseY - 4) return false;
+  const halfW = Math.max(
+    14,
+    (Math.max(Number(obj.collisionW) || 0, Number(obj.w) || 0) * 0.5) + 10,
+  );
+  return actorX >= (Number(obj.x) || 0) - halfW && actorX <= (Number(obj.x) || 0) + halfW;
+}
+
+function drawMapObjectOcclusionOverlay(actors, nowMs = Date.now()) {
+  const objects = Array.isArray(game.sortedMapObjects) ? game.sortedMapObjects : [];
+  if (objects.length <= 0 || !Array.isArray(actors) || actors.length <= 0) return;
+  const overlay = [];
+  for (const obj of objects) {
+    if (!obj || obj.destroyed) continue;
+    const shouldOverlay = actors.some((actor) => shouldObjectOccludeActor(obj, actor));
+    if (shouldOverlay) overlay.push(obj);
+  }
+  overlay.sort((a, b) => getMapObjectBaseY(a) - getMapObjectBaseY(b));
+  for (const obj of overlay) drawSingleMapObject(obj, nowMs, { drawShadow: false, drawHp: false });
 }
 
 function drawWeaponIcon(sx, sy, weaponKey) {
@@ -838,6 +964,19 @@ function drawPlayerUiLayer(playersByDepth) {
       (Number(myItem.rp?.y) || 0) - camera.y,
       true,
     );
+  }
+}
+
+function drawCompanionUiLayer(playersByDepth) {
+  if (!Array.isArray(playersByDepth) || playersByDepth.length <= 0) return;
+  for (const item of playersByDepth) {
+    const p = item?.p;
+    const rp = item?.rp;
+    if (!p?.alive || !p.isCompanion) continue;
+    const sx = (Number(rp?.x) || 0) - camera.x;
+    const sy = (Number(rp?.y) || 0) - camera.y;
+    drawCompanionNameAmmoBadge(p, sx, sy);
+    if (game.showCompanionReserveAmmoEnabled) drawPlayerWeaponAmmoBadge(p, sx, sy, -54);
   }
 }
 function drawBossPortals(portals, nowMs) {
@@ -1749,7 +1888,6 @@ function drawMinimap() {
     const objH = Math.max(2, (Number(obj.h) || 20) * sy);
     minimapCtx.save();
     minimapCtx.translate(toMapX(obj.x), toMapY(obj.y));
-    minimapCtx.rotate(Number(obj.angle) || 0);
     minimapCtx.fillStyle = obj.destroyed ? 'rgba(120, 113, 108, 0.55)' : 'rgba(226, 232, 240, 0.4)';
     minimapCtx.fillRect(-objW * 0.5, -objH * 0.5, objW, objH);
     minimapCtx.restore();
@@ -1993,8 +2131,21 @@ function render(ts) {
   for (const item of playersByDepth) {
     const p = item.p;
     const rp = item.rp;
-    drawPlayer(p, ts / 1000, p.id === game.myId, rp.x, rp.y, Boolean(p.isCompanion));
+    drawPlayer(p, ts / 1000, p.id === game.myId, rp.x, rp.y, false);
   }
+  const actorOcclusionMarkers = (game.state.enemies || [])
+    .map((e) => {
+      const re = getEnemyRenderPos(e);
+      return re ? { x: re.x, y: re.y } : null;
+    })
+    .filter(Boolean)
+    .concat(
+      playersByDepth
+        .filter((item) => item?.p?.alive)
+        .map((item) => ({ x: Number(item.rp?.x) || 0, y: Number(item.rp?.y) || 0 })),
+    );
+  drawMapObjectOcclusionOverlay(actorOcclusionMarkers, Number(game.state.now) || Date.now());
+  drawCompanionUiLayer(playersByDepth);
   drawPlayerUiLayer(playersByDepth);
 
   drawTrees();

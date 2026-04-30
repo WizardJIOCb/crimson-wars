@@ -2360,7 +2360,11 @@ const SCENE_PROP_TEMPLATES = {
     h: 62,
     anchorY: 0.56,
     shadowScale: 1,
+    collisionScaleX: 0.88,
+    collisionScaleY: 0.58,
+    collisionOffsetY: 4,
     solid: true,
+    solidAfterDestroyed: true,
     destructible: true,
     maxHp: 78,
     explosive: true,
@@ -2373,7 +2377,11 @@ const SCENE_PROP_TEMPLATES = {
     h: 64,
     anchorY: 0.56,
     shadowScale: 1.05,
+    collisionScaleX: 0.9,
+    collisionScaleY: 0.58,
+    collisionOffsetY: 4,
     solid: true,
+    solidAfterDestroyed: true,
     destructible: true,
     maxHp: 88,
     explosive: false,
@@ -2384,7 +2392,11 @@ const SCENE_PROP_TEMPLATES = {
     h: 78,
     anchorY: 0.57,
     shadowScale: 1.28,
+    collisionScaleX: 0.92,
+    collisionScaleY: 0.6,
+    collisionOffsetY: 5,
     solid: true,
+    solidAfterDestroyed: true,
     destructible: true,
     maxHp: 184,
     explosive: true,
@@ -2397,7 +2409,11 @@ const SCENE_PROP_TEMPLATES = {
     h: 72,
     anchorY: 0.56,
     shadowScale: 1.08,
+    collisionScaleX: 0.9,
+    collisionScaleY: 0.58,
+    collisionOffsetY: 4,
     solid: true,
+    solidAfterDestroyed: true,
     destructible: true,
     maxHp: 112,
     explosive: true,
@@ -2410,7 +2426,11 @@ const SCENE_PROP_TEMPLATES = {
     h: 42,
     anchorY: 0.52,
     shadowScale: 0.92,
+    collisionScaleX: 0.96,
+    collisionScaleY: 0.76,
+    collisionOffsetY: 2,
     solid: true,
+    solidAfterDestroyed: true,
     destructible: true,
     maxHp: 104,
     explosive: false,
@@ -2421,9 +2441,12 @@ const SCENE_PROP_TEMPLATES = {
     h: 128,
     anchorY: 0.58,
     shadowScale: 1.18,
+    collisionScaleX: 0.92,
+    collisionScaleY: 0.78,
+    collisionOffsetY: 12,
     solid: true,
-    destructible: true,
-    maxHp: 168,
+    destructible: false,
+    maxHp: 1,
     explosive: false,
   },
   mall_block: {
@@ -2432,6 +2455,9 @@ const SCENE_PROP_TEMPLATES = {
     h: 280,
     anchorY: 0.54,
     shadowScale: 1.4,
+    collisionScaleX: 0.96,
+    collisionScaleY: 0.86,
+    collisionOffsetY: 18,
     solid: true,
     destructible: false,
     maxHp: 1,
@@ -2443,6 +2469,9 @@ const SCENE_PROP_TEMPLATES = {
     h: 232,
     anchorY: 0.54,
     shadowScale: 1.28,
+    collisionScaleX: 0.94,
+    collisionScaleY: 0.84,
+    collisionOffsetY: 16,
     solid: true,
     destructible: false,
     maxHp: 1,
@@ -2454,6 +2483,9 @@ const SCENE_PROP_TEMPLATES = {
     h: 198,
     anchorY: 0.56,
     shadowScale: 1.18,
+    collisionScaleX: 0.86,
+    collisionScaleY: 0.82,
+    collisionOffsetY: 10,
     solid: true,
     destructible: false,
     maxHp: 1,
@@ -2465,6 +2497,9 @@ const SCENE_PROP_TEMPLATES = {
     h: 256,
     anchorY: 0.55,
     shadowScale: 1.32,
+    collisionScaleX: 0.94,
+    collisionScaleY: 0.86,
+    collisionOffsetY: 18,
     solid: true,
     destructible: false,
     maxHp: 1,
@@ -2477,13 +2512,14 @@ function getScenePropTemplate(kind) {
 }
 
 function buildMapObjectRect(obj, pad = 0) {
-  const width = Math.max(16, Number(obj?.w) || 0);
-  const height = Math.max(16, Number(obj?.h) || 0);
+  const width = Math.max(16, Number(obj?.collisionW) || Number(obj?.w) || 0);
+  const height = Math.max(16, Number(obj?.collisionH) || Number(obj?.h) || 0);
+  const offsetY = Number(obj?.collisionOffsetY) || 0;
   return {
     minX: (Number(obj?.x) || 0) - width * 0.5 - pad,
     maxX: (Number(obj?.x) || 0) + width * 0.5 + pad,
-    minY: (Number(obj?.y) || 0) - height * 0.5 - pad,
-    maxY: (Number(obj?.y) || 0) + height * 0.5 + pad,
+    minY: (Number(obj?.y) || 0) + offsetY - height * 0.5 - pad,
+    maxY: (Number(obj?.y) || 0) + offsetY + height * 0.5 + pad,
   };
 }
 
@@ -2522,6 +2558,8 @@ function instantiateSceneProp(blueprint, world, nextId) {
   const x = clamp((Number(blueprint?.x) || 0.5) * world.width, marginX, world.width - marginX);
   const y = clamp((Number(blueprint?.y) || 0.5) * world.height, marginY, world.height - marginY);
   const maxHp = template.destructible ? Math.max(1, Math.round((Number(template.maxHp) || 1) * Math.max(0.6, Number(blueprint?.hpMul) || 1))) : 1;
+  const collisionScaleX = Math.max(0.24, Number(template.collisionScaleX) || 1);
+  const collisionScaleY = Math.max(0.24, Number(template.collisionScaleY) || 1);
   return {
     id: `prop_${nextId}`,
     kind: String(blueprint.kind),
@@ -2530,10 +2568,14 @@ function instantiateSceneProp(blueprint, world, nextId) {
     y,
     w: width,
     h: height,
-    angle: Number(blueprint?.angle) || 0,
+    angle: 0,
     anchorY: Number(template.anchorY) || 0.56,
     shadowScale: Number(template.shadowScale) || 1,
+    collisionW: Math.max(18, Math.round(width * collisionScaleX)),
+    collisionH: Math.max(18, Math.round(height * collisionScaleY)),
+    collisionOffsetY: Math.round(Number(template.collisionOffsetY) || 0),
     solid: template.solid !== false,
+    solidAfterDestroyed: template.solidAfterDestroyed === true,
     destructible: template.destructible === true,
     maxHp,
     hp: maxHp,
@@ -2577,6 +2619,7 @@ function buildRoomScene(content) {
       alpha: Math.max(0.08, Math.min(1, Number(zoneDef?.alpha) || 0.65)),
       feather: Math.max(0.04, Math.min(0.45, Number(zoneDef?.feather) || 0.18)),
       angle: Number(zoneDef?.angle) || 0,
+      centerStripe: zoneDef?.centerStripe === true,
     }))
     : [];
 
@@ -2631,7 +2674,7 @@ function getSceneObjects(room, options = {}) {
   const solidOnly = options.solidOnly === true;
   return (Array.isArray(room?.mapObjects) ? room.mapObjects : []).filter((obj) => {
     if (!obj) return false;
-    if (solidOnly && (!obj.solid || obj.destroyed)) return false;
+    if (solidOnly && !obj.solid) return false;
     return true;
   });
 }
@@ -2718,6 +2761,410 @@ function segmentIntersectsExpandedRect(x1, y1, x2, y2, rect, pad = 0) {
   return true;
 }
 
+function isPointInsideRect(x, y, rect) {
+  return x >= rect.minX && x <= rect.maxX && y >= rect.minY && y <= rect.maxY;
+}
+
+function findSceneBlockingObject(room, x1, y1, x2, y2, pad = 0, options = {}) {
+  const excludeId = String(options.excludeId || '');
+  const solidObjects = getSceneObjects(room, { solidOnly: true });
+  const segDx = x2 - x1;
+  const segDy = y2 - y1;
+  const segLenSq = Math.max(1, segDx * segDx + segDy * segDy);
+  let best = null;
+  let bestAlong = Infinity;
+  for (const obj of solidObjects) {
+    if (!obj) continue;
+    if (excludeId && String(obj.id) === excludeId) continue;
+    const rect = buildMapObjectRect(obj, pad);
+    if (!segmentIntersectsExpandedRect(x1, y1, x2, y2, rect, 0)) continue;
+    const cx = (rect.minX + rect.maxX) * 0.5;
+    const cy = (rect.minY + rect.maxY) * 0.5;
+    const along = ((cx - x1) * segDx + (cy - y1) * segDy) / segLenSq;
+    if (along < -0.05 || along > 1.05) continue;
+    if (along < bestAlong) {
+      bestAlong = along;
+      best = { obj, rect, centerX: cx, centerY: cy, along };
+    }
+  }
+  return best;
+}
+
+function clearEnemyAvoidState(enemy) {
+  if (!enemy) return;
+  enemy.avoidObjectId = '';
+  enemy.avoidWaypointX = 0;
+  enemy.avoidWaypointY = 0;
+  enemy.avoidUntil = 0;
+}
+
+function pointBlockedByScene(room, x, y, options = {}) {
+  const excludeId = String(options.excludeId || '');
+  for (const obj of getSceneObjects(room, { solidOnly: true })) {
+    if (!obj) continue;
+    if (excludeId && String(obj.id) === excludeId) continue;
+    if (isPointInsideRect(x, y, buildMapObjectRect(obj, Number(options.pad) || 0))) return true;
+  }
+  return false;
+}
+
+function getCollectibleWorldBounds(room, radius = PLAYER_RADIUS) {
+  const world = getRoomWorld(room);
+  const margin = Math.max(12, radius + 8);
+  return {
+    minX: margin,
+    maxX: Math.max(margin, world.width - margin),
+    minY: margin,
+    maxY: Math.max(margin, world.height - margin),
+  };
+}
+
+function isCollectiblePlacementFree(room, x, y, radius = PLAYER_RADIUS) {
+  return !pointBlockedByScene(room, x, y, { pad: Math.max(6, radius * 0.55) });
+}
+
+function findNearestCollectibleSpawnPoint(room, x, y, options = {}) {
+  if (!room) return { x: Number(x) || 0, y: Number(y) || 0 };
+  const radius = Math.max(8, Number(options.radius) || Math.max(10, PLAYER_RADIUS * 0.82));
+  const bounds = options.bounds || getCollectibleWorldBounds(room, radius);
+  const baseX = clamp(Number(x) || 0, bounds.minX, bounds.maxX);
+  const baseY = clamp(Number(y) || 0, bounds.minY, bounds.maxY);
+  const tryPoint = (candidateX, candidateY) => {
+    let tx = clamp(candidateX, bounds.minX, bounds.maxX);
+    let ty = clamp(candidateY, bounds.minY, bounds.maxY);
+    if (isCollectiblePlacementFree(room, tx, ty, radius)) return { x: tx, y: ty };
+    const resolved = resolveCircleAgainstScene(room, tx, ty, radius);
+    tx = clamp(resolved.x, bounds.minX, bounds.maxX);
+    ty = clamp(resolved.y, bounds.minY, bounds.maxY);
+    if (isCollectiblePlacementFree(room, tx, ty, radius)) return { x: tx, y: ty };
+    return null;
+  };
+
+  let found = tryPoint(baseX, baseY);
+  if (found) return found;
+
+  const ringStep = Math.max(18, radius * 1.9);
+  for (let ring = 1; ring <= 8; ring += 1) {
+    const dist = ring * ringStep;
+    const samples = 8 + ring * 4;
+    for (let sample = 0; sample < samples; sample += 1) {
+      const angle = (sample / samples) * Math.PI * 2;
+      found = tryPoint(baseX + Math.cos(angle) * dist, baseY + Math.sin(angle) * dist);
+      if (found) return found;
+    }
+  }
+
+  return { x: baseX, y: baseY };
+}
+
+const SCENE_NAV_CELL_SIZE = 80;
+const SCENE_NAV_CELL_INSET = 6;
+const SCENE_NAV_BLOCK_PAD = Math.max(ENEMY_RADIUS, PLAYER_RADIUS) + 14;
+const SCENE_NAV_FLOW_CACHE_LIMIT = 18;
+const SCENE_NAV_DIRECTIONS = [
+  { dx: -1, dy: 0, diagonal: false },
+  { dx: 1, dy: 0, diagonal: false },
+  { dx: 0, dy: -1, diagonal: false },
+  { dx: 0, dy: 1, diagonal: false },
+  { dx: -1, dy: -1, diagonal: true },
+  { dx: 1, dy: -1, diagonal: true },
+  { dx: -1, dy: 1, diagonal: true },
+  { dx: 1, dy: 1, diagonal: true },
+];
+
+function getSceneNavCellIndex(grid, col, row) {
+  return row * grid.cols + col;
+}
+
+function isSceneNavCellPassable(grid, col, row) {
+  if (!grid || col < 0 || row < 0 || col >= grid.cols || row >= grid.rows) return false;
+  return grid.blocked[getSceneNavCellIndex(grid, col, row)] !== 1;
+}
+
+function getSceneNavCellCenter(grid, index) {
+  const col = index % grid.cols;
+  const row = Math.floor(index / grid.cols);
+  return {
+    x: Math.min(grid.worldWidth - 1, col * grid.cellSize + grid.cellSize * 0.5),
+    y: Math.min(grid.worldHeight - 1, row * grid.cellSize + grid.cellSize * 0.5),
+  };
+}
+
+function getRoomSceneNavGrid(room) {
+  if (!room) return null;
+  if (room.sceneNavGrid) return room.sceneNavGrid;
+  const world = getRoomWorld(room);
+  const solidObjects = getSceneObjects(room, { solidOnly: true });
+  const cellSize = SCENE_NAV_CELL_SIZE;
+  const cols = Math.max(1, Math.ceil(world.width / cellSize));
+  const rows = Math.max(1, Math.ceil(world.height / cellSize));
+  const blocked = new Uint8Array(cols * rows);
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      const index = row * cols + col;
+      const minX = col * cellSize + SCENE_NAV_CELL_INSET;
+      const minY = row * cellSize + SCENE_NAV_CELL_INSET;
+      const maxX = Math.min(world.width, (col + 1) * cellSize) - SCENE_NAV_CELL_INSET;
+      const maxY = Math.min(world.height, (row + 1) * cellSize) - SCENE_NAV_CELL_INSET;
+      if (maxX <= minX || maxY <= minY) {
+        blocked[index] = 1;
+        continue;
+      }
+      const cellRect = { minX, minY, maxX, maxY };
+      let isBlocked = false;
+      for (const obj of solidObjects) {
+        if (!obj) continue;
+        if (rectsOverlap(cellRect, buildMapObjectRect(obj, SCENE_NAV_BLOCK_PAD))) {
+          isBlocked = true;
+          break;
+        }
+      }
+      blocked[index] = isBlocked ? 1 : 0;
+    }
+  }
+  room.sceneNavGrid = {
+    cellSize,
+    cols,
+    rows,
+    blocked,
+    worldWidth: world.width,
+    worldHeight: world.height,
+  };
+  room.sceneNavFlowCache = new Map();
+  return room.sceneNavGrid;
+}
+
+function findNearestSceneNavCell(grid, x, y, maxRing = 8) {
+  if (!grid) return -1;
+  const baseCol = clamp(Math.floor((Number(x) || 0) / grid.cellSize), 0, grid.cols - 1);
+  const baseRow = clamp(Math.floor((Number(y) || 0) / grid.cellSize), 0, grid.rows - 1);
+  let bestIndex = -1;
+  let bestDistSq = Infinity;
+  const inspectCell = (col, row) => {
+    if (!isSceneNavCellPassable(grid, col, row)) return;
+    const index = getSceneNavCellIndex(grid, col, row);
+    const center = getSceneNavCellCenter(grid, index);
+    const dx = center.x - x;
+    const dy = center.y - y;
+    const distSq = dx * dx + dy * dy;
+    if (distSq < bestDistSq) {
+      bestDistSq = distSq;
+      bestIndex = index;
+    }
+  };
+  for (let ring = 0; ring <= maxRing; ring += 1) {
+    const minCol = Math.max(0, baseCol - ring);
+    const maxCol = Math.min(grid.cols - 1, baseCol + ring);
+    const minRow = Math.max(0, baseRow - ring);
+    const maxRow = Math.min(grid.rows - 1, baseRow + ring);
+    for (let row = minRow; row <= maxRow; row += 1) {
+      for (let col = minCol; col <= maxCol; col += 1) {
+        if (ring > 0 && col > minCol && col < maxCol && row > minRow && row < maxRow) continue;
+        inspectCell(col, row);
+      }
+    }
+    if (bestIndex >= 0) return bestIndex;
+  }
+  for (let row = 0; row < grid.rows; row += 1) {
+    for (let col = 0; col < grid.cols; col += 1) inspectCell(col, row);
+  }
+  return bestIndex;
+}
+
+function getSceneNavFlowField(room, targetX, targetY) {
+  const grid = getRoomSceneNavGrid(room);
+  if (!grid) return null;
+  const goalIndex = findNearestSceneNavCell(grid, targetX, targetY);
+  if (goalIndex < 0) return null;
+  if (!(room.sceneNavFlowCache instanceof Map)) room.sceneNavFlowCache = new Map();
+  if (room.sceneNavFlowCache.has(goalIndex)) return room.sceneNavFlowCache.get(goalIndex) || null;
+
+  const cellCount = grid.cols * grid.rows;
+  const dist = new Int16Array(cellCount);
+  dist.fill(-1);
+  const queue = new Int32Array(cellCount);
+  let head = 0;
+  let tail = 0;
+  dist[goalIndex] = 0;
+  queue[tail++] = goalIndex;
+
+  while (head < tail) {
+    const index = queue[head++];
+    const col = index % grid.cols;
+    const row = Math.floor(index / grid.cols);
+    const nextDist = dist[index] + 1;
+    for (const dir of SCENE_NAV_DIRECTIONS) {
+      const nextCol = col + dir.dx;
+      const nextRow = row + dir.dy;
+      if (!isSceneNavCellPassable(grid, nextCol, nextRow)) continue;
+      if (dir.diagonal) {
+        if (!isSceneNavCellPassable(grid, col + dir.dx, row) || !isSceneNavCellPassable(grid, col, row + dir.dy)) continue;
+      }
+      const nextIndex = getSceneNavCellIndex(grid, nextCol, nextRow);
+      if (dist[nextIndex] >= 0) continue;
+      dist[nextIndex] = nextDist;
+      queue[tail++] = nextIndex;
+    }
+  }
+
+  const flow = { goalIndex, dist };
+  room.sceneNavFlowCache.set(goalIndex, flow);
+  while (room.sceneNavFlowCache.size > SCENE_NAV_FLOW_CACHE_LIMIT) {
+    const oldestKey = room.sceneNavFlowCache.keys().next().value;
+    room.sceneNavFlowCache.delete(oldestKey);
+  }
+  return flow;
+}
+
+function chooseEnemyNavWaypoint(room, enemy, target, radius, bounds) {
+  const grid = getRoomSceneNavGrid(room);
+  if (!grid || !enemy || !target) return null;
+  const startIndex = findNearestSceneNavCell(grid, enemy.x, enemy.y);
+  if (startIndex < 0) return null;
+  const flow = getSceneNavFlowField(room, target.x, target.y);
+  if (!flow?.dist) return null;
+  const currentDist = flow.dist[startIndex];
+  if (currentDist < 0) return null;
+  if (currentDist === 0) return { x: Number(target.x) || enemy.x, y: Number(target.y) || enemy.y };
+
+  const startCol = startIndex % grid.cols;
+  const startRow = Math.floor(startIndex / grid.cols);
+  let bestIndex = -1;
+  let bestScore = Infinity;
+
+  for (const dir of SCENE_NAV_DIRECTIONS) {
+    const nextCol = startCol + dir.dx;
+    const nextRow = startRow + dir.dy;
+    if (!isSceneNavCellPassable(grid, nextCol, nextRow)) continue;
+    if (dir.diagonal) {
+      if (!isSceneNavCellPassable(grid, startCol + dir.dx, startRow) || !isSceneNavCellPassable(grid, startCol, startRow + dir.dy)) continue;
+    }
+    const nextIndex = getSceneNavCellIndex(grid, nextCol, nextRow);
+    const nextDist = flow.dist[nextIndex];
+    if (nextDist < 0 || nextDist >= currentDist) continue;
+    const center = getSceneNavCellCenter(grid, nextIndex);
+    const score = nextDist * 1000 + Math.hypot((Number(target.x) || 0) - center.x, (Number(target.y) || 0) - center.y);
+    if (score < bestScore) {
+      bestScore = score;
+      bestIndex = nextIndex;
+    }
+  }
+
+  if (bestIndex < 0) return null;
+  const waypoint = getSceneNavCellCenter(grid, bestIndex);
+  const minX = (bounds?.minX ?? 0) + radius;
+  const maxX = (bounds?.maxX ?? grid.worldWidth) - radius;
+  const minY = (bounds?.minY ?? 0) + radius;
+  const maxY = (bounds?.maxY ?? grid.worldHeight) - radius;
+  return {
+    x: clamp(waypoint.x, minX, maxX),
+    y: clamp(waypoint.y, minY, maxY),
+  };
+}
+
+function chooseEnemyBypassWaypoint(room, enemy, targetX, targetY, radius, bounds, blocking) {
+  if (!blocking?.rect) return null;
+  const rect = blocking.rect;
+  const clear = Math.max(radius + 30, 34);
+  const clampX = (value) => clamp(value, bounds.minX + radius, bounds.maxX - radius);
+  const clampY = (value) => clamp(value, bounds.minY + radius, bounds.maxY - radius);
+  const candidates = [
+    {
+      x: clampX(rect.minX - clear),
+      y: clampY(clamp(targetY, rect.minY - clear, rect.maxY + clear)),
+      side: 'left',
+    },
+    {
+      x: clampX(rect.maxX + clear),
+      y: clampY(clamp(targetY, rect.minY - clear, rect.maxY + clear)),
+      side: 'right',
+    },
+    {
+      x: clampX(clamp(targetX, rect.minX - clear, rect.maxX + clear)),
+      y: clampY(rect.minY - clear),
+      side: 'top',
+    },
+    {
+      x: clampX(clamp(targetX, rect.minX - clear, rect.maxX + clear)),
+      y: clampY(rect.maxY + clear),
+      side: 'bottom',
+    },
+  ];
+
+  let best = null;
+  let bestScore = Infinity;
+  for (const candidate of candidates) {
+    if (pointBlockedByScene(room, candidate.x, candidate.y, { excludeId: blocking.obj.id, pad: radius * 0.35 })) continue;
+    const toWaypoint = Math.hypot(candidate.x - enemy.x, candidate.y - enemy.y);
+    if (toWaypoint <= radius * 0.5) continue;
+    let score = toWaypoint + Math.hypot(targetX - candidate.x, targetY - candidate.y);
+    const firstLegBlocked = Boolean(findSceneBlockingObject(room, enemy.x, enemy.y, candidate.x, candidate.y, radius * 0.65, {
+      excludeId: blocking.obj.id,
+    }));
+    const secondLegBlocked = Boolean(findSceneBlockingObject(room, candidate.x, candidate.y, targetX, targetY, radius * 0.65, {
+      excludeId: blocking.obj.id,
+    }));
+    if (firstLegBlocked) score += 800;
+    if (secondLegBlocked) score += 180;
+    if (String(enemy.avoidObjectId || '') === String(blocking.obj.id || '')) {
+      const sameWaypointDist = Math.hypot((Number(enemy.avoidWaypointX) || 0) - candidate.x, (Number(enemy.avoidWaypointY) || 0) - candidate.y);
+      if (sameWaypointDist < 18) score -= 22;
+    }
+    if (score < bestScore) {
+      bestScore = score;
+      best = candidate;
+    }
+  }
+  return best;
+}
+
+function getEnemySteerTarget(room, enemy, target, radius, now, bounds) {
+  const direct = {
+    x: Number(target?.x) || Number(enemy?.x) || 0,
+    y: Number(target?.y) || Number(enemy?.y) || 0,
+    targetBlocked: false,
+  };
+  if (!room || !enemy || !target) return direct;
+
+  const cachedObjectId = String(enemy.avoidObjectId || '');
+  const cachedUntil = Math.max(0, Number(enemy.avoidUntil) || 0);
+  const cachedX = Number(enemy.avoidWaypointX) || 0;
+  const cachedY = Number(enemy.avoidWaypointY) || 0;
+  const cachedActive = cachedObjectId && cachedUntil > now;
+  const directBlock = findSceneBlockingObject(room, enemy.x, enemy.y, target.x, target.y, radius * 0.72);
+
+  if (!directBlock) {
+    clearEnemyAvoidState(enemy);
+    return direct;
+  }
+
+  const navWaypoint = chooseEnemyNavWaypoint(room, enemy, target, radius, bounds);
+  if (navWaypoint) {
+    clearEnemyAvoidState(enemy);
+    return { x: navWaypoint.x, y: navWaypoint.y, targetBlocked: true };
+  }
+
+  if (cachedActive) {
+    const distToWaypoint = Math.hypot(cachedX - enemy.x, cachedY - enemy.y);
+    const stillBlockedBySame = String(directBlock.obj?.id || '') === cachedObjectId;
+    if (distToWaypoint > Math.max(radius * 0.9, 16) && stillBlockedBySame) {
+      return { x: cachedX, y: cachedY, targetBlocked: true };
+    }
+  }
+
+  const waypoint = chooseEnemyBypassWaypoint(room, enemy, target.x, target.y, radius, bounds, directBlock);
+  if (!waypoint) {
+    clearEnemyAvoidState(enemy);
+    return { ...direct, targetBlocked: true };
+  }
+
+  enemy.avoidObjectId = String(directBlock.obj?.id || '');
+  enemy.avoidWaypointX = waypoint.x;
+  enemy.avoidWaypointY = waypoint.y;
+  enemy.avoidUntil = now + 1200;
+  return { x: waypoint.x, y: waypoint.y, targetBlocked: true };
+}
+
 function markMapObjectsChanged(room) {
   if (!room) return;
   room.mapObjectStateVersion = Math.max(1, Number(room.mapObjectStateVersion) || 1) + 1;
@@ -2793,7 +3240,7 @@ function damageMapObject(room, obj, damage, ownerId = '', now = Date.now(), opti
     obj.hp = 0;
     obj.destroyed = true;
     obj.destroyedAt = now;
-    obj.solid = false;
+    obj.solid = obj.solidAfterDestroyed === true;
     if (obj.explosive) explodeMapObject(room, obj, now, ownerId);
   }
   markMapObjectsChanged(room);
@@ -4240,9 +4687,13 @@ function serializeMapObject(obj) {
     y: Number(obj.y) || 0,
     w: Math.max(1, Number(obj.w) || 1),
     h: Math.max(1, Number(obj.h) || 1),
+    collisionW: Math.max(1, Number(obj.collisionW) || Number(obj.w) || 1),
+    collisionH: Math.max(1, Number(obj.collisionH) || Number(obj.h) || 1),
+    collisionOffsetY: Number(obj.collisionOffsetY) || 0,
     angle: Number(obj.angle) || 0,
     anchorY: Number(obj.anchorY) || 0.56,
     shadowScale: Number(obj.shadowScale) || 1,
+    solid: Boolean(obj.solid),
     destructible: Boolean(obj.destructible),
     hp: Math.max(0, Number(obj.hp) || 0),
     maxHp: Math.max(1, Number(obj.maxHp) || 1),
@@ -4813,13 +5264,14 @@ function getEnemyAttackCooldownMs(enemy) {
 }
 
 function maybeSpawnDrop(room, x, y) {
+  const spawnPos = findNearestCollectibleSpawnPoint(room, x, y, { radius: Math.max(12, PLAYER_RADIUS * 0.82) });
   const bonusRoll = Math.random();
   if (bonusRoll <= 0.045) {
     room.drops.push({
       id: room.nextDropId++,
       kind: 'xp_vacuum',
-      x,
-      y,
+      x: spawnPos.x,
+      y: spawnPos.y,
       weaponKey: null,
       ttlMs: DROP_LIFETIME_MS,
     });
@@ -4832,8 +5284,8 @@ function maybeSpawnDrop(room, x, y) {
   room.drops.push({
     id: room.nextDropId++,
     kind: 'weapon',
-    x,
-    y,
+    x: spawnPos.x,
+    y: spawnPos.y,
     weaponKey,
     ttlMs: DROP_LIFETIME_MS,
   });
@@ -5299,6 +5751,7 @@ function createRunReplay(room, player, now) {
         alpha: Math.max(0.05, Number(zone?.alpha) || 0.65),
         feather: Math.max(0.04, Number(zone?.feather) || 0.18),
         angle: Number(zone?.angle) || 0,
+        centerStripe: zone?.centerStripe === true,
       })),
       theme: room.sceneTheme ? { ...room.sceneTheme } : null,
       objects: (room.mapObjects || []).map((obj) => {
@@ -5618,22 +6071,28 @@ function clearSkillOffersForOwner(room, playerId) {
   return removed;
 }
 
-function randomSkillOfferPosition(player, used = []) {
-  const world = getRoomWorld(rooms.get(player.roomCode));
+function randomSkillOfferPosition(room, player, used = []) {
+  const world = getRoomWorld(room);
   const minDist = Math.max(40, Number(SKILL_OFFER_SPAWN_MIN_DIST) || 120);
   const maxDist = Math.max(minDist + 20, Number(SKILL_OFFER_SPAWN_MAX_DIST) || 420);
   for (let i = 0; i < 28; i += 1) {
     const angle = Math.random() * Math.PI * 2;
     const dist = minDist + Math.random() * (maxDist - minDist);
-    const x = clamp(player.x + Math.cos(angle) * dist, PLAYER_RADIUS + 16, world.width - PLAYER_RADIUS - 16);
-    const y = clamp(player.y + Math.sin(angle) * dist, PLAYER_RADIUS + 16, world.height - PLAYER_RADIUS - 16);
-    const tooClose = used.some((pos) => ((pos.x - x) ** 2 + (pos.y - y) ** 2) <= (84 * 84));
-    if (!tooClose) return { x, y };
+    const pos = findNearestCollectibleSpawnPoint(
+      room,
+      clamp(player.x + Math.cos(angle) * dist, PLAYER_RADIUS + 16, world.width - PLAYER_RADIUS - 16),
+      clamp(player.y + Math.sin(angle) * dist, PLAYER_RADIUS + 16, world.height - PLAYER_RADIUS - 16),
+      { radius: Math.max(12, PLAYER_RADIUS * 0.82) },
+    );
+    const tooClose = used.some((usedPos) => ((usedPos.x - pos.x) ** 2 + (usedPos.y - pos.y) ** 2) <= (84 * 84));
+    if (!tooClose) return pos;
   }
-  return {
-    x: clamp(player.x + (Math.random() - 0.5) * 260, PLAYER_RADIUS + 16, world.width - PLAYER_RADIUS - 16),
-    y: clamp(player.y + (Math.random() - 0.5) * 260, PLAYER_RADIUS + 16, world.height - PLAYER_RADIUS - 16),
-  };
+  return findNearestCollectibleSpawnPoint(
+    room,
+    clamp(player.x + (Math.random() - 0.5) * 260, PLAYER_RADIUS + 16, world.width - PLAYER_RADIUS - 16),
+    clamp(player.y + (Math.random() - 0.5) * 260, PLAYER_RADIUS + 16, world.height - PLAYER_RADIUS - 16),
+    { radius: Math.max(12, PLAYER_RADIUS * 0.82) },
+  );
 }
 
 function ensureSkillOffer(room, player, now = Date.now()) {
@@ -5645,7 +6104,7 @@ function ensureSkillOffer(room, player, now = Date.now()) {
 
   const used = [];
   for (const skillId of picks) {
-    const pos = randomSkillOfferPosition(player, used);
+    const pos = randomSkillOfferPosition(room, player, used);
     used.push(pos);
     room.skillOrbs.push({
       id: room.nextSkillOrbId++,
@@ -5687,10 +6146,13 @@ function spawnXpOrbs(room, x, y, amount) {
   while (left > 0) {
     const chunk = Math.max(1, Math.min(left, 3 + Math.floor(Math.random() * 6)));
     left -= chunk;
+    const pos = findNearestCollectibleSpawnPoint(room, x + (Math.random() - 0.5) * 20, y + (Math.random() - 0.5) * 20, {
+      radius: Math.max(10, PLAYER_RADIUS * 0.68),
+    });
     room.xpOrbs.push({
       id: room.nextXpOrbId++,
-      x: x + (Math.random() - 0.5) * 20,
-      y: y + (Math.random() - 0.5) * 20,
+      x: pos.x,
+      y: pos.y,
       xp: chunk,
       ttlMs: XP_ORB_LIFETIME_MS,
     });
@@ -7577,10 +8039,18 @@ function tickRoom(room, dtSec, now) {
     const dy = target.y - e.y;
     const d = Math.hypot(dx, dy) || 1;
     const rr = er + PLAYER_RADIUS;
+    const steerTarget = getEnemySteerTarget(room, e, target, er, now, enemyWorldBounds);
+    const steerDx = steerTarget.x - e.x;
+    const steerDy = steerTarget.y - e.y;
+    const steerDist = Math.hypot(steerDx, steerDy) || 1;
+    const targetBlocked = steerTarget.targetBlocked === true;
 
     if (e.type === 'ranged') {
       const targetDist = d;
-      if (targetDist < ENEMY_RANGED_MIN_RANGE) {
+      if (targetBlocked) {
+        e.vx = (steerDx / steerDist) * speed;
+        e.vy = (steerDy / steerDist) * speed;
+      } else if (targetDist < ENEMY_RANGED_MIN_RANGE) {
         e.vx = -(dx / d) * speed;
         e.vy = -(dy / d) * speed;
       } else if (targetDist > ENEMY_RANGED_MAX_RANGE) {
@@ -7597,7 +8067,7 @@ function tickRoom(room, dtSec, now) {
       e.x = moved.x;
       e.y = moved.y;
 
-      if (e.attackCooldownMs <= 0 && target.alive && targetDist <= ENEMY_RANGED_MAX_RANGE * 1.1) {
+      if (e.attackCooldownMs <= 0 && target.alive && !targetBlocked && targetDist <= ENEMY_RANGED_MAX_RANGE * 1.1) {
         fireEnemyProjectile(room, e, target);
         e.attackCooldownMs = ENEMY_RANGED_FIRE_COOLDOWN_MS;
       }
@@ -7649,7 +8119,7 @@ function tickRoom(room, dtSec, now) {
       continue;
     }
     const attackTriggerRange = e.type === 'boss' ? (rr * 3) : rr;
-    if (e.attackCooldownMs <= 0 && (e.x - target.x) ** 2 + (e.y - target.y) ** 2 <= attackTriggerRange * attackTriggerRange && target.alive) {
+    if (e.attackCooldownMs <= 0 && !targetBlocked && (e.x - target.x) ** 2 + (e.y - target.y) ** 2 <= attackTriggerRange * attackTriggerRange && target.alive) {
       e.vx = 0;
       e.vy = 0;
       e.faceLeft = dx < 0;
@@ -7658,8 +8128,8 @@ function tickRoom(room, dtSec, now) {
       continue;
     }
 
-    e.vx = (dx / d) * speed;
-    e.vy = (dy / d) * speed;
+    e.vx = (steerDx / steerDist) * speed;
+    e.vy = (steerDy / steerDist) * speed;
     if (Math.abs(Number(e.vx) || 0) > 0.15) e.faceLeft = (Number(e.vx) || 0) < 0;
     const moved = moveActorWithSceneCollision(room, e.x, e.y, e.vx * dtSec, e.vy * dtSec, er, enemyWorldBounds);
     e.x = moved.x;
