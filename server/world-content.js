@@ -1,0 +1,461 @@
+const MAP_DEFS = [
+  {
+    id: 'mall_night',
+    name: 'Night Mall',
+    subtitle: 'Парковка, где тележки уже едят людей',
+    description: 'Большая ночная парковка торгового центра. Места хватит и для кайтa, и для паники.',
+    worldWidth: 4800,
+    worldHeight: 2800,
+    treeDensityMul: 1,
+    cover: {
+      from: '#2a0f12',
+      to: '#0d121c',
+      accent: '#f97316',
+      glow: 'rgba(249, 115, 22, 0.26)',
+    },
+  },
+  {
+    id: 'ringroad_bbq',
+    name: 'Ringroad BBQ',
+    subtitle: 'Пробка длиной в апокалипсис',
+    description: 'Широкая трасса с обочинами, на которых зомби ведут себя как очень злые дачники.',
+    worldWidth: 5200,
+    worldHeight: 2400,
+    treeDensityMul: 0.52,
+    cover: {
+      from: '#2a1810',
+      to: '#111720',
+      accent: '#fb7185',
+      glow: 'rgba(251, 113, 133, 0.22)',
+    },
+  },
+  {
+    id: 'clinic_yard',
+    name: 'Clinic Yard',
+    subtitle: 'Скорая уже приехала, но не по той причине',
+    description: 'Двор инфекционной клиники. Здесь пахнет антисептиком, плохими новостями и очень быстрой смертью.',
+    worldWidth: 4400,
+    worldHeight: 3200,
+    treeDensityMul: 1.08,
+    cover: {
+      from: '#0d2b26',
+      to: '#0c141b',
+      accent: '#34d399',
+      glow: 'rgba(52, 211, 153, 0.22)',
+    },
+  },
+  {
+    id: 'reactor_sprawl',
+    name: 'Reactor Sprawl',
+    subtitle: 'Промзона, где дозиметр просто смеётся',
+    description: 'Ржавая энергетическая зона с длинными прострелами, кучей хлама и заметно лишней радиацией.',
+    worldWidth: 5600,
+    worldHeight: 3000,
+    treeDensityMul: 0.7,
+    cover: {
+      from: '#13240f',
+      to: '#0d1118',
+      accent: '#a3e635',
+      glow: 'rgba(163, 230, 53, 0.22)',
+    },
+  },
+];
+
+const CAMPAIGN_DEFS = [
+  {
+    id: 'mall_of_the_dead',
+    name: 'Mall Of The Dead',
+    shortName: 'ТЦ Конец Света',
+    tagline: 'Фудкорт пал, охрана мертва, скидки вечны.',
+    description: 'Торговый центр пережил всё, кроме клиентов-зомби. Нас ждут тележки, витрины и менеджер, у которого KPI теперь измеряется в мозгах.',
+    cover: {
+      from: '#3a1112',
+      to: '#121925',
+      accent: '#fb923c',
+      glow: 'rgba(251, 146, 60, 0.24)',
+      artLabel: 'MALL // PANIC',
+    },
+    levels: [
+      {
+        id: 'foodcourt_warmup',
+        title: 'Открытие фудкорта',
+        brief: 'Продержаться, пока зомби спорят, можно ли считать кетчуп супом.',
+        scenario: 'Охрана пропала, музыка всё ещё играет, а фудкорт уже пытается укусить посетителей первым.',
+        mapId: 'mall_night',
+        goals: [
+          { type: 'survive', target: 90, label: 'Продержаться 90 секунд' },
+        ],
+        modifiers: {
+          enemySpawnMul: 1.08,
+          enemyHpMul: 1,
+          bossKillInterval: 28,
+        },
+      },
+      {
+        id: 'manager_special',
+        title: 'Менеджер смены',
+        brief: 'Выжить и снести первого босса, пока он орёт про сервис.',
+        scenario: 'Из подсобки выходит менеджер фудкорта. Он очень недоволен отзывами и ещё сильнее недоволен тем, что у вас есть оружие.',
+        mapId: 'mall_night',
+        goals: [
+          { type: 'survive', target: 120, label: 'Продержаться 2 минуты' },
+          { type: 'boss_kills', target: 1, label: 'Убить 1 босса' },
+        ],
+        modifiers: {
+          enemySpawnMul: 1.15,
+          enemyHpMul: 1.08,
+          bossKillInterval: 18,
+        },
+      },
+      {
+        id: 'discount_stampede',
+        title: 'Чёрная пятница навсегда',
+        brief: 'Устроить большую чистку и пережить давку.',
+        scenario: 'Толпа заражённых услышала слово "скидка" и пришла оформлять право на ваше лицо.',
+        mapId: 'mall_night',
+        goals: [
+          { type: 'enemy_kills', target: 150, label: 'Убить 150 врагов' },
+          { type: 'player_level', target: 6, label: 'Поднять уровень до 6' },
+        ],
+        modifiers: {
+          enemySpawnMul: 1.22,
+          enemyHpMul: 1.14,
+          bossKillInterval: 22,
+        },
+      },
+      {
+        id: 'parking_lot_closure',
+        title: 'Парковка закрывается',
+        brief: 'Дожить до финала и пережить нашествие начальства.',
+        scenario: 'На парковке уже три босса, сирена орёт, а автоматические ворота почему-то решили спасать не вас.',
+        mapId: 'mall_night',
+        goals: [
+          { type: 'survive', target: 180, label: 'Продержаться 3 минуты' },
+          { type: 'boss_kills', target: 3, label: 'Убить 3 боссов' },
+        ],
+        modifiers: {
+          enemySpawnMul: 1.28,
+          enemyHpMul: 1.2,
+          bossKillInterval: 16,
+        },
+      },
+    ],
+  },
+  {
+    id: 'ambulance_late_as_usual',
+    name: 'Ambulance, But Make It Worse',
+    shortName: 'Скорая Опоздала',
+    tagline: 'Инфекционка, коридоры ужаса и три тонны плохих анализов.',
+    description: 'В клинике вспыхнул идеальный бардак: пациенты ожили, врачи исчезли, а табличка "не бегать" теперь звучит как издёвка.',
+    cover: {
+      from: '#10312a',
+      to: '#0d151d',
+      accent: '#34d399',
+      glow: 'rgba(52, 211, 153, 0.22)',
+      artLabel: 'ER // CHAOS',
+    },
+    levels: [
+      {
+        id: 'triage_queue',
+        title: 'Приёмное отделение',
+        brief: 'Разобрать очередь пациентов, пока она не разобрала вас.',
+        scenario: 'Номерки отменены. Теперь талон к врачу выдаётся укусом в бедро.',
+        mapId: 'clinic_yard',
+        goals: [
+          { type: 'enemy_kills', target: 90, label: 'Убить 90 врагов' },
+        ],
+        modifiers: {
+          enemySpawnMul: 1.1,
+          enemyHpMul: 1.04,
+          bossKillInterval: 24,
+        },
+      },
+      {
+        id: 'sterile_panic',
+        title: 'Стерильная паника',
+        brief: 'Дожить до конца карантина местного разлива.',
+        scenario: 'Карантин объявлен. Всем советуют не паниковать, что особенно смешно среди бегущих трупов.',
+        mapId: 'clinic_yard',
+        goals: [
+          { type: 'survive', target: 150, label: 'Продержаться 150 секунд' },
+          { type: 'player_level', target: 7, label: 'Поднять уровень до 7' },
+        ],
+        modifiers: {
+          enemySpawnMul: 1.16,
+          enemyHpMul: 1.1,
+          bossKillInterval: 22,
+        },
+      },
+      {
+        id: 'chief_physician',
+        title: 'Главврач на смене',
+        brief: 'Уволить босса клиники самым свинцовым способом.',
+        scenario: 'Главврач вышел лично объяснить, что жалобы на обслуживание больше не принимаются. Челюстью.',
+        mapId: 'clinic_yard',
+        goals: [
+          { type: 'boss_kills', target: 3, label: 'Убить 3 боссов' },
+        ],
+        modifiers: {
+          enemySpawnMul: 1.2,
+          enemyHpMul: 1.14,
+          bossKillInterval: 14,
+        },
+      },
+      {
+        id: 'discharge_summary',
+        title: 'Выписка без анестезии',
+        brief: 'Финальная очистка двора клиники.',
+        scenario: 'Пять жирных боссов перекрыли выход. Формально это называется "финальная выписка", но выглядит как массовая драка за парковку.',
+        mapId: 'clinic_yard',
+        goals: [
+          { type: 'survive', target: 210, label: 'Продержаться 210 секунд' },
+          { type: 'boss_kills', target: 5, label: 'Убить 5 боссов' },
+        ],
+        modifiers: {
+          enemySpawnMul: 1.26,
+          enemyHpMul: 1.2,
+          bossKillInterval: 12,
+        },
+      },
+    ],
+  },
+  {
+    id: 'ringroad_grillfest',
+    name: 'Ringroad Grillfest',
+    shortName: 'Мясо на МКАДе',
+    tagline: 'Пробка, гарь и очень личная ненависть к живым.',
+    description: 'На кольцевой всё как обычно: пробка, агрессия и существа, которые лезут в окно даже без поворотника.',
+    cover: {
+      from: '#321410',
+      to: '#121720',
+      accent: '#fb7185',
+      glow: 'rgba(251, 113, 133, 0.24)',
+      artLabel: 'ROAD // FURY',
+    },
+    levels: [
+      {
+        id: 'traffic_jam',
+        title: 'Пробка с зубами',
+        brief: 'Удержать трассу и не дать ей съесть вас целиком.',
+        scenario: 'Машины стоят, зомби бегут, а аварийка помогает ровно до тех пор, пока её не откусили.',
+        mapId: 'ringroad_bbq',
+        goals: [
+          { type: 'survive', target: 120, label: 'Продержаться 2 минуты' },
+          { type: 'enemy_kills', target: 110, label: 'Убить 110 врагов' },
+        ],
+        modifiers: {
+          enemySpawnMul: 1.14,
+          enemyHpMul: 1.06,
+          bossKillInterval: 24,
+        },
+      },
+      {
+        id: 'roadside_brigade',
+        title: 'Бригада обочечников',
+        brief: 'Показать, что по встречке сегодня едут только патроны.',
+        scenario: 'Особо наглые мутанты полезли по обочине. Пришло время объяснить им правила движения баллистикой.',
+        mapId: 'ringroad_bbq',
+        goals: [
+          { type: 'boss_kills', target: 2, label: 'Убить 2 боссов' },
+          { type: 'enemy_kills', target: 130, label: 'Убить 130 врагов' },
+        ],
+        modifiers: {
+          enemySpawnMul: 1.2,
+          enemyHpMul: 1.12,
+          bossKillInterval: 18,
+        },
+      },
+      {
+        id: 'gas_station_choir',
+        title: 'Хор на заправке',
+        brief: 'Сдержать оркестр бензиновой ярости.',
+        scenario: 'К заправке подтянулись бронированные уроды, и каждый уверен, что именно он сегодня будет вашим последним клиентом.',
+        mapId: 'ringroad_bbq',
+        goals: [
+          { type: 'survive', target: 180, label: 'Продержаться 3 минуты' },
+          { type: 'boss_kills', target: 4, label: 'Убить 4 боссов' },
+        ],
+        modifiers: {
+          enemySpawnMul: 1.26,
+          enemyHpMul: 1.18,
+          bossKillInterval: 14,
+        },
+      },
+      {
+        id: 'ringroad_bbq_finale',
+        title: 'Финальный шашлык',
+        brief: 'Устроить полное мясо и выжить в дыму.',
+        scenario: 'Пять боссов, гарь, клаксоны и чувство, что это всё можно было объехать, если бы апокалипсис начался вчера.',
+        mapId: 'ringroad_bbq',
+        goals: [
+          { type: 'survive', target: 240, label: 'Продержаться 4 минуты' },
+          { type: 'boss_kills', target: 5, label: 'Убить 5 боссов' },
+        ],
+        modifiers: {
+          enemySpawnMul: 1.34,
+          enemyHpMul: 1.24,
+          bossKillInterval: 11,
+        },
+      },
+    ],
+  },
+  {
+    id: 'reactor_afterparty',
+    name: 'Reactor Afterparty',
+    shortName: 'Реактор После Корпоратива',
+    tagline: 'Радиация, трубы и мутанты с профсоюзной злостью.',
+    description: 'Промзона пережила очень плохой корпоратив: бочки светятся, техника орёт, а бывшие сотрудники превратились в радиоактивных энтузиастов.',
+    cover: {
+      from: '#18290d',
+      to: '#0e1218',
+      accent: '#a3e635',
+      glow: 'rgba(163, 230, 53, 0.24)',
+      artLabel: 'REACTOR // HANGOVER',
+    },
+    levels: [
+      {
+        id: 'night_shift',
+        title: 'Ночная смена',
+        brief: 'Поднять уровень, пока цех пытается поднять вас на вилы.',
+        scenario: 'Обычная ночная смена: сирены воют, мутанты бегут, начальства нет, но проблем почему-то больше.',
+        mapId: 'reactor_sprawl',
+        goals: [
+          { type: 'survive', target: 120, label: 'Продержаться 2 минуты' },
+          { type: 'player_level', target: 6, label: 'Поднять уровень до 6' },
+        ],
+        modifiers: {
+          enemySpawnMul: 1.16,
+          enemyHpMul: 1.08,
+          bossKillInterval: 24,
+        },
+      },
+      {
+        id: 'safety_briefing',
+        title: 'Инструктаж по ТБ',
+        brief: 'Пройти технику безопасности через бойню.',
+        scenario: 'Инструкция гласит: "не стоять под трубой". Инструкция не уточняет, что делать, если труба бежит на вас.',
+        mapId: 'reactor_sprawl',
+        goals: [
+          { type: 'enemy_kills', target: 160, label: 'Убить 160 врагов' },
+          { type: 'boss_kills', target: 2, label: 'Убить 2 боссов' },
+        ],
+        modifiers: {
+          enemySpawnMul: 1.22,
+          enemyHpMul: 1.14,
+          bossKillInterval: 17,
+        },
+      },
+      {
+        id: 'control_room',
+        title: 'Пульт, который всё испортил',
+        brief: 'Зачистить сердце промзоны.',
+        scenario: 'В диспетчерской засели мутанты, которые всё ещё считают себя отделом контроля качества. Очень смешно, пока они не бегут на таран.',
+        mapId: 'reactor_sprawl',
+        goals: [
+          { type: 'survive', target: 210, label: 'Продержаться 210 секунд' },
+          { type: 'boss_kills', target: 4, label: 'Убить 4 боссов' },
+        ],
+        modifiers: {
+          enemySpawnMul: 1.28,
+          enemyHpMul: 1.2,
+          bossKillInterval: 13,
+        },
+      },
+      {
+        id: 'reactor_core',
+        title: 'Сердце реактора',
+        brief: 'Финальный забег по зоне, где дозиметр плачет.',
+        scenario: 'Пять элитных боссов охраняют ядро так, будто им обещали вернуть квартальную премию. Не вернут. Но урон нанесут.',
+        mapId: 'reactor_sprawl',
+        goals: [
+          { type: 'survive', target: 260, label: 'Продержаться 260 секунд' },
+          { type: 'boss_kills', target: 5, label: 'Убить 5 боссов' },
+          { type: 'player_level', target: 8, label: 'Поднять уровень до 8' },
+        ],
+        modifiers: {
+          enemySpawnMul: 1.36,
+          enemyHpMul: 1.26,
+          bossKillInterval: 10,
+        },
+      },
+    ],
+  },
+];
+
+const MAP_BY_ID = Object.fromEntries(MAP_DEFS.map((mapDef) => [mapDef.id, mapDef]));
+const CAMPAIGN_BY_ID = Object.fromEntries(
+  CAMPAIGN_DEFS.map((campaign) => [
+    campaign.id,
+    {
+      ...campaign,
+      levels: campaign.levels.map((level, index) => ({
+        ...level,
+        index,
+        campaignId: campaign.id,
+      })),
+    },
+  ]),
+);
+
+function getMapDef(mapId) {
+  const id = String(mapId || '').trim();
+  return MAP_BY_ID[id] || MAP_DEFS[0];
+}
+
+function getCampaignDef(campaignId) {
+  const id = String(campaignId || '').trim();
+  return CAMPAIGN_BY_ID[id] || null;
+}
+
+function getCampaignLevelDef(campaignId, levelId) {
+  const campaign = getCampaignDef(campaignId);
+  if (!campaign) return null;
+  const id = String(levelId || '').trim();
+  return campaign.levels.find((level) => level.id === id) || null;
+}
+
+function toPublicMapDef(mapDef) {
+  if (!mapDef) return null;
+  return {
+    id: mapDef.id,
+    name: mapDef.name,
+    subtitle: mapDef.subtitle,
+    description: mapDef.description,
+    worldWidth: Math.max(1200, Number(mapDef.worldWidth) || 2400),
+    worldHeight: Math.max(900, Number(mapDef.worldHeight) || 1400),
+    cover: mapDef.cover ? { ...mapDef.cover } : null,
+  };
+}
+
+function toPublicCampaignDef(campaignDef) {
+  if (!campaignDef) return null;
+  return {
+    id: campaignDef.id,
+    name: campaignDef.name,
+    shortName: campaignDef.shortName,
+    tagline: campaignDef.tagline,
+    description: campaignDef.description,
+    cover: campaignDef.cover ? { ...campaignDef.cover } : null,
+    levels: campaignDef.levels.map((level) => ({
+      id: level.id,
+      index: level.index,
+      title: level.title,
+      brief: level.brief,
+      scenario: level.scenario,
+      mapId: level.mapId,
+      goals: Array.isArray(level.goals) ? level.goals.map((goal) => ({ ...goal })) : [],
+    })),
+  };
+}
+
+module.exports = {
+  MAP_DEFS,
+  MAP_BY_ID,
+  CAMPAIGN_DEFS: Object.values(CAMPAIGN_BY_ID),
+  CAMPAIGN_BY_ID,
+  getMapDef,
+  getCampaignDef,
+  getCampaignLevelDef,
+  toPublicMapDef,
+  toPublicCampaignDef,
+};

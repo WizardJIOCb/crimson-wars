@@ -115,7 +115,8 @@
 
   function CwNavTabs() {
     const tabs = [
-      ['play', 'Играть'],
+      ['run', 'Забег'],
+      ['story', 'Сюжет'],
       ['characters', 'Персонажи'],
       ['skills', 'Навыки'],
       ['profile', 'Профиль'],
@@ -265,6 +266,13 @@
           h('div', { id: 'join-feedback', className: 'join-feedback hidden', 'aria-live': 'polite' }),
           h('div', { id: 'death-result', className: 'death-result' }, 'Last result: --')
         ),
+        h(CwPanel, { tag: 'div', id: 'run-setup-card', className: 'cw-subpanel battle-tab-card battle-tab-run' },
+          h('div', { className: 'cw-subpanel-head' },
+            h('span', { className: 'cw-kicker' }, 'Run Setup'),
+            h('strong', null, '\u041a\u0430\u0440\u0442\u044b \u0437\u0430\u0431\u0435\u0433\u0430')
+          ),
+          h('div', { id: 'run-setup-host', className: 'run-setup-host' }, 'Loading run setup...')
+        ),
         h(CwRunCard, { id: 'game-mode-panel', className: 'rooms-browser game-mode-browser' },
           h('div', { className: 'rooms-head' }, h('span', null, '\u0420\u0435\u0436\u0438\u043c \u0431\u043e\u044f')),
           h('div', { className: 'game-mode-options' },
@@ -281,6 +289,13 @@
               h('option', { value: '15' }, '15 min')
             )
           )
+        ),
+        h(CwPanel, { tag: 'div', id: 'campaign-browser-card', className: 'cw-subpanel battle-tab-card battle-tab-story hidden' },
+          h('div', { className: 'cw-subpanel-head' },
+            h('span', { className: 'cw-kicker' }, 'Story'),
+            h('strong', null, '\u0421\u044e\u0436\u0435\u0442\u043d\u044b\u0435 \u043a\u0430\u043c\u043f\u0430\u043d\u0438\u0438')
+          ),
+          h('div', { id: 'campaign-browser-host', className: 'campaign-browser-host' }, 'Campaign data loading...')
         ),
         h(ActiveRoomsCard)
       ),

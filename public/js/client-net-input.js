@@ -301,9 +301,12 @@ const deathScreenBloodOverlayEl = document.getElementById('death-screen-blood');
 const hitScreenOverlayEl = document.getElementById('hit-screen-overlay');
 const mainMenuTabButtons = Array.from(document.querySelectorAll('#main-menu-tabs .main-menu-tab'));
 const mainMenuPanels = Array.from(document.querySelectorAll('#join-form [data-menu-panel]'));
+const battleMenuPanelEl = document.getElementById('menu-panel-play');
+const battleRunSetupCardEl = document.getElementById('run-setup-card');
+const battleStoryCardEl = document.getElementById('campaign-browser-card');
 let heroFocusId = selectedPlayerClass;
 let selectedInventoryFilterKey = 'all';
-let currentMainMenuTab = 'play';
+let currentMainMenuTab = 'run';
 let tabScoreboardVisible = false;
 let lastTabScoreboardHtml = '';
 let lastBattlePlayers = [];
@@ -446,10 +449,13 @@ if (joinOverlay && typeof MutationObserver !== 'undefined') {
   joinOverlayObserver.observe(joinOverlay, { attributes: true, attributeFilter: ['style', 'class'] });
 }
 
-const MENU_TAB_IDS = new Set(['play', 'characters', 'skills', 'profile', 'rating', 'news']);
+const MENU_TAB_IDS = new Set(['run', 'story', 'play', 'characters', 'skills', 'profile', 'rating', 'news', 'menu']);
 const initialUrlParams = new URLSearchParams(window.location.search);
 const initialMenuTabParam = String(initialUrlParams.get('tab') || '').trim().toLowerCase();
-const initialMenuTab = MENU_TAB_IDS.has(initialMenuTabParam) ? initialMenuTabParam : 'play';
+const initialRunSelection = typeof window.cwGetRunSelection === 'function' ? window.cwGetRunSelection() : null;
+const defaultBattleTab = String(initialRunSelection?.runType || '').trim().toLowerCase() === 'campaign' ? 'story' : 'run';
+const normalizedInitialMenuTab = initialMenuTabParam === 'play' ? 'run' : initialMenuTabParam;
+const initialMenuTab = MENU_TAB_IDS.has(normalizedInitialMenuTab) ? normalizedInitialMenuTab : defaultBattleTab;
 let pendingManualExitRequested = false;
 
 const GAME_VERSION_HISTORY = [
@@ -1919,7 +1925,8 @@ function formatRunGameModeLabel(run) {
 }
 
 function setMainMenuTab(tabId) {
-  const nextTab = String(tabId || '').trim() || 'play';
+  const normalizedTab = String(tabId || '').trim().toLowerCase();
+  const nextTab = normalizedTab === 'play' ? 'run' : (normalizedTab || 'run');
   const prevTab = currentMainMenuTab;
   currentMainMenuTab = nextTab;
   for (const btn of mainMenuTabButtons) {
@@ -1927,9 +1934,21 @@ function setMainMenuTab(tabId) {
     btn.classList.toggle('active', active);
     btn.setAttribute('aria-selected', active ? 'true' : 'false');
   }
+  const nextPanelId = nextTab === 'run' || nextTab === 'story' ? 'play' : nextTab;
   for (const panel of mainMenuPanels) {
-    const active = panel.getAttribute('data-menu-panel') === nextTab;
+    const active = panel.getAttribute('data-menu-panel') === nextPanelId;
     panel.classList.toggle('active', active);
+  }
+  if (battleMenuPanelEl) {
+    const battleTab = nextTab === 'story' ? 'story' : 'run';
+    battleMenuPanelEl.setAttribute('data-battle-tab', battleTab);
+    battleRunSetupCardEl?.classList.toggle('hidden', battleTab !== 'run');
+    battleStoryCardEl?.classList.toggle('hidden', battleTab !== 'story');
+    if (nextTab === 'run' || nextTab === 'story') {
+      window.cwSetSelectedRunType?.(battleTab === 'story' ? 'campaign' : 'free');
+      globalThis.renderRunSetupMenu?.();
+      globalThis.renderGameModeSelection?.();
+    }
   }
   syncInfoPanelHost();
   if (infoPanelEl) {
@@ -2008,6 +2027,12 @@ async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
   const skipRouting = options?.skipRouting === true;
   const source = options?.source || 'menu';
   const resumeOnly = options?.resumeOnly === true;
+  if (mode === 'create' && selectedRunType === 'campaign' && (!selectedCampaignId || !selectedCampaignLevelId)) {
+    const message = 'Campaign data is still loading. Try again in a moment.';
+    statusEl.textContent = message;
+    setJoinFeedback(message);
+    return;
+  }
   if (typeof window.cwSetPendingJoinAnalytics === 'function') {
     window.cwSetPendingJoinAnalytics(mode, roomCode, source);
   }
@@ -2069,6 +2094,10 @@ async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
     resumeOnly: resumeOnly || undefined,
     integrationToken: pendingIntegrationToken || undefined,
     sync: joinSync || undefined,
+    runType: mode === 'create' ? selectedRunType : undefined,
+    mapId: mode === 'create' && selectedRunType !== 'campaign' ? selectedMapId : undefined,
+    campaignId: mode === 'create' && selectedRunType === 'campaign' ? selectedCampaignId : undefined,
+    campaignLevelId: mode === 'create' && selectedRunType === 'campaign' ? selectedCampaignLevelId : undefined,
     gameMode: mode === 'create' ? selectedGameMode : undefined,
     pvpDurationMin: mode === 'create' && selectedGameMode === 'pvp' ? normalizePvpDurationMin(selectedPvpDurationMin) : undefined,
   });
@@ -3524,6 +3553,11 @@ function buildReplayState(payload, elapsedMs) {
     replayFrameIndex: index,
     now: nowMs,
     roomCode: payload?.roomCode || 'REPLAY',
+    runType: payload?.runType || 'free',
+    mapId: payload?.mapId || 'mall_night',
+    campaignId: payload?.campaignId || '',
+    campaignLevelId: payload?.campaignLevelId || '',
+    mission: payload?.mission || null,
     roomStartedAt: Number(payload?.roomStartedAt || payload?.startedAt || nowMs),
     totalEnemyKills: Math.max(0, Number(current.te) || 0),
     nextBossAtKills: Math.max(50, Math.max(0, Number(current.te) || 0) + 25),
@@ -3602,6 +3636,11 @@ function tickReplayGame(ts) {
     game.state = nextState;
     game.world = nextState.world;
     game.roomCode = nextState.roomCode;
+    game.runType = String(nextState.runType || game.runType || 'free');
+    game.mapId = String(nextState.mapId || game.mapId || 'mall_night');
+    game.campaignId = String(nextState.campaignId || game.campaignId || '');
+    game.campaignLevelId = String(nextState.campaignLevelId || game.campaignLevelId || '');
+    game.mission = nextState.mission || null;
     game.roomStartedAt = nextState.roomStartedAt;
     game.totalEnemyKills = nextState.totalEnemyKills;
     game.nextBossAtKills = nextState.nextBossAtKills;
@@ -5426,14 +5465,23 @@ function updatePvpDurationVisibility() {
 
 function renderGameModeSelection() {
   if (!Array.isArray(gameModeOptionButtons) || !gameModeOptionButtons.length) return;
+  const campaignMode = selectedRunType === 'campaign';
+  if (campaignMode && selectedGameMode === 'pvp') {
+    selectedGameMode = 'normal';
+    localStorage.setItem(GAME_MODE_STORAGE_KEY, selectedGameMode);
+  }
   for (const btn of gameModeOptionButtons) {
     if (!(btn instanceof HTMLElement)) continue;
     const mode = normalizeGameMode(btn.dataset.gameMode || 'normal');
+    const disabled = campaignMode && mode === 'pvp';
+    btn.disabled = disabled;
+    btn.classList.toggle('is-disabled', disabled);
     btn.classList.toggle('active', mode === selectedGameMode);
   }
   if (pvpDurationSelectEl) pvpDurationSelectEl.value = String(normalizePvpDurationMin(selectedPvpDurationMin));
   updatePvpDurationVisibility();
 }
+globalThis.renderGameModeSelection = renderGameModeSelection;
 
 let immediateInputSendQueued = false;
 
@@ -5616,7 +5664,12 @@ joinForm.addEventListener('click', (e) => {
   if (!(t instanceof HTMLButtonElement)) return;
 
   if (t.dataset.gameMode) {
-    selectedGameMode = normalizeGameMode(t.dataset.gameMode);
+    const nextMode = normalizeGameMode(t.dataset.gameMode);
+    if (selectedRunType === 'campaign' && nextMode === 'pvp') {
+      renderGameModeSelection();
+      return;
+    }
+    selectedGameMode = nextMode;
     localStorage.setItem(GAME_MODE_STORAGE_KEY, selectedGameMode);
     renderGameModeSelection();
     return;
@@ -5785,7 +5838,12 @@ function clearLocalSessionState() {
   game.myId = null;
   game.spectating = false;
   game.roomCode = null;
+  game.runType = 'free';
+  game.mapId = 'mall_night';
+  game.campaignId = '';
+  game.campaignLevelId = '';
   game.state = null;
+  game.mission = null;
   game.netSnapshots = [];
   game.liveEntitySnapshots = [];
   game.sampledNet = null;
@@ -5959,6 +6017,9 @@ message: (ev) => {
       }
     }
     renderCharacterPicker();
+    if (typeof globalThis.renderRunSetupMenu === 'function') {
+      globalThis.renderRunSetupMenu();
+    }
     return;
   }
 
@@ -5980,6 +6041,11 @@ message: (ev) => {
     sessionStartedAt = Date.now();
     if (msg.sync) applyRoomSync(msg.sync);
     game.roomCode = msg.roomCode;
+    game.runType = String(msg.runType || game.runType || 'free');
+    game.mapId = String(msg.mapId || game.mapId || 'mall_night');
+    game.campaignId = String(msg.campaignId || game.campaignId || '');
+    game.campaignLevelId = String(msg.campaignLevelId || game.campaignLevelId || '');
+    game.mission = null;
     if (msg.gameMode) game.gameMode = normalizeGameMode(msg.gameMode);
     game.skillCatalog = {};
     const catalog = Array.isArray(msg.skillCatalog) ? msg.skillCatalog : [];
@@ -6058,6 +6124,12 @@ message: (ev) => {
     }
     if (msg.progressionCatalog) game.playerAuth.progressionCatalog = msg.progressionCatalog;
     if (msg.progression) game.playerAuth.progression = msg.progression;
+    if (typeof window.cwEnsureSelectedRunSetupValid === 'function') {
+      window.cwEnsureSelectedRunSetupValid();
+    }
+    if (typeof globalThis.renderRunSetupMenu === 'function') {
+      globalThis.renderRunSetupMenu();
+    }
     const heroCatalog = Array.isArray(game.playerAuth?.progressionCatalog?.heroes) ? game.playerAuth.progressionCatalog.heroes : [];
     for (const hero of heroCatalog) {
       const uniqueSkills = Array.isArray(hero?.uniqueSkills) ? hero.uniqueSkills : [];
@@ -6169,6 +6241,17 @@ message: (ev) => {
     requestRecordsList(recordsUi.page);
   }
 
+  if (msg.type === 'runComplete') {
+    latestDeathSnapshot = msg.result || null;
+    if (typeof openVictoryOverlay === 'function') {
+      openVictoryOverlay(msg.result || null, {
+        title: msg.title || 'Mission complete',
+        message: msg.message || '',
+      });
+    }
+    return;
+  }
+
   if (msg.type === 'system') statusEl.textContent = msg.message;
   if (msg.type === 'system') maybeCommentateSystemMessage(msg.message);
 
@@ -6195,6 +6278,11 @@ message: (ev) => {
     game.state = s;
     game.world = s.world;
     game.roomCode = s.roomCode;
+    game.runType = String(s.runType || game.runType || 'free');
+    game.mapId = String(s.mapId || game.mapId || 'mall_night');
+    game.campaignId = String(s.campaignId || game.campaignId || '');
+    game.campaignLevelId = String(s.campaignLevelId || game.campaignLevelId || '');
+    game.mission = s.mission || null;
     game.gameMode = normalizeGameMode(s.gameMode || game.gameMode || 'normal');
     game.roomStartedAt = Number(s.roomStartedAt) || game.roomStartedAt || Date.now();
     game.totalEnemyKills = Number(s.totalEnemyKills) || 0;

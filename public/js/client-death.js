@@ -314,6 +314,27 @@
     scheduleDeathRewardsReveal();
   }
 
+  function openVictoryOverlay(result, options = {}) {
+    latestDeathSnapshot = result || null;
+    cancelPendingDeathOverlay();
+    leaveActiveRoom();
+    clearDeathScreenBloodFx();
+    clearHitScreenOverlayFx();
+    clearDeathRewardsUi();
+    joinOverlay.style.display = 'grid';
+    joinOverlay.classList.add('death-mode');
+    renderDeathResult(result);
+    renderDeathRewardsPanel();
+    joinOverlay.classList.add('death-rewards-visible');
+    setDeathCinematicActive(false);
+    statusEl.textContent = String(options.title || 'Mission complete');
+    if (commentatorTitleEl && options.title) commentatorTitleEl.textContent = String(options.title);
+    if (commentatorTextEl) commentatorTextEl.textContent = String(options.message || 'Цель выполнена. Теперь можно хвастаться, будто всё так и планировалось.');
+    updateMobileControlsVisibility();
+    requestRoomsList();
+    requestRecordsList(recordsUi.page);
+  }
+
   deathContinueBtn?.addEventListener('click', () => {
     if (typeof window.cwTrackMetrikaGoal === 'function') {
       window.cwTrackMetrikaGoal('death_overlay_continue', { source: 'death_cinematic' });
@@ -346,6 +367,7 @@
     setDeathCinematicActive,
     openDeathMenuAfterCinematic,
     openDeathOverlay,
+    openVictoryOverlay,
   });
 
   globalThis.CWDeath = {
@@ -361,5 +383,6 @@
     spawnPlayerBlood: spawnPlayerDeathBloodFx,
     schedule: scheduleDeathOverlay,
     open: openDeathOverlay,
+    openVictory: openVictoryOverlay,
   };
 }());

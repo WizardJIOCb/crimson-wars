@@ -35,6 +35,8 @@ function createStores() {
     dataDir: config.DATA_DIR,
     dbPath: config.PLAYER_AUTH_DB_PATH,
     baseHeroId: config.ACCOUNT_BASE_HERO_ID,
+    maps: config.MAP_DEFS,
+    campaigns: config.CAMPAIGN_DEFS,
     heroDefs: config.HERO_DEFS,
     heroSkillTreeDefs: config.HERO_SKILL_TREE_DEFS,
     heroUniqueSkillDefs: config.HERO_UNIQUE_SKILL_DEFS,

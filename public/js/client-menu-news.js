@@ -86,7 +86,7 @@
   function updateMenuUrlState(tabId, newsId = '') {
     const url = new URL(window.location.href);
     const tab = String(tabId || '').trim().toLowerCase();
-    if (tab && tab !== 'play') url.searchParams.set('tab', tab);
+    if (tab && tab !== 'run') url.searchParams.set('tab', tab);
     else url.searchParams.delete('tab');
     const id = String(newsId || '').trim();
     if (tab === 'news' && id) url.searchParams.set('news', id);
@@ -666,7 +666,7 @@
   try {
     const params = new URLSearchParams(window.location.search);
     const initialNewsId = String(params.get('news') || '').trim();
-    const activeTab = typeof currentMainMenuTab === 'string' ? currentMainMenuTab : String(params.get('tab') || 'play').trim();
+    const activeTab = typeof currentMainMenuTab === 'string' ? currentMainMenuTab : String(params.get('tab') || 'run').trim();
     if (activeTab === 'news' && initialNewsId) {
       void openNewsItem(initialNewsId, { force: true });
     }

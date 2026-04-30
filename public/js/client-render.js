@@ -1485,12 +1485,37 @@ function drawMinimap() {
   const mapH = Math.max(20, h - pad * 2);
   const worldW = Math.max(1, Number(game.world?.width) || 1);
   const worldH = Math.max(1, Number(game.world?.height) || 1);
-  const sx = mapW / worldW;
-  const sy = mapH / worldH;
+  const me = Array.isArray(game.state?.players)
+    ? game.state.players.find((player) => player && player.id === game.myId)
+    : null;
+  const focusX = Math.max(0, Math.min(worldW, Number(me?.x) || (camera.x + canvas.width * 0.5)));
+  const focusY = Math.max(0, Math.min(worldH, Number(me?.y) || (camera.y + canvas.height * 0.5)));
+  const mapAspect = mapW / Math.max(1, mapH);
+  let viewW = Math.min(worldW, Math.max(1150, worldW * 0.34));
+  let viewH = viewW / Math.max(0.65, mapAspect);
+  if (viewH > worldH) {
+    viewH = worldH;
+    viewW = Math.min(worldW, viewH * mapAspect);
+  }
+  if (viewH < 860) {
+    viewH = Math.min(worldH, 860);
+    viewW = Math.min(worldW, viewH * mapAspect);
+  }
+  const viewX = Math.max(0, Math.min(worldW - viewW, focusX - viewW * 0.5));
+  const viewY = Math.max(0, Math.min(worldH - viewH, focusY - viewH * 0.5));
+  const sx = mapW / Math.max(1, viewW);
+  const sy = mapH / Math.max(1, viewH);
 
-  function toMapX(x) { return mapX + Math.max(0, Math.min(mapW, Number(x || 0) * sx)); }
-  function toMapY(y) { return mapY + Math.max(0, Math.min(mapH, Number(y || 0) * sy)); }
+  function toMapX(x) { return mapX + (Number(x || 0) - viewX) * sx; }
+  function toMapY(y) { return mapY + (Number(y || 0) - viewY) * sy; }
+  function isVisibleInMini(x, y, margin = 0) {
+    return Number(x || 0) >= (viewX - margin)
+      && Number(x || 0) <= (viewX + viewW + margin)
+      && Number(y || 0) >= (viewY - margin)
+      && Number(y || 0) <= (viewY + viewH + margin);
+  }
   function dot(x, y, r, color) {
+    if (!isVisibleInMini(x, y, 0)) return;
     minimapCtx.fillStyle = color;
     minimapCtx.beginPath();
     minimapCtx.arc(toMapX(x), toMapY(y), r, 0, Math.PI * 2);
@@ -1511,20 +1536,45 @@ function drawMinimap() {
 
   minimapCtx.fillStyle = 'rgba(34, 197, 94, 0.06)';
   minimapCtx.fillRect(mapX, mapY, mapW, mapH);
+  minimapCtx.save();
+  minimapCtx.beginPath();
+  minimapCtx.rect(mapX, mapY, mapW, mapH);
+  minimapCtx.clip();
 
-  const camX = mapX + (camera.x / worldW) * mapW;
-  const camY = mapY + (camera.y / worldH) * mapH;
-  const camW = Math.max(8 * dpr, (canvas.width / worldW) * mapW);
-  const camH = Math.max(8 * dpr, (canvas.height / worldH) * mapH);
-  minimapCtx.strokeStyle = 'rgba(255,255,255,0.28)';
-  minimapCtx.lineWidth = Math.max(1, dpr);
-  minimapCtx.strokeRect(camX, camY, Math.min(mapW, camW), Math.min(mapH, camH));
+  const miniTileWorld = Math.max(180, Math.round(Math.min(worldW, worldH) / 18));
+  const tileStartX = Math.floor(viewX / miniTileWorld) - 1;
+  const tileEndX = Math.ceil((viewX + viewW) / miniTileWorld) + 1;
+  const tileStartY = Math.floor(viewY / miniTileWorld) - 1;
+  const tileEndY = Math.ceil((viewY + viewH) / miniTileWorld) + 1;
+  const tileStroke = 'rgba(255,255,255,0.04)';
+
+  for (let tx = tileStartX; tx <= tileEndX; tx += 1) {
+    for (let ty = tileStartY; ty <= tileEndY; ty += 1) {
+      const worldTileX = tx * miniTileWorld;
+      const worldTileY = ty * miniTileWorld;
+      const tileScreenX = toMapX(worldTileX);
+      const tileScreenY = toMapY(worldTileY);
+      const tileScreenW = miniTileWorld * sx;
+      const tileScreenH = miniTileWorld * sy;
+      const evenTile = ((tx + ty) & 1) === 0;
+
+      minimapCtx.fillStyle = evenTile ? 'rgba(74, 222, 128, 0.065)' : 'rgba(15, 118, 110, 0.075)';
+      minimapCtx.fillRect(tileScreenX, tileScreenY, tileScreenW, tileScreenH);
+
+      minimapCtx.strokeStyle = tileStroke;
+      minimapCtx.lineWidth = Math.max(1, dpr * 0.7);
+      minimapCtx.strokeRect(tileScreenX, tileScreenY, tileScreenW, tileScreenH);
+    }
+  }
+
+  minimapCtx.restore();
 
   for (const orb of game.state.xpOrbs || []) {
     dot(orb.x, orb.y, Math.max(1.6 * dpr, 1.5), '#38bdf8');
   }
 
   for (const orb of game.state.skillOrbs || []) {
+    if (!isVisibleInMini(orb.x, orb.y, 40)) continue;
     const own = orb.ownerId === game.myId;
     const sx = toMapX(orb.x);
     const sy = toMapY(orb.y);
@@ -1556,6 +1606,7 @@ function drawMinimap() {
   }
 
   for (const portal of game.state.bossPortals || []) {
+    if (!isVisibleInMini(portal.x, portal.y, 90)) continue;
     const mx = toMapX(portal.x);
     const my = toMapY(portal.y);
     const coreR = Math.max(3.6 * dpr, 3.2);
@@ -1573,6 +1624,7 @@ function drawMinimap() {
   }
 
   for (const enemy of game.state.enemies || []) {
+    if (!isVisibleInMini(enemy.x, enemy.y, 70)) continue;
     const isBoss = enemy.type === 'boss';
     dot(enemy.x, enemy.y, isBoss ? Math.max(4.2 * dpr, 3.8) : Math.max(2.2 * dpr, 2), isBoss ? '#fb7185' : '#ef4444');
     if (isBoss) {
@@ -1586,9 +1638,14 @@ function drawMinimap() {
 
   for (const player of game.state.players || []) {
     if (player.isCompanion) continue;
+    if (!isVisibleInMini(player.x, player.y, 60)) continue;
     const isMe = player.id === game.myId;
     dot(player.x, player.y, isMe ? Math.max(3.4 * dpr, 3) : Math.max(2.3 * dpr, 2), isMe ? '#22d3ee' : '#a5f3fc');
   }
+
+  minimapCtx.strokeStyle = 'rgba(255,255,255,0.14)';
+  minimapCtx.lineWidth = Math.max(1, dpr * 0.9);
+  minimapCtx.strokeRect(mapX, mapY, mapW, mapH);
 }
 
 function render(ts) {

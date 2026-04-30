@@ -40,6 +40,8 @@ function createAccountProgressionStore({
   dataDir,
   dbPath,
   baseHeroId,
+  maps,
+  campaigns,
   heroDefs,
   heroSkillTreeDefs,
   heroUniqueSkillDefs,
@@ -75,6 +77,25 @@ function createAccountProgressionStore({
 
   const heroes = Array.isArray(heroDefs) ? heroDefs.map((h) => ({ ...h })) : [];
   const heroMap = Object.fromEntries(heroes.map((hero) => [hero.id, hero]));
+  const mapDefs = Array.isArray(maps) ? maps.map((mapDef) => ({ ...mapDef })) : [];
+  const campaignDefs = Array.isArray(campaigns)
+    ? campaigns.map((campaign) => ({
+      ...campaign,
+      levels: Array.isArray(campaign.levels)
+        ? campaign.levels.map((level, index) => ({
+          ...level,
+          index: Number.isFinite(Number(level?.index)) ? Number(level.index) : index,
+        }))
+        : [],
+    }))
+    : [];
+  const campaignMap = Object.fromEntries(campaignDefs.map((campaign) => [campaign.id, campaign]));
+  const campaignLevelMap = {};
+  for (const campaign of campaignDefs) {
+    campaignLevelMap[campaign.id] = Object.fromEntries(
+      (Array.isArray(campaign.levels) ? campaign.levels : []).map((level) => [level.id, level]),
+    );
+  }
   const skillTrees = heroSkillTreeDefs && typeof heroSkillTreeDefs === 'object' ? heroSkillTreeDefs : {};
   const uniqueHeroSkills = heroUniqueSkillDefs && typeof heroUniqueSkillDefs === 'object' ? heroUniqueSkillDefs : {};
   const itemSlots = Array.isArray(itemSlotDefs) ? itemSlotDefs.map((slot) => ({ ...slot })) : [];
@@ -115,6 +136,7 @@ function createAccountProgressionStore({
     '  hero_equipment_json TEXT NOT NULL DEFAULT "{}",',
     '  total_runs INTEGER NOT NULL DEFAULT 0,',
     '  hero_runs_json TEXT NOT NULL DEFAULT "{}",',
+    '  campaign_progress_json TEXT NOT NULL DEFAULT "{}",',
     '  created_at INTEGER NOT NULL,',
     '  updated_at INTEGER NOT NULL,',
     '  FOREIGN KEY(player_id) REFERENCES player_accounts(id) ON DELETE CASCADE',
@@ -149,6 +171,42 @@ function createAccountProgressionStore({
     if (!columns.some((col) => col.name === 'hero_equipment_json')) {
       db.exec('ALTER TABLE account_progression ADD COLUMN hero_equipment_json TEXT NOT NULL DEFAULT "{}"');
     }
+    if (!columns.some((col) => col.name === 'campaign_progress_json')) {
+      db.exec('ALTER TABLE account_progression ADD COLUMN campaign_progress_json TEXT NOT NULL DEFAULT "{}"');
+    }
+  } else {
+    mysqlClient.execute([
+      'CREATE TABLE IF NOT EXISTS account_progression (',
+      '  player_id BIGINT PRIMARY KEY,',
+      '  account_xp BIGINT NOT NULL DEFAULT 0,',
+      '  account_level BIGINT NOT NULL DEFAULT 1,',
+      '  account_skill_points BIGINT NOT NULL DEFAULT 0,',
+      '  shards BIGINT NOT NULL DEFAULT 0,',
+      '  active_hero VARCHAR(64) NOT NULL,',
+      '  unlocked_heroes_json LONGTEXT NOT NULL,',
+      '  hero_nodes_json LONGTEXT NOT NULL,',
+      '  hero_cards_json LONGTEXT NOT NULL,',
+      '  hero_levels_json LONGTEXT NOT NULL,',
+      '  hero_xp_json LONGTEXT NOT NULL,',
+      '  hero_skill_levels_json LONGTEXT NOT NULL,',
+      '  salvage BIGINT NOT NULL DEFAULT 0,',
+      '  inventory_items_json LONGTEXT NOT NULL,',
+      '  hero_equipment_json LONGTEXT NOT NULL,',
+      '  total_runs BIGINT NOT NULL DEFAULT 0,',
+      '  hero_runs_json LONGTEXT NOT NULL,',
+      '  campaign_progress_json LONGTEXT NOT NULL,',
+      '  created_at BIGINT NOT NULL,',
+      '  updated_at BIGINT NOT NULL',
+      ') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci',
+    ].join('\n'));
+    const mysqlColumns = mysqlClient.queryRows(
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ${escapeSql(mysqlClient.config.database)} AND TABLE_NAME = 'account_progression'`,
+    );
+    const mysqlColumnNames = new Set(mysqlColumns.map((row) => String(row.COLUMN_NAME || row.column_name || '').trim()).filter(Boolean));
+    if (!mysqlColumnNames.has('campaign_progress_json')) {
+      mysqlClient.execute('ALTER TABLE account_progression ADD COLUMN campaign_progress_json LONGTEXT NULL');
+      mysqlClient.execute(`UPDATE account_progression SET campaign_progress_json = ${escapeSql('{}')} WHERE campaign_progress_json IS NULL`);
+    }
   }
 
   const progressionJsonSql = jsonObjectSql({
@@ -169,6 +227,7 @@ function createAccountProgressionStore({
     hero_equipment_json: 'hero_equipment_json',
     total_runs: 'total_runs',
     hero_runs_json: 'hero_runs_json',
+    campaign_progress_json: 'campaign_progress_json',
     created_at: 'created_at',
     updated_at: 'updated_at',
   });
@@ -183,7 +242,7 @@ function createAccountProgressionStore({
     run(payload) {
       mysqlClient.execute([
         'INSERT INTO account_progression (',
-        '  player_id, account_xp, account_level, account_skill_points, shards, active_hero, unlocked_heroes_json, hero_nodes_json, hero_cards_json, hero_levels_json, hero_xp_json, hero_skill_levels_json, salvage, inventory_items_json, hero_equipment_json, total_runs, hero_runs_json, created_at, updated_at',
+        '  player_id, account_xp, account_level, account_skill_points, shards, active_hero, unlocked_heroes_json, hero_nodes_json, hero_cards_json, hero_levels_json, hero_xp_json, hero_skill_levels_json, salvage, inventory_items_json, hero_equipment_json, total_runs, hero_runs_json, campaign_progress_json, created_at, updated_at',
         ') VALUES (',
         `  ${[
           payload.playerId,
@@ -203,6 +262,7 @@ function createAccountProgressionStore({
           payload.heroEquipmentJson,
           payload.totalRuns,
           payload.heroRunsJson,
+          payload.campaignProgressJson,
           payload.createdAt,
           payload.updatedAt,
         ].map(escapeSql).join(', ')}`,
@@ -211,9 +271,9 @@ function createAccountProgressionStore({
     },
   } : db.prepare([
     'INSERT INTO account_progression (',
-    '  player_id, account_xp, account_level, account_skill_points, shards, active_hero, unlocked_heroes_json, hero_nodes_json, hero_cards_json, hero_levels_json, hero_xp_json, hero_skill_levels_json, salvage, inventory_items_json, hero_equipment_json, total_runs, hero_runs_json, created_at, updated_at',
+    '  player_id, account_xp, account_level, account_skill_points, shards, active_hero, unlocked_heroes_json, hero_nodes_json, hero_cards_json, hero_levels_json, hero_xp_json, hero_skill_levels_json, salvage, inventory_items_json, hero_equipment_json, total_runs, hero_runs_json, campaign_progress_json, created_at, updated_at',
     ') VALUES (',
-    '  @playerId, @accountXp, @accountLevel, @accountSkillPoints, @shards, @activeHero, @unlockedHeroesJson, @heroNodesJson, @heroCardsJson, @heroLevelsJson, @heroXpJson, @heroSkillLevelsJson, @salvage, @inventoryItemsJson, @heroEquipmentJson, @totalRuns, @heroRunsJson, @createdAt, @updatedAt',
+    '  @playerId, @accountXp, @accountLevel, @accountSkillPoints, @shards, @activeHero, @unlockedHeroesJson, @heroNodesJson, @heroCardsJson, @heroLevelsJson, @heroXpJson, @heroSkillLevelsJson, @salvage, @inventoryItemsJson, @heroEquipmentJson, @totalRuns, @heroRunsJson, @campaignProgressJson, @createdAt, @updatedAt',
     ')',
   ].join('\n'));
   const stmtUpdate = useMysql ? {
@@ -236,6 +296,7 @@ function createAccountProgressionStore({
         `  hero_equipment_json=${escapeSql(payload.heroEquipmentJson)},`,
         `  total_runs=${escapeSql(payload.totalRuns)},`,
         `  hero_runs_json=${escapeSql(payload.heroRunsJson)},`,
+        `  campaign_progress_json=${escapeSql(payload.campaignProgressJson)},`,
         `  updated_at=${escapeSql(payload.updatedAt)}`,
         `WHERE player_id=${escapeSql(payload.playerId)}`,
       ].join('\n'));
@@ -258,6 +319,7 @@ function createAccountProgressionStore({
     '  hero_equipment_json=@heroEquipmentJson,',
     '  total_runs=@totalRuns,',
     '  hero_runs_json=@heroRunsJson,',
+    '  campaign_progress_json=@campaignProgressJson,',
     '  updated_at=@updatedAt',
     'WHERE player_id=@playerId',
   ].join('\n'));
@@ -284,6 +346,148 @@ function createAccountProgressionStore({
     return Object.fromEntries(getHeroUniqueSkillList(heroId).map((skill) => [skill.id, skill]));
   }
 
+  function getCampaignLevelSequence(campaignId) {
+    return Array.isArray(campaignMap[campaignId]?.levels) ? campaignMap[campaignId].levels : [];
+  }
+
+  function normalizeCampaignLevelStats(rawLevel, levelDef) {
+    if (!levelDef) return null;
+    const source = rawLevel && typeof rawLevel === 'object' ? rawLevel : {};
+    const attempts = clampInt(source.attempts, 0);
+    const victories = clampInt(source.victories, 0);
+    const completedAt = clampInt(source.completedAt, 0);
+    const bestScore = clampInt(source.bestScore, 0);
+    const bestSurvivalSec = clampInt(source.bestSurvivalSec, 0);
+    const bestEnemyKills = clampInt(source.bestEnemyKills, 0);
+    const bestBossKills = clampInt(source.bestBossKills, 0);
+    const bestLevel = Math.max(0, clampInt(source.bestLevel, 0));
+    const lastPlayedAt = clampInt(source.lastPlayedAt, 0);
+    if (!attempts && !victories && !completedAt && !bestScore && !bestSurvivalSec && !bestEnemyKills && !bestBossKills && !bestLevel && !lastPlayedAt) {
+      return null;
+    }
+    return {
+      attempts,
+      victories,
+      completedAt,
+      bestScore,
+      bestSurvivalSec,
+      bestEnemyKills,
+      bestBossKills,
+      bestLevel,
+      lastPlayedAt,
+    };
+  }
+
+  function normalizeCampaignProgress(raw) {
+    const source = raw && typeof raw === 'object' ? raw : {};
+    const out = {};
+    for (const campaignId of Object.keys(source)) {
+      const campaignDef = campaignMap[campaignId];
+      if (!campaignDef) continue;
+      const srcCampaign = source[campaignId] && typeof source[campaignId] === 'object' ? source[campaignId] : {};
+      const levelSource = srcCampaign.levels && typeof srcCampaign.levels === 'object' ? srcCampaign.levels : {};
+      const levels = {};
+      for (const levelDef of getCampaignLevelSequence(campaignId)) {
+        const normalizedLevel = normalizeCampaignLevelStats(levelSource[levelDef.id], levelDef);
+        if (normalizedLevel) levels[levelDef.id] = normalizedLevel;
+      }
+      const attempts = clampInt(srcCampaign.attempts, 0);
+      const victories = clampInt(srcCampaign.victories, 0);
+      const bestScore = clampInt(srcCampaign.bestScore, 0);
+      const bestSurvivalSec = clampInt(srcCampaign.bestSurvivalSec, 0);
+      const lastPlayedAt = clampInt(srcCampaign.lastPlayedAt, 0);
+      if (!attempts && !victories && !bestScore && !bestSurvivalSec && !lastPlayedAt && Object.keys(levels).length <= 0) continue;
+      out[campaignId] = {
+        attempts,
+        victories,
+        bestScore,
+        bestSurvivalSec,
+        lastPlayedAt,
+        levels,
+      };
+    }
+    return out;
+  }
+
+  function getCampaignLevelProgress(progression, campaignId, levelId) {
+    const normalizedCampaignId = String(campaignId || '').trim();
+    const normalizedLevelId = String(levelId || '').trim();
+    const source = progression?.campaignProgress?.[normalizedCampaignId]?.levels?.[normalizedLevelId];
+    return source && typeof source === 'object' ? source : null;
+  }
+
+  function isCampaignLevelUnlocked(progression, campaignId, levelId) {
+    const campaignLevels = getCampaignLevelSequence(campaignId);
+    const index = campaignLevels.findIndex((level) => level.id === levelId);
+    if (index < 0) return false;
+    if (index === 0) return true;
+    const previousLevel = campaignLevels[index - 1];
+    const previousProgress = getCampaignLevelProgress(progression, campaignId, previousLevel.id);
+    return clampInt(previousProgress?.completedAt, 0) > 0 || clampInt(previousProgress?.victories, 0) > 0;
+  }
+
+  function recordCampaignRunInProgression(progression, runStats) {
+    if (!progression) return;
+    const campaignId = String(runStats?.campaignId || '').trim();
+    const levelId = String(runStats?.campaignLevelId || '').trim();
+    if (!campaignMap[campaignId] || !campaignLevelMap[campaignId]?.[levelId]) return;
+    if (!progression.campaignProgress || typeof progression.campaignProgress !== 'object') progression.campaignProgress = {};
+    if (!progression.campaignProgress[campaignId]) {
+      progression.campaignProgress[campaignId] = {
+        attempts: 0,
+        victories: 0,
+        bestScore: 0,
+        bestSurvivalSec: 0,
+        lastPlayedAt: 0,
+        levels: {},
+      };
+    }
+    const campaignProgress = progression.campaignProgress[campaignId];
+    if (!campaignProgress.levels || typeof campaignProgress.levels !== 'object') campaignProgress.levels = {};
+    if (!campaignProgress.levels[levelId]) {
+      campaignProgress.levels[levelId] = {
+        attempts: 0,
+        victories: 0,
+        completedAt: 0,
+        bestScore: 0,
+        bestSurvivalSec: 0,
+        bestEnemyKills: 0,
+        bestBossKills: 0,
+        bestLevel: 0,
+        lastPlayedAt: 0,
+      };
+    }
+    const levelProgress = campaignProgress.levels[levelId];
+    const now = nowMs();
+    const success = runStats?.campaignSuccess === true;
+    const score = clampInt(runStats?.score, 0);
+    const survivalSec = clampInt(runStats?.survivalSec, 0);
+    const enemyKills = clampInt(runStats?.kills, 0);
+    const bossKills = clampInt(runStats?.bossKills, 0);
+    const bestLevel = Math.max(0, clampInt(runStats?.level, 0));
+
+    campaignProgress.attempts += 1;
+    campaignProgress.lastPlayedAt = now;
+    campaignProgress.bestScore = Math.max(campaignProgress.bestScore, score);
+    campaignProgress.bestSurvivalSec = Math.max(campaignProgress.bestSurvivalSec, survivalSec);
+
+    levelProgress.attempts += 1;
+    levelProgress.lastPlayedAt = now;
+    levelProgress.bestScore = Math.max(levelProgress.bestScore, score);
+    levelProgress.bestSurvivalSec = Math.max(levelProgress.bestSurvivalSec, survivalSec);
+    levelProgress.bestEnemyKills = Math.max(levelProgress.bestEnemyKills, enemyKills);
+    levelProgress.bestBossKills = Math.max(levelProgress.bestBossKills, bossKills);
+    levelProgress.bestLevel = Math.max(levelProgress.bestLevel, bestLevel);
+
+    if (success) {
+      campaignProgress.victories += 1;
+      levelProgress.victories += 1;
+      if (!levelProgress.completedAt) levelProgress.completedAt = now;
+    }
+
+    progression.campaignProgress = normalizeCampaignProgress(progression.campaignProgress);
+  }
+
   function createDefaultProgression(playerId) {
     const now = nowMs();
     return {
@@ -304,6 +508,7 @@ function createAccountProgressionStore({
       heroEquipment: {},
       totalRuns: 0,
       heroRuns: {},
+      campaignProgress: {},
       createdAt: now,
       updatedAt: now,
     };
@@ -535,6 +740,7 @@ function createAccountProgressionStore({
     const inventoryItems = normalizeInventoryItems(safeJsonParse(row.inventory_items_json, []));
     const heroEquipment = normalizeHeroEquipment(safeJsonParse(row.hero_equipment_json, {}), inventoryItems);
     const heroRuns = normalizeHeroRuns(safeJsonParse(row.hero_runs_json, {}));
+    const campaignProgress = normalizeCampaignProgress(safeJsonParse(row.campaign_progress_json, {}));
     const activeHeroRaw = String(row.active_hero || '').trim();
     const activeHero = unlockedHeroes.includes(activeHeroRaw) ? activeHeroRaw : unlockedHeroes[0];
     return {
@@ -555,6 +761,7 @@ function createAccountProgressionStore({
       heroEquipment,
       totalRuns: clampInt(row.total_runs, 0),
       heroRuns,
+      campaignProgress,
       createdAt: clampInt(row.created_at, 0),
       updatedAt: clampInt(row.updated_at, 0),
     };
@@ -579,6 +786,7 @@ function createAccountProgressionStore({
       heroEquipmentJson: JSON.stringify(normalizeHeroEquipment(progression.heroEquipment, progression.inventoryItems)),
       totalRuns: clampInt(progression.totalRuns, 0),
       heroRunsJson: JSON.stringify(normalizeHeroRuns(progression.heroRuns)),
+      campaignProgressJson: JSON.stringify(normalizeCampaignProgress(progression.campaignProgress)),
       createdAt: clampInt(progression.createdAt || nowMs(), 0),
       updatedAt: nowMs(),
     };
@@ -616,6 +824,7 @@ function createAccountProgressionStore({
       heroEquipment: normalizeHeroEquipment(raw?.heroEquipment || base.heroEquipment, inventoryItems),
       totalRuns: clampInt(raw?.totalRuns, 0),
       heroRuns: normalizeHeroRuns(raw?.heroRuns || base.heroRuns),
+      campaignProgress: normalizeCampaignProgress(raw?.campaignProgress || base.campaignProgress),
       createdAt: clampInt(raw?.createdAt || base.createdAt, 0),
       updatedAt: clampInt(raw?.updatedAt || base.updatedAt, 0),
     };
@@ -682,6 +891,32 @@ function createAccountProgressionStore({
         upgradeSalvageBase: clampInt(item.upgradeSalvageBase, 0),
         upgradeSalvageStep: clampInt(item.upgradeSalvageStep, 0),
       })),
+      maps: mapDefs.map((mapDef) => ({
+        id: mapDef.id,
+        name: mapDef.name,
+        subtitle: mapDef.subtitle,
+        description: mapDef.description,
+        worldWidth: Math.max(1200, Number(mapDef.worldWidth) || 2400),
+        worldHeight: Math.max(900, Number(mapDef.worldHeight) || 1400),
+        cover: mapDef.cover && typeof mapDef.cover === 'object' ? { ...mapDef.cover } : null,
+      })),
+      campaigns: campaignDefs.map((campaign) => ({
+        id: campaign.id,
+        name: campaign.name,
+        shortName: campaign.shortName,
+        tagline: campaign.tagline,
+        description: campaign.description,
+        cover: campaign.cover && typeof campaign.cover === 'object' ? { ...campaign.cover } : null,
+        levels: (Array.isArray(campaign.levels) ? campaign.levels : []).map((level) => ({
+          id: level.id,
+          index: Math.max(0, Number(level.index) || 0),
+          title: level.title,
+          brief: level.brief,
+          scenario: level.scenario,
+          mapId: level.mapId,
+          goals: Array.isArray(level.goals) ? level.goals.map((goal) => ({ ...goal })) : [],
+        })),
+      })),
       trees: skillTrees,
     };
   }
@@ -706,6 +941,7 @@ function createAccountProgressionStore({
       heroEquipment: normalizeHeroEquipment(progression.heroEquipment, progression.inventoryItems),
       totalRuns: clampInt(progression.totalRuns, 0),
       heroRuns: normalizeHeroRuns(progression.heroRuns),
+      campaignProgress: normalizeCampaignProgress(progression.campaignProgress),
       accountXpToNext: xpToNextLevel(progression.accountLevel),
       heroXpToNext: Object.fromEntries(heroes.map((hero) => [hero.id, heroXpToNextLevel(Math.max(1, clampInt(progression?.heroLevels?.[hero.id], 1) || 1))])),
     };
@@ -950,6 +1186,9 @@ function createAccountProgressionStore({
     const survivalSec = clampInt(runStats?.survivalSec, 0);
     const runHeroIdRaw = String(runStats?.heroId || progression.activeHero || fallbackHeroId).trim();
     const runHeroId = heroMap[runHeroIdRaw] ? runHeroIdRaw : fallbackHeroId;
+    const campaignId = String(runStats?.campaignId || '').trim();
+    const campaignLevelId = String(runStats?.campaignLevelId || '').trim();
+    const campaignSuccess = runStats?.campaignSuccess === true;
 
     const gainedXp = Math.max(0, Math.round(
       score * Number(xpFromScoreMul)
@@ -977,6 +1216,18 @@ function createAccountProgressionStore({
     progression.heroXp[runHeroId] = clampInt(progression.heroXp[runHeroId], 0) + heroXpGain;
     const gainedCards = grantHeroCardsForRun(progression, runStats);
     const gainedItems = grantItemDropsForRun(progression, runStats);
+    if (campaignId && campaignLevelId) {
+      recordCampaignRunInProgression(progression, {
+        campaignId,
+        campaignLevelId,
+        campaignSuccess,
+        score,
+        survivalSec,
+        kills,
+        bossKills,
+        level: Math.max(1, clampInt(runStats?.level, 1) || 1),
+      });
+    }
     let heroLevelsGained = 0;
     let heroLevel = getHeroLevel(progression, runHeroId);
     let heroXpToNext = heroXpToNextLevel(heroLevel);
@@ -1010,6 +1261,9 @@ function createAccountProgressionStore({
         heroId: runHeroId,
         gainedCards,
         gainedItems,
+        campaignId: campaignId || null,
+        campaignLevelId: campaignLevelId || null,
+        campaignSuccess,
       },
     };
   }
@@ -1304,6 +1558,7 @@ function createAccountProgressionStore({
     getOrCreateProgression,
     listCachedProgressions,
     toPublicProgression,
+    isCampaignLevelUnlocked,
     grantRunRewards,
     grantRunRewardsInMemory,
     saveProgressionSnapshot,

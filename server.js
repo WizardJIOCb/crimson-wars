@@ -10,6 +10,7 @@ const WebSocket = require('ws');
 const { WebSocketServer } = WebSocket;
 
 const config = require('./server/config');
+const { getMapDef, getCampaignDef, getCampaignLevelDef } = require('./server/world-content');
 const { createAdminAuthStore } = require('./server/admin-auth-store');
 const { createPlayerAuthStore, normalizeNickname } = require('./server/player-auth-store');
 const { createRecordsStore } = require('./server/records-store');
@@ -68,6 +69,8 @@ const {
   MAX_PLAYERS,
   WORLD_WIDTH,
   WORLD_HEIGHT,
+  MAP_DEFS,
+  CAMPAIGN_DEFS,
   PLAYER_RADIUS,
   ENEMY_RADIUS,
   BULLET_RADIUS,
@@ -441,6 +444,8 @@ const accountProgressionStore = createAccountProgressionStore({
   dataDir: DATA_DIR,
   dbPath: PLAYER_AUTH_DB_PATH,
   baseHeroId: ACCOUNT_BASE_HERO_ID,
+  maps: MAP_DEFS,
+  campaigns: CAMPAIGN_DEFS,
   heroDefs: HERO_DEFS,
   heroSkillTreeDefs: HERO_SKILL_TREE_DEFS,
   heroUniqueSkillDefs: HERO_UNIQUE_SKILL_DEFS,
@@ -2273,41 +2278,160 @@ app.put('/api/admin/skills/:id', requireAdmin, (req, res) => {
   res.json({ ok: true, skill: result.skill, ...skillsStore.getAdminPayload(result.collection?.id) });
 });
 
-function randomSpawnEdge() {
-  const side = Math.floor(Math.random() * 4);
-  if (side === 0) return { x: Math.random() * WORLD_WIDTH, y: 0 };
-  if (side === 1) return { x: WORLD_WIDTH, y: Math.random() * WORLD_HEIGHT };
-  if (side === 2) return { x: Math.random() * WORLD_WIDTH, y: WORLD_HEIGHT };
-  return { x: 0, y: Math.random() * WORLD_HEIGHT };
+function getRoomWorld(room = null) {
+  const width = Math.max(1200, Number(room?.world?.width) || WORLD_WIDTH);
+  const height = Math.max(900, Number(room?.world?.height) || WORLD_HEIGHT);
+  return { width, height };
 }
 
-function randomPlayerSpawn(gameMode = 'normal') {
-  if (normalizeGameMode(gameMode) === 'pvp') {
-    const margin = PLAYER_RADIUS + 40;
-    return {
-      x: margin + Math.random() * Math.max(1, WORLD_WIDTH - margin * 2),
-      y: margin + Math.random() * Math.max(1, WORLD_HEIGHT - margin * 2),
-    };
-  }
+function getRoomWorldWidth(room = null) {
+  return getRoomWorld(room).width;
+}
+
+function getRoomWorldHeight(room = null) {
+  return getRoomWorld(room).height;
+}
+
+function getEnemySpawnPadding(room = null) {
+  const world = getRoomWorld(room);
+  return Math.max(72, Math.round(Math.min(world.width, world.height) * 0.03));
+}
+
+function getEnemyWorldBounds(room = null) {
+  const world = getRoomWorld(room);
+  const padding = getEnemySpawnPadding(room);
   return {
-    x: WORLD_WIDTH / 2 + (Math.random() - 0.5) * 260,
-    y: WORLD_HEIGHT / 2 + (Math.random() - 0.5) * 200,
+    minX: -padding,
+    maxX: world.width + padding,
+    minY: -padding,
+    maxY: world.height + padding,
   };
 }
 
-function generateTrees() {
+function randomSpawnEdge(room = null) {
+  const world = getRoomWorld(room);
+  const edgePadding = getEnemySpawnPadding(room);
+  const side = Math.floor(Math.random() * 4);
+  if (side === 0) return { x: Math.random() * world.width, y: -edgePadding };
+  if (side === 1) return { x: world.width + edgePadding, y: Math.random() * world.height };
+  if (side === 2) return { x: Math.random() * world.width, y: world.height + edgePadding };
+  return { x: -edgePadding, y: Math.random() * world.height };
+}
+
+function randomPlayerSpawn(room = null, gameMode = 'normal') {
+  const world = getRoomWorld(room);
+  if (normalizeGameMode(gameMode) === 'pvp') {
+    const margin = PLAYER_RADIUS + 40;
+    return {
+      x: margin + Math.random() * Math.max(1, world.width - margin * 2),
+      y: margin + Math.random() * Math.max(1, world.height - margin * 2),
+    };
+  }
+  return {
+    x: world.width / 2 + (Math.random() - 0.5) * 260,
+    y: world.height / 2 + (Math.random() - 0.5) * 200,
+  };
+}
+
+function generateTrees(worldOrRoom = null, densityMul = 1) {
+  const world = worldOrRoom?.width && worldOrRoom?.height ? worldOrRoom : getRoomWorld(worldOrRoom);
   const trees = [];
+  const baseArea = WORLD_WIDTH * WORLD_HEIGHT;
+  const worldArea = Math.max(baseArea, world.width * world.height);
+  const targetCount = Math.max(18, Math.round(TREE_COUNT * (worldArea / baseArea) * Math.max(0.15, Number(densityMul) || 1)));
   let attempts = 0;
-  while (trees.length < TREE_COUNT && attempts < TREE_COUNT * 8) {
+  while (trees.length < targetCount && attempts < targetCount * 8) {
     attempts += 1;
-    const x = 120 + Math.random() * (WORLD_WIDTH - 240);
-    const y = 120 + Math.random() * (WORLD_HEIGHT - 240);
-    const dx = x - WORLD_WIDTH / 2;
-    const dy = y - WORLD_HEIGHT / 2;
+    const x = 120 + Math.random() * Math.max(1, world.width - 240);
+    const y = 120 + Math.random() * Math.max(1, world.height - 240);
+    const dx = x - world.width / 2;
+    const dy = y - world.height / 2;
     if (dx * dx + dy * dy < 260 * 260) continue;
     trees.push({ x, y, scale: 0.7 + Math.random() * 0.6 });
   }
   return trees;
+}
+
+function cloneMissionGoals(goals) {
+  return (Array.isArray(goals) ? goals : []).map((goal) => ({
+    type: String(goal?.type || '').trim(),
+    target: Math.max(0, Number(goal?.target) || 0),
+    label: String(goal?.label || '').trim(),
+  })).filter((goal) => goal.type && goal.target > 0);
+}
+
+function createCampaignMission(campaignDef, levelDef) {
+  if (!campaignDef || !levelDef) return null;
+  return {
+    runType: 'campaign',
+    campaignId: campaignDef.id,
+    campaignName: campaignDef.name,
+    campaignShortName: campaignDef.shortName,
+    levelId: levelDef.id,
+    levelIndex: Math.max(0, Number(levelDef.index) || 0),
+    title: String(levelDef.title || '').trim(),
+    brief: String(levelDef.brief || '').trim(),
+    scenario: String(levelDef.scenario || '').trim(),
+    goals: cloneMissionGoals(levelDef.goals),
+    completedAt: 0,
+    failedAt: 0,
+    success: false,
+  };
+}
+
+function resolveNewRoomContent(options = {}) {
+  const requestedRunType = String(options.runType || 'free').trim().toLowerCase() === 'campaign' ? 'campaign' : 'free';
+  if (requestedRunType === 'campaign') {
+    const campaignId = String(options.campaignId || '').trim();
+    const campaignLevelId = String(options.campaignLevelId || '').trim();
+    const campaignDef = getCampaignDef(campaignId);
+    const levelDef = getCampaignLevelDef(campaignId, campaignLevelId);
+    if (!campaignDef || !levelDef) {
+      return { ok: false, code: 404, message: 'Campaign or level not found.' };
+    }
+    const progression = options.progression || null;
+    if (!accountProgressionStore.isCampaignLevelUnlocked(progression, campaignId, campaignLevelId)) {
+      return { ok: false, code: 403, message: 'Campaign level is locked. Finish previous missions first.' };
+    }
+    const mapDef = getMapDef(levelDef.mapId);
+    const levelModifiers = levelDef.modifiers && typeof levelDef.modifiers === 'object' ? levelDef.modifiers : {};
+    return {
+      ok: true,
+      runType: 'campaign',
+      mapId: mapDef.id,
+      mapDef,
+      world: {
+        width: Math.max(1200, Number(mapDef.worldWidth) || WORLD_WIDTH),
+        height: Math.max(900, Number(mapDef.worldHeight) || WORLD_HEIGHT),
+      },
+      campaignId: campaignDef.id,
+      campaignLevelId: levelDef.id,
+      mission: createCampaignMission(campaignDef, levelDef),
+      enemySpawnMul: Math.max(0.25, Number(levelModifiers.enemySpawnMul) || 1),
+      enemyHpMul: Math.max(0.25, Number(levelModifiers.enemyHpMul) || 1),
+      bossKillInterval: Math.max(4, Math.round(Number(levelModifiers.bossKillInterval) || BOSS_KILL_INTERVAL)),
+      treeDensityMul: Math.max(0.15, Number(mapDef.treeDensityMul) || 1),
+    };
+  }
+
+  const mapDef = getMapDef(options.mapId);
+  return {
+    ok: true,
+    runType: 'free',
+    mapId: mapDef.id,
+    mapDef,
+    world: {
+      width: Math.max(1200, Number(mapDef.worldWidth) || WORLD_WIDTH),
+      height: Math.max(900, Number(mapDef.worldHeight) || WORLD_HEIGHT),
+    },
+    campaignId: '',
+    campaignLevelId: '',
+    mission: null,
+    enemySpawnMul: 1,
+    enemyHpMul: 1,
+    bossKillInterval: BOSS_KILL_INTERVAL,
+    treeDensityMul: Math.max(0.15, Number(mapDef.treeDensityMul) || 1),
+  };
 }
 
 function randomRoomCode() {
@@ -2424,7 +2548,7 @@ function resolveJoinIdentity(ws, rawName) {
   };
 }
 
-function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode, requestedPvpDurationMin) {
+function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode, requestedPvpDurationMin, options = {}) {
   const provided = cleanRoomCode(requestedCode);
   let code = provided;
 
@@ -2435,21 +2559,32 @@ function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode, reques
   }
 
   if (!rooms.has(code)) {
+    const content = resolveNewRoomContent(options);
+    if (!content.ok) return content;
     const sync = normalizeRoomSync(requestedSync || DEFAULT_ROOM_SYNC);
-    const gameMode = normalizeGameMode(requestedGameMode || 'normal');
+    const baseGameMode = normalizeGameMode(requestedGameMode || 'normal');
+    const gameMode = content.runType === 'campaign' && baseGameMode === 'pvp' ? 'normal' : baseGameMode;
     const pvpDurationMin = normalizePvpDurationMin(requestedPvpDurationMin);
-    const enemySpawnMul = gameMode === 'hardcore'
+    const baseEnemySpawnMul = gameMode === 'hardcore'
       ? HARDCORE_ENEMY_SPAWN_MUL
       : (gameMode === 'pvp' ? PVP_ENEMY_SPAWN_MUL : 1);
-    const enemyHpMul = gameMode === 'hardcore'
+    const baseEnemyHpMul = gameMode === 'hardcore'
       ? HARDCORE_ENEMY_HP_MUL
       : (gameMode === 'pvp' ? PVP_ENEMY_HP_MUL : 1);
+    const enemySpawnMul = Number((baseEnemySpawnMul * Math.max(0.25, Number(content.enemySpawnMul) || 1)).toFixed(3));
+    const enemyHpMul = Number((baseEnemyHpMul * Math.max(0.25, Number(content.enemyHpMul) || 1)).toFixed(3));
     const startedAt = Date.now();
     const matchDurationSec = gameMode === 'pvp' ? (pvpDurationMin * 60) : 0;
     rooms.set(code, {
       code,
       instanceId: INSTANCE_ID,
       sync,
+      runType: content.runType,
+      mapId: content.mapId,
+      world: content.world,
+      mission: content.mission,
+      campaignId: content.campaignId,
+      campaignLevelId: content.campaignLevelId,
       gameMode,
       maxPlayers: getRoomMaxPlayers(gameMode),
       pvpDurationMin,
@@ -2490,11 +2625,14 @@ function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode, reques
       bossPortals: [],
       totalEnemyKills: 0,
       totalBossKills: 0,
-      nextBossAtKills: BOSS_KILL_INTERVAL,
+      nextBossAtKills: Math.max(4, Number(content.bossKillInterval) || BOSS_KILL_INTERVAL),
+      bossKillInterval: Math.max(4, Number(content.bossKillInterval) || BOSS_KILL_INTERVAL),
       lastEnemySpawnAt: 0,
       lastCompanionSyncAt: 0,
       startedAt,
-      trees: generateTrees(),
+      completedAt: 0,
+      missionSuccess: false,
+      trees: generateTrees(content.world, content.treeDensityMul),
       realtimeCollectionState: {
         drops: { version: 1, lastSentVersion: 0, lastSentAt: 0 },
         xpOrbs: { version: 1, lastSentVersion: 0, lastSentAt: 0 },
@@ -2987,8 +3125,9 @@ function getCompanionSkillDefs() {
 }
 
 function createCompanion(room, owner, def, ordinal = 0) {
-  const spawnX = Number(owner?.x) || WORLD_WIDTH / 2;
-  const spawnY = Number(owner?.y) || WORLD_HEIGHT / 2;
+  const world = getRoomWorld(room);
+  const spawnX = Number(owner?.x) || world.width / 2;
+  const spawnY = Number(owner?.y) || world.height / 2;
   const seed = (ordinal + 1) * 0.73 + String(def?.id || '').length * 0.19;
   const holdAngle = Math.PI * 2 * (seed - Math.floor(seed));
   const holdRadius = 44 + (ordinal % 3) * 10 + (String(def?.id || '').charCodeAt(0) % 7);
@@ -3186,6 +3325,7 @@ function fireCompanionWeapon(room, companion, owner, now) {
 
 function tickCompanions(room, dtSec, now) {
   if (!room || !Array.isArray(room.companions) || room.companions.length === 0) return;
+  const world = getRoomWorld(room);
   const byOwner = new Map();
   for (const companion of room.companions) {
     if (!byOwner.has(companion.ownerId)) byOwner.set(companion.ownerId, []);
@@ -3229,8 +3369,8 @@ function tickCompanions(room, dtSec, now) {
       desiredX = owner.x + Number(companion.holdOffsetX || 0);
       desiredY = owner.y + Number(companion.holdOffsetY || 0);
     }
-    desiredX = clamp(desiredX, PLAYER_RADIUS, WORLD_WIDTH - PLAYER_RADIUS);
-    desiredY = clamp(desiredY, PLAYER_RADIUS, WORLD_HEIGHT - PLAYER_RADIUS);
+    desiredX = clamp(desiredX, PLAYER_RADIUS, world.width - PLAYER_RADIUS);
+    desiredY = clamp(desiredY, PLAYER_RADIUS, world.height - PLAYER_RADIUS);
 
     const followDx = desiredX - companion.x;
     const followDy = desiredY - companion.y;
@@ -3241,8 +3381,8 @@ function tickCompanions(room, dtSec, now) {
     companion.vy = followDist > 2 ? (followDy / followDist) * desiredSpeed : 0;
 
     if (!owner.alive) {
-      companion.x = clamp(companion.x + companion.vx * dtSec, PLAYER_RADIUS, WORLD_WIDTH - PLAYER_RADIUS);
-      companion.y = clamp(companion.y + companion.vy * dtSec, PLAYER_RADIUS, WORLD_HEIGHT - PLAYER_RADIUS);
+      companion.x = clamp(companion.x + companion.vx * dtSec, PLAYER_RADIUS, world.width - PLAYER_RADIUS);
+      companion.y = clamp(companion.y + companion.vy * dtSec, PLAYER_RADIUS, world.height - PLAYER_RADIUS);
       companion.aimX = owner.x;
       companion.aimY = owner.y;
       continue;
@@ -3275,8 +3415,8 @@ function tickCompanions(room, dtSec, now) {
       companion.vx = (companion.vx / speedLen) * followSpeed;
       companion.vy = (companion.vy / speedLen) * followSpeed;
     }
-    companion.x = clamp(companion.x + companion.vx * dtSec, PLAYER_RADIUS, WORLD_WIDTH - PLAYER_RADIUS);
-    companion.y = clamp(companion.y + companion.vy * dtSec, PLAYER_RADIUS, WORLD_HEIGHT - PLAYER_RADIUS);
+    companion.x = clamp(companion.x + companion.vx * dtSec, PLAYER_RADIUS, world.width - PLAYER_RADIUS);
+    companion.y = clamp(companion.y + companion.vy * dtSec, PLAYER_RADIUS, world.height - PLAYER_RADIUS);
   }
 }
 
@@ -3396,6 +3536,7 @@ function castHomingMissiles(room, player, def, st, now) {
   const explosionRadius = Math.max(24, (Number(def.explosionRadius) || 58) + (Number(def.explosionRadiusPerLevel) || 0) * (lvl - 1));
   const lifeMs = Math.max(900, Number(def.lifeMs) || 2600);
   const baseAngle = Math.random() * Math.PI * 2;
+  const world = getRoomWorld(room);
 
   for (let i = 0; i < targets.length; i += 1) {
     const target = targets[i];
@@ -3407,8 +3548,8 @@ function castHomingMissiles(room, player, def, st, now) {
       kind: 'rocket',
       ownerId: player.id,
       fromEnemy: false,
-      x: clamp(player.x + Math.cos(angle) * spawnDist, PLAYER_RADIUS, WORLD_WIDTH - PLAYER_RADIUS),
-      y: clamp(player.y + Math.sin(angle) * spawnDist, PLAYER_RADIUS, WORLD_HEIGHT - PLAYER_RADIUS),
+      x: clamp(player.x + Math.cos(angle) * spawnDist, PLAYER_RADIUS, world.width - PLAYER_RADIUS),
+      y: clamp(player.y + Math.sin(angle) * spawnDist, PLAYER_RADIUS, world.height - PLAYER_RADIUS),
       vx: Math.cos(angle) * missileSpeed * 0.78,
       vy: Math.sin(angle) * missileSpeed * 0.78,
       speed: missileSpeed,
@@ -3553,10 +3694,56 @@ function castPlayerActiveSkill(room, player, def, st, now) {
   return true;
 }
 
+function buildRoomMissionState(room, now = Date.now()) {
+  const mission = room?.mission;
+  if (!mission || room?.runType !== 'campaign') return null;
+  const elapsedSec = Math.max(0, Math.floor((now - (Number(room.startedAt) || now)) / 1000));
+  const highestLevel = Math.max(1, ...Array.from(room.players.values()).map((player) => Math.max(1, Number(player?.level) || 1)));
+  const goals = cloneMissionGoals(mission.goals).map((goal) => {
+    let current = 0;
+    if (goal.type === 'survive') current = elapsedSec;
+    else if (goal.type === 'enemy_kills') current = Math.max(0, Number(room.totalEnemyKills) || 0);
+    else if (goal.type === 'boss_kills') current = Math.max(0, Number(room.totalBossKills) || 0);
+    else if (goal.type === 'player_level') current = highestLevel;
+    const target = Math.max(1, Number(goal.target) || 1);
+    const completed = current >= target;
+    return {
+      type: goal.type,
+      label: goal.label,
+      current,
+      target,
+      completed,
+      progress: Math.max(0, Math.min(1, current / target)),
+    };
+  });
+  const completedGoals = goals.filter((goal) => goal.completed).length;
+  const allCompleted = goals.length > 0 && completedGoals >= goals.length;
+  return {
+    runType: 'campaign',
+    campaignId: mission.campaignId,
+    campaignName: mission.campaignName,
+    campaignShortName: mission.campaignShortName,
+    levelId: mission.levelId,
+    levelIndex: Math.max(0, Number(mission.levelIndex) || 0),
+    title: mission.title,
+    brief: mission.brief,
+    scenario: mission.scenario,
+    goals,
+    completedGoals,
+    totalGoals: goals.length,
+    completedAt: Math.max(0, Number(mission.completedAt) || 0),
+    failedAt: Math.max(0, Number(mission.failedAt) || 0),
+    success: mission.success === true,
+    allCompleted,
+  };
+}
+
 function serializeRoom(room, { includeDecor = true, compactRealtime = false } = {}) {
   const now = Date.now();
+  const world = getRoomWorld(room);
   const difficulty = getRoomDifficulty(room, now);
   const nextPortal = room.bossPortals.length > 0 ? room.bossPortals[0] : null;
+  const mission = buildRoomMissionState(room, now);
   const includeRealtimeDrops = true;
   const includeRealtimeXpOrbs = true;
   const includeRealtimeSkillOrbs = !compactRealtime || shouldIncludeRealtimeCollection(room, 'skillOrbs', now, {
@@ -3717,6 +3904,10 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
     instanceId: room.instanceId || INSTANCE_ID,
     isShuttingDown,
     roomCode: room.code,
+    runType: String(room.runType || 'free'),
+    mapId: String(room.mapId || MAP_DEFS[0]?.id || 'mall_night'),
+    campaignId: String(room.campaignId || ''),
+    campaignLevelId: String(room.campaignLevelId || ''),
     gameMode: normalizeGameMode(room.gameMode || 'normal'),
     roomStartedAt: room.startedAt,
     spectators: Math.max(0, Number(room.spectators?.size) || 0),
@@ -3736,7 +3927,8 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
       attackRateMul: Number(difficulty.attackRateMul.toFixed(3)),
       spawnIntervalMs: Math.round(difficulty.spawnIntervalMs),
     },
-    world: { width: WORLD_WIDTH, height: WORLD_HEIGHT },
+    mission,
+    world,
     sync: room.sync,
     players: serializedPlayers.concat(serializedCompanions),
     bullets: realtimeBullets.map((b) => {
@@ -4010,7 +4202,7 @@ function hasAliveBoss(room) {
 function scheduleBossPortal(room, now, spawnPos) {
   if (room.bossPortals.length > 0) return false;
   if (hasAliveBoss(room)) return false;
-  const pos = spawnPos || randomSpawnEdge();
+  const pos = spawnPos || randomSpawnEdge(room);
   room.bossPortals.push({
     id: room.nextPortalId++,
     x: pos.x,
@@ -4022,7 +4214,7 @@ function scheduleBossPortal(room, now, spawnPos) {
 }
 
 function spawnEnemy(room, now, difficulty = null) {
-  const pos = randomSpawnEdge();
+  const pos = randomSpawnEdge(room);
   const diff = difficulty || getRoomDifficulty(room, now || Date.now());
   const hpBase = ENEMY_HP_BASE + Math.floor(((now || Date.now()) - room.startedAt) / 25000) * 2;
   const hpMul = Math.max(1, Number(room.enemyHpMul) || 1);
@@ -4088,7 +4280,7 @@ function maybeScheduleBossSpawn(room, now) {
   if (room.bossPortals.length > 0) return;
   if (hasAliveBoss(room)) return;
   if (scheduleBossPortal(room, now)) {
-    room.nextBossAtKills += BOSS_KILL_INTERVAL;
+    room.nextBossAtKills += Math.max(4, Number(room.bossKillInterval) || BOSS_KILL_INTERVAL);
   }
 }
 
@@ -4309,6 +4501,7 @@ function fireEnemyProjectile(room, enemy, target) {
 
 function performPlayerDodge(player, now) {
   if (!player.alive) return;
+  const world = getRoomWorld(rooms.get(player.roomCode));
   const charges = Math.max(0, Number(player.dodgeCharges) || 0);
   if (charges <= 0) return;
 
@@ -4322,8 +4515,8 @@ function performPlayerDodge(player, now) {
   const nx = dx / d;
   const ny = dy / d;
 
-  player.x = clamp(player.x + nx * PLAYER_DODGE_DISTANCE, PLAYER_RADIUS, WORLD_WIDTH - PLAYER_RADIUS);
-  player.y = clamp(player.y + ny * PLAYER_DODGE_DISTANCE, PLAYER_RADIUS, WORLD_HEIGHT - PLAYER_RADIUS);
+  player.x = clamp(player.x + nx * PLAYER_DODGE_DISTANCE, PLAYER_RADIUS, world.width - PLAYER_RADIUS);
+  player.y = clamp(player.y + ny * PLAYER_DODGE_DISTANCE, PLAYER_RADIUS, world.height - PLAYER_RADIUS);
   player.dodgeCharges = Math.max(0, charges - 1);
   if (player.dodgeCharges < (player.dodgeChargesMax || PLAYER_DODGE_MAX_CHARGES) && (player.dodgeRechargeMs || 0) <= 0) {
     player.dodgeRechargeMs = PLAYER_DODGE_COOLDOWN_MS;
@@ -4548,7 +4741,12 @@ function createRunReplay(room, player, now) {
     playerId: player.id,
     playerName: player.name,
     playerClass: player.playerClass || 'cyber',
-    world: { width: WORLD_WIDTH, height: WORLD_HEIGHT },
+    runType: String(room.runType || 'free'),
+    mapId: String(room.mapId || ''),
+    campaignId: String(room.campaignId || ''),
+    campaignLevelId: String(room.campaignLevelId || ''),
+    mission: buildRoomMissionState(room, now),
+    world: getRoomWorld(room),
     decor: {
       trees: (room.trees || []).map((tree) => ({
         x: roundReplayCoord(tree?.x),
@@ -4806,6 +5004,11 @@ function finalizeRunReplay(room, replay, now) {
     playerId: replay.playerId,
     playerName: replay.playerName,
     playerClass: replay.playerClass,
+    runType: replay.runType || 'free',
+    mapId: replay.mapId || '',
+    campaignId: replay.campaignId || '',
+    campaignLevelId: replay.campaignLevelId || '',
+    mission: replay.mission || null,
     world: replay.world,
     decor: replay.decor,
     meta: replay.meta,
@@ -4857,19 +5060,20 @@ function clearSkillOffersForOwner(room, playerId) {
 }
 
 function randomSkillOfferPosition(player, used = []) {
+  const world = getRoomWorld(rooms.get(player.roomCode));
   const minDist = Math.max(40, Number(SKILL_OFFER_SPAWN_MIN_DIST) || 120);
   const maxDist = Math.max(minDist + 20, Number(SKILL_OFFER_SPAWN_MAX_DIST) || 420);
   for (let i = 0; i < 28; i += 1) {
     const angle = Math.random() * Math.PI * 2;
     const dist = minDist + Math.random() * (maxDist - minDist);
-    const x = clamp(player.x + Math.cos(angle) * dist, PLAYER_RADIUS + 16, WORLD_WIDTH - PLAYER_RADIUS - 16);
-    const y = clamp(player.y + Math.sin(angle) * dist, PLAYER_RADIUS + 16, WORLD_HEIGHT - PLAYER_RADIUS - 16);
+    const x = clamp(player.x + Math.cos(angle) * dist, PLAYER_RADIUS + 16, world.width - PLAYER_RADIUS - 16);
+    const y = clamp(player.y + Math.sin(angle) * dist, PLAYER_RADIUS + 16, world.height - PLAYER_RADIUS - 16);
     const tooClose = used.some((pos) => ((pos.x - x) ** 2 + (pos.y - y) ** 2) <= (84 * 84));
     if (!tooClose) return { x, y };
   }
   return {
-    x: clamp(player.x + (Math.random() - 0.5) * 260, PLAYER_RADIUS + 16, WORLD_WIDTH - PLAYER_RADIUS - 16),
-    y: clamp(player.y + (Math.random() - 0.5) * 260, PLAYER_RADIUS + 16, WORLD_HEIGHT - PLAYER_RADIUS - 16),
+    x: clamp(player.x + (Math.random() - 0.5) * 260, PLAYER_RADIUS + 16, world.width - PLAYER_RADIUS - 16),
+    y: clamp(player.y + (Math.random() - 0.5) * 260, PLAYER_RADIUS + 16, world.height - PLAYER_RADIUS - 16),
   };
 }
 
@@ -5097,10 +5301,11 @@ function usePlayerQuickConsumable(room, player, slotKey, now = Date.now()) {
       const waves = Math.max(1, Math.round(Number(combatUse.waves) || 1));
       const damage = Math.max(1, Math.round(scaleConsumableMagnitude(combatUse.damage, level, 0.24)));
       const radius = Math.max(70, Math.round(scaleConsumableMagnitude(combatUse.radius, level, 0.09)));
+      const world = getRoomWorld(room);
       let totalHits = 0;
       for (let i = 0; i < waves; i += 1) {
-        const waveX = clamp((Number(player.aimX) || player.x) + (Math.random() - 0.5) * 56, 0, WORLD_WIDTH);
-        const waveY = clamp((Number(player.aimY) || player.y) + (Math.random() - 0.5) * 56, 0, WORLD_HEIGHT);
+        const waveX = clamp((Number(player.aimX) || player.x) + (Math.random() - 0.5) * 56, 0, world.width);
+        const waveY = clamp((Number(player.aimY) || player.y) + (Math.random() - 0.5) * 56, 0, world.height);
         totalHits += applyConsumableAreaDamage(room, player, waveX, waveY, damage, radius, now, { stunMs: 220 });
       }
       resultMessage = `${itemName}: artillery barrage hit ${totalHits} target(s).`;
@@ -5227,6 +5432,10 @@ function buildRunDetails(room, target, now) {
   }
 
   return {
+    runType: String(room?.runType || 'free'),
+    mapId: String(room?.mapId || ''),
+    campaignId: String(room?.campaignId || ''),
+    campaignLevelId: String(room?.campaignLevelId || ''),
     gameMode: normalizeGameMode(room?.gameMode || 'normal'),
     playerClass: (target.playerClass || 'cyber').toString(),
     level: Math.max(1, Number(target.level) || 1),
@@ -5256,6 +5465,115 @@ function buildRunDetails(room, target, now) {
     survivedSec: Math.max(1, Math.floor((now - (target.joinedAt || now)) / 1000)),
     skills,
   };
+}
+
+function completeCampaignRoom(room, now) {
+  if (!room || room.completedAt) return false;
+  room.completedAt = now;
+  room.missionSuccess = true;
+  if (room.mission && typeof room.mission === 'object') {
+    room.mission.completedAt = now;
+    room.mission.success = true;
+  }
+
+  for (const target of room.players.values()) {
+    if (!target) continue;
+    if (target.isOut) continue;
+    target.shooting = false;
+    target.moveX = 0;
+    target.moveY = 0;
+    target.jumpQueued = false;
+    const runReplay = finalizeRunReplay(room, target.runReplay, now);
+    const runDetails = buildRunDetails(room, target, now);
+    const kills = room.kills.get(target.id) || 0;
+    const score = room.scores.get(target.id) || 0;
+    const survivalSec = Math.max(1, Math.floor((now - (target.joinedAt || now)) / 1000));
+    let rewardResult = null;
+    const recordEntry = {
+      name: target.name,
+      kills,
+      score,
+      roomCode: room.code,
+      durationSec: survivalSec,
+      at: now,
+      runDetails,
+      runReplay,
+    };
+
+    if (typeof recordsStore.pushRecordMemory === 'function') {
+      recordsStore.pushRecordMemory(recordEntry);
+    }
+
+    if (target.playerAccountId) {
+      rewardResult = accountProgressionStore.grantRunRewardsInMemory(target.playerAccountId, {
+        score,
+        kills,
+        bossKills: Math.max(0, Number(target.bossKills) || 0),
+        survivalSec,
+        heroId: target.playerClass,
+        level: Math.max(1, Number(target.level) || 1),
+        campaignId: String(room.campaignId || ''),
+        campaignLevelId: String(room.campaignLevelId || ''),
+        campaignSuccess: true,
+      }, { progression: target.accountProgression });
+      if (rewardResult?.progression) {
+        target.accountProgression = rewardResult.progression;
+        target.accountHeroBonuses = accountProgressionStore.computeHeroBonuses(target.accountProgression, target.playerClass);
+        sendTo(target.ws, {
+          type: 'accountProgression',
+          progression: rewardResult.progression,
+          rewards: rewardResult.rewards,
+        });
+      }
+    }
+
+    queueRunPersistence({
+      record: recordEntry,
+      playerAccountId: target.playerAccountId || null,
+      progression: rewardResult?.progression || null,
+    });
+
+    sendTo(target.ws, {
+      type: 'runComplete',
+      reason: 'campaign',
+      title: room.mission?.title || 'Mission complete',
+      message: room.mission?.brief || 'Campaign mission complete.',
+      result: {
+        victory: true,
+        runType: String(room.runType || 'campaign'),
+        campaignId: String(room.campaignId || ''),
+        campaignLevelId: String(room.campaignLevelId || ''),
+        gameMode: normalizeGameMode(room.gameMode || 'normal'),
+        kills: Math.max(0, Number(kills) || 0),
+        score: Math.max(0, Number(score) || 0),
+        enemyKills: Math.max(0, Number(target.enemyKills) || Number(kills) || 0),
+        bossKills: Math.max(0, Number(target.bossKills) || 0),
+        pvpKills: Math.max(0, Number(target.pvpKills) || 0),
+        pvpDeaths: Math.max(0, Number(target.pvpDeaths) || 0),
+        deaths: 0,
+        heroLevel: Math.max(1, Number(target.level) || 1),
+        heroXp: Math.max(0, Number(target.xp) || 0),
+        heroXpToNext: Math.max(1, Number(target.xpToNext) || 1),
+        roomCode: room.code,
+        survivalSec,
+      },
+    });
+  }
+
+  room.bullets = [];
+  room.enemies = [];
+  room.bossPortals = [];
+  room.drops = [];
+  room.skillOrbs = [];
+  room.hasMovingXpOrbs = false;
+  bumpRealtimeCollectionVersion(room, 'drops');
+  bumpRealtimeCollectionVersion(room, 'skillOrbs');
+
+  broadcastRoom(room, {
+    type: 'system',
+    message: `Campaign clear: ${room.mission?.title || room.code}. Survivors may now brag irresponsibly.`,
+  });
+  return true;
 }
 
 function buildPvpRewardRunStats(room, target, placement = null) {
@@ -5370,6 +5688,10 @@ function downPlayer(room, target, now, options = {}) {
       bossKills: isPvpMode ? 0 : target.bossKills,
       survivalSec: isPvpMode ? (pvpStats?.survivalSec || survivalSec) : survivalSec,
       heroId: target.playerClass,
+      level: Math.max(1, Number(target.level) || 1),
+      campaignId: String(room?.campaignId || ''),
+      campaignLevelId: String(room?.campaignLevelId || ''),
+      campaignSuccess: false,
     }, { progression: target.accountProgression });
     if (rewardResult?.progression) {
       target.accountProgression = rewardResult.progression;
@@ -5850,6 +6172,10 @@ function joinRoom(ws, join) {
       id: null,
       roomCode: room.code,
       instanceId: room.instanceId || INSTANCE_ID,
+      runType: String(room.runType || 'free'),
+      mapId: String(room.mapId || ''),
+      campaignId: String(room.campaignId || ''),
+      campaignLevelId: String(room.campaignLevelId || ''),
       spectators: Math.max(0, Number(room.spectators?.size) || 0),
       spectatorCount: Math.max(0, Number(room.spectators?.size) || 0),
       tickRate: room.sync.tickRate,
@@ -5905,6 +6231,11 @@ function joinRoom(ws, join) {
         id: currentPlayer.id,
         roomCode: currentRoom.code,
         instanceId: currentRoom.instanceId || INSTANCE_ID,
+        runType: String(currentRoom.runType || 'free'),
+        mapId: String(currentRoom.mapId || ''),
+        campaignId: String(currentRoom.campaignId || ''),
+        campaignLevelId: String(currentRoom.campaignLevelId || ''),
+        gameMode: normalizeGameMode(currentRoom.gameMode || 'normal'),
         spectators: Math.max(0, Number(currentRoom.spectators?.size) || 0),
         spectatorCount: Math.max(0, Number(currentRoom.spectators?.size) || 0),
         tickRate: currentRoom.sync.tickRate,
@@ -5941,16 +6272,15 @@ function joinRoom(ws, join) {
     });
     return null;
   }
-  const room = getOrCreateRoom(join?.roomCode, join?.sync, join?.gameMode, join?.pvpDurationMin);
-  const roomMaxPlayers = Math.max(1, Number(room.maxPlayers) || getRoomMaxPlayers(room.gameMode));
 
-  if (room.players.size >= roomMaxPlayers) {
-    sendTo(ws, { type: 'joinError', message: `Room ${room.code} is full (${roomMaxPlayers}/${roomMaxPlayers}).` });
-    return null;
+  let targetRoomCode = requestedCode;
+  if (!targetRoomCode) {
+    do {
+      targetRoomCode = randomRoomCode();
+    } while (rooms.has(targetRoomCode));
   }
-
   const requestedIntegrationToken = String(join?.integrationToken || '').trim();
-  const partnerRunSession = consumePartnerRunSession(requestedIntegrationToken, room.code);
+  const partnerRunSession = consumePartnerRunSession(requestedIntegrationToken, targetRoomCode);
   if (requestedIntegrationToken && !partnerRunSession) {
     sendTo(ws, { type: 'joinError', message: 'Integration session is invalid, expired, or already used.', code: 410 });
     return null;
@@ -5966,8 +6296,29 @@ function joinRoom(ws, join) {
   const name = identity.name;
   const requestedHeroId = partnerRunSession?.heroId || join?.playerClass;
   const joinHero = resolveJoinHeroForPlayer(identity.playerAccountId, requestedHeroId);
+  const room = getOrCreateRoom(targetRoomCode, join?.sync, join?.gameMode, join?.pvpDurationMin, {
+    runType: join?.runType,
+    mapId: join?.mapId,
+    campaignId: join?.campaignId,
+    campaignLevelId: join?.campaignLevelId,
+    progression: joinHero.progression,
+  });
+  if (!room?.code) {
+    sendTo(ws, {
+      type: 'joinError',
+      message: room?.message || 'Failed to prepare room.',
+      code: room?.code || 400,
+      roomCode: targetRoomCode,
+    });
+    return null;
+  }
+  const roomMaxPlayers = Math.max(1, Number(room.maxPlayers) || getRoomMaxPlayers(room.gameMode));
+  if (room.players.size >= roomMaxPlayers) {
+    sendTo(ws, { type: 'joinError', message: `Room ${room.code} is full (${roomMaxPlayers}/${roomMaxPlayers}).` });
+    return null;
+  }
   const playerClass = joinHero.heroId;
-  const spawn = randomPlayerSpawn(room.gameMode);
+  const spawn = randomPlayerSpawn(room, room.gameMode);
 
   const player = {
     id,
@@ -6065,6 +6416,11 @@ function joinRoom(ws, join) {
     id,
     roomCode: room.code,
     instanceId: room.instanceId || INSTANCE_ID,
+    runType: String(room.runType || 'free'),
+    mapId: String(room.mapId || ''),
+    campaignId: String(room.campaignId || ''),
+    campaignLevelId: String(room.campaignLevelId || ''),
+    gameMode: normalizeGameMode(room.gameMode || 'normal'),
     spectators: Math.max(0, Number(room.spectators?.size) || 0),
     spectatorCount: Math.max(0, Number(room.spectators?.size) || 0),
     tickRate: room.sync.tickRate,
@@ -6269,11 +6625,12 @@ wss.on('connection', (ws, req) => {
     }
 
     if (msg.type === 'input') {
+      const world = getRoomWorld(room);
       current.lastReceivedInputSeq = Math.max(0, Number(msg.seq) || current.lastReceivedInputSeq || 0);
       current.moveX = clamp(Number(msg.moveX) || 0, -1, 1);
       current.moveY = clamp(Number(msg.moveY) || 0, -1, 1);
-      current.aimX = clamp(Number(msg.aimX) || current.x, 0, WORLD_WIDTH);
-      current.aimY = clamp(Number(msg.aimY) || current.y, 0, WORLD_HEIGHT);
+      current.aimX = clamp(Number(msg.aimX) || current.x, 0, world.width);
+      current.aimY = clamp(Number(msg.aimY) || current.y, 0, world.height);
       current.shooting = Boolean(msg.shooting);
       if (msg.jump) current.jumpQueued = true;
     }
@@ -6327,6 +6684,7 @@ function tickRoom(room, dtSec, now) {
     removeRoomClient(player, { force: true });
   }
   if (!rooms.has(room.code)) return;
+  const world = getRoomWorld(room);
   const tickDiag = RUNTIME_DIAG_ENABLED ? {
     systemMs: 0,
     playersMs: 0,
@@ -6347,6 +6705,10 @@ function tickRoom(room, dtSec, now) {
   const finishTickDiag = () => {
     if (tickDiag) room.lastTickDiag = tickDiag;
   };
+  if (room.completedAt) {
+    finishTickDiag();
+    return;
+  }
   if (normalizeGameMode(room.gameMode) === 'pvp' && !room.pvpMatchEnded) {
     const matchEndsAt = Math.max(0, Number(room.matchEndsAt) || 0);
     if (matchEndsAt > 0 && now >= matchEndsAt) {
@@ -6405,7 +6767,7 @@ function tickRoom(room, dtSec, now) {
     );
     if (!p.alive) {
       if (!p.isOut && p.canRespawn && now >= p.respawnAt) {
-        const spawn = randomPlayerSpawn(room.gameMode);
+        const spawn = randomPlayerSpawn(room, room.gameMode);
         p.x = spawn.x;
         p.y = spawn.y;
         p.hp = p.maxHp || PLAYER_HP_MAX;
@@ -6435,8 +6797,8 @@ function tickRoom(room, dtSec, now) {
     const slowed = Number(p.slowUntil) > now;
     const speedMul = (slowed ? PLAYER_SLOW_FACTOR : 1) * Math.max(0.2, Number(p.moveSpeedMul) || 1);
 
-    p.x = clamp(p.x + nx * PLAYER_SPEED * PLAYER_MOVE_SPEED_GLOBAL_MUL * speedMul * dtSec, PLAYER_RADIUS, WORLD_WIDTH - PLAYER_RADIUS);
-    p.y = clamp(p.y + ny * PLAYER_SPEED * PLAYER_MOVE_SPEED_GLOBAL_MUL * speedMul * dtSec, PLAYER_RADIUS, WORLD_HEIGHT - PLAYER_RADIUS);
+    p.x = clamp(p.x + nx * PLAYER_SPEED * PLAYER_MOVE_SPEED_GLOBAL_MUL * speedMul * dtSec, PLAYER_RADIUS, world.width - PLAYER_RADIUS);
+    p.y = clamp(p.y + ny * PLAYER_SPEED * PLAYER_MOVE_SPEED_GLOBAL_MUL * speedMul * dtSec, PLAYER_RADIUS, world.height - PLAYER_RADIUS);
 
     p.fireCooldownLeft = Math.max(0, p.fireCooldownLeft - dtMs);
 
@@ -6493,7 +6855,7 @@ function tickRoom(room, dtSec, now) {
     b.y += b.vy * dtSec;
     b.lifeMs -= dtSec * 1000;
 
-    if (b.lifeMs <= 0 || b.x < 0 || b.y < 0 || b.x > WORLD_WIDTH || b.y > WORLD_HEIGHT) {
+    if (b.lifeMs <= 0 || b.x < 0 || b.y < 0 || b.x > world.width || b.y > world.height) {
       room.bullets.splice(i, 1);
       continue;
     }
@@ -6571,6 +6933,7 @@ function tickRoom(room, dtSec, now) {
   }
   phaseEnd('bulletsMs', phaseStartedNs);
 
+  const enemyWorldBounds = getEnemyWorldBounds(room);
   phaseStartedNs = phaseStart();
   for (const e of room.enemies) {
     if (e.attackCooldownMs > 0) e.attackCooldownMs = Math.max(0, e.attackCooldownMs - dtSec * 1000);
@@ -6583,8 +6946,8 @@ function tickRoom(room, dtSec, now) {
       e.hitStunMs = Math.max(0, e.hitStunMs - dtSec * 1000);
     }
     if (Math.abs(e.knockbackVx) > 0.2 || Math.abs(e.knockbackVy) > 0.2) {
-      e.x = clamp(e.x + e.knockbackVx * dtSec, er, WORLD_WIDTH - er);
-      e.y = clamp(e.y + e.knockbackVy * dtSec, er, WORLD_HEIGHT - er);
+      e.x = clamp(e.x + e.knockbackVx * dtSec, enemyWorldBounds.minX, enemyWorldBounds.maxX);
+      e.y = clamp(e.y + e.knockbackVy * dtSec, enemyWorldBounds.minY, enemyWorldBounds.maxY);
       const decay = Math.max(0, 1 - dtSec * ENEMY_HIT_KNOCKBACK_FRICTION);
       e.knockbackVx *= decay;
       e.knockbackVy *= decay;
@@ -6629,8 +6992,8 @@ function tickRoom(room, dtSec, now) {
       if (Math.abs(Number(e.vx) || 0) > 0.15) e.faceLeft = (Number(e.vx) || 0) < 0;
       else e.faceLeft = dx < 0;
 
-      e.x = clamp(e.x + e.vx * dtSec, er, WORLD_WIDTH - er);
-      e.y = clamp(e.y + e.vy * dtSec, er, WORLD_HEIGHT - er);
+      e.x = clamp(e.x + e.vx * dtSec, enemyWorldBounds.minX, enemyWorldBounds.maxX);
+      e.y = clamp(e.y + e.vy * dtSec, enemyWorldBounds.minY, enemyWorldBounds.maxY);
 
       if (e.attackCooldownMs <= 0 && target.alive && targetDist <= ENEMY_RANGED_MAX_RANGE * 1.1) {
         fireEnemyProjectile(room, e, target);
@@ -6654,8 +7017,8 @@ function tickRoom(room, dtSec, now) {
             const cd = Math.hypot(cdx, cdy) || 1;
             const dashBase = e.type === 'boss' ? BOSS_DASH_DISTANCE : ENEMY_CHARGER_DASH_DISTANCE;
             const dash = Math.min(dashBase, Math.max(0, cd - 1));
-            e.x = clamp(e.x + (cdx / cd) * dash, er, WORLD_WIDTH - er);
-            e.y = clamp(e.y + (cdy / cd) * dash, er, WORLD_HEIGHT - er);
+            e.x = clamp(e.x + (cdx / cd) * dash, enemyWorldBounds.minX, enemyWorldBounds.maxX);
+            e.y = clamp(e.y + (cdy / cd) * dash, enemyWorldBounds.minY, enemyWorldBounds.maxY);
           }
 
           const adx = e.x - lockedTarget.x;
@@ -6687,8 +7050,8 @@ function tickRoom(room, dtSec, now) {
     e.vx = (dx / d) * speed;
     e.vy = (dy / d) * speed;
     if (Math.abs(Number(e.vx) || 0) > 0.15) e.faceLeft = (Number(e.vx) || 0) < 0;
-    e.x = clamp(e.x + e.vx * dtSec, er, WORLD_WIDTH - er);
-    e.y = clamp(e.y + e.vy * dtSec, er, WORLD_HEIGHT - er);
+    e.x = clamp(e.x + e.vx * dtSec, enemyWorldBounds.minX, enemyWorldBounds.maxX);
+    e.y = clamp(e.y + e.vy * dtSec, enemyWorldBounds.minY, enemyWorldBounds.maxY);
   }
   phaseEnd('enemiesMs', phaseStartedNs);
 
@@ -6877,6 +7240,15 @@ function tickRoom(room, dtSec, now) {
   }
   if (skillOrbsChanged) bumpRealtimeCollectionVersion(room, 'skillOrbs');
   phaseEnd('skillOrbsMs', phaseStartedNs);
+
+  if (room.runType === 'campaign' && !room.completedAt) {
+    const missionState = buildRoomMissionState(room, now);
+    if (missionState?.allCompleted) {
+      completeCampaignRoom(room, now);
+      finishTickDiag();
+      return;
+    }
+  }
 
   phaseStartedNs = phaseStart();
   let sharedReplayBase = null;

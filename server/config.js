@@ -1,5 +1,10 @@
 ﻿const path = require('path');
 
+const {
+  MAP_DEFS,
+  CAMPAIGN_DEFS,
+} = require('./world-content');
+
 const MAIN_LOOP_RATE = 120;
 const MAIN_LOOP_MS = 1000 / MAIN_LOOP_RATE;
 const MAX_PLAYERS = 8;
@@ -458,6 +463,8 @@ module.exports = {
   MAX_PLAYERS,
   WORLD_WIDTH,
   WORLD_HEIGHT,
+  MAP_DEFS,
+  CAMPAIGN_DEFS,
   PLAYER_RADIUS,
   ENEMY_RADIUS,
   BULLET_RADIUS,

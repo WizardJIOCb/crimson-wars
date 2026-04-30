@@ -135,6 +135,7 @@ const topCenterHudEl = document.getElementById('top-center-hud');
 const matchTimerEl = document.getElementById('match-timer');
 const bossProgressEl = document.getElementById('boss-progress');
 const difficultyMetaEl = document.getElementById('difficulty-meta');
+const objectiveMetaEl = document.getElementById('objective-meta');
 const bossSpawnAlertEl = document.getElementById('boss-spawn-alert');
 const commentatorPanelEl = document.getElementById('commentator-panel');
 const commentatorPanelCloseBtn = document.getElementById('commentator-panel-close');
@@ -314,6 +315,10 @@ const game = {
   sampledNet: null,
   nextInputSeq: 0,
   roomStartedAt: 0,
+  runType: 'free',
+  mapId: 'mall_night',
+  campaignId: '',
+  campaignLevelId: '',
   gameMode: 'normal',
   matchDurationSec: 0,
   matchEndsAt: 0,
@@ -323,6 +328,7 @@ const game = {
   bossAlive: false,
   spectatorCount: 0,
   roomDifficulty: { level: 1, hpMul: 1, speedMul: 1, damageMul: 1, attackRateMul: 1, spawnIntervalMs: 760 },
+  mission: null,
   skillCatalog: {},
   mySkillChoices: [],
   runtimeInstance: {
@@ -400,11 +406,19 @@ const NICKNAME_STORAGE_KEY = 'cw:nickname';
 const PLAYER_CLASS_STORAGE_KEY = 'cw:playerClass';
 const GAME_MODE_STORAGE_KEY = 'cw:gameMode';
 const PVP_DURATION_STORAGE_KEY = 'cw:pvpDurationMin';
+const RUN_TYPE_STORAGE_KEY = 'cw:runType';
+const MAP_ID_STORAGE_KEY = 'cw:mapId';
+const CAMPAIGN_ID_STORAGE_KEY = 'cw:campaignId';
+const CAMPAIGN_LEVEL_ID_STORAGE_KEY = 'cw:campaignLevelId';
 const ACTIVE_RUN_RESUME_STORAGE_KEY = 'cw:activeRunResume';
 const ACTIVE_RUN_RESUME_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 let selectedPlayerClass = 'cyber';
 let selectedGameMode = normalizeGameMode(localStorage.getItem(GAME_MODE_STORAGE_KEY) || 'normal');
 let selectedPvpDurationMin = normalizePvpDurationMin(localStorage.getItem(PVP_DURATION_STORAGE_KEY) || '10');
+let selectedRunType = localStorage.getItem(RUN_TYPE_STORAGE_KEY) === 'campaign' ? 'campaign' : 'free';
+let selectedMapId = String(localStorage.getItem(MAP_ID_STORAGE_KEY) || 'mall_night').trim() || 'mall_night';
+let selectedCampaignId = String(localStorage.getItem(CAMPAIGN_ID_STORAGE_KEY) || 'mall_of_the_dead').trim() || 'mall_of_the_dead';
+let selectedCampaignLevelId = String(localStorage.getItem(CAMPAIGN_LEVEL_ID_STORAGE_KEY) || '').trim();
 let pendingIntegrationToken = '';
 const storedInfoPanelHidden = localStorage.getItem('cw:infoPanelHidden');
 let infoPanelHidden = storedInfoPanelHidden === null ? true : storedInfoPanelHidden === '1';
@@ -492,6 +506,87 @@ function clearStoredActiveRunResume() {
   pendingStoredRunResume = false;
   storedRunResumeAutoAttempted = false;
   localStorage.removeItem(ACTIVE_RUN_RESUME_STORAGE_KEY);
+}
+
+function getMapCatalog() {
+  const maps = game.playerAuth?.progressionCatalog?.maps;
+  return Array.isArray(maps) && maps.length > 0 ? maps : [{
+    id: 'mall_night',
+    name: 'Night Mall',
+    subtitle: '',
+    description: '',
+    worldWidth: 4800,
+    worldHeight: 2800,
+    cover: null,
+  }];
+}
+
+function getCampaignCatalog() {
+  const campaigns = game.playerAuth?.progressionCatalog?.campaigns;
+  return Array.isArray(campaigns) ? campaigns : [];
+}
+
+function getCampaignDefById(campaignId) {
+  const targetId = String(campaignId || '').trim();
+  return getCampaignCatalog().find((campaign) => String(campaign?.id || '') === targetId) || null;
+}
+
+function getCampaignLevelDefById(campaignId, levelId) {
+  const campaign = getCampaignDefById(campaignId);
+  if (!campaign) return null;
+  const targetId = String(levelId || '').trim();
+  const levels = Array.isArray(campaign.levels) ? campaign.levels : [];
+  return levels.find((level) => String(level?.id || '') === targetId) || null;
+}
+
+function getFirstCampaignLevelId(campaignId) {
+  const campaign = getCampaignDefById(campaignId);
+  const levels = Array.isArray(campaign?.levels) ? campaign.levels : [];
+  return String(levels[0]?.id || '').trim();
+}
+
+function setSelectedRunType(runType) {
+  selectedRunType = String(runType || '').trim().toLowerCase() === 'campaign' ? 'campaign' : 'free';
+  if (selectedRunType === 'campaign' && selectedGameMode === 'pvp') {
+    selectedGameMode = 'normal';
+    localStorage.setItem(GAME_MODE_STORAGE_KEY, selectedGameMode);
+    if (typeof globalThis.renderGameModeSelection === 'function') {
+      globalThis.renderGameModeSelection();
+    }
+  }
+  localStorage.setItem(RUN_TYPE_STORAGE_KEY, selectedRunType);
+}
+
+function setSelectedMapId(mapId) {
+  const targetId = String(mapId || '').trim();
+  const hasMap = getMapCatalog().some((entry) => String(entry?.id || '') === targetId);
+  selectedMapId = hasMap ? targetId : String(getMapCatalog()[0]?.id || 'mall_night');
+  localStorage.setItem(MAP_ID_STORAGE_KEY, selectedMapId);
+}
+
+function setSelectedCampaign(campaignId, levelId = '') {
+  const campaign = getCampaignDefById(campaignId) || getCampaignCatalog()[0] || null;
+  selectedCampaignId = String(campaign?.id || 'mall_of_the_dead').trim();
+  localStorage.setItem(CAMPAIGN_ID_STORAGE_KEY, selectedCampaignId);
+  const level = getCampaignLevelDefById(selectedCampaignId, levelId) || getCampaignLevelDefById(selectedCampaignId, selectedCampaignLevelId) || null;
+  selectedCampaignLevelId = String(level?.id || getFirstCampaignLevelId(selectedCampaignId) || '').trim();
+  localStorage.setItem(CAMPAIGN_LEVEL_ID_STORAGE_KEY, selectedCampaignLevelId);
+}
+
+function ensureSelectedRunSetupValid() {
+  setSelectedMapId(selectedMapId);
+  const campaigns = getCampaignCatalog();
+  if (campaigns.length > 0) {
+    setSelectedCampaign(selectedCampaignId, selectedCampaignLevelId);
+  } else {
+    selectedCampaignId = '';
+    selectedCampaignLevelId = '';
+    localStorage.removeItem(CAMPAIGN_ID_STORAGE_KEY);
+    localStorage.removeItem(CAMPAIGN_LEVEL_ID_STORAGE_KEY);
+  }
+  if (selectedRunType === 'campaign' && campaigns.length <= 0) {
+    setSelectedRunType('free');
+  }
 }
 
 function queueStoredActiveRunResume() {
@@ -993,6 +1088,10 @@ function applyInitialRoomIntent() {
   const presetHeroId = String(params.get('heroId') || params.get('hero_id') || '').trim().toLowerCase();
   const gameMode = normalizeGameMode(params.get('gameMode') || params.get('game_mode') || selectedGameMode);
   const pvpDurationMin = normalizePvpDurationMin(params.get('pvpDurationMin') || params.get('pvp_duration_min') || selectedPvpDurationMin);
+  const runType = String(params.get('runType') || params.get('run_type') || selectedRunType).trim().toLowerCase() === 'campaign' ? 'campaign' : 'free';
+  const mapId = String(params.get('mapId') || params.get('map_id') || selectedMapId).trim();
+  const campaignId = String(params.get('campaignId') || params.get('campaign_id') || selectedCampaignId).trim();
+  const campaignLevelId = String(params.get('campaignLevelId') || params.get('campaign_level_id') || selectedCampaignLevelId).trim();
   const routed = params.get('routed') === '1';
   pendingReplayRecordId = replay;
   pendingReplayStartSec = replayAt;
@@ -1014,6 +1113,10 @@ function applyInitialRoomIntent() {
   pendingIntegrationToken = integrationToken;
   selectedGameMode = gameMode;
   selectedPvpDurationMin = pvpDurationMin;
+  setSelectedRunType(runType);
+  selectedMapId = mapId || selectedMapId;
+  selectedCampaignId = campaignId || selectedCampaignId;
+  selectedCampaignLevelId = campaignLevelId || selectedCampaignLevelId;
   if (presetName && nameInput && !game.playerAuth?.player) {
     nameInput.value = presetName.slice(0, 18);
   }
@@ -1024,6 +1127,7 @@ function applyInitialRoomIntent() {
   }
   localStorage.setItem(GAME_MODE_STORAGE_KEY, selectedGameMode);
   localStorage.setItem(PVP_DURATION_STORAGE_KEY, String(selectedPvpDurationMin));
+  ensureSelectedRunSetupValid();
 
   if (pendingReplayRecordId > 0 || pendingReplayApiPath) {
     pendingAutoJoin = false;
@@ -1277,6 +1381,7 @@ async function refreshPlayerAuthSession({ silent = false } = {}) {
     game.playerAuth.needsNicknameSetup = Boolean(data?.nicknameSetupRequired);
     game.playerAuth.progressionCatalog = data?.progressionCatalog || null;
     game.playerAuth.progression = data?.progression || null;
+    ensureSelectedRunSetupValid();
     if (game.playerAuth.player?.nickname) {
       localStorage.setItem(NICKNAME_STORAGE_KEY, game.playerAuth.player.nickname);
       game.playerAuth.nicknameStatus = {
@@ -1291,10 +1396,14 @@ async function refreshPlayerAuthSession({ silent = false } = {}) {
     game.playerAuth.needsNicknameSetup = false;
     game.playerAuth.progressionCatalog = null;
     game.playerAuth.progression = null;
+    ensureSelectedRunSetupValid();
   }
   renderPlayerAuthUi();
   if (typeof globalThis.renderCharacterPicker === 'function') {
     globalThis.renderCharacterPicker();
+  }
+  if (typeof globalThis.renderRunSetupMenu === 'function') {
+    globalThis.renderRunSetupMenu();
   }
   if (typeof globalThis.renderNewsFeed === 'function') {
     globalThis.renderNewsFeed();
@@ -1432,8 +1541,12 @@ async function logoutPlayerAccount() {
     game.playerAuth.nicknameStatus = null;
     game.playerAuth.progression = null;
     game.playerAuth.progressionCatalog = null;
+    ensureSelectedRunSetupValid();
     statusEl.textContent = 'Logged out. Guest mode active.';
     renderPlayerAuthUi();
+    if (typeof globalThis.renderRunSetupMenu === 'function') {
+      globalThis.renderRunSetupMenu();
+    }
     setPlayerAccessCollapsed(false);
     void updateNicknameStatus(nameInput?.value || '');
     reloadForPlayerSession('Logged out. Session refreshed.');
@@ -1626,11 +1739,46 @@ renderInstanceMeta();
 consumeAuthRedirectFeedback();
 window.cwSetStoredActiveRunResume = setStoredActiveRunResume;
 window.cwClearStoredActiveRunResume = clearStoredActiveRunResume;
+window.cwSetSelectedRunType = setSelectedRunType;
+window.cwSetSelectedMapId = setSelectedMapId;
+window.cwSetSelectedCampaign = setSelectedCampaign;
+window.cwEnsureSelectedRunSetupValid = ensureSelectedRunSetupValid;
+window.cwGetMapCatalog = getMapCatalog;
+window.cwGetCampaignCatalog = getCampaignCatalog;
+window.cwGetCampaignDefById = getCampaignDefById;
+window.cwGetCampaignLevelDefById = getCampaignLevelDefById;
+window.cwGetRunSelection = () => ({
+  runType: selectedRunType,
+  mapId: selectedMapId,
+  campaignId: selectedCampaignId,
+  campaignLevelId: selectedCampaignLevelId,
+  gameMode: selectedGameMode,
+  pvpDurationMin: selectedPvpDurationMin,
+});
 void refreshPlayerAuthSession({ silent: true });
+
+function formatMissionObjectiveText(mission) {
+  if (!mission || mission.runType !== 'campaign') return '';
+  const goals = Array.isArray(mission.goals) ? mission.goals : [];
+  if (!goals.length) return '';
+  const pending = goals.filter((goal) => !goal?.completed);
+  const focusGoal = pending[0] || goals[goals.length - 1] || null;
+  if (!focusGoal) return '';
+  const current = Math.max(0, Number(focusGoal.current) || 0);
+  const target = Math.max(1, Number(focusGoal.target) || 1);
+  const label = String(focusGoal.label || mission.brief || mission.title || 'Mission').trim();
+  const progress = `${Math.min(current, target)}/${target}`;
+  return `${label} (${progress})`;
+}
 
 function updateTopCenterHud(nowMs = Date.now()) {
   if (!matchTimerEl || !bossProgressEl || !difficultyMetaEl) return;
   const viewersLabel = trCore('ui.hud.viewers', 'Viewers');
+  if (objectiveMetaEl) {
+    const objectiveText = formatMissionObjectiveText(game.mission);
+    objectiveMetaEl.textContent = objectiveText ? `Objective: ${objectiveText}` : '';
+    objectiveMetaEl.classList.toggle('hidden', !objectiveText);
+  }
   if (!game.state) {
     matchTimerEl.textContent = `${trCore('ui.hud.time', 'Time')} 00:00`;
     bossProgressEl.textContent = `${trCore('ui.hud.boss_in', 'Boss in')} -- kills`;
