@@ -2333,7 +2333,7 @@ function randomPlayerSpawn(room = null, gameMode = 'normal') {
   };
 }
 
-function generateTrees(worldOrRoom = null, densityMul = 1) {
+function generateTrees(worldOrRoom = null, densityMul = 1, options = {}) {
   const world = worldOrRoom?.width && worldOrRoom?.height ? worldOrRoom : getRoomWorld(worldOrRoom);
   const trees = [];
   const baseArea = WORLD_WIDTH * WORLD_HEIGHT;
@@ -2347,9 +2347,457 @@ function generateTrees(worldOrRoom = null, densityMul = 1) {
     const dx = x - world.width / 2;
     const dy = y - world.height / 2;
     if (dx * dx + dy * dy < 260 * 260) continue;
+    if (isTreePlacementBlocked(x, y, options)) continue;
     trees.push({ x, y, scale: 0.7 + Math.random() * 0.6 });
   }
   return trees;
+}
+
+const SCENE_PROP_TEMPLATES = {
+  red_hatchback: {
+    spriteKey: 'car_red',
+    w: 104,
+    h: 62,
+    anchorY: 0.56,
+    shadowScale: 1,
+    solid: true,
+    destructible: true,
+    maxHp: 78,
+    explosive: true,
+    explosionRadius: 96,
+    explosionDamage: 30,
+  },
+  burnt_sedan: {
+    spriteKey: 'car_blue',
+    w: 110,
+    h: 64,
+    anchorY: 0.56,
+    shadowScale: 1.05,
+    solid: true,
+    destructible: true,
+    maxHp: 88,
+    explosive: false,
+  },
+  yellow_bus: {
+    spriteKey: 'bus_yellow',
+    w: 194,
+    h: 78,
+    anchorY: 0.57,
+    shadowScale: 1.28,
+    solid: true,
+    destructible: true,
+    maxHp: 184,
+    explosive: true,
+    explosionRadius: 152,
+    explosionDamage: 52,
+  },
+  ambulance_van: {
+    spriteKey: 'ambulance',
+    w: 128,
+    h: 72,
+    anchorY: 0.56,
+    shadowScale: 1.08,
+    solid: true,
+    destructible: true,
+    maxHp: 112,
+    explosive: true,
+    explosionRadius: 116,
+    explosionDamage: 42,
+  },
+  concrete_barrier: {
+    spriteKey: 'barrier',
+    w: 120,
+    h: 42,
+    anchorY: 0.52,
+    shadowScale: 0.92,
+    solid: true,
+    destructible: true,
+    maxHp: 104,
+    explosive: false,
+  },
+  road_shack: {
+    spriteKey: 'shack',
+    w: 170,
+    h: 128,
+    anchorY: 0.58,
+    shadowScale: 1.18,
+    solid: true,
+    destructible: true,
+    maxHp: 168,
+    explosive: false,
+  },
+  mall_block: {
+    spriteKey: 'mall_block',
+    w: 720,
+    h: 280,
+    anchorY: 0.54,
+    shadowScale: 1.4,
+    solid: true,
+    destructible: false,
+    maxHp: 1,
+    explosive: false,
+  },
+  clinic_block: {
+    spriteKey: 'clinic_block',
+    w: 520,
+    h: 232,
+    anchorY: 0.54,
+    shadowScale: 1.28,
+    solid: true,
+    destructible: false,
+    maxHp: 1,
+    explosive: false,
+  },
+  industrial_tank: {
+    spriteKey: 'industrial_tank',
+    w: 246,
+    h: 198,
+    anchorY: 0.56,
+    shadowScale: 1.18,
+    solid: true,
+    destructible: false,
+    maxHp: 1,
+    explosive: false,
+  },
+  reactor_block: {
+    spriteKey: 'reactor_block',
+    w: 436,
+    h: 256,
+    anchorY: 0.55,
+    shadowScale: 1.32,
+    solid: true,
+    destructible: false,
+    maxHp: 1,
+    explosive: false,
+  },
+};
+
+function getScenePropTemplate(kind) {
+  return SCENE_PROP_TEMPLATES[String(kind || '').trim()] || null;
+}
+
+function buildMapObjectRect(obj, pad = 0) {
+  const width = Math.max(16, Number(obj?.w) || 0);
+  const height = Math.max(16, Number(obj?.h) || 0);
+  return {
+    minX: (Number(obj?.x) || 0) - width * 0.5 - pad,
+    maxX: (Number(obj?.x) || 0) + width * 0.5 + pad,
+    minY: (Number(obj?.y) || 0) - height * 0.5 - pad,
+    maxY: (Number(obj?.y) || 0) + height * 0.5 + pad,
+  };
+}
+
+function rectsOverlap(a, b) {
+  return a.minX < b.maxX && a.maxX > b.minX && a.minY < b.maxY && a.maxY > b.minY;
+}
+
+function isTreePlacementBlocked(x, y, options = {}) {
+  const avoidObjects = Array.isArray(options.avoidObjects) ? options.avoidObjects : [];
+  for (const obj of avoidObjects) {
+    if (!obj) continue;
+    const rect = buildMapObjectRect(obj, 42);
+    if (x >= rect.minX && x <= rect.maxX && y >= rect.minY && y <= rect.maxY) return true;
+  }
+  return false;
+}
+
+function chooseRandomItem(list) {
+  const items = Array.isArray(list) ? list.filter(Boolean) : [];
+  if (items.length <= 0) return null;
+  return items[Math.floor(Math.random() * items.length)] || null;
+}
+
+function sceneCenterSafeRadius(world) {
+  return Math.max(280, Math.min(world.width, world.height) * 0.11);
+}
+
+function instantiateSceneProp(blueprint, world, nextId) {
+  const template = getScenePropTemplate(blueprint?.kind);
+  if (!template) return null;
+  const scale = Math.max(0.45, Number(blueprint?.scale) || 1);
+  const width = Math.max(22, Math.round(template.w * scale));
+  const height = Math.max(22, Math.round(template.h * scale));
+  const marginX = Math.max(64, width * 0.5 + 28);
+  const marginY = Math.max(64, height * 0.5 + 28);
+  const x = clamp((Number(blueprint?.x) || 0.5) * world.width, marginX, world.width - marginX);
+  const y = clamp((Number(blueprint?.y) || 0.5) * world.height, marginY, world.height - marginY);
+  const maxHp = template.destructible ? Math.max(1, Math.round((Number(template.maxHp) || 1) * Math.max(0.6, Number(blueprint?.hpMul) || 1))) : 1;
+  return {
+    id: `prop_${nextId}`,
+    kind: String(blueprint.kind),
+    spriteKey: template.spriteKey,
+    x,
+    y,
+    w: width,
+    h: height,
+    angle: Number(blueprint?.angle) || 0,
+    anchorY: Number(template.anchorY) || 0.56,
+    shadowScale: Number(template.shadowScale) || 1,
+    solid: template.solid !== false,
+    destructible: template.destructible === true,
+    maxHp,
+    hp: maxHp,
+    explosive: template.explosive === true,
+    explosionRadius: Math.max(0, Number(template.explosionRadius) || 0),
+    explosionDamage: Math.max(0, Number(template.explosionDamage) || 0),
+    destroyed: false,
+    destroyedAt: 0,
+    lastHitAt: 0,
+    styleTag: String(blueprint?.styleTag || ''),
+  };
+}
+
+function canPlaceSceneProp(objects, candidate, world) {
+  if (!candidate) return false;
+  const centerDx = candidate.x - world.width * 0.5;
+  const centerDy = candidate.y - world.height * 0.5;
+  const centerClear = sceneCenterSafeRadius(world);
+  if ((centerDx * centerDx) + (centerDy * centerDy) < centerClear * centerClear) return false;
+  const rect = buildMapObjectRect(candidate, 42);
+  for (const obj of objects) {
+    if (!obj) continue;
+    if (rectsOverlap(rect, buildMapObjectRect(obj, 34))) return false;
+  }
+  return true;
+}
+
+function buildRoomScene(content) {
+  const mapDef = content?.mapDef || getMapDef(content?.mapId);
+  const world = content?.world || getRoomWorld(null);
+  const scene = mapDef?.scene && typeof mapDef.scene === 'object' ? mapDef.scene : {};
+  const terrainZones = Array.isArray(scene.terrainZones)
+    ? scene.terrainZones.map((zoneDef, index) => ({
+      id: `zone_${index + 1}`,
+      material: String(zoneDef?.material || scene.baseMaterial || 'asphalt_wet'),
+      shape: String(zoneDef?.shape || 'ellipse'),
+      x: clamp((Number(zoneDef?.x) || 0.5) * world.width, 0, world.width),
+      y: clamp((Number(zoneDef?.y) || 0.5) * world.height, 0, world.height),
+      w: Math.max(60, (Number(zoneDef?.w) || 0.18) * world.width),
+      h: Math.max(60, (Number(zoneDef?.h) || 0.18) * world.height),
+      alpha: Math.max(0.08, Math.min(1, Number(zoneDef?.alpha) || 0.65)),
+      feather: Math.max(0.04, Math.min(0.45, Number(zoneDef?.feather) || 0.18)),
+      angle: Number(zoneDef?.angle) || 0,
+    }))
+    : [];
+
+  const objects = [];
+  let nextId = 1;
+  for (const blueprint of Array.isArray(scene.plannedObjects) ? scene.plannedObjects : []) {
+    const obj = instantiateSceneProp(blueprint, world, nextId);
+    if (!obj || !canPlaceSceneProp(objects, obj, world)) continue;
+    objects.push(obj);
+    nextId += 1;
+  }
+
+  if (String(content?.runType || 'free') === 'free') {
+    const randomProps = scene.randomProps && typeof scene.randomProps === 'object' ? scene.randomProps : null;
+    const kinds = Array.isArray(randomProps?.kinds) ? randomProps.kinds : [];
+    const countMin = Math.max(0, Math.round(Number(randomProps?.countMin) || 0));
+    const countMax = Math.max(countMin, Math.round(Number(randomProps?.countMax) || countMin));
+    const targetCount = countMax > 0 ? Math.floor(countMin + Math.random() * (countMax - countMin + 1)) : 0;
+    let attempts = 0;
+    while (objects.length < targetCount + (Array.isArray(scene.plannedObjects) ? scene.plannedObjects.length : 0) && attempts < Math.max(30, targetCount * 18)) {
+      attempts += 1;
+      const kind = chooseRandomItem(kinds);
+      if (!kind) break;
+      const obj = instantiateSceneProp({
+        kind,
+        x: 0.08 + Math.random() * 0.84,
+        y: 0.08 + Math.random() * 0.84,
+        angle: (Math.random() - 0.5) * Math.PI * 0.34,
+        scale: 0.9 + Math.random() * 0.22,
+      }, world, nextId);
+      if (!obj || !canPlaceSceneProp(objects, obj, world)) continue;
+      objects.push(obj);
+      nextId += 1;
+    }
+  }
+
+  const trees = generateTrees(world, content?.treeDensityMul, { avoidObjects: objects });
+  return {
+    trees,
+    terrainZones,
+    mapObjects: objects,
+    theme: {
+      themeId: String(scene.themeId || mapDef?.id || 'default'),
+      baseMaterial: String(scene.baseMaterial || 'asphalt_wet'),
+      accent: String(mapDef?.cover?.accent || '#22c55e'),
+      glow: String(mapDef?.cover?.glow || 'rgba(34, 197, 94, 0.2)'),
+    },
+  };
+}
+
+function getSceneObjects(room, options = {}) {
+  const solidOnly = options.solidOnly === true;
+  return (Array.isArray(room?.mapObjects) ? room.mapObjects : []).filter((obj) => {
+    if (!obj) return false;
+    if (solidOnly && (!obj.solid || obj.destroyed)) return false;
+    return true;
+  });
+}
+
+function pushCircleOutOfRect(x, y, radius, rect) {
+  const closestX = clamp(x, rect.minX, rect.maxX);
+  const closestY = clamp(y, rect.minY, rect.maxY);
+  let dx = x - closestX;
+  let dy = y - closestY;
+  const d2 = dx * dx + dy * dy;
+  if (d2 >= radius * radius) return { x, y };
+  const dist = Math.sqrt(Math.max(0.000001, d2));
+  if (dist > 0.001) {
+    const push = radius - dist;
+    return {
+      x: x + (dx / dist) * push,
+      y: y + (dy / dist) * push,
+    };
+  }
+
+  const left = Math.abs(x - rect.minX);
+  const right = Math.abs(rect.maxX - x);
+  const top = Math.abs(y - rect.minY);
+  const bottom = Math.abs(rect.maxY - y);
+  const minSide = Math.min(left, right, top, bottom);
+  if (minSide === left) return { x: rect.minX - radius, y };
+  if (minSide === right) return { x: rect.maxX + radius, y };
+  if (minSide === top) return { x, y: rect.minY - radius };
+  return { x, y: rect.maxY + radius };
+}
+
+function resolveCircleAgainstScene(room, x, y, radius) {
+  let resolved = { x, y };
+  const objects = getSceneObjects(room, { solidOnly: true });
+  for (let pass = 0; pass < 2; pass += 1) {
+    for (const obj of objects) {
+      resolved = pushCircleOutOfRect(resolved.x, resolved.y, radius, buildMapObjectRect(obj));
+    }
+  }
+  return resolved;
+}
+
+function moveActorWithSceneCollision(room, startX, startY, dx, dy, radius, bounds) {
+  let x = clamp(startX + dx, bounds.minX, bounds.maxX);
+  let y = clamp(startY, bounds.minY, bounds.maxY);
+  let resolved = resolveCircleAgainstScene(room, x, y, radius);
+  x = clamp(resolved.x, bounds.minX, bounds.maxX);
+
+  y = clamp(startY + dy, bounds.minY, bounds.maxY);
+  resolved = resolveCircleAgainstScene(room, x, y, radius);
+  y = clamp(resolved.y, bounds.minY, bounds.maxY);
+  return { x, y };
+}
+
+function segmentIntersectsExpandedRect(x1, y1, x2, y2, rect, pad = 0) {
+  let t0 = 0;
+  let t1 = 1;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const minX = rect.minX - pad;
+  const maxX = rect.maxX + pad;
+  const minY = rect.minY - pad;
+  const maxY = rect.maxY + pad;
+  const tests = [
+    [-dx, x1 - minX],
+    [dx, maxX - x1],
+    [-dy, y1 - minY],
+    [dy, maxY - y1],
+  ];
+  for (const [p, q] of tests) {
+    if (Math.abs(p) < 0.000001) {
+      if (q < 0) return false;
+      continue;
+    }
+    const r = q / p;
+    if (p < 0) {
+      if (r > t1) return false;
+      if (r > t0) t0 = r;
+    } else {
+      if (r < t0) return false;
+      if (r < t1) t1 = r;
+    }
+  }
+  return true;
+}
+
+function markMapObjectsChanged(room) {
+  if (!room) return;
+  room.mapObjectStateVersion = Math.max(1, Number(room.mapObjectStateVersion) || 1) + 1;
+}
+
+function damageSceneObjectsInRadius(room, x, y, radius, damage, ownerId, now, options = {}) {
+  if (!room || radius <= 0 || damage <= 0) return 0;
+  let hits = 0;
+  const excludeId = String(options.excludeId || '');
+  for (const obj of getSceneObjects(room)) {
+    if (!obj.destructible || obj.destroyed) continue;
+    if (excludeId && String(obj.id) === excludeId) continue;
+    const rect = buildMapObjectRect(obj);
+    const nearestX = clamp(x, rect.minX, rect.maxX);
+    const nearestY = clamp(y, rect.minY, rect.maxY);
+    const dx = nearestX - x;
+    const dy = nearestY - y;
+    const dist = Math.hypot(dx, dy);
+    const reach = Math.max(16, radius);
+    if (dist > reach) continue;
+    const falloff = 1 - Math.min(0.52, (dist / Math.max(1, reach)) * 0.52);
+    if (damageMapObject(room, obj, Math.max(1, Math.round(damage * falloff)), ownerId, now, { cause: options.cause || 'explosion' })) {
+      hits += 1;
+    }
+  }
+  return hits;
+}
+
+function explodeMapObject(room, obj, now, ownerId = '') {
+  if (!room || !obj || !obj.explosive || Number(obj.explodedAt) > 0) return false;
+  obj.explodedAt = now;
+  const radius = Math.max(28, Number(obj.explosionRadius) || 0);
+  const damage = Math.max(1, Number(obj.explosionDamage) || 1);
+  const ownerKey = String(ownerId || '');
+  for (const enemy of room.enemies.slice()) {
+    const dx = enemy.x - obj.x;
+    const dy = enemy.y - obj.y;
+    const reach = radius + Math.max(ENEMY_RADIUS, Number(enemy.radius) || ENEMY_RADIUS);
+    const dist = Math.hypot(dx, dy);
+    if (dist > reach) continue;
+    const falloff = 1 - Math.min(0.48, (dist / Math.max(1, reach)) * 0.48);
+    enemyTakeDamage(room, enemy, Math.max(1, Math.round(damage * falloff)), ownerKey, now, {
+      sourceX: obj.x,
+      sourceY: obj.y,
+      stunMs: ENEMY_HIT_STUN_MS * 1.35,
+      knockback: ENEMY_HIT_KNOCKBACK_SPEED * 2.1 * falloff,
+    });
+  }
+  for (const player of room.players.values()) {
+    if (!player || !player.alive) continue;
+    const reach = radius + PLAYER_RADIUS;
+    const dist = Math.hypot(player.x - obj.x, player.y - obj.y);
+    if (dist > reach) continue;
+    const falloff = 1 - Math.min(0.42, (dist / Math.max(1, reach)) * 0.42);
+    applyEnemyHitToPlayer(room, player, Math.max(1, Math.round(damage * 0.45 * falloff)), now, true);
+  }
+  damageSceneObjectsInRadius(room, obj.x, obj.y, radius * 0.95, damage * 0.78, ownerKey, now, {
+    excludeId: obj.id,
+    cause: 'chain_explosion',
+  });
+  markMapObjectsChanged(room);
+  return true;
+}
+
+function damageMapObject(room, obj, damage, ownerId = '', now = Date.now(), options = {}) {
+  if (!room || !obj || obj.destroyed) return false;
+  if (!obj.destructible) return false;
+  const amount = Math.max(1, Math.round(Number(damage) || 0));
+  if (amount <= 0) return false;
+  obj.hp = Math.max(0, Math.round(Number(obj.hp) || 0) - amount);
+  obj.lastHitAt = now;
+  if (obj.hp <= 0) {
+    obj.hp = 0;
+    obj.destroyed = true;
+    obj.destroyedAt = now;
+    obj.solid = false;
+    if (obj.explosive) explodeMapObject(room, obj, now, ownerId);
+  }
+  markMapObjectsChanged(room);
+  return true;
 }
 
 function cloneMissionGoals(goals) {
@@ -2561,6 +3009,7 @@ function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode, reques
   if (!rooms.has(code)) {
     const content = resolveNewRoomContent(options);
     if (!content.ok) return content;
+    const scene = buildRoomScene(content);
     const sync = normalizeRoomSync(requestedSync || DEFAULT_ROOM_SYNC);
     const baseGameMode = normalizeGameMode(requestedGameMode || 'normal');
     const gameMode = content.runType === 'campaign' && baseGameMode === 'pvp' ? 'normal' : baseGameMode;
@@ -2632,7 +3081,11 @@ function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode, reques
       startedAt,
       completedAt: 0,
       missionSuccess: false,
-      trees: generateTrees(content.world, content.treeDensityMul),
+      trees: scene.trees,
+      terrainZones: scene.terrainZones,
+      mapObjects: scene.mapObjects,
+      sceneTheme: scene.theme,
+      mapObjectStateVersion: 1,
       realtimeCollectionState: {
         drops: { version: 1, lastSentVersion: 0, lastSentAt: 0 },
         xpOrbs: { version: 1, lastSentVersion: 0, lastSentAt: 0 },
@@ -3381,8 +3834,22 @@ function tickCompanions(room, dtSec, now) {
     companion.vy = followDist > 2 ? (followDy / followDist) * desiredSpeed : 0;
 
     if (!owner.alive) {
-      companion.x = clamp(companion.x + companion.vx * dtSec, PLAYER_RADIUS, world.width - PLAYER_RADIUS);
-      companion.y = clamp(companion.y + companion.vy * dtSec, PLAYER_RADIUS, world.height - PLAYER_RADIUS);
+      const moved = moveActorWithSceneCollision(
+        room,
+        companion.x,
+        companion.y,
+        companion.vx * dtSec,
+        companion.vy * dtSec,
+        PLAYER_RADIUS,
+        {
+          minX: PLAYER_RADIUS,
+          maxX: world.width - PLAYER_RADIUS,
+          minY: PLAYER_RADIUS,
+          maxY: world.height - PLAYER_RADIUS,
+        },
+      );
+      companion.x = moved.x;
+      companion.y = moved.y;
       companion.aimX = owner.x;
       companion.aimY = owner.y;
       continue;
@@ -3415,8 +3882,22 @@ function tickCompanions(room, dtSec, now) {
       companion.vx = (companion.vx / speedLen) * followSpeed;
       companion.vy = (companion.vy / speedLen) * followSpeed;
     }
-    companion.x = clamp(companion.x + companion.vx * dtSec, PLAYER_RADIUS, world.width - PLAYER_RADIUS);
-    companion.y = clamp(companion.y + companion.vy * dtSec, PLAYER_RADIUS, world.height - PLAYER_RADIUS);
+    const moved = moveActorWithSceneCollision(
+      room,
+      companion.x,
+      companion.y,
+      companion.vx * dtSec,
+      companion.vy * dtSec,
+      PLAYER_RADIUS,
+      {
+        minX: PLAYER_RADIUS,
+        maxX: world.width - PLAYER_RADIUS,
+        minY: PLAYER_RADIUS,
+        maxY: world.height - PLAYER_RADIUS,
+      },
+    );
+    companion.x = moved.x;
+    companion.y = moved.y;
   }
 }
 
@@ -3607,6 +4088,7 @@ function castLaserStrike(room, player, def, st, now) {
 
 function explodeRocket(room, bullet, now) {
   const radius = Math.max(18, Number(bullet.explosionRadius) || 54);
+  const ownerId = bullet?.ownerPlayerId || bullet?.ownerId || '';
   const enemies = room.enemies.slice();
   for (const enemy of enemies) {
     const dx = enemy.x - bullet.x;
@@ -3615,7 +4097,7 @@ function explodeRocket(room, bullet, now) {
     const dist = Math.hypot(dx, dy);
     if (dist > reach) continue;
     const falloff = 1 - Math.min(0.45, (dist / Math.max(1, reach)) * 0.45);
-    enemyTakeDamage(room, enemy, Math.max(1, Math.round((Number(bullet.damage) || 1) * falloff)), bullet.ownerPlayerId || bullet.ownerId, now, {
+    enemyTakeDamage(room, enemy, Math.max(1, Math.round((Number(bullet.damage) || 1) * falloff)), ownerId, now, {
       sourceX: bullet.x,
       sourceY: bullet.y,
       stunMs: ENEMY_HIT_STUN_MS * 1.2,
@@ -3624,7 +4106,7 @@ function explodeRocket(room, bullet, now) {
   }
 
   if (isPvpRoom(room)) {
-    const attackerId = bullet?.ownerPlayerId || bullet?.ownerId;
+    const attackerId = ownerId;
     const attacker = attackerId ? room.players.get(attackerId) : null;
     if (attacker) {
       for (const player of room.players.values()) {
@@ -3640,6 +4122,10 @@ function explodeRocket(room, bullet, now) {
       }
     }
   }
+
+  damageSceneObjectsInRadius(room, bullet.x, bullet.y, radius * 0.92, Math.max(10, (Number(bullet.damage) || 1) * 0.88), ownerId, now, {
+    cause: 'rocket',
+  });
 }
 
 function castPlayerActiveSkill(room, player, def, st, now) {
@@ -3665,6 +4151,9 @@ function castPlayerActiveSkill(room, player, def, st, now) {
         knockback: ENEMY_HIT_KNOCKBACK_SPEED * ENEMY_SKILL_KNOCKBACK_BONUS,
       });
     }
+    damageSceneObjectsInRadius(room, player.x, player.y, radius * 0.92, damage * player.damageMul * 0.72, player.id, now, {
+      cause: 'shockwave',
+    });
     return true;
   }
 
@@ -3681,6 +4170,9 @@ function castPlayerActiveSkill(room, player, def, st, now) {
         knockback: ENEMY_HIT_KNOCKBACK_SPEED * knockbackMul,
       });
     }
+    damageSceneObjectsInRadius(room, player.x, player.y, radius * 0.88, damage * player.damageMul * 0.64, player.id, now, {
+      cause: 'psi_blast',
+    });
     return true;
   }
 
@@ -3735,6 +4227,30 @@ function buildRoomMissionState(room, now = Date.now()) {
     failedAt: Math.max(0, Number(mission.failedAt) || 0),
     success: mission.success === true,
     allCompleted,
+  };
+}
+
+function serializeMapObject(obj) {
+  if (!obj) return null;
+  return {
+    id: String(obj.id || ''),
+    kind: String(obj.kind || ''),
+    spriteKey: String(obj.spriteKey || ''),
+    x: Number(obj.x) || 0,
+    y: Number(obj.y) || 0,
+    w: Math.max(1, Number(obj.w) || 1),
+    h: Math.max(1, Number(obj.h) || 1),
+    angle: Number(obj.angle) || 0,
+    anchorY: Number(obj.anchorY) || 0.56,
+    shadowScale: Number(obj.shadowScale) || 1,
+    destructible: Boolean(obj.destructible),
+    hp: Math.max(0, Number(obj.hp) || 0),
+    maxHp: Math.max(1, Number(obj.maxHp) || 1),
+    explosive: Boolean(obj.explosive),
+    destroyed: Boolean(obj.destroyed),
+    destroyedAt: Math.max(0, Number(obj.destroyedAt) || 0),
+    lastHitAt: Math.max(0, Number(obj.lastHitAt) || 0),
+    styleTag: String(obj.styleTag || ''),
   };
 }
 
@@ -4063,9 +4579,13 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
         ttlMaxMs: Math.max(1, Math.round(o.ttlMaxMs || SKILL_OFFER_TTL_MS)),
       };
     }) : undefined,
-    decor: includeDecor ? {
-      trees: room.trees,
-    } : undefined,
+    decor: {
+      trees: includeDecor ? room.trees : undefined,
+      terrainZones: includeDecor ? room.terrainZones : undefined,
+      theme: includeDecor ? room.sceneTheme : undefined,
+      objectsVersion: Math.max(1, Number(room.mapObjectStateVersion) || 1),
+      objects: (room.mapObjects || []).map(serializeMapObject).filter(Boolean),
+    },
   };
 }
 
@@ -4501,7 +5021,8 @@ function fireEnemyProjectile(room, enemy, target) {
 
 function performPlayerDodge(player, now) {
   if (!player.alive) return;
-  const world = getRoomWorld(rooms.get(player.roomCode));
+  const room = rooms.get(player.roomCode);
+  const world = getRoomWorld(room);
   const charges = Math.max(0, Number(player.dodgeCharges) || 0);
   if (charges <= 0) return;
 
@@ -4515,8 +5036,22 @@ function performPlayerDodge(player, now) {
   const nx = dx / d;
   const ny = dy / d;
 
-  player.x = clamp(player.x + nx * PLAYER_DODGE_DISTANCE, PLAYER_RADIUS, world.width - PLAYER_RADIUS);
-  player.y = clamp(player.y + ny * PLAYER_DODGE_DISTANCE, PLAYER_RADIUS, world.height - PLAYER_RADIUS);
+  const moved = moveActorWithSceneCollision(
+    room,
+    player.x,
+    player.y,
+    nx * PLAYER_DODGE_DISTANCE,
+    ny * PLAYER_DODGE_DISTANCE,
+    PLAYER_RADIUS,
+    {
+      minX: PLAYER_RADIUS,
+      maxX: world.width - PLAYER_RADIUS,
+      minY: PLAYER_RADIUS,
+      maxY: world.height - PLAYER_RADIUS,
+    },
+  );
+  player.x = moved.x;
+  player.y = moved.y;
   player.dodgeCharges = Math.max(0, charges - 1);
   if (player.dodgeCharges < (player.dodgeChargesMax || PLAYER_DODGE_MAX_CHARGES) && (player.dodgeRechargeMs || 0) <= 0) {
     player.dodgeRechargeMs = PLAYER_DODGE_COOLDOWN_MS;
@@ -4753,6 +5288,30 @@ function createRunReplay(room, player, now) {
         y: roundReplayCoord(tree?.y),
         scale: Math.max(0.1, Number(tree?.scale) || 1),
       })),
+      terrainZones: (room.terrainZones || []).map((zone) => ({
+        id: String(zone?.id || ''),
+        material: String(zone?.material || 'asphalt_wet'),
+        shape: String(zone?.shape || 'ellipse'),
+        x: roundReplayCoord(zone?.x),
+        y: roundReplayCoord(zone?.y),
+        w: Math.max(1, Math.round(Number(zone?.w) || 1)),
+        h: Math.max(1, Math.round(Number(zone?.h) || 1)),
+        alpha: Math.max(0.05, Number(zone?.alpha) || 0.65),
+        feather: Math.max(0.04, Number(zone?.feather) || 0.18),
+        angle: Number(zone?.angle) || 0,
+      })),
+      theme: room.sceneTheme ? { ...room.sceneTheme } : null,
+      objects: (room.mapObjects || []).map((obj) => {
+        const serialized = serializeMapObject(obj);
+        if (!serialized) return null;
+        return {
+          ...serialized,
+          x: roundReplayCoord(serialized.x),
+          y: roundReplayCoord(serialized.y),
+          w: Math.max(1, Math.round(serialized.w)),
+          h: Math.max(1, Math.round(serialized.h)),
+        };
+      }).filter(Boolean),
     },
     meta: {
       tickRate: room.sync?.tickRate || DEFAULT_ROOM_SYNC.tickRate,
@@ -6797,8 +7356,22 @@ function tickRoom(room, dtSec, now) {
     const slowed = Number(p.slowUntil) > now;
     const speedMul = (slowed ? PLAYER_SLOW_FACTOR : 1) * Math.max(0.2, Number(p.moveSpeedMul) || 1);
 
-    p.x = clamp(p.x + nx * PLAYER_SPEED * PLAYER_MOVE_SPEED_GLOBAL_MUL * speedMul * dtSec, PLAYER_RADIUS, world.width - PLAYER_RADIUS);
-    p.y = clamp(p.y + ny * PLAYER_SPEED * PLAYER_MOVE_SPEED_GLOBAL_MUL * speedMul * dtSec, PLAYER_RADIUS, world.height - PLAYER_RADIUS);
+    const movedPlayer = moveActorWithSceneCollision(
+      room,
+      p.x,
+      p.y,
+      nx * PLAYER_SPEED * PLAYER_MOVE_SPEED_GLOBAL_MUL * speedMul * dtSec,
+      ny * PLAYER_SPEED * PLAYER_MOVE_SPEED_GLOBAL_MUL * speedMul * dtSec,
+      PLAYER_RADIUS,
+      {
+        minX: PLAYER_RADIUS,
+        maxX: world.width - PLAYER_RADIUS,
+        minY: PLAYER_RADIUS,
+        maxY: world.height - PLAYER_RADIUS,
+      },
+    );
+    p.x = movedPlayer.x;
+    p.y = movedPlayer.y;
 
     p.fireCooldownLeft = Math.max(0, p.fireCooldownLeft - dtMs);
 
@@ -6926,6 +7499,25 @@ function tickRoom(room, dtSec, now) {
           }
         }
       }
+
+      if (!hit) {
+        const solidObjects = getSceneObjects(room, { solidOnly: true });
+        for (const obj of solidObjects) {
+          const rect = buildMapObjectRect(obj);
+          const collides = segmentIntersectsExpandedRect(prevX, prevY, b.x, b.y, rect, bulletR);
+          if (!collides) continue;
+          if (obj.destructible) {
+            damageMapObject(room, obj, Math.max(1, Number(b.damage) || 1), b.ownerPlayerId || b.ownerId, now, {
+              cause: 'bullet',
+            });
+          }
+          if (b.kind === 'rocket') {
+            explodeRocket(room, b, now);
+          }
+          hit = true;
+          break;
+        }
+      }
     }
     if (hit) {
       room.bullets.splice(i, 1);
@@ -6946,8 +7538,17 @@ function tickRoom(room, dtSec, now) {
       e.hitStunMs = Math.max(0, e.hitStunMs - dtSec * 1000);
     }
     if (Math.abs(e.knockbackVx) > 0.2 || Math.abs(e.knockbackVy) > 0.2) {
-      e.x = clamp(e.x + e.knockbackVx * dtSec, enemyWorldBounds.minX, enemyWorldBounds.maxX);
-      e.y = clamp(e.y + e.knockbackVy * dtSec, enemyWorldBounds.minY, enemyWorldBounds.maxY);
+      const knocked = moveActorWithSceneCollision(
+        room,
+        e.x,
+        e.y,
+        e.knockbackVx * dtSec,
+        e.knockbackVy * dtSec,
+        er,
+        enemyWorldBounds,
+      );
+      e.x = knocked.x;
+      e.y = knocked.y;
       const decay = Math.max(0, 1 - dtSec * ENEMY_HIT_KNOCKBACK_FRICTION);
       e.knockbackVx *= decay;
       e.knockbackVy *= decay;
@@ -6992,8 +7593,9 @@ function tickRoom(room, dtSec, now) {
       if (Math.abs(Number(e.vx) || 0) > 0.15) e.faceLeft = (Number(e.vx) || 0) < 0;
       else e.faceLeft = dx < 0;
 
-      e.x = clamp(e.x + e.vx * dtSec, enemyWorldBounds.minX, enemyWorldBounds.maxX);
-      e.y = clamp(e.y + e.vy * dtSec, enemyWorldBounds.minY, enemyWorldBounds.maxY);
+      const moved = moveActorWithSceneCollision(room, e.x, e.y, e.vx * dtSec, e.vy * dtSec, er, enemyWorldBounds);
+      e.x = moved.x;
+      e.y = moved.y;
 
       if (e.attackCooldownMs <= 0 && target.alive && targetDist <= ENEMY_RANGED_MAX_RANGE * 1.1) {
         fireEnemyProjectile(room, e, target);
@@ -7017,8 +7619,17 @@ function tickRoom(room, dtSec, now) {
             const cd = Math.hypot(cdx, cdy) || 1;
             const dashBase = e.type === 'boss' ? BOSS_DASH_DISTANCE : ENEMY_CHARGER_DASH_DISTANCE;
             const dash = Math.min(dashBase, Math.max(0, cd - 1));
-            e.x = clamp(e.x + (cdx / cd) * dash, enemyWorldBounds.minX, enemyWorldBounds.maxX);
-            e.y = clamp(e.y + (cdy / cd) * dash, enemyWorldBounds.minY, enemyWorldBounds.maxY);
+            const dashed = moveActorWithSceneCollision(
+              room,
+              e.x,
+              e.y,
+              (cdx / cd) * dash,
+              (cdy / cd) * dash,
+              er,
+              enemyWorldBounds,
+            );
+            e.x = dashed.x;
+            e.y = dashed.y;
           }
 
           const adx = e.x - lockedTarget.x;
@@ -7050,8 +7661,9 @@ function tickRoom(room, dtSec, now) {
     e.vx = (dx / d) * speed;
     e.vy = (dy / d) * speed;
     if (Math.abs(Number(e.vx) || 0) > 0.15) e.faceLeft = (Number(e.vx) || 0) < 0;
-    e.x = clamp(e.x + e.vx * dtSec, enemyWorldBounds.minX, enemyWorldBounds.maxX);
-    e.y = clamp(e.y + e.vy * dtSec, enemyWorldBounds.minY, enemyWorldBounds.maxY);
+    const moved = moveActorWithSceneCollision(room, e.x, e.y, e.vx * dtSec, e.vy * dtSec, er, enemyWorldBounds);
+    e.x = moved.x;
+    e.y = moved.y;
   }
   phaseEnd('enemiesMs', phaseStartedNs);
 

@@ -287,6 +287,7 @@ const game = {
   world: { width: 2400, height: 1400 },
   state: null,
   sortedTrees: [],
+  sortedMapObjects: [],
   qualityKey: 'medium',
   shadowsEnabled: getToggleDefaultOn('cw:shadowsEnabled'),
   bulletTracersEnabled: getToggleDefaultOn('cw:bulletTracersEnabled'),
@@ -382,8 +383,10 @@ const visuals = {
   bulletIds: new Set(),
   spectatorMuzzleBulletIds: new Set(),
   xpOrbPrev: new Map(),
+  mapObjectPrev: new Map(),
   prevBossAlive: false,
   groundTileCanvas: null,
+  groundTiles: {},
   groundTileSize: 0,
 };
 
@@ -2533,27 +2536,112 @@ const sprites = {
   players: playerSprites,
   enemy: loadImage('/assets/sprites/enemy_mummy.png'),
   ground: loadImage('/assets/tiles/ground_grass.jpg'),
+  mapProps: {
+    car_red: loadImage('/assets/map-props/car_red.svg'),
+    car_blue: loadImage('/assets/map-props/car_blue.svg'),
+    bus_yellow: loadImage('/assets/map-props/bus_yellow.svg'),
+    ambulance: loadImage('/assets/map-props/ambulance.svg'),
+    barrier: loadImage('/assets/map-props/barrier.svg'),
+    shack: loadImage('/assets/map-props/shack.svg'),
+    mall_block: loadImage('/assets/map-props/mall_block.svg'),
+    clinic_block: loadImage('/assets/map-props/clinic_block.svg'),
+    industrial_tank: loadImage('/assets/map-props/industrial_tank.svg'),
+    reactor_block: loadImage('/assets/map-props/reactor_block.svg'),
+  },
 };
 
 function getQ() {
   return QUALITY[game.qualityKey] || QUALITY.medium;
 }
 
-function rebuildGroundTile() {
-  visuals.groundTileCanvas = null;
-  if (!sprites.ground.complete || sprites.ground.naturalWidth <= 0 || !getQ().groundTexture) return;
+function fillGroundNoise(g, size, count, colors, radiusMin = 2, radiusMax = 6, alphaMul = 1) {
+  const palette = Array.isArray(colors) ? colors.filter(Boolean) : [];
+  if (palette.length <= 0) return;
+  for (let i = 0; i < count; i += 1) {
+    const color = palette[i % palette.length];
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    const r = radiusMin + Math.random() * Math.max(0.1, radiusMax - radiusMin);
+    g.fillStyle = color;
+    g.globalAlpha = alphaMul * (0.22 + Math.random() * 0.32);
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.globalAlpha = 1;
+}
 
-  const size = getQ().groundTileSize;
+function buildGroundMaterialTile(material, size) {
   const c = document.createElement('canvas');
   c.width = size;
   c.height = size;
   const g = c.getContext('2d');
+  g.imageSmoothingEnabled = true;
 
-  g.drawImage(sprites.ground, 0, 0, size, size);
-  g.fillStyle = 'rgba(8,10,14,0.72)';
+  if (sprites.ground.complete && sprites.ground.naturalWidth > 0) {
+    g.drawImage(sprites.ground, 0, 0, size, size);
+  } else {
+    g.fillStyle = '#1a2328';
+    g.fillRect(0, 0, size, size);
+  }
+
+  const materials = {
+    asphalt_wet: { tint: 'rgba(8, 12, 18, 0.78)', stroke: 'rgba(148, 163, 184, 0.12)', spots: ['#111827', '#1f2937', '#334155'] },
+    asphalt: { tint: 'rgba(16, 20, 28, 0.64)', stroke: 'rgba(148, 163, 184, 0.08)', spots: ['#111827', '#1f2937', '#4b5563'] },
+    concrete: { tint: 'rgba(48, 59, 68, 0.48)', stroke: 'rgba(226, 232, 240, 0.09)', spots: ['#475569', '#64748b', '#94a3b8'] },
+    dirt: { tint: 'rgba(50, 34, 22, 0.6)', stroke: 'rgba(251, 191, 36, 0.06)', spots: ['#4a2c1d', '#6b3f28', '#7c4a2c'] },
+    grass: { tint: 'rgba(14, 44, 22, 0.44)', stroke: 'rgba(74, 222, 128, 0.08)', spots: ['#14532d', '#166534', '#22c55e'] },
+    toxic: { tint: 'rgba(22, 52, 18, 0.42)', stroke: 'rgba(190, 242, 100, 0.15)', spots: ['#65a30d', '#84cc16', '#bef264'] },
+  };
+  const theme = materials[material] || materials.asphalt_wet;
+
+  g.fillStyle = theme.tint;
   g.fillRect(0, 0, size, size);
+  fillGroundNoise(g, size, material === 'toxic' ? 18 : 28, theme.spots, 2, material === 'grass' ? 9 : 6, material === 'grass' ? 0.44 : 0.26);
 
-  visuals.groundTileCanvas = c;
+  g.strokeStyle = theme.stroke;
+  g.lineWidth = Math.max(1, size * 0.012);
+  for (let i = 0; i < 4; i += 1) {
+    const y = ((i + 1) / 5) * size + (Math.random() * size * 0.06 - size * 0.03);
+    g.beginPath();
+    g.moveTo(0, y);
+    g.lineTo(size, y + (Math.random() * size * 0.06 - size * 0.03));
+    g.stroke();
+  }
+
+  if (material === 'concrete') {
+    g.strokeStyle = 'rgba(241, 245, 249, 0.08)';
+    g.lineWidth = Math.max(1, size * 0.018);
+    g.strokeRect(size * 0.08, size * 0.08, size * 0.84, size * 0.84);
+  } else if (material === 'asphalt' || material === 'asphalt_wet') {
+    g.strokeStyle = material === 'asphalt_wet' ? 'rgba(248, 250, 252, 0.04)' : 'rgba(248, 250, 252, 0.06)';
+    g.setLineDash([size * 0.1, size * 0.08]);
+    g.lineWidth = Math.max(1, size * 0.026);
+    g.beginPath();
+    g.moveTo(size * 0.08, size * 0.5);
+    g.lineTo(size * 0.92, size * 0.5);
+    g.stroke();
+    g.setLineDash([]);
+  } else if (material === 'toxic') {
+    g.globalCompositeOperation = 'lighter';
+    fillGroundNoise(g, size, 12, ['#d9f99d', '#bef264'], 5, 14, 0.22);
+    g.globalCompositeOperation = 'source-over';
+  }
+
+  return c;
+}
+
+function rebuildGroundTile() {
+  visuals.groundTileCanvas = null;
+  visuals.groundTiles = {};
+  if (!getQ().groundTexture) return;
+
+  const size = getQ().groundTileSize;
+  const materials = ['asphalt_wet', 'asphalt', 'concrete', 'dirt', 'grass', 'toxic'];
+  for (const material of materials) {
+    visuals.groundTiles[material] = buildGroundMaterialTile(material, size);
+  }
+  visuals.groundTileCanvas = visuals.groundTiles.asphalt_wet || null;
   visuals.groundTileSize = size;
 }
 
@@ -2561,6 +2649,7 @@ sprites.ground.addEventListener('load', rebuildGroundTile);
 for (const v of PLAYER_VARIANTS) {
   sprites.players[v.id].addEventListener('load', () => { if (typeof globalThis.renderCharacterPicker === 'function') globalThis.renderCharacterPicker(); });
 }
+rebuildGroundTile();
 
 qualitySelect?.addEventListener('change', () => {
   const q = qualitySelect.value;

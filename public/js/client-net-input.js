@@ -3580,7 +3580,13 @@ function buildReplayState(payload, elapsedMs) {
     bossPortals,
     drops,
     xpOrbs,
-    decor: { trees: Array.isArray(payload?.decor?.trees) ? payload.decor.trees : [] },
+    decor: {
+      trees: Array.isArray(payload?.decor?.trees) ? payload.decor.trees : [],
+      terrainZones: Array.isArray(payload?.decor?.terrainZones) ? payload.decor.terrainZones : [],
+      theme: payload?.decor?.theme && typeof payload.decor.theme === 'object' ? payload.decor.theme : null,
+      objects: Array.isArray(payload?.decor?.objects) ? payload.decor.objects : [],
+      objectsVersion: Math.max(0, Number(payload?.decor?.objectsVersion) || 0),
+    },
   };
 }
 
@@ -3648,6 +3654,9 @@ function tickReplayGame(ts) {
     game.bossAlive = nextState.bossAlive;
     game.roomDifficulty = nextState.roomDifficulty;
     game.sortedTrees = Array.isArray(nextState.decor?.trees) ? nextState.decor.trees.slice().sort((a, b) => a.y - b.y) : [];
+    game.sortedMapObjects = Array.isArray(nextState.decor?.objects)
+      ? nextState.decor.objects.slice().sort((a, b) => ((Number(a.y) || 0) + (Number(a.h) || 0) * 0.08) - ((Number(b.y) || 0) + (Number(b.h) || 0) * 0.08))
+      : [];
     updateScoreboard(nextState.players || []);
     updateStatsPanel((nextState.players || []).find((p) => p.id === game.myId) || (nextState.players || [])[0] || null);
     updateJumpButtonUi((nextState.players || []).find((p) => p.id === game.myId) || null);
@@ -5261,6 +5270,20 @@ function carryForwardOmittedRealtimeCollections(state, previousState = null) {
   return state;
 }
 
+function carryForwardSceneDecor(state, previousState = null) {
+  if (!state || typeof state !== 'object') return state;
+  const prevDecor = previousState?.decor && typeof previousState.decor === 'object' ? previousState.decor : null;
+  const nextDecor = state.decor && typeof state.decor === 'object' ? { ...state.decor } : {};
+  if (prevDecor) {
+    if (!Array.isArray(nextDecor.trees) && Array.isArray(prevDecor.trees)) nextDecor.trees = prevDecor.trees;
+    if (!Array.isArray(nextDecor.terrainZones) && Array.isArray(prevDecor.terrainZones)) nextDecor.terrainZones = prevDecor.terrainZones;
+    if (!Array.isArray(nextDecor.objects) && Array.isArray(prevDecor.objects)) nextDecor.objects = prevDecor.objects;
+    if ((!nextDecor.theme || typeof nextDecor.theme !== 'object') && prevDecor.theme) nextDecor.theme = prevDecor.theme;
+  }
+  state.decor = nextDecor;
+  return state;
+}
+
 function normalizeLiveStatePayload(state) {
   if (!state || typeof state !== 'object') return state;
 
@@ -6261,9 +6284,7 @@ message: (ev) => {
     const previousState = game.state;
     const s = normalizeLiveStatePayload(msg.payload);
     carryForwardOmittedRealtimeCollections(s, previousState);
-    if ((!s.decor || !Array.isArray(s.decor.trees)) && game.state?.decor) {
-      s.decor = game.state.decor;
-    }
+    carryForwardSceneDecor(s, previousState);
     if (game.embedMode && game.spectating) {
       window.parent?.postMessage({
         type: 'cw-live-spectator',
@@ -6320,6 +6341,9 @@ message: (ev) => {
       game.sortedTreesRoomCode = s.roomCode;
       game.sortedTreesSourceCount = nextTrees.length;
     }
+    game.sortedMapObjects = Array.isArray(s.decor?.objects)
+      ? s.decor.objects.slice().sort((a, b) => ((Number(a.y) || 0) + (Number(a.h) || 0) * 0.08) - ((Number(b.y) || 0) + (Number(b.h) || 0) * 0.08))
+      : [];
     updateScoreboard(s.players);
 
     const seenAliveIds = new Set();

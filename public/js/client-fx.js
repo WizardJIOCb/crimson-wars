@@ -727,6 +727,49 @@ function processStateFx(nextState) {
   }
   visuals.enemyPrev = nextEnemyMap;
 
+  const prevMapObjectMap = visuals.mapObjectPrev instanceof Map ? visuals.mapObjectPrev : new Map();
+  const nextMapObjectMap = new Map();
+  const mapObjects = Array.isArray(nextState.decor?.objects) ? nextState.decor.objects : [];
+  for (const obj of mapObjects) {
+    nextMapObjectMap.set(obj.id, {
+      x: Number(obj.x) || 0,
+      y: Number(obj.y) || 0,
+      hp: Math.max(0, Number(obj.hp) || 0),
+      maxHp: Math.max(1, Number(obj.maxHp) || 1),
+      explosive: Boolean(obj.explosive),
+      destroyed: Boolean(obj.destroyed),
+      w: Math.max(1, Number(obj.w) || 1),
+      h: Math.max(1, Number(obj.h) || 1),
+    });
+    const prev = prevMapObjectMap.get(obj.id);
+    if (prev && !obj.destroyed && Number(obj.hp) < Number(prev.hp)) {
+      const severity = Math.max(3, Math.round((Math.max(1, Number(prev.hp) - Number(obj.hp))) * 0.24));
+      spawnHitFx(obj.x, obj.y, severity, false);
+    }
+    if (prev && !prev.destroyed && obj.destroyed) {
+      if (obj.explosive) {
+        spawnRocketExplosionFx(obj.x, obj.y);
+        spawnRadialHitFx(obj.x, obj.y, Math.max(Number(obj.w) || 40, Number(obj.h) || 40) * 0.7, {
+          count: 16,
+          color: '#fdba74',
+          severity: 8,
+        });
+        window.cwPlaySfx?.('rocketExplosion', {
+          x: obj.x,
+          y: obj.y,
+          key: `propExplosion:${obj.id}`,
+          minGapMs: 120,
+          radius: 1800,
+          volume: 1.08,
+        });
+      } else {
+        spawnSkillBurstFx(obj.x, obj.y, '#94a3b8', Math.max(44, (Math.max(Number(obj.w) || 0, Number(obj.h) || 0) * 0.38)));
+        spawnHitFx(obj.x, obj.y, 8, false);
+      }
+    }
+  }
+  visuals.mapObjectPrev = nextMapObjectMap;
+
   const bossAlive = Boolean(nextState.bossAlive);
   const prevBossPortalMap = visuals.bossPortalPrev || new Map();
   const nextBossPortalMap = new Map();

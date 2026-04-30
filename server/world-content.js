@@ -1,3 +1,24 @@
+function zone(material, shape, x, y, w, h, extra = {}) {
+  return {
+    material,
+    shape,
+    x,
+    y,
+    w,
+    h,
+    ...extra,
+  };
+}
+
+function prop(kind, x, y, extra = {}) {
+  return {
+    kind,
+    x,
+    y,
+    ...extra,
+  };
+}
+
 const MAP_DEFS = [
   {
     id: 'mall_night',
@@ -12,6 +33,38 @@ const MAP_DEFS = [
       to: '#0d121c',
       accent: '#f97316',
       glow: 'rgba(249, 115, 22, 0.26)',
+    },
+    scene: {
+      themeId: 'mall',
+      baseMaterial: 'asphalt_wet',
+      terrainZones: [
+        zone('concrete', 'rect', 0.5, 0.12, 0.48, 0.19, { feather: 0.12, alpha: 0.92, angle: 0.01 }),
+        zone('concrete', 'band', 0.5, 0.34, 0.92, 0.12, { feather: 0.18, alpha: 0.52, angle: 0 }),
+        zone('grass', 'ellipse', 0.1, 0.12, 0.16, 0.14, { feather: 0.26, alpha: 0.74 }),
+        zone('grass', 'ellipse', 0.9, 0.13, 0.16, 0.15, { feather: 0.26, alpha: 0.74 }),
+        zone('dirt', 'ellipse', 0.18, 0.82, 0.2, 0.15, { feather: 0.28, alpha: 0.42 }),
+        zone('dirt', 'ellipse', 0.84, 0.76, 0.18, 0.14, { feather: 0.28, alpha: 0.38 }),
+      ],
+      plannedObjects: [
+        prop('mall_block', 0.5, 0.055, { scale: 1.28 }),
+        prop('mall_block', 0.17, 0.09, { scale: 0.78, angle: -0.04 }),
+        prop('mall_block', 0.83, 0.09, { scale: 0.78, angle: 0.04 }),
+        prop('concrete_barrier', 0.39, 0.19, { scale: 1.08 }),
+        prop('concrete_barrier', 0.61, 0.19, { scale: 1.08 }),
+        prop('yellow_bus', 0.12, 0.31, { angle: Math.PI * 0.5 }),
+        prop('red_hatchback', 0.29, 0.38, { angle: 0.12 }),
+        prop('burnt_sedan', 0.37, 0.43, { angle: -0.08 }),
+        prop('red_hatchback', 0.66, 0.39, { angle: -0.18 }),
+        prop('burnt_sedan', 0.74, 0.44, { angle: 0.06 }),
+        prop('concrete_barrier', 0.5, 0.58, { scale: 1.34, angle: 0.04 }),
+        prop('concrete_barrier', 0.27, 0.67, { angle: -0.42 }),
+        prop('concrete_barrier', 0.73, 0.66, { angle: 0.42 }),
+      ],
+      randomProps: {
+        countMin: 10,
+        countMax: 18,
+        kinds: ['red_hatchback', 'burnt_sedan', 'concrete_barrier', 'yellow_bus', 'road_shack'],
+      },
     },
   },
   {
@@ -28,6 +81,36 @@ const MAP_DEFS = [
       accent: '#fb7185',
       glow: 'rgba(251, 113, 133, 0.22)',
     },
+    scene: {
+      themeId: 'ringroad',
+      baseMaterial: 'dirt',
+      terrainZones: [
+        zone('asphalt', 'band', 0.5, 0.5, 1.18, 0.26, { feather: 0.18, alpha: 0.98, angle: 0 }),
+        zone('asphalt', 'band', 0.5, 0.36, 1.18, 0.16, { feather: 0.18, alpha: 0.78, angle: 0 }),
+        zone('asphalt', 'band', 0.5, 0.64, 1.18, 0.16, { feather: 0.18, alpha: 0.78, angle: 0 }),
+        zone('concrete', 'ellipse', 0.16, 0.2, 0.16, 0.11, { feather: 0.24, alpha: 0.44 }),
+        zone('concrete', 'ellipse', 0.86, 0.82, 0.18, 0.12, { feather: 0.24, alpha: 0.42 }),
+        zone('dirt', 'ellipse', 0.12, 0.5, 0.22, 0.34, { feather: 0.32, alpha: 0.68 }),
+        zone('dirt', 'ellipse', 0.88, 0.48, 0.24, 0.36, { feather: 0.32, alpha: 0.68 }),
+      ],
+      plannedObjects: [
+        prop('yellow_bus', 0.16, 0.46, { angle: 0.04 }),
+        prop('yellow_bus', 0.82, 0.58, { angle: -0.05 }),
+        prop('red_hatchback', 0.31, 0.47, { angle: 0.08 }),
+        prop('burnt_sedan', 0.41, 0.55, { angle: -0.08 }),
+        prop('ambulance_van', 0.52, 0.43, { angle: 0.05 }),
+        prop('red_hatchback', 0.63, 0.57, { angle: -0.06 }),
+        prop('concrete_barrier', 0.25, 0.33, { scale: 1.18, angle: 0.04 }),
+        prop('concrete_barrier', 0.75, 0.68, { scale: 1.18, angle: -0.04 }),
+        prop('road_shack', 0.08, 0.18, { scale: 0.92 }),
+        prop('road_shack', 0.92, 0.82, { scale: 0.88, angle: Math.PI }),
+      ],
+      randomProps: {
+        countMin: 16,
+        countMax: 26,
+        kinds: ['red_hatchback', 'burnt_sedan', 'yellow_bus', 'concrete_barrier', 'road_shack'],
+      },
+    },
   },
   {
     id: 'clinic_yard',
@@ -43,6 +126,36 @@ const MAP_DEFS = [
       accent: '#34d399',
       glow: 'rgba(52, 211, 153, 0.22)',
     },
+    scene: {
+      themeId: 'clinic',
+      baseMaterial: 'concrete',
+      terrainZones: [
+        zone('concrete', 'rect', 0.5, 0.5, 1.04, 0.96, { feather: 0.08, alpha: 0.96 }),
+        zone('asphalt', 'band', 0.5, 0.35, 0.92, 0.12, { feather: 0.16, alpha: 0.64, angle: 0 }),
+        zone('asphalt', 'band', 0.5, 0.66, 0.88, 0.12, { feather: 0.16, alpha: 0.56, angle: 0.03 }),
+        zone('grass', 'ellipse', 0.12, 0.14, 0.14, 0.16, { feather: 0.26, alpha: 0.52 }),
+        zone('grass', 'ellipse', 0.88, 0.16, 0.14, 0.16, { feather: 0.26, alpha: 0.52 }),
+        zone('toxic', 'ellipse', 0.22, 0.79, 0.18, 0.14, { feather: 0.28, alpha: 0.28 }),
+        zone('toxic', 'ellipse', 0.78, 0.78, 0.2, 0.16, { feather: 0.28, alpha: 0.3 }),
+      ],
+      plannedObjects: [
+        prop('clinic_block', 0.11, 0.16, { scale: 1.04, angle: Math.PI * 0.5 }),
+        prop('clinic_block', 0.89, 0.16, { scale: 1.04, angle: -Math.PI * 0.5 }),
+        prop('ambulance_van', 0.31, 0.34, { angle: 0.02 }),
+        prop('ambulance_van', 0.5, 0.34, { angle: 0.02 }),
+        prop('ambulance_van', 0.69, 0.34, { angle: 0.02 }),
+        prop('concrete_barrier', 0.5, 0.5, { scale: 1.26 }),
+        prop('concrete_barrier', 0.36, 0.63, { angle: -0.38 }),
+        prop('concrete_barrier', 0.64, 0.63, { angle: 0.38 }),
+        prop('road_shack', 0.16, 0.82, { scale: 0.88 }),
+        prop('road_shack', 0.84, 0.82, { scale: 0.88 }),
+      ],
+      randomProps: {
+        countMin: 8,
+        countMax: 14,
+        kinds: ['ambulance_van', 'concrete_barrier', 'road_shack', 'burnt_sedan'],
+      },
+    },
   },
   {
     id: 'reactor_sprawl',
@@ -57,6 +170,37 @@ const MAP_DEFS = [
       to: '#0d1118',
       accent: '#a3e635',
       glow: 'rgba(163, 230, 53, 0.22)',
+    },
+    scene: {
+      themeId: 'reactor',
+      baseMaterial: 'dirt',
+      terrainZones: [
+        zone('concrete', 'rect', 0.5, 0.5, 0.9, 0.74, { feather: 0.12, alpha: 0.54 }),
+        zone('asphalt', 'band', 0.5, 0.24, 0.84, 0.12, { feather: 0.16, alpha: 0.42, angle: 0.08 }),
+        zone('asphalt', 'band', 0.52, 0.73, 0.9, 0.14, { feather: 0.16, alpha: 0.38, angle: -0.06 }),
+        zone('toxic', 'ellipse', 0.2, 0.22, 0.22, 0.18, { feather: 0.3, alpha: 0.4 }),
+        zone('toxic', 'ellipse', 0.74, 0.26, 0.18, 0.14, { feather: 0.26, alpha: 0.34 }),
+        zone('toxic', 'ellipse', 0.78, 0.76, 0.24, 0.18, { feather: 0.3, alpha: 0.42 }),
+        zone('toxic', 'ellipse', 0.3, 0.72, 0.18, 0.14, { feather: 0.28, alpha: 0.28 }),
+      ],
+      plannedObjects: [
+        prop('reactor_block', 0.18, 0.12, { scale: 0.98 }),
+        prop('reactor_block', 0.82, 0.14, { scale: 0.98 }),
+        prop('industrial_tank', 0.46, 0.21, { scale: 1.1 }),
+        prop('industrial_tank', 0.62, 0.22, { scale: 1.1 }),
+        prop('reactor_block', 0.52, 0.82, { scale: 1.18 }),
+        prop('burnt_sedan', 0.24, 0.57, { angle: 0.18 }),
+        prop('red_hatchback', 0.72, 0.59, { angle: -0.18 }),
+        prop('concrete_barrier', 0.38, 0.48, { scale: 1.16, angle: 0.22 }),
+        prop('concrete_barrier', 0.68, 0.48, { scale: 1.16, angle: -0.22 }),
+        prop('road_shack', 0.12, 0.84, { scale: 0.94, angle: -0.05 }),
+        prop('road_shack', 0.9, 0.84, { scale: 0.94, angle: 0.05 }),
+      ],
+      randomProps: {
+        countMin: 12,
+        countMax: 22,
+        kinds: ['burnt_sedan', 'red_hatchback', 'concrete_barrier', 'industrial_tank', 'road_shack'],
+      },
     },
   },
 ];

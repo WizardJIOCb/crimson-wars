@@ -57,28 +57,122 @@ function scheduleNextFrame(delayMs = 0) {
   requestAnimationFrame(render);
 }
 
-function drawGround() {
-  ctx.fillStyle = '#0d0f14';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+function getSceneTheme() {
+  return game.state?.decor?.theme && typeof game.state.decor.theme === 'object'
+    ? game.state.decor.theme
+    : { baseMaterial: 'asphalt_wet', accent: '#f97316', glow: 'rgba(249, 115, 22, 0.22)' };
+}
 
-  const q = getQ();
-  if (q.groundTexture && visuals.groundTileCanvas) {
-    const t = visuals.groundTileSize;
-    const startX = Math.floor(camera.x / t) * t;
-    const startY = Math.floor(camera.y / t) * t;
-    const endX = camera.x + canvas.width + t;
-    const endY = camera.y + canvas.height + t;
+function getGroundFallbackColor(material) {
+  if (material === 'grass') return '#173224';
+  if (material === 'dirt') return '#2a1e16';
+  if (material === 'concrete') return '#2a3640';
+  if (material === 'toxic') return '#233718';
+  if (material === 'asphalt') return '#161c26';
+  return '#121821';
+}
 
+function getGroundTileForMaterial(material) {
+  return visuals.groundTiles?.[material] || visuals.groundTileCanvas || null;
+}
+
+function drawMaterialTileField(tileCanvas, startX, startY, endX, endY) {
+  if (!tileCanvas) return;
+  const t = visuals.groundTileSize || tileCanvas.width || 128;
+  const tileStartX = Math.floor(startX / t) * t;
+  const tileStartY = Math.floor(startY / t) * t;
+  for (let y = tileStartY; y < endY; y += t) {
+    for (let x = tileStartX; x < endX; x += t) {
+      ctx.drawImage(tileCanvas, x - camera.x, y - camera.y, t, t);
+    }
+  }
+}
+
+function buildTerrainZonePath(zone, scaleMul = 1) {
+  const halfW = Math.max(10, (Number(zone?.w) || 0) * 0.5 * scaleMul);
+  const halfH = Math.max(10, (Number(zone?.h) || 0) * 0.5 * scaleMul);
+  const shape = String(zone?.shape || 'ellipse');
+  ctx.beginPath();
+  if (shape === 'rect' || shape === 'band') {
+    ctx.rect(-halfW, -halfH, halfW * 2, halfH * 2);
+    return;
+  }
+  ctx.ellipse(0, 0, halfW, halfH, 0, 0, Math.PI * 2);
+}
+
+function isTerrainZoneVisible(zone) {
+  const halfW = Math.max(10, (Number(zone?.w) || 0) * 0.5);
+  const halfH = Math.max(10, (Number(zone?.h) || 0) * 0.5);
+  return isVisibleWorld(Number(zone?.x) || 0, Number(zone?.y) || 0, Math.max(halfW, halfH) + 48);
+}
+
+function drawTerrainZone(zone) {
+  if (!zone || !isTerrainZoneVisible(zone)) return;
+  const tile = getGroundTileForMaterial(zone.material);
+  const worldX = Number(zone.x) || 0;
+  const worldY = Number(zone.y) || 0;
+  const blurPx = Math.max(10, Math.min(42, Math.min(Number(zone.w) || 0, Number(zone.h) || 0) * Math.max(0.04, Number(zone.feather) || 0.18) * 0.12));
+  const alpha = Math.max(0.08, Math.min(1, Number(zone.alpha) || 0.65));
+  const halfW = Math.max(18, (Number(zone.w) || 0) * 0.5);
+  const halfH = Math.max(18, (Number(zone.h) || 0) * 0.5);
+
+  ctx.save();
+  ctx.translate(worldX - camera.x, worldY - camera.y);
+  ctx.rotate(Number(zone.angle) || 0);
+  buildTerrainZonePath(zone, 1);
+  ctx.clip();
+  ctx.globalAlpha = alpha;
+  if (tile) {
+    const t = visuals.groundTileSize || tile.width || 128;
+    const startX = Math.floor((worldX - halfW - blurPx) / t) * t;
+    const startY = Math.floor((worldY - halfH - blurPx) / t) * t;
+    const endX = worldX + halfW + blurPx;
+    const endY = worldY + halfH + blurPx;
     for (let y = startY; y < endY; y += t) {
       for (let x = startX; x < endX; x += t) {
-        ctx.drawImage(visuals.groundTileCanvas, x - camera.x, y - camera.y, t, t);
+        ctx.drawImage(tile, x - worldX, y - worldY, t, t);
       }
     }
+  } else {
+    ctx.fillStyle = getGroundFallbackColor(zone.material);
+    ctx.fillRect(-halfW - blurPx, -halfH - blurPx, (halfW + blurPx) * 2, (halfH + blurPx) * 2);
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(worldX - camera.x, worldY - camera.y);
+  ctx.rotate(Number(zone.angle) || 0);
+  ctx.filter = `blur(${blurPx}px)`;
+  ctx.globalAlpha = alpha * 0.22;
+  ctx.fillStyle = getGroundFallbackColor(zone.material);
+  buildTerrainZonePath(zone, 1.1 + Math.max(0.04, Number(zone.feather) || 0.18));
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawGround() {
+  const q = getQ();
+  const theme = getSceneTheme();
+  const baseMaterial = String(theme.baseMaterial || 'asphalt_wet');
+  ctx.fillStyle = getGroundFallbackColor(baseMaterial);
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  if (q.groundTexture) {
+    const tile = getGroundTileForMaterial(baseMaterial);
+    if (tile) {
+      const pad = visuals.groundTileSize || tile.width || 128;
+      drawMaterialTileField(tile, camera.x - pad, camera.y - pad, camera.x + canvas.width + pad, camera.y + canvas.height + pad);
+    }
+  }
+
+  const terrainZones = Array.isArray(game.state?.decor?.terrainZones) ? game.state.decor.terrainZones : [];
+  for (const zone of terrainZones) {
+    drawTerrainZone(zone);
   }
 
   if (q.overlays) {
     const g = ctx.createRadialGradient(canvas.width * 0.5, canvas.height * 0.55, 70, canvas.width * 0.5, canvas.height * 0.55, Math.max(canvas.width, canvas.height) * 0.8);
-    g.addColorStop(0, 'rgba(120,35,20,0.13)');
+    g.addColorStop(0, hexToRgba(theme.accent || '#f97316', 0.13));
     g.addColorStop(1, 'rgba(16,8,8,0.02)');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -552,6 +646,86 @@ function drawTrees() {
       ctx.fill();
     }
     ctx.restore();
+  }
+}
+
+function drawMapObjectHpBar(obj, screenX, screenY) {
+  if (!obj?.destructible || obj.destroyed) return;
+  const maxHp = Math.max(1, Number(obj.maxHp) || 1);
+  const hp = Math.max(0, Number(obj.hp) || 0);
+  if (hp >= maxHp) return;
+  const ratio = Math.max(0, Math.min(1, hp / maxHp));
+  const width = Math.max(28, Math.min(88, (Number(obj.w) || 64) * 0.48));
+  const barY = screenY - Math.max(16, (Number(obj.h) || 64) * 0.58);
+  ctx.save();
+  ctx.fillStyle = 'rgba(6, 10, 16, 0.85)';
+  ctx.fillRect(screenX - width * 0.5, barY, width, 5);
+  ctx.fillStyle = ratio > 0.45 ? '#22c55e' : (ratio > 0.18 ? '#f59e0b' : '#ef4444');
+  ctx.fillRect(screenX - width * 0.5 + 1, barY + 1, Math.max(2, (width - 2) * ratio), 3);
+  ctx.restore();
+}
+
+function drawMapObjects(nowMs = Date.now()) {
+  const objects = Array.isArray(game.sortedMapObjects) ? game.sortedMapObjects : [];
+  for (const obj of objects) {
+    const radius = Math.max(Number(obj.w) || 0, Number(obj.h) || 0) * 0.55;
+    if (!isVisibleWorld(Number(obj.x) || 0, Number(obj.y) || 0, radius + 40)) continue;
+    const screenX = (Number(obj.x) || 0) - camera.x;
+    const screenY = (Number(obj.y) || 0) - camera.y;
+    const width = Math.max(22, Number(obj.w) || 22);
+    const height = Math.max(22, Number(obj.h) || 22);
+    const anchorY = Math.max(0.45, Math.min(0.72, Number(obj.anchorY) || 0.56));
+    const sprite = sprites.mapProps?.[obj.spriteKey] || null;
+    const damaged = obj.destructible && (Number(obj.hp) || 0) < Math.max(1, Number(obj.maxHp) || 1);
+    const recentlyHit = Math.max(0, Number(obj.lastHitAt) || 0) > 0 && (nowMs - Number(obj.lastHitAt) <= 120);
+
+    if (obj.destroyed) {
+      drawShadowAtScreen(screenX, screenY + 10, Math.max(18, width * 0.22), Math.max(6, height * 0.09), 0.14);
+      ctx.save();
+      ctx.fillStyle = 'rgba(18, 10, 8, 0.58)';
+      ctx.beginPath();
+      ctx.ellipse(screenX, screenY + 8, Math.max(16, width * 0.26), Math.max(7, height * 0.12), 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    } else {
+      drawShadowAtScreen(screenX, screenY + 10, Math.max(16, width * 0.22 * (Number(obj.shadowScale) || 1)), Math.max(6, height * 0.1), 0.22);
+    }
+
+    ctx.save();
+    ctx.translate(screenX, screenY);
+    ctx.rotate(Number(obj.angle) || 0);
+    if (recentlyHit) ctx.filter = 'brightness(1.18) saturate(1.2)';
+    else if (obj.destroyed) ctx.filter = 'grayscale(0.65) brightness(0.48) saturate(0.4)';
+    else if (damaged) ctx.filter = 'brightness(0.94) saturate(0.92)';
+
+    if (sprite?.complete && sprite.naturalWidth > 0) {
+      ctx.drawImage(sprite, -width * 0.5, -height * anchorY, width, height);
+    } else {
+      ctx.fillStyle = obj.destroyed ? '#3f3f46' : '#64748b';
+      ctx.fillRect(-width * 0.5, -height * 0.5, width, height);
+    }
+
+    if (damaged && !obj.destroyed) {
+      ctx.strokeStyle = 'rgba(248, 250, 252, 0.2)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-width * 0.18, -height * 0.06);
+      ctx.lineTo(width * 0.12, height * 0.16);
+      ctx.moveTo(width * 0.06, -height * 0.2);
+      ctx.lineTo(width * 0.18, height * 0.08);
+      ctx.stroke();
+    }
+
+    if (obj.destroyed && obj.explosive) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = 'rgba(251, 146, 60, 0.16)';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, Math.max(10, width * 0.15), Math.max(10, height * 0.12), 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+    drawMapObjectHpBar(obj, screenX, screenY);
   }
 }
 
@@ -1569,6 +1743,18 @@ function drawMinimap() {
 
   minimapCtx.restore();
 
+  for (const obj of game.state.decor?.objects || []) {
+    if (!isVisibleInMini(obj.x, obj.y, Math.max(Number(obj.w) || 0, Number(obj.h) || 0))) continue;
+    const objW = Math.max(2, (Number(obj.w) || 20) * sx);
+    const objH = Math.max(2, (Number(obj.h) || 20) * sy);
+    minimapCtx.save();
+    minimapCtx.translate(toMapX(obj.x), toMapY(obj.y));
+    minimapCtx.rotate(Number(obj.angle) || 0);
+    minimapCtx.fillStyle = obj.destroyed ? 'rgba(120, 113, 108, 0.55)' : 'rgba(226, 232, 240, 0.4)';
+    minimapCtx.fillRect(-objW * 0.5, -objH * 0.5, objW, objH);
+    minimapCtx.restore();
+  }
+
   for (const orb of game.state.xpOrbs || []) {
     dot(orb.x, orb.y, Math.max(1.6 * dpr, 1.5), '#38bdf8');
   }
@@ -1730,6 +1916,7 @@ function render(ts) {
   }
   drawGround();
   drawBloodPuddles();
+  drawMapObjects(Number(game.state.now) || Date.now());
   drawXpOrbs(game.state.xpOrbs || [], Number(game.state.now) || Date.now());
   drawBossPortals(game.state.bossPortals || [], Number(game.state.now) || Date.now());
   drawSkillOfferOrbs(game.state.skillOrbs || [], Number(game.state.now) || Date.now());
