@@ -39,6 +39,7 @@ const PLAYER_SESSION_COOKIE = 'crimson_player_session';
 const INSTANCE_ID = (process.env.INSTANCE_ID || `${require('os').hostname()}-${process.pid}`).toString().trim();
 const SHUTDOWN_GRACE_MS = Math.max(1000, Number(process.env.SHUTDOWN_GRACE_MS) || 8000);
 const RESTART_RETRY_MS = Math.max(1000, Number(process.env.RESTART_RETRY_MS) || 2500);
+const PLAYER_RECONNECT_GRACE_MS = Math.max(5000, Number(process.env.PLAYER_RECONNECT_GRACE_MS) || 30000);
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || (IS_PROD ? '' : `http://localhost:${PORT}`)).toString().trim().replace(/\/+$/, '');
 const SESSION_COOKIE_DOMAIN = (process.env.SESSION_COOKIE_DOMAIN || (IS_PROD ? '.rodion.pro' : '')).toString().trim();
 const GOOGLE_CLIENT_ID = (process.env.GOOGLE_CLIENT_ID || '').toString().trim();
@@ -2336,6 +2337,32 @@ function findOccupiedPlayer(name) {
   return null;
 }
 
+function isSocketOpen(ws) {
+  return Boolean(ws && ws.readyState === WebSocket.OPEN);
+}
+
+function isPlayerReconnectPending(player, now = Date.now()) {
+  return Boolean(
+    player
+    && player.playerAccountId
+    && Math.max(0, Number(player.resumeExpiresAt) || 0) > now,
+  );
+}
+
+function findRoomPlayerByAccount(playerAccountId, requestedCode = '') {
+  const accountId = Math.max(0, Number(playerAccountId) || 0);
+  const normalizedCode = cleanRoomCodeForLookup(requestedCode);
+  if (!accountId) return null;
+  for (const room of rooms.values()) {
+    if (normalizedCode && room.code !== normalizedCode) continue;
+    for (const player of room.players.values()) {
+      if (Math.max(0, Number(player?.playerAccountId) || 0) !== accountId) continue;
+      return { room, player };
+    }
+  }
+  return null;
+}
+
 function resolveJoinIdentity(ws, rawName) {
   const normalizedName = normalizeNickname(rawName || 'Fighter') || 'Fighter';
   const nicknameStatus = playerAuthStore.getNicknameStatus(normalizedName);
@@ -2481,7 +2508,7 @@ function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode, reques
   return rooms.get(code);
 }
 function sendTo(ws, payload) {
-  if (ws.readyState === WebSocket.OPEN) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(payload), { compress: false });
   }
 }
@@ -2984,6 +3011,7 @@ function createCompanion(room, owner, def, ordinal = 0) {
     weaponMagazine: Math.max(1, Math.floor(Number(WEAPONS[String(def.companionWeaponKey || 'pistol').toLowerCase()]?.magazineSize) || 1)),
     weaponReserveAmmo: null,
     weaponReloadLeftMs: 0,
+    reloadSpeedMul: normalizeReloadSpeedMul(owner?.reloadSpeedMul),
     playerClass: owner.playerClass || 'cyber',
     name: '',
     holdOffsetX: Math.cos(holdAngle) * holdRadius,
@@ -3051,9 +3079,13 @@ function getWeaponMagazineSize(weaponKey) {
   return Math.max(1, Math.floor(Number(weapon.magazineSize) || 1));
 }
 
-function getWeaponReloadMs(weaponKey) {
+function normalizeReloadSpeedMul(value) {
+  return Math.max(0.2, Number(value) || 1);
+}
+
+function getWeaponReloadMs(weaponKey, reloadSpeedMul = 1) {
   const weapon = WEAPONS[String(weaponKey || 'pistol').toLowerCase()] || WEAPONS.pistol;
-  return Math.max(120, Math.floor(Number(weapon.reloadMs) || 900));
+  return Math.max(120, Math.floor((Number(weapon.reloadMs) || 900) / normalizeReloadSpeedMul(reloadSpeedMul)));
 }
 
 function ensureCompanionWeaponAmmo(companion) {
@@ -3073,7 +3105,7 @@ function startCompanionReload(companion) {
   ensureCompanionWeaponAmmo(companion);
   if (Number(companion.weaponReloadLeftMs) > 0) return true;
   if (Math.max(0, Math.floor(Number(companion.weaponMagazine) || 0)) >= getWeaponMagazineSize(companion.weaponKey)) return false;
-  companion.weaponReloadLeftMs = getWeaponReloadMs(companion.weaponKey);
+  companion.weaponReloadLeftMs = getWeaponReloadMs(companion.weaponKey, companion.reloadSpeedMul);
   companion.fireCooldownLeft = Math.max(Number(companion.fireCooldownLeft) || 0, companion.weaponReloadLeftMs);
   return true;
 }
@@ -3167,6 +3199,7 @@ function tickCompanions(room, dtSec, now) {
   for (const companion of room.companions) {
     const owner = room.players.get(companion.ownerId);
     if (!owner) continue;
+    companion.reloadSpeedMul = normalizeReloadSpeedMul(owner.reloadSpeedMul);
     updateCompanionReload(companion, dtSec * 1000);
     const squad = byOwner.get(companion.ownerId) || [companion];
     const slotIndex = Math.max(0, squad.findIndex((item) => item.id === companion.id));
@@ -3584,7 +3617,7 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
     magazineSize: Math.max(1, Math.floor(Number(WEAPONS[p.weaponKey]?.magazineSize) || 1)),
     reserveAmmo: p.weaponReserveAmmo,
     reloadLeftMs: Math.max(0, Math.round(Number(p.weaponReloadLeftMs) || 0)),
-    reloadTotalMs: Math.max(120, Math.round(Number(WEAPONS[p.weaponKey]?.reloadMs) || 900)),
+    reloadTotalMs: getWeaponReloadMs(p.weaponKey, p.reloadSpeedMul),
     aimX: Number(p.aimX) || p.x,
     aimY: Number(p.aimY) || p.y,
     shooting: Boolean(p.shooting),
@@ -3648,7 +3681,7 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
     magazineSize: getWeaponMagazineSize(companion.weaponKey),
     reserveAmmo: null,
     reloadLeftMs: Math.max(0, Math.round(Number(companion.weaponReloadLeftMs) || 0)),
-    reloadTotalMs: getWeaponReloadMs(companion.weaponKey),
+    reloadTotalMs: getWeaponReloadMs(companion.weaponKey, companion.reloadSpeedMul),
     aimX: Number(companion.aimX) || companion.x,
     aimY: Number(companion.aimY) || companion.y,
     shooting: Number(companion.fireCooldownLeft) > 0 && now - Number(companion.lastShotAt || 0) < 120,
@@ -4138,7 +4171,7 @@ function startPlayerReload(player, weapon, { force = false } = {}) {
   const magazine = Math.max(0, Math.floor(Number(player.weaponMagazine) || 0));
   if (!force && magazine >= magazineSize) return false;
   if (player.weaponReserveAmmo !== null && Math.max(0, Math.floor(Number(player.weaponReserveAmmo) || 0)) <= 0) return false;
-  player.weaponReloadLeftMs = Math.max(120, Math.floor(Number(weapon.reloadMs) || 900));
+  player.weaponReloadLeftMs = getWeaponReloadMs(player.weaponKey, player.reloadSpeedMul);
   player.fireCooldownLeft = Math.max(player.fireCooldownLeft || 0, player.weaponReloadLeftMs);
   return true;
 }
@@ -4394,6 +4427,7 @@ function applyPersistentHeroSkillsToPlayer(player) {
 function rebuildPlayerDerivedStats(player) {
   player.damageMul = 1;
   player.fireRateMul = 1;
+  player.reloadSpeedMul = 1;
   player.moveSpeedMul = 1;
   player.maxHpBonus = 0;
   player.hpRegenPerSec = 0;
@@ -4410,6 +4444,7 @@ function rebuildPlayerDerivedStats(player) {
     if (lvl <= 0) continue;
     player.damageMul += (Number(def.damageMulPerLevel) || 0) * lvl;
     player.fireRateMul += (Number(def.fireRateMulPerLevel) || 0) * lvl;
+    player.reloadSpeedMul += (Number(def.reloadSpeedMulPerLevel) || 0) * lvl;
     player.moveSpeedMul += (Number(def.moveSpeedMulPerLevel) || 0) * lvl;
     player.maxHpBonus += (Number(def.maxHpFlatPerLevel) || 0) * lvl;
     player.hpRegenPerSec += (Number(def.hpRegenPerSecPerLevel) || 0) * lvl;
@@ -4423,6 +4458,7 @@ function rebuildPlayerDerivedStats(player) {
   if (accountBonuses) {
     player.damageMul += Number(accountBonuses.damageMul) || 0;
     player.fireRateMul += Number(accountBonuses.fireRateMul) || 0;
+    player.reloadSpeedMul += Number(accountBonuses.reloadSpeedMul) || 0;
     player.moveSpeedMul += Number(accountBonuses.moveSpeedMul) || 0;
     player.maxHpBonus += Number(accountBonuses.maxHpFlat) || 0;
     player.hpRegenPerSec += Number(accountBonuses.hpRegenPerSec) || 0;
@@ -4437,12 +4473,15 @@ function rebuildPlayerDerivedStats(player) {
     for (const buff of player.activeConsumableBuffs) {
       player.damageMul += Number(buff.damageMul) || 0;
       player.fireRateMul += Number(buff.fireRateMul) || 0;
+      player.reloadSpeedMul += Number(buff.reloadSpeedMul) || 0;
       player.moveSpeedMul += Number(buff.moveSpeedMul) || 0;
       player.hpRegenPerSec += Number(buff.hpRegenPerSec) || 0;
     }
   } else {
     player.activeConsumableBuffs = [];
   }
+
+  player.reloadSpeedMul = normalizeReloadSpeedMul(player.reloadSpeedMul);
 
   const nextMaxHp = PLAYER_HP_MAX + Math.max(0, Math.round(player.maxHpBonus));
   if (!Number.isFinite(player.maxHp) || player.maxHp <= 0) player.maxHp = PLAYER_HP_MAX;
@@ -4618,7 +4657,7 @@ function buildReplayFrameBase(room, now) {
       Math.max(1, Math.floor(Number(WEAPONS[p.weaponKey]?.magazineSize) || 1)),
       Number.isFinite(Number(p.weaponReserveAmmo)) ? Math.max(0, Math.floor(Number(p.weaponReserveAmmo) || 0)) : -1,
       Math.max(0, Math.round(Number(p.weaponReloadLeftMs) || 0)),
-      Math.max(120, Math.round(Number(WEAPONS[p.weaponKey]?.reloadMs) || 900)),
+      getWeaponReloadMs(p.weaponKey, p.reloadSpeedMul),
     ];
   });
   const companions = (room.companions || []).map((companion) => ([
@@ -4632,7 +4671,7 @@ function buildReplayFrameBase(room, now) {
     Math.max(0, Math.floor(Number(companion.weaponMagazine) || 0)),
     getWeaponMagazineSize(companion.weaponKey),
     Math.max(0, Math.round(Number(companion.weaponReloadLeftMs) || 0)),
-    getWeaponReloadMs(companion.weaponKey),
+    getWeaponReloadMs(companion.weaponKey, companion.reloadSpeedMul),
   ]));
   const enemies = room.enemies.map((e) => ([
     e.id,
@@ -5782,6 +5821,8 @@ function joinRoom(ws, join) {
     }
   }
   const spectating = Boolean(join?.spectate || join?.spectator || join?.watch);
+  const resumeOnly = Boolean(join?.resumeOnly || join?.resume);
+  const sessionAccountId = Math.max(0, Number(ws.playerSession?.player?.id) || 0);
   if (spectating) {
     const room = requestedCode ? rooms.get(requestedCode) : null;
     if (!room) {
@@ -5825,6 +5866,80 @@ function joinRoom(ws, join) {
       message: `Spectating room ${room.code} (${room.players.size}/${roomMaxPlayers})`,
     });
     return spectator;
+  }
+  const resumable = sessionAccountId
+    ? (findRoomPlayerByAccount(sessionAccountId, requestedCode) || findRoomPlayerByAccount(sessionAccountId))
+    : null;
+  if (resumable?.room && resumable?.player) {
+    const currentPlayer = resumable.player;
+    const currentRoom = resumable.room;
+    const canResume = resumeOnly
+      || isPlayerReconnectPending(currentPlayer)
+      || !isSocketOpen(currentPlayer.ws);
+    if (canResume) {
+      const previousWs = currentPlayer.ws;
+      if (previousWs && previousWs !== ws && isSocketOpen(previousWs)) {
+        sendTo(previousWs, {
+          type: 'system',
+          message: 'Session resumed in another tab.',
+        });
+        try {
+          previousWs.close(4001, 'session resumed');
+        } catch {
+          // ignore socket handoff race
+        }
+      }
+      currentPlayer.ws = ws;
+      currentPlayer.moveX = 0;
+      currentPlayer.moveY = 0;
+      currentPlayer.shooting = false;
+      currentPlayer.jumpQueued = false;
+      currentPlayer.netQuality = 0;
+      currentPlayer.netPingMs = 0;
+      currentPlayer.disconnectedAt = 0;
+      currentPlayer.resumeExpiresAt = 0;
+      publishRuntimeRegistry();
+      const roomMaxPlayers = Math.max(1, Number(currentRoom.maxPlayers) || getRoomMaxPlayers(currentRoom.gameMode));
+      sendTo(ws, {
+        type: 'welcome',
+        id: currentPlayer.id,
+        roomCode: currentRoom.code,
+        instanceId: currentRoom.instanceId || INSTANCE_ID,
+        spectators: Math.max(0, Number(currentRoom.spectators?.size) || 0),
+        spectatorCount: Math.max(0, Number(currentRoom.spectators?.size) || 0),
+        tickRate: currentRoom.sync.tickRate,
+        sync: currentRoom.sync,
+        maxPlayers: roomMaxPlayers,
+        skillCatalog: skillsStore.getList(),
+        me: {
+          name: currentPlayer.name,
+          playerAccountId: currentPlayer.playerAccountId,
+          isRegisteredNickname: currentPlayer.isRegisteredNickname,
+          activeHero: currentPlayer.playerClass,
+        },
+        progression: currentPlayer.accountProgression,
+        progressionCatalog,
+        chatHistory: Array.isArray(currentRoom.chatHistory) ? currentRoom.chatHistory.slice(-CHAT_WELCOME_LIMIT) : [],
+        resumed: true,
+      });
+      sendTo(ws, { type: 'state', payload: serializeRoom(currentRoom) });
+      broadcastRoom(currentRoom, {
+        type: 'system',
+        message: `${currentPlayer.name} reconnected to room ${currentRoom.code}.`,
+      });
+      return currentPlayer;
+    }
+  }
+  if (resumeOnly) {
+    sendTo(ws, {
+      type: 'joinError',
+      message: requestedCode
+        ? `Active run in room ${requestedCode} was not found or can no longer be resumed.`
+        : 'Active run was not found or can no longer be resumed.',
+      code: 404,
+      roomCode: requestedCode,
+    });
+    return null;
   }
   const room = getOrCreateRoom(join?.roomCode, join?.sync, join?.gameMode, join?.pvpDurationMin);
   const roomMaxPlayers = Math.max(1, Number(room.maxPlayers) || getRoomMaxPlayers(room.gameMode));
@@ -5899,6 +6014,7 @@ function joinRoom(ws, join) {
     skillOrder: [],
     damageMul: 1,
     fireRateMul: 1,
+    reloadSpeedMul: 1,
     moveSpeedMul: 1,
     hpRegenPerSec: 0,
     pickupRadius: PLAYER_PICKUP_RADIUS_BASE,
@@ -5931,6 +6047,8 @@ function joinRoom(ws, join) {
       claimedAt: Date.now(),
       callbackSentAt: 0,
     } : null,
+    disconnectedAt: 0,
+    resumeExpiresAt: 0,
   };
 
   applyPersistentHeroSkillsToPlayer(player);
@@ -5973,7 +6091,7 @@ function joinRoom(ws, join) {
   return player;
 }
 
-function removeRoomClient(client) {
+function removeRoomClient(client, options = {}) {
   if (!client) return;
   const room = rooms.get(client.roomCode);
   if (!room) return;
@@ -5982,6 +6100,21 @@ function removeRoomClient(client) {
     if (room.players.size === 0 && room.spectators.size === 0) {
       rooms.delete(room.code);
     }
+    publishRuntimeRegistry();
+    return;
+  }
+
+  const preserveForReconnect = !options.force
+    && !isShuttingDown
+    && Math.max(0, Number(client.playerAccountId) || 0) > 0;
+  if (preserveForReconnect) {
+    const now = Date.now();
+    client.moveX = 0;
+    client.moveY = 0;
+    client.shooting = false;
+    client.jumpQueued = false;
+    client.disconnectedAt = now;
+    client.resumeExpiresAt = now + PLAYER_RECONNECT_GRACE_MS;
     publishRuntimeRegistry();
     return;
   }
@@ -6173,7 +6306,7 @@ wss.on('connection', (ws, req) => {
     }
 
     if (msg.type === 'leave') {
-      removeRoomClient(current);
+      removeRoomClient(current, { force: true });
       client = null;
     }
   });
@@ -6182,11 +6315,18 @@ wss.on('connection', (ws, req) => {
     activeSockets.delete(ws);
     publishRuntimeRegistry();
     if (!client) return;
+    if (client.ws !== ws) return;
     removeRoomClient(client);
   });
 });
 
 function tickRoom(room, dtSec, now) {
+  for (const player of Array.from(room.players.values())) {
+    if (!player?.resumeExpiresAt) continue;
+    if (Math.max(0, Number(player.resumeExpiresAt) || 0) > now) continue;
+    removeRoomClient(player, { force: true });
+  }
+  if (!rooms.has(room.code)) return;
   const tickDiag = RUNTIME_DIAG_ENABLED ? {
     systemMs: 0,
     playersMs: 0,

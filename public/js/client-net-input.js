@@ -327,6 +327,8 @@ function localizeSettingsMenuControls() {
     minimap: isRu ? 'Показывать миникарту' : 'Show minimap',
     tracers: isRu ? 'Трассеры пуль' : 'Bullet tracers',
     enemyHp: isRu ? 'HP врагов' : 'Enemy HP Bars',
+    companionNames: isRu ? 'Ники союзных ботов' : 'Ally bot names',
+    companionReserveAmmo: isRu ? 'Патроны союзного бота' : 'Ally bot ammo',
     extraBlood: isRu ? 'Больше крови' : 'Extra blood',
     hitEffects: isRu ? 'Эффекты попаданий' : 'Hit effects',
     autoFire: isRu ? 'Авто-огонь' : 'Auto fire',
@@ -370,6 +372,8 @@ function localizeSettingsMenuControls() {
     'show-minimap-toggle': settingsText.minimap,
     'bullet-tracers-toggle': settingsText.tracers,
     'enemy-hp-toggle': settingsText.enemyHp,
+    'show-companion-names-toggle': settingsText.companionNames,
+    'show-companion-reserve-toggle': settingsText.companionReserveAmmo,
     'extra-blood-toggle': settingsText.extraBlood,
     'hit-effects-toggle': settingsText.hitEffects,
     'auto-fire-toggle': settingsText.autoFire,
@@ -2003,6 +2007,7 @@ async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
   const mode = joinSync ? 'create' : 'join';
   const skipRouting = options?.skipRouting === true;
   const source = options?.source || 'menu';
+  const resumeOnly = options?.resumeOnly === true;
   if (typeof window.cwSetPendingJoinAnalytics === 'function') {
     window.cwSetPendingJoinAnalytics(mode, roomCode, source);
   }
@@ -2061,6 +2066,7 @@ async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
     name,
     playerClass: selectedPlayerClass,
     roomCode,
+    resumeOnly: resumeOnly || undefined,
     integrationToken: pendingIntegrationToken || undefined,
     sync: joinSync || undefined,
     gameMode: mode === 'create' ? selectedGameMode : undefined,
@@ -5780,6 +5786,9 @@ function leaveActiveRoom() {
   if (ws.readyState === WebSocket.OPEN && (game.myId || game.spectating)) {
     sendJson({ type: 'leave' });
   }
+  if (typeof window.cwClearStoredActiveRunResume === 'function') {
+    window.cwClearStoredActiveRunResume();
+  }
   clearLocalSessionState();
 }
 
@@ -5793,6 +5802,36 @@ setInterval(() => {
     requestRecordsList(recordsUi.page);
   }
 }, 5000);
+
+function startPendingRoomIntent() {
+  if (!game.connected) return false;
+  if (pendingAutoSpectate && roomCodeInput?.value) {
+    pendingAutoSpectate = false;
+    joinMode = 'join';
+    void sendSpectateRequest(roomCodeInput.value.trim(), { skipRouting: true });
+    return true;
+  }
+  if (pendingAutoJoin && roomCodeInput?.value) {
+    pendingAutoJoin = false;
+    joinMode = 'join';
+    void sendJoinRequest(roomCodeInput.value.trim(), null, {
+      skipRouting: true,
+      source: pendingStoredRunResume ? 'auto_resume' : 'auto_join',
+      resumeOnly: pendingStoredRunResume,
+    });
+    return true;
+  }
+  if (pendingAutoCreate) {
+    pendingAutoCreate = false;
+    joinMode = 'create';
+    void sendJoinRequest('', configFromSyncUi(), { skipRouting: true });
+    return true;
+  }
+  return false;
+}
+
+window.cwStartPendingRoomIntent = startPendingRoomIntent;
+
 registerSocketHandlers({
 open: () => {
   game.connected = true;
@@ -5805,19 +5844,7 @@ open: () => {
     requestRecordsList(1);
   }
   sendNetPing();
-  if (pendingAutoSpectate && roomCodeInput?.value) {
-    pendingAutoSpectate = false;
-    joinMode = 'join';
-    void sendSpectateRequest(roomCodeInput.value.trim(), { skipRouting: true });
-  } else if (pendingAutoJoin && roomCodeInput?.value) {
-    pendingAutoJoin = false;
-    joinMode = 'join';
-    void sendJoinRequest(roomCodeInput.value.trim(), null, { skipRouting: true });
-  } else if (pendingAutoCreate) {
-    pendingAutoCreate = false;
-    joinMode = 'create';
-    void sendJoinRequest('', configFromSyncUi(), { skipRouting: true });
-  }
+  startPendingRoomIntent();
 },
 close: () => {
   game.connected = false;
@@ -5929,7 +5956,11 @@ message: (ev) => {
     if (!game.spectating) copyRoomCodeToClipboard(msg.roomCode, { silent: true });
     statusEl.textContent = game.spectating
       ? `Spectating room ${msg.roomCode} | tick ${roomSync.tickRate}`
-      : `Online as ${msg.id} | tick ${roomSync.tickRate}`;
+      : (msg.resumed ? `Reconnected as ${msg.id} | tick ${roomSync.tickRate}` : `Online as ${msg.id} | tick ${roomSync.tickRate}`);
+    if (!game.spectating && msg.me?.playerAccountId && typeof window.cwSetStoredActiveRunResume === 'function') {
+      window.cwSetStoredActiveRunResume(msg.roomCode, msg.me.playerAccountId);
+    }
+    if (!game.spectating) pendingStoredRunResume = false;
     const pendingJoin = game.analytics?.pendingJoin || null;
     if (!game.spectating && typeof window.cwTrackMetrikaGoal === 'function') {
       const mode = pendingJoin?.mode || (joinMode === 'create' ? 'create' : 'join');
@@ -6042,13 +6073,23 @@ message: (ev) => {
         if (pendingAutoSpectate || game.spectating || game.embedMode) {
           void sendSpectateRequest(msg.roomCode || roomCodeInput?.value || '', { skipRouting: true });
         } else {
-          void sendJoinRequest(msg.roomCode || roomCodeInput?.value || '', null, { skipRouting: true });
+          void sendJoinRequest(msg.roomCode || roomCodeInput?.value || '', null, {
+            skipRouting: true,
+            source: pendingStoredRunResume ? 'auto_resume' : 'menu',
+            resumeOnly: pendingStoredRunResume,
+          });
         }
       } catch {
         statusEl.textContent = msg.message || 'Failed to switch game server.';
         setJoinFeedback(msg.message || 'Failed to switch game server.');
       }
       return;
+    }
+    if (pendingStoredRunResume) {
+      pendingStoredRunResume = false;
+      if (typeof window.cwClearStoredActiveRunResume === 'function') {
+        window.cwClearStoredActiveRunResume();
+      }
     }
     if (Number(msg.retryAfterMs) > 0) {
       scheduleClientReload(Number(msg.retryAfterMs), msg.message || 'Server restarting. Reconnecting...');
@@ -6379,6 +6420,7 @@ function sendInput() {
 }
 
 window.addEventListener('cw:i18n-changed', () => {
+  localizeSettingsMenuControls();
   applyMenuButtonGlyph(toggleInfoBtn);
   applyMenuButtonGlyph(joinToggleInfoBtn);
   renderGameVersionHistory();

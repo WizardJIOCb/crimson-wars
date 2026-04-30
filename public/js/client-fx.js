@@ -794,7 +794,7 @@ function processStateFx(nextState) {
         key: `reload:${p.id}:${p.weaponKey || 'weapon'}`,
         minGapMs: 120,
         radius: isMe || isMyCompanion ? 1600 : 900,
-        volume: isMe ? 0.95 : (isMyCompanion ? 0.7 : 0.38),
+        volume: isMe ? 0.72 : (isMyCompanion ? 0.52 : 0.29),
       });
     }
 

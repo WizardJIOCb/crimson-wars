@@ -12,6 +12,8 @@ const showChatToggleEl = document.getElementById('show-chat-toggle');
 const gameSfxToggleEl = document.getElementById('game-sfx-toggle');
 const gameSfxVolumeEl = document.getElementById('game-sfx-volume');
 const gameSfxVolumeValueEl = document.getElementById('game-sfx-volume-value');
+const showCompanionNamesToggleEl = document.getElementById('show-companion-names-toggle');
+const showCompanionReserveToggleEl = document.getElementById('show-companion-reserve-toggle');
 const showCommentatorToggleEl = document.getElementById('show-commentator-toggle');
 const commentatorVoiceSettingToggleEl = document.getElementById('commentator-voice-setting-toggle');
 const replayPlayerToggleEl = document.getElementById('replay-player-toggle');
@@ -288,6 +290,8 @@ const game = {
   shadowsEnabled: getToggleDefaultOn('cw:shadowsEnabled'),
   bulletTracersEnabled: getToggleDefaultOn('cw:bulletTracersEnabled'),
   enemyHpBarsEnabled: getToggleDefaultOn('cw:enemyHpBarsEnabled'),
+  showCompanionNamesEnabled: getToggleDefaultOff('cw:showCompanionNamesEnabled'),
+  showCompanionReserveAmmoEnabled: getToggleDefaultOn('cw:showCompanionReserveAmmoEnabled'),
   extraBloodEnabled: getToggleDefaultOn('cw:extraBloodEnabled'),
   hitEffectsEnabled: getToggleDefaultOn('cw:hitEffectsEnabled'),
   autoFireEnabled: getToggleDefaultOn('cw:autoFireEnabled'),
@@ -396,6 +400,8 @@ const NICKNAME_STORAGE_KEY = 'cw:nickname';
 const PLAYER_CLASS_STORAGE_KEY = 'cw:playerClass';
 const GAME_MODE_STORAGE_KEY = 'cw:gameMode';
 const PVP_DURATION_STORAGE_KEY = 'cw:pvpDurationMin';
+const ACTIVE_RUN_RESUME_STORAGE_KEY = 'cw:activeRunResume';
+const ACTIVE_RUN_RESUME_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 let selectedPlayerClass = 'cyber';
 let selectedGameMode = normalizeGameMode(localStorage.getItem(GAME_MODE_STORAGE_KEY) || 'normal');
 let selectedPvpDurationMin = normalizePvpDurationMin(localStorage.getItem(PVP_DURATION_STORAGE_KEY) || '10');
@@ -435,6 +441,8 @@ let pendingReplayStartSec = 0;
 let pendingReplayApiPath = '';
 let routedIntent = null;
 let authPopupWindow = null;
+let pendingStoredRunResume = false;
+let storedRunResumeAutoAttempted = false;
 const recordReplay = {
   recordId: 0,
   record: null,
@@ -448,6 +456,70 @@ const recordReplay = {
   rafId: 0,
   seeking: false,
 };
+
+function readStoredActiveRunResume() {
+  const raw = localStorage.getItem(ACTIVE_RUN_RESUME_STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    const roomCode = String(parsed?.roomCode || '').trim().toUpperCase();
+    const playerAccountId = Math.max(0, Number(parsed?.playerAccountId) || 0);
+    const savedAt = Math.max(0, Number(parsed?.savedAt) || 0);
+    if (!roomCode || !playerAccountId || !savedAt) return null;
+    if (Date.now() - savedAt > ACTIVE_RUN_RESUME_MAX_AGE_MS) return null;
+    return {
+      roomCode,
+      playerAccountId,
+      savedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function setStoredActiveRunResume(roomCode, playerAccountId) {
+  const normalizedRoomCode = String(roomCode || '').trim().toUpperCase();
+  const normalizedPlayerAccountId = Math.max(0, Number(playerAccountId) || 0);
+  if (!normalizedRoomCode || !normalizedPlayerAccountId) return;
+  localStorage.setItem(ACTIVE_RUN_RESUME_STORAGE_KEY, JSON.stringify({
+    roomCode: normalizedRoomCode,
+    playerAccountId: normalizedPlayerAccountId,
+    savedAt: Date.now(),
+  }));
+}
+
+function clearStoredActiveRunResume() {
+  pendingStoredRunResume = false;
+  storedRunResumeAutoAttempted = false;
+  localStorage.removeItem(ACTIVE_RUN_RESUME_STORAGE_KEY);
+}
+
+function queueStoredActiveRunResume() {
+  const playerAccountId = Math.max(0, Number(game.playerAuth?.player?.id) || 0);
+  if (!playerAccountId || storedRunResumeAutoAttempted) return false;
+  if (game.myId || game.spectating || pendingAutoJoin || pendingAutoCreate || pendingAutoSpectate) return false;
+  if (pendingReplayRecordId > 0 || pendingReplayApiPath) return false;
+  const stored = readStoredActiveRunResume();
+  if (!stored) {
+    clearStoredActiveRunResume();
+    return false;
+  }
+  if (stored.playerAccountId !== playerAccountId) {
+    clearStoredActiveRunResume();
+    return false;
+  }
+  storedRunResumeAutoAttempted = true;
+  pendingStoredRunResume = true;
+  joinMode = 'join';
+  pendingAutoCreate = false;
+  pendingAutoSpectate = false;
+  pendingAutoJoin = true;
+  if (roomCodeInput) roomCodeInput.value = stored.roomCode;
+  if (typeof window.cwStartPendingRoomIntent === 'function' && game.connected) {
+    window.cwStartPendingRoomIntent();
+  }
+  return true;
+}
 const replayGame = {
   active: false,
   recordId: 0,
@@ -1196,8 +1268,10 @@ function handleServerRestartNotice(msg) {
 }
 
 async function refreshPlayerAuthSession({ silent = false } = {}) {
+  let authLoaded = false;
   try {
     const data = await apiJson('/api/player/me', { method: 'GET' });
+    authLoaded = true;
     game.playerAuth.player = data.player || null;
     game.playerAuth.identities = Array.isArray(data.identities) ? data.identities : [];
     game.playerAuth.needsNicknameSetup = Boolean(data?.nicknameSetupRequired);
@@ -1224,6 +1298,11 @@ async function refreshPlayerAuthSession({ silent = false } = {}) {
   }
   if (typeof globalThis.renderNewsFeed === 'function') {
     globalThis.renderNewsFeed();
+  }
+  if (authLoaded && game.playerAuth.player) {
+    queueStoredActiveRunResume();
+  } else if (authLoaded && !game.playerAuth.player) {
+    clearStoredActiveRunResume();
   }
   if (!game.playerAuth.player && !silent) {
     void updateNicknameStatus(nameInput?.value || '');
@@ -1346,6 +1425,7 @@ async function logoutPlayerAccount() {
   try {
     await apiJson('/api/player/logout', { method: 'POST', body: '{}' });
     trackMetrikaGoal('player_logout_success', { auth_mode: 'account' });
+    clearStoredActiveRunResume();
     game.playerAuth.player = null;
     game.playerAuth.identities = [];
     game.playerAuth.needsNicknameSetup = false;
@@ -1544,6 +1624,8 @@ applyInitialRoomIntent();
 renderPlayerAuthUi();
 renderInstanceMeta();
 consumeAuthRedirectFeedback();
+window.cwSetStoredActiveRunResume = setStoredActiveRunResume;
+window.cwClearStoredActiveRunResume = clearStoredActiveRunResume;
 void refreshPlayerAuthSession({ silent: true });
 
 function updateTopCenterHud(nowMs = Date.now()) {
@@ -1716,6 +1798,7 @@ function buildSkillCurrentStatLines(skill, def) {
   } else {
     const dmgPct = (Number(def?.damageMulPerLevel) || 0) * lvl * 100;
     const firePct = (Number(def?.fireRateMulPerLevel) || 0) * lvl * 100;
+    const reloadPct = (Number(def?.reloadSpeedMulPerLevel) || 0) * lvl * 100;
     const movePct = (Number(def?.moveSpeedMulPerLevel) || 0) * lvl * 100;
     const hpFlat = (Number(def?.maxHpFlatPerLevel) || 0) * lvl;
     const pickupFlat = (Number(def?.pickupRadiusPerLevel) || 0) * lvl;
@@ -1732,6 +1815,7 @@ function buildSkillCurrentStatLines(skill, def) {
 
     if (dmgPct !== 0) lines.push('Damage: +' + fmtSkillNumber(dmgPct, 1) + '%');
     if (firePct !== 0) lines.push('Fire rate: +' + fmtSkillNumber(firePct, 1) + '%');
+    if (reloadPct !== 0) lines.push('Reload speed: +' + fmtSkillNumber(reloadPct, 1) + '%');
     if (movePct !== 0) lines.push('Move speed: +' + fmtSkillNumber(movePct, 1) + '%');
     if (hpFlat !== 0) lines.push('Max HP: +' + Math.round(hpFlat));
     if (pickupFlat !== 0) lines.push('Pickup radius: +' + Math.round(pickupFlat));
@@ -2369,6 +2453,28 @@ enemyHpToggleEl?.addEventListener('change', () => {
   setEnemyHpBarsEnabled(enemyHpToggleEl.checked);
 });
 setEnemyHpBarsEnabled(game.enemyHpBarsEnabled);
+
+function setShowCompanionNamesEnabled(enabled) {
+  game.showCompanionNamesEnabled = Boolean(enabled);
+  if (showCompanionNamesToggleEl) showCompanionNamesToggleEl.checked = game.showCompanionNamesEnabled;
+  localStorage.setItem('cw:showCompanionNamesEnabled', game.showCompanionNamesEnabled ? '1' : '0');
+}
+
+showCompanionNamesToggleEl?.addEventListener('change', () => {
+  setShowCompanionNamesEnabled(showCompanionNamesToggleEl.checked);
+});
+setShowCompanionNamesEnabled(game.showCompanionNamesEnabled);
+
+function setShowCompanionReserveAmmoEnabled(enabled) {
+  game.showCompanionReserveAmmoEnabled = Boolean(enabled);
+  if (showCompanionReserveToggleEl) showCompanionReserveToggleEl.checked = game.showCompanionReserveAmmoEnabled;
+  localStorage.setItem('cw:showCompanionReserveAmmoEnabled', game.showCompanionReserveAmmoEnabled ? '1' : '0');
+}
+
+showCompanionReserveToggleEl?.addEventListener('change', () => {
+  setShowCompanionReserveAmmoEnabled(showCompanionReserveToggleEl.checked);
+});
+setShowCompanionReserveAmmoEnabled(game.showCompanionReserveAmmoEnabled);
 
 function setExtraBloodEnabled(enabled) {
   game.extraBloodEnabled = Boolean(enabled);

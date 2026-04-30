@@ -316,7 +316,7 @@ function drawPlayerWeaponAmmoBadge(p, sx, sy, offsetY = -52) {
   const barRatio = reloadLeft > 0
     ? Math.max(ammoRatio, Math.min(1, ammoRatio + ((1 - ammoRatio) * reloadProgress)))
     : ammoRatio;
-  const label = reloadLeft > 0 ? `${mag}/${reserve}` : `${mag}/${reserve}`;
+  const label = `${mag}/${reserve}`;
   const y = sy + offsetY;
   const w = Math.max(74, 42 + label.length * 6);
   const h = 18;
@@ -354,6 +354,72 @@ function drawPlayerWeaponAmmoBadge(p, sx, sy, offsetY = -52) {
   ctx.fillRect(x + 5, y + h - 4, w - 10, 2);
   ctx.fillStyle = barColor;
   ctx.fillRect(x + 5, y + h - 4, Math.max(1, (w - 10) * barRatio), 2);
+  ctx.restore();
+}
+
+function hashCompanionLabelSeed(value) {
+  const str = String(value || '');
+  let hash = 2166136261;
+  for (let i = 0; i < str.length; i += 1) {
+    hash ^= str.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function getCompanionDisplayName(p) {
+  const seed = hashCompanionLabelSeed(`${p?.ownerId || ''}:${p?.skillId || ''}:${p?.id || ''}:${p?.weaponKey || ''}`);
+  const lang = typeof window.cwI18nGetLanguage === 'function' ? window.cwI18nGetLanguage() : 'ru';
+  const weaponKey = String(p?.weaponKey || 'pistol').toLowerCase();
+  const pick = (list, shift = 0) => list[(seed >>> shift) % list.length];
+
+  if (lang === 'en') {
+    const prefixes = ['Tactical', 'Rowdy', 'Greasy', 'Lucky', 'Sneaky', 'Chaotic', 'Turbo', 'Certified'];
+    const byWeapon = {
+      pistol: ['Clickster', 'Magboy', 'Poppler', 'Snapdad'],
+      smg: ['Brrrtson', 'Sprinkles', 'Buzzman', 'Tape Deck'],
+      shotgun: ['Boomkins', 'Clapper', 'Big Snack', 'Doorbell'],
+      sniper: ['Zoomer', 'Long Ping', 'Blinkshot', 'Scope Dad'],
+    };
+    const suffixes = byWeapon[weaponKey] || ['Maglin', 'Gremlin', 'Blaster', 'Ammo Goblin'];
+    return `${pick(prefixes)} ${pick(suffixes, 3)}`;
+  }
+
+  const prefixes = ['Тактический', 'Шальной', 'Ржавый', 'Суетной', 'Бодрый', 'Лютый', 'Секретный', 'Легендарный'];
+  const byWeapon = {
+    pistol: ['Щелкун', 'Пулькин', 'Магазиныч', 'Бздынь'],
+    smg: ['Трррынь', 'Очередыч', 'Пыщыч', 'Шушпан'],
+    shotgun: ['Бабахыч', 'Дробыш', 'Хлопун', 'Вышибала'],
+    sniper: ['Прищур', 'Дальнобой', 'Тыкыч', 'Линза'],
+  };
+  const suffixes = byWeapon[weaponKey] || ['Патроныч', 'Пыхтун', 'Щелкун', 'Магазиныч'];
+  return `${pick(prefixes)} ${pick(suffixes, 3)}`;
+}
+
+function drawCompanionNameAmmoBadge(p, sx, sy) {
+  if (!p || !p.alive || !p.isCompanion) return;
+  if (!game.showCompanionNamesEnabled) return;
+  const displayName = String(p.name || '').trim() || getCompanionDisplayName(p);
+  const width = Math.max(62, Math.min(132, 18 + displayName.length * 6));
+  const height = 16;
+  const x = sx - width / 2;
+  const y = sy - 84;
+
+  ctx.save();
+  ctx.globalAlpha = 0.95;
+  ctx.fillStyle = 'rgba(5, 10, 18, 0.74)';
+  ctx.strokeStyle = 'rgba(186, 230, 253, 0.36)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(x, y, width, height, 6);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = 'bold 9px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(displayName, sx, y + (height / 2) + 0.5);
   ctx.restore();
 }
 
@@ -412,7 +478,7 @@ function drawCompanionReloadBar(p, sx, sy) {
   const width = 34;
   const height = 5;
   const x = sx - width / 2;
-  const y = sy - 45;
+  const y = sy - 35;
 
   ctx.save();
   ctx.globalAlpha = 0.94;
@@ -513,7 +579,7 @@ function drawWeaponIcon(sx, sy, weaponKey) {
   ctx.restore();
 }
 
-function drawPlayer(p, t, isMe, rx, ry) {
+function drawPlayer(p, t, isMe, rx, ry, drawUi = true) {
   if (!isVisibleWorld(rx, ry, 50)) return;
   const x = rx - camera.x;
   const y = ry - camera.y;
@@ -570,8 +636,35 @@ function drawPlayer(p, t, isMe, rx, ry) {
     drawCircle(rx, ry, 18, isMe ? '#22d3ee' : '#a78bfa');
   }
 
-  if (isCompanion) drawCompanionReloadBar(displayPlayer, x, y);
+  if (!drawUi) return;
+  if (isCompanion) drawCompanionNameAmmoBadge(displayPlayer, x, y);
+  if (isCompanion && game.showCompanionReserveAmmoEnabled) drawPlayerWeaponAmmoBadge(displayPlayer, x, y, -54);
   drawPlayerOverheadUi(displayPlayer, x, y, isMe);
+}
+
+function drawPlayerUiLayer(playersByDepth) {
+  if (!Array.isArray(playersByDepth) || playersByDepth.length <= 0) return;
+  let myItem = null;
+
+  for (const item of playersByDepth) {
+    const p = item?.p;
+    const rp = item?.rp;
+    if (!p?.alive || p.isCompanion) continue;
+    if (p.id === game.myId) {
+      myItem = item;
+      continue;
+    }
+    drawPlayerOverheadUi(p, (Number(rp?.x) || 0) - camera.x, (Number(rp?.y) || 0) - camera.y, false);
+  }
+
+  if (myItem?.p?.alive) {
+    drawPlayerOverheadUi(
+      myItem.p,
+      (Number(myItem.rp?.x) || 0) - camera.x,
+      (Number(myItem.rp?.y) || 0) - camera.y,
+      true,
+    );
+  }
 }
 function drawBossPortals(portals, nowMs) {
   if (!Array.isArray(portals)) return;
@@ -1584,8 +1677,9 @@ function render(ts) {
   for (const item of playersByDepth) {
     const p = item.p;
     const rp = item.rp;
-    drawPlayer(p, ts / 1000, p.id === game.myId, rp.x, rp.y);
+    drawPlayer(p, ts / 1000, p.id === game.myId, rp.x, rp.y, Boolean(p.isCompanion));
   }
+  drawPlayerUiLayer(playersByDepth);
 
   drawTrees();
 

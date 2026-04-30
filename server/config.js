@@ -156,6 +156,7 @@ const DROP_WEAPON_KEYS = ['smg', 'shotgun', 'sniper'];
 const DEFAULT_SKILL_DEFS = {
   weapon_mastery: { id: 'weapon_mastery', name: 'Weapon Mastery', kind: 'passive', rarity: 'common', maxLevel: 8, weight: 1.35, damageMulPerLevel: 0.11, desc: '+damage' },
   rapid_reload: { id: 'rapid_reload', name: 'Rapid Reload', kind: 'passive', rarity: 'common', maxLevel: 8, weight: 1.3, fireRateMulPerLevel: 0.1, desc: '+fire rate' },
+  tactical_slap: { id: 'tactical_slap', name: 'Tactical Slap', kind: 'passive', rarity: 'common', maxLevel: 6, weight: 0.92, reloadSpeedMulPerLevel: 0.1, desc: 'A dramatic mag slap speeds up reloads' },
   shilo_rm: { id: 'shilo_rm', name: 'Shilo RM', kind: 'passive', rarity: 'rare', maxLevel: 5, weight: 0.64, bulletPiercePerLevel: 1, bulletDamageMulPerLevel: 0.08, desc: 'Shilo Rap Machine: bullets pierce enemies and hit harder' },
   vitality: { id: 'vitality', name: 'Vitality', kind: 'passive', rarity: 'common', maxLevel: 8, weight: 1.25, maxHpFlatPerLevel: 20, desc: '+max HP' },
   haste: { id: 'haste', name: 'Haste', kind: 'passive', rarity: 'common', maxLevel: 7, weight: 1.2, moveSpeedMulPerLevel: 0.075, desc: '+move speed' },
@@ -374,6 +375,7 @@ const HERO_UNIQUE_SKILL_DEFS = {
     { id: 'adaptive_frame', name: 'Adaptive Frame', kind: 'passive', rarity: 'common', maxLevel: 10, unlockCostShards: 45, upgradeCostShardsBase: 16, upgradeCostShardsStep: 7, maxHpFlatPerLevel: 14, desc: '+max HP and stability' },
     { id: 'combat_firmware', name: 'Combat Firmware', kind: 'passive', rarity: 'rare', maxLevel: 10, unlockCostShards: 70, upgradeCostShardsBase: 20, upgradeCostShardsStep: 9, damageMulPerLevel: 0.038, fireRateMulPerLevel: 0.018, desc: '+damage and fire rate' },
     { id: 'sync_link', name: 'Sync Link', kind: 'passive', rarity: 'epic', maxLevel: 10, unlockCostShards: 110, upgradeCostShardsBase: 24, upgradeCostShardsStep: 10, globalAura: true, globalDamageMulPerLevel: 0.02, globalFireRateMulPerLevel: 0.012, desc: 'Boosts every other hero in the roster' },
+    { id: 'cache_goblin', name: 'Cache Goblin', kind: 'passive', rarity: 'rare', maxLevel: 10, unlockCostShards: 78, upgradeCostShardsBase: 22, upgradeCostShardsStep: 9, reloadSpeedMulPerLevel: 0.028, pickupRadiusPerLevel: 6, desc: 'Hidden cache goblins keep stuffing mags and loot into your hands' },
   ]),
   scout: makeHeroUniqueSkills('scout', [
     { id: 'razor_wind', name: 'Razor Wind', kind: 'active', castType: 'blade_orbit', rarity: 'rare', maxLevel: 10, unlockCostShards: 60, upgradeCostShardsBase: 22, upgradeCostShardsStep: 10, cooldownMs: 1300, cooldownMulPerLevel: 0.04, radius: 340, radiusPerLevel: 20, damage: 25, damagePerLevel: 8, targets: 3, targetsPerLevel: 1, desc: 'Rapid slices through the nearest enemies' },
@@ -383,6 +385,7 @@ const HERO_UNIQUE_SKILL_DEFS = {
     { id: 'long_stride', name: 'Long Stride', kind: 'passive', rarity: 'common', maxLevel: 10, unlockCostShards: 48, upgradeCostShardsBase: 17, upgradeCostShardsStep: 7, moveSpeedMulPerLevel: 0.028, desc: '+movement speed' },
     { id: 'vital_sight', name: 'Vital Sight', kind: 'passive', rarity: 'rare', maxLevel: 10, unlockCostShards: 76, upgradeCostShardsBase: 21, upgradeCostShardsStep: 9, fireRateMulPerLevel: 0.025, damageMulPerLevel: 0.02, desc: '+precision and fire rhythm' },
     { id: 'trailblazer', name: 'Trailblazer', kind: 'passive', rarity: 'epic', maxLevel: 10, unlockCostShards: 112, upgradeCostShardsBase: 24, upgradeCostShardsStep: 10, globalAura: true, globalMoveSpeedMulPerLevel: 0.018, globalPickupRadiusPerLevel: 8, desc: 'Gives every other hero mobility and reach' },
+    { id: 'energy_drink_iv', name: 'Energy Drink IV', kind: 'passive', rarity: 'rare', maxLevel: 10, unlockCostShards: 82, upgradeCostShardsBase: 22, upgradeCostShardsStep: 9, moveSpeedMulPerLevel: 0.02, reloadSpeedMulPerLevel: 0.032, desc: 'Runs faster and reloads like there is caffeine in the bloodstream' },
   ]),
   shadow: makeHeroUniqueSkills('shadow', [
     { id: 'void_burst', name: 'Void Burst', kind: 'active', castType: 'psi_blast', rarity: 'epic', maxLevel: 8, unlockCostShards: 68, upgradeCostShardsBase: 24, upgradeCostShardsStep: 11, cooldownMs: 7600, cooldownMulPerLevel: 0.05, radius: 230, radiusPerLevel: 18, damage: 56, damagePerLevel: 16, knockbackMul: 8.8, stunMs: 170, desc: 'Dark pulse that stuns and hurls enemies away' },
@@ -392,6 +395,7 @@ const HERO_UNIQUE_SKILL_DEFS = {
     { id: 'assassin_instinct', name: 'Assassin Instinct', kind: 'passive', rarity: 'common', maxLevel: 10, unlockCostShards: 52, upgradeCostShardsBase: 18, upgradeCostShardsStep: 8, damageMulPerLevel: 0.045, desc: '+damage' },
     { id: 'ghost_step', name: 'Ghost Step', kind: 'passive', rarity: 'rare', maxLevel: 10, unlockCostShards: 80, upgradeCostShardsBase: 22, upgradeCostShardsStep: 9, moveSpeedMulPerLevel: 0.02, fireRateMulPerLevel: 0.016, desc: '+speed and evasiveness' },
     { id: 'umbral_doctrine', name: 'Umbral Doctrine', kind: 'passive', rarity: 'epic', maxLevel: 10, unlockCostShards: 118, upgradeCostShardsBase: 25, upgradeCostShardsStep: 10, globalAura: true, globalDamageMulPerLevel: 0.024, desc: 'Increases the lethality of every other hero' },
+    { id: 'action_reload', name: 'Action Reload', kind: 'passive', rarity: 'rare', maxLevel: 10, unlockCostShards: 86, upgradeCostShardsBase: 23, upgradeCostShardsStep: 9, damageMulPerLevel: 0.022, reloadSpeedMulPerLevel: 0.03, desc: 'Every reload is performed like the finale of an action movie' },
   ]),
   medic: makeHeroUniqueSkills('medic', [
     { id: 'sterile_wave', name: 'Sterile Wave', kind: 'active', castType: 'shockwave', rarity: 'rare', maxLevel: 9, unlockCostShards: 64, upgradeCostShardsBase: 23, upgradeCostShardsStep: 10, cooldownMs: 5000, cooldownMulPerLevel: 0.045, radius: 180, radiusPerLevel: 16, damage: 37, damagePerLevel: 12, desc: 'Medical shock pulse that clears space' },
@@ -401,6 +405,7 @@ const HERO_UNIQUE_SKILL_DEFS = {
     { id: 'field_aid', name: 'Field Aid', kind: 'passive', rarity: 'common', maxLevel: 10, unlockCostShards: 50, upgradeCostShardsBase: 17, upgradeCostShardsStep: 8, hpRegenPerSecPerLevel: 0.42, desc: '+HP regen' },
     { id: 'vital_plating', name: 'Vital Plating', kind: 'passive', rarity: 'rare', maxLevel: 10, unlockCostShards: 78, upgradeCostShardsBase: 21, upgradeCostShardsStep: 9, maxHpFlatPerLevel: 16, desc: '+max HP' },
     { id: 'support_protocol', name: 'Support Protocol', kind: 'passive', rarity: 'epic', maxLevel: 10, unlockCostShards: 114, upgradeCostShardsBase: 24, upgradeCostShardsStep: 10, globalAura: true, globalMaxHpFlatPerLevel: 8, globalHpRegenPerSecPerLevel: 0.16, desc: 'Improves survivability of every other hero' },
+    { id: 'oops_all_bandages', name: 'Oops, All Bandages', kind: 'passive', rarity: 'rare', maxLevel: 10, unlockCostShards: 82, upgradeCostShardsBase: 22, upgradeCostShardsStep: 9, hpRegenPerSecPerLevel: 0.22, reloadSpeedMulPerLevel: 0.026, desc: 'No one knows why the pockets are full of bandages, but it works' },
   ]),
   raider: makeHeroUniqueSkills('raider', [
     { id: 'war_stomp', name: 'War Stomp', kind: 'active', castType: 'shockwave', rarity: 'rare', maxLevel: 10, unlockCostShards: 66, upgradeCostShardsBase: 24, upgradeCostShardsStep: 10, cooldownMs: 4800, cooldownMulPerLevel: 0.045, radius: 185, radiusPerLevel: 18, damage: 49, damagePerLevel: 15, desc: 'Brutal ground smash around the raider' },
@@ -410,6 +415,7 @@ const HERO_UNIQUE_SKILL_DEFS = {
     { id: 'battle_rage', name: 'Battle Rage', kind: 'passive', rarity: 'common', maxLevel: 10, unlockCostShards: 54, upgradeCostShardsBase: 18, upgradeCostShardsStep: 8, damageMulPerLevel: 0.04, desc: '+damage' },
     { id: 'iron_hide', name: 'Iron Hide', kind: 'passive', rarity: 'rare', maxLevel: 10, unlockCostShards: 84, upgradeCostShardsBase: 23, upgradeCostShardsStep: 9, maxHpFlatPerLevel: 18, moveSpeedMulPerLevel: 0.01, desc: '+max HP and unstoppable momentum' },
     { id: 'war_banner', name: 'War Banner', kind: 'passive', rarity: 'epic', maxLevel: 10, unlockCostShards: 120, upgradeCostShardsBase: 25, upgradeCostShardsStep: 10, globalAura: true, globalDamageMulPerLevel: 0.016, globalFireRateMulPerLevel: 0.016, desc: 'Empowers the offense of every other hero' },
+    { id: 'anger_management', name: 'Anger Management', kind: 'passive', rarity: 'rare', maxLevel: 10, unlockCostShards: 88, upgradeCostShardsBase: 23, upgradeCostShardsStep: 9, damageMulPerLevel: 0.028, reloadSpeedMulPerLevel: 0.032, maxHpFlatPerLevel: 6, desc: 'Slamming a fresh mag home counts as therapy if you are loud enough' },
   ]),
 };
 

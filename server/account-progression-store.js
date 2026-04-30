@@ -762,6 +762,7 @@ function createAccountProgressionStore({
     const bonuses = {
       damageMul: 0,
       fireRateMul: 0,
+      reloadSpeedMul: 0,
       moveSpeedMul: 0,
       maxHpFlat: 0,
       hpRegenPerSec: 0,
@@ -787,6 +788,7 @@ function createAccountProgressionStore({
       if (level <= 0) continue;
       bonuses.damageMul += (Number(node.damageMulPerLevel) || 0) * level;
       bonuses.fireRateMul += (Number(node.fireRateMulPerLevel) || 0) * level;
+      bonuses.reloadSpeedMul += (Number(node.reloadSpeedMulPerLevel) || 0) * level;
       bonuses.moveSpeedMul += (Number(node.moveSpeedMulPerLevel) || 0) * level;
       bonuses.maxHpFlat += (Number(node.maxHpFlatPerLevel) || 0) * level;
       bonuses.hpRegenPerSec += (Number(node.hpRegenPerSecPerLevel) || 0) * level;
@@ -799,6 +801,7 @@ function createAccountProgressionStore({
       if (level <= 0 || skill.kind !== 'passive' || skill.globalAura) continue;
       bonuses.damageMul += (Number(skill.damageMulPerLevel) || 0) * level;
       bonuses.fireRateMul += (Number(skill.fireRateMulPerLevel) || 0) * level;
+      bonuses.reloadSpeedMul += (Number(skill.reloadSpeedMulPerLevel) || 0) * level;
       bonuses.moveSpeedMul += (Number(skill.moveSpeedMulPerLevel) || 0) * level;
       bonuses.maxHpFlat += (Number(skill.maxHpFlatPerLevel) || 0) * level;
       bonuses.hpRegenPerSec += (Number(skill.hpRegenPerSecPerLevel) || 0) * level;
@@ -814,6 +817,7 @@ function createAccountProgressionStore({
         if (level <= 0) continue;
         bonuses.damageMul += (Number(skill.globalDamageMulPerLevel) || 0) * level;
         bonuses.fireRateMul += (Number(skill.globalFireRateMulPerLevel) || 0) * level;
+        bonuses.reloadSpeedMul += (Number(skill.globalReloadSpeedMulPerLevel) || 0) * level;
         bonuses.moveSpeedMul += (Number(skill.globalMoveSpeedMulPerLevel) || 0) * level;
         bonuses.maxHpFlat += (Number(skill.globalMaxHpFlatPerLevel) || 0) * level;
         bonuses.hpRegenPerSec += (Number(skill.globalHpRegenPerSecPerLevel) || 0) * level;
@@ -832,6 +836,7 @@ function createAccountProgressionStore({
       const scale = 1 + Math.max(0, item.level - 1) * 0.22;
       bonuses.damageMul += (Number(stats.damageMul) || 0) * scale;
       bonuses.fireRateMul += (Number(stats.fireRateMul) || 0) * scale;
+      bonuses.reloadSpeedMul += (Number(stats.reloadSpeedMul) || 0) * scale;
       bonuses.moveSpeedMul += (Number(stats.moveSpeedMul) || 0) * scale;
       bonuses.maxHpFlat += (Number(stats.maxHpFlat) || 0) * scale;
       bonuses.hpRegenPerSec += (Number(stats.hpRegenPerSec) || 0) * scale;

@@ -15,9 +15,9 @@
     ],
     "isPublished": true,
     "createdAt": 1773841692981,
-    "updatedAt": 1777374151946,
+    "updatedAt": 1777470527472,
     "publishedAt": 1773841692981,
-    "views": 19,
+    "views": 20,
     "comments": [
       {
         "id": "c-1777312842982-cqylpi",
@@ -51,10 +51,20 @@
     ],
     "isPublished": true,
     "createdAt": 1773829389464,
-    "updatedAt": 1777373453315,
+    "updatedAt": 1777467716668,
     "publishedAt": 1773829389464,
-    "views": 10,
-    "comments": []
+    "views": 11,
+    "comments": [
+      {
+        "id": "c-1777467716668-6nnx6m",
+        "authorName": "WizardJIOCb",
+        "authorAccountId": 1,
+        "text": "Привет!",
+        "createdAt": 1777467716668,
+        "updatedAt": 1777467716668,
+        "replies": []
+      }
+    ]
   },
   {
     "id": "update-progression-profile-death-replays",
