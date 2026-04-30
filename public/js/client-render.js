@@ -1101,6 +1101,78 @@ function drawFx() {
     const sx = s.x - camera.x;
     const sy = s.y - camera.y;
     const style = String(s.style || 'default').toLowerCase();
+    if (style === 'shockwave') {
+      const radius = Math.max(1, Number(s.r) || 1);
+      const trailRings = Math.max(3, Math.round(Number(s.trailRings) || 4));
+      const spikeCount = Math.max(8, Math.round(Number(s.spikeCount) || 12));
+      const accentColor = s.accentColor || '#dcfce7';
+      const innerColor = s.innerColor || '#bbf7d0';
+      const pulsePhase = (performance.now() / 42) + radius * 0.04;
+      const fillGrad = ctx.createRadialGradient(sx, sy, 0, sx, sy, radius);
+      fillGrad.addColorStop(0, `rgba(240, 253, 244, ${(a * 0.16).toFixed(3)})`);
+      fillGrad.addColorStop(0.34, `rgba(187, 247, 208, ${(a * 0.14).toFixed(3)})`);
+      fillGrad.addColorStop(1, 'rgba(22, 163, 74, 0)');
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = fillGrad;
+      ctx.beginPath();
+      ctx.arc(sx, sy, radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.globalAlpha = Math.min(1, a * 0.96);
+      ctx.strokeStyle = accentColor;
+      ctx.lineWidth = 5.8 + (1 - a) * 3.4;
+      ctx.beginPath();
+      ctx.arc(sx, sy, radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.globalAlpha = Math.min(1, a * 0.82);
+      ctx.strokeStyle = innerColor;
+      ctx.lineWidth = 2.2 + (1 - a) * 1.6;
+      ctx.beginPath();
+      ctx.arc(sx, sy, radius * 0.74, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.setLineDash([Math.max(10, radius * 0.075), Math.max(7, radius * 0.05)]);
+      ctx.lineDashOffset = -pulsePhase * 6.4;
+      ctx.globalAlpha = Math.min(1, a * 0.58);
+      ctx.strokeStyle = 'rgba(236, 253, 245, 0.95)';
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.arc(sx, sy, radius * 0.88, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.globalAlpha = Math.min(1, a * 0.72);
+      ctx.strokeStyle = innerColor;
+      ctx.lineWidth = 2.1;
+      for (let i = 0; i < trailRings; i += 1) {
+        const k = (i + 1) / (trailRings + 1);
+        const rr = radius * (0.28 + k * 0.52);
+        const ringA = a * (0.34 - k * 0.06);
+        if (ringA <= 0) continue;
+        ctx.globalAlpha = Math.min(1, Math.max(0, ringA));
+        ctx.beginPath();
+        ctx.arc(sx, sy, rr, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      ctx.globalAlpha = Math.min(1, a * 0.9);
+      ctx.strokeStyle = 'rgba(236, 253, 245, 0.95)';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < spikeCount; i += 1) {
+        const angle = ((Math.PI * 2 * i) / spikeCount) + pulsePhase * 0.14;
+        const innerR = Math.max(8, radius - 18 - (1 - a) * 10);
+        const outerR = radius + 12 + Math.sin(pulsePhase + i * 1.35) * 4;
+        ctx.beginPath();
+        ctx.moveTo(sx + Math.cos(angle) * innerR, sy + Math.sin(angle) * innerR);
+        ctx.lineTo(sx + Math.cos(angle) * outerR, sy + Math.sin(angle) * outerR);
+        ctx.stroke();
+      }
+      ctx.restore();
+      continue;
+    }
     if (style === 'psi_blast') {
       const radius = Math.max(1, Number(s.r) || 1);
       const trailRings = Math.max(2, Math.round(Number(s.trailRings) || 6));

@@ -275,6 +275,26 @@ function spawnHitFx(x, y, severity = 1, isPlayerHit = false) {
   if (visuals.hitFx.length > 220) visuals.hitFx.splice(0, visuals.hitFx.length - 220);
 }
 
+function spawnRadialHitFx(x, y, radius, options = {}) {
+  if (!game.hitEffectsEnabled) return;
+  const count = Math.max(6, Math.min(24, Math.round(Number(options.count) || 12)));
+  const color = options.color || '#bbf7d0';
+  const severity = Math.max(1, Number(options.severity) || 4);
+  for (let i = 0; i < count; i += 1) {
+    const angle = ((Math.PI * 2 * i) / count) + ((Math.random() - 0.5) * 0.18);
+    const dist = Math.max(12, Number(radius) || 0) * (0.86 + Math.random() * 0.18);
+    visuals.hitFx.push({
+      x: x + Math.cos(angle) * dist,
+      y: y + Math.sin(angle) * dist,
+      r: 5 + Math.random() * 6 + severity * 0.16,
+      life: 0.16 + Math.random() * 0.12,
+      ttl: 0.16 + Math.random() * 0.12,
+      color,
+    });
+  }
+  if (visuals.hitFx.length > 220) visuals.hitFx.splice(0, visuals.hitFx.length - 220);
+}
+
 const trFx = (key, fallback = key) => {
   if (typeof window.cwI18nT !== 'function') return fallback;
   const out = window.cwI18nT(key);
@@ -294,17 +314,21 @@ function spawnSkillLabel(skillName, x, y) {
 }
 
 function spawnSkillBurstFx(x, y, color = '#7dd3fc', radius = 100, options = {}) {
+  const life = Math.max(0.16, Number(options?.life) || 0.5);
   visuals.skillBursts.push({
     x,
     y,
-    r: 18,
+    r: Math.max(0, Number(options?.startRadius) || 18),
     maxR: radius,
     color,
     style: String(options?.style || 'default').toLowerCase(),
     growSpeed: Math.max(120, Number(options?.growSpeed) || 420),
     trailRings: Math.max(0, Math.round(Number(options?.trailRings) || 0)),
-    life: 0.5,
-    ttl: 0.5,
+    accentColor: options?.accentColor || '',
+    innerColor: options?.innerColor || '',
+    spikeCount: Math.max(0, Math.round(Number(options?.spikeCount) || 0)),
+    life,
+    ttl: life,
   });
   if (visuals.skillBursts.length > 36) visuals.skillBursts.splice(0, visuals.skillBursts.length - 36);
 }
@@ -497,7 +521,21 @@ function spawnSkillCastFx(skillId, caster, nextState, skill) {
   const sid = String(skillId || '').toLowerCase();
   if (sid === 'shockwave') {
     const radius = shockwaveFxRadius(skill);
-    spawnSkillBurstFx(caster.x, caster.y, '#86efac', radius);
+    spawnSkillBurstFx(caster.x, caster.y, '#86efac', radius, {
+      style: 'shockwave',
+      startRadius: 10,
+      growSpeed: Math.max(880, radius * 6.2),
+      trailRings: 4,
+      spikeCount: Math.max(10, Math.min(20, Math.round(radius / 18))),
+      life: 0.42,
+      accentColor: '#dcfce7',
+      innerColor: '#bbf7d0',
+    });
+    spawnRadialHitFx(caster.x, caster.y, radius * 0.9, {
+      count: Math.max(8, Math.min(18, Math.round(radius / 16))),
+      severity: 5,
+      color: '#bbf7d0',
+    });
     registerImpactSource({
       x: caster.x,
       y: caster.y,
