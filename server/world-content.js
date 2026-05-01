@@ -1,3 +1,7 @@
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
 function zone(material, shape, x, y, w, h, extra = {}) {
   return {
     material,
@@ -19,7 +23,7 @@ function prop(kind, x, y, extra = {}) {
   };
 }
 
-const MAP_DEFS = [
+const DEFAULT_MAP_DEFS = [
   {
     id: 'mall_night',
     name: 'Night Mall',
@@ -206,7 +210,7 @@ const MAP_DEFS = [
   },
 ];
 
-const CAMPAIGN_DEFS = [
+const DEFAULT_CAMPAIGN_DEFS = [
   {
     id: 'mall_of_the_dead',
     name: 'Mall Of The Dead',
@@ -527,20 +531,70 @@ const CAMPAIGN_DEFS = [
   },
 ];
 
-const MAP_BY_ID = Object.fromEntries(MAP_DEFS.map((mapDef) => [mapDef.id, mapDef]));
-const CAMPAIGN_BY_ID = Object.fromEntries(
-  CAMPAIGN_DEFS.map((campaign) => [
-    campaign.id,
-    {
-      ...campaign,
-      levels: campaign.levels.map((level, index) => ({
-        ...level,
-        index,
-        campaignId: campaign.id,
-      })),
-    },
-  ]),
-);
+const MAP_DEFS = [];
+const CAMPAIGN_DEFS = [];
+const MAP_BY_ID = {};
+const CAMPAIGN_BY_ID = {};
+
+function clearObject(target) {
+  for (const key of Object.keys(target || {})) delete target[key];
+}
+
+function normalizeCampaignList(campaigns) {
+  return (Array.isArray(campaigns) ? campaigns : []).map((campaign) => ({
+    ...campaign,
+    levels: (Array.isArray(campaign?.levels) ? campaign.levels : []).map((level, index) => ({
+      ...level,
+      index,
+      campaignId: campaign.id,
+    })),
+  }));
+}
+
+function rebuildWorldContentIndexes() {
+  clearObject(MAP_BY_ID);
+  clearObject(CAMPAIGN_BY_ID);
+  for (const mapDef of MAP_DEFS) {
+    if (mapDef?.id) MAP_BY_ID[mapDef.id] = mapDef;
+  }
+  for (const campaign of CAMPAIGN_DEFS) {
+    if (campaign?.id) CAMPAIGN_BY_ID[campaign.id] = campaign;
+  }
+}
+
+function replaceWorldContent(nextState = {}) {
+  const nextMaps = Array.isArray(nextState?.maps) && nextState.maps.length > 0
+    ? cloneJson(nextState.maps)
+    : cloneJson(DEFAULT_MAP_DEFS);
+  const nextCampaigns = Array.isArray(nextState?.campaigns)
+    ? cloneJson(nextState.campaigns)
+    : cloneJson(DEFAULT_CAMPAIGN_DEFS);
+  MAP_DEFS.length = 0;
+  MAP_DEFS.push(...nextMaps);
+  CAMPAIGN_DEFS.length = 0;
+  CAMPAIGN_DEFS.push(...normalizeCampaignList(nextCampaigns));
+  rebuildWorldContentIndexes();
+  return getWorldContentSnapshot();
+}
+
+function getWorldContentSnapshot() {
+  return {
+    maps: cloneJson(MAP_DEFS),
+    campaigns: cloneJson(CAMPAIGN_DEFS),
+  };
+}
+
+function getDefaultWorldContentSnapshot() {
+  return {
+    maps: cloneJson(DEFAULT_MAP_DEFS),
+    campaigns: cloneJson(normalizeCampaignList(DEFAULT_CAMPAIGN_DEFS)),
+  };
+}
+
+replaceWorldContent({
+  maps: DEFAULT_MAP_DEFS,
+  campaigns: DEFAULT_CAMPAIGN_DEFS,
+});
 
 function getMapDef(mapId) {
   const id = String(mapId || '').trim();
@@ -594,13 +648,18 @@ function toPublicCampaignDef(campaignDef) {
 }
 
 module.exports = {
+  DEFAULT_MAP_DEFS,
+  DEFAULT_CAMPAIGN_DEFS,
   MAP_DEFS,
   MAP_BY_ID,
-  CAMPAIGN_DEFS: Object.values(CAMPAIGN_BY_ID),
+  CAMPAIGN_DEFS,
   CAMPAIGN_BY_ID,
   getMapDef,
   getCampaignDef,
   getCampaignLevelDef,
+  replaceWorldContent,
+  getWorldContentSnapshot,
+  getDefaultWorldContentSnapshot,
   toPublicMapDef,
   toPublicCampaignDef,
 };

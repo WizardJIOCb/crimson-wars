@@ -82,6 +82,7 @@ const LEADERBOARD_PAGE_SIZE = 10;
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const RECORDS_DB_PATH = path.join(DATA_DIR, 'records.db');
 const SKILLS_CONFIG_PATH = path.join(DATA_DIR, 'skills.json');
+const WORLD_CONTENT_PATH = path.join(DATA_DIR, 'world-content.json');
 const ADMIN_AUTH_DB_PATH = path.join(DATA_DIR, 'admin-auth.db');
 const PLAYER_AUTH_DB_PATH = path.join(DATA_DIR, 'player-auth.db');
 const RUNTIME_REGISTRY_DB_PATH = path.join(DATA_DIR, 'runtime-registry.db');
@@ -536,6 +537,7 @@ module.exports = {
   DATA_DIR,
   RECORDS_DB_PATH,
   SKILLS_CONFIG_PATH,
+  WORLD_CONTENT_PATH,
   ADMIN_AUTH_DB_PATH,
   PLAYER_AUTH_DB_PATH,
   RUNTIME_REGISTRY_DB_PATH,

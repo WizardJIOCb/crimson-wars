@@ -1,0 +1,1720 @@
+{
+  "maps": [
+    {
+      "id": "mall_night",
+      "name": "Night Mall",
+      "subtitle": "Парковка, где тележки уже едят людей",
+      "description": "Большая ночная парковка торгового центра. Места хватит и для кайтa, и для паники.",
+      "worldWidth": 4800,
+      "worldHeight": 2800,
+      "treeDensityMul": 1,
+      "cover": {
+        "from": "#2a0f12",
+        "to": "#0d121c",
+        "accent": "#f97316",
+        "glow": "rgba(249, 115, 22, 0.26)",
+        "artLabel": ""
+      },
+      "scene": {
+        "themeId": "mall",
+        "baseMaterial": "grass",
+        "terrainZones": [
+          {
+            "material": "concrete",
+            "shape": "rect",
+            "x": 0.495087202161631,
+            "y": 0.08694515212127592,
+            "w": 0.58,
+            "h": 0.16,
+            "feather": 0.07,
+            "alpha": 1,
+            "angle": 0.01,
+            "centerStripe": false,
+            "id": "zone_1"
+          },
+          {
+            "material": "asphalt_wet",
+            "shape": "band",
+            "x": 0.48334644800552895,
+            "y": 0.23321569085773525,
+            "w": 0.86,
+            "h": 0.065,
+            "feather": 0.08,
+            "alpha": 1,
+            "angle": 0,
+            "centerStripe": false,
+            "id": "zone_2"
+          },
+          {
+            "material": "asphalt_wet",
+            "shape": "band",
+            "x": 0.5224614782525429,
+            "y": 0.5044529040523446,
+            "w": 1.06,
+            "h": 0.2,
+            "feather": 0.08,
+            "alpha": 1,
+            "angle": 0,
+            "centerStripe": true,
+            "id": "zone_3"
+          },
+          {
+            "material": "dirt",
+            "shape": "ellipse",
+            "x": 0.16750983600414673,
+            "y": 0.16535292742679425,
+            "w": 0.18,
+            "h": 0.12,
+            "feather": 0.28,
+            "alpha": 0.24,
+            "angle": 0,
+            "centerStripe": false,
+            "id": "zone_4"
+          },
+          {
+            "material": "dirt",
+            "shape": "ellipse",
+            "x": 0.82,
+            "y": 0.14,
+            "w": 0.18,
+            "h": 0.12,
+            "feather": 0.28,
+            "alpha": 0.24,
+            "angle": 0,
+            "centerStripe": false,
+            "id": "zone_5"
+          },
+          {
+            "material": "dirt",
+            "shape": "ellipse",
+            "x": 0.5037034168925305,
+            "y": 0.34715807729984055,
+            "w": 0.22,
+            "h": 0.16,
+            "feather": 0.28,
+            "alpha": 0.4,
+            "angle": 0,
+            "centerStripe": false,
+            "id": "zone_6"
+          },
+          {
+            "material": "dirt",
+            "shape": "ellipse",
+            "x": 0.49756133711368955,
+            "y": 0.8242351291215312,
+            "w": 0.18,
+            "h": 0.14,
+            "feather": 0.28,
+            "alpha": 0.36,
+            "angle": 0,
+            "centerStripe": false,
+            "id": "zone_7"
+          },
+          {
+            "material": "asphalt_wet",
+            "shape": "band",
+            "x": 0.5063243044481767,
+            "y": 0.9002170437664445,
+            "w": 0.54,
+            "h": 0.08,
+            "feather": 0.08,
+            "alpha": 1,
+            "angle": 0,
+            "centerStripe": true,
+            "id": "road_copy"
+          },
+          {
+            "material": "asphalt_wet",
+            "shape": "band",
+            "x": 0.49006917469159705,
+            "y": 0.3390092088194832,
+            "w": 0.86,
+            "h": 0.065,
+            "feather": 0.08,
+            "alpha": 1,
+            "angle": 0,
+            "centerStripe": false,
+            "id": "zone_2_copy"
+          },
+          {
+            "material": "asphalt_wet",
+            "shape": "band",
+            "x": 0.512445754523868,
+            "y": 0.7276029055690073,
+            "w": 0.82,
+            "h": 0.16,
+            "feather": 0.08,
+            "alpha": 1,
+            "angle": 0,
+            "centerStripe": true,
+            "id": "road_2"
+          }
+        ],
+        "plannedObjects": [
+          {
+            "kind": "mall_block",
+            "x": 0.5,
+            "y": 0.055,
+            "scale": 1.28,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_1"
+          },
+          {
+            "kind": "mall_block",
+            "x": 0.17,
+            "y": 0.09,
+            "scale": 0.78,
+            "angle": -0.04,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_2"
+          },
+          {
+            "kind": "mall_block",
+            "x": 0.83,
+            "y": 0.09,
+            "scale": 0.78,
+            "angle": 0.04,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_3"
+          },
+          {
+            "kind": "concrete_barrier",
+            "x": 0.39,
+            "y": 0.19,
+            "scale": 1.08,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_4"
+          },
+          {
+            "kind": "concrete_barrier",
+            "x": 0.61,
+            "y": 0.19,
+            "scale": 1.08,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_5"
+          },
+          {
+            "kind": "yellow_bus",
+            "x": 0.14523013127162357,
+            "y": 0.3240960422238915,
+            "scale": 1,
+            "angle": 1.5707963267948966,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_6"
+          },
+          {
+            "kind": "burnt_sedan",
+            "x": 0.7584229918938835,
+            "y": 0.44842193915148965,
+            "scale": 1,
+            "angle": 0.06,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_10"
+          },
+          {
+            "kind": "concrete_barrier",
+            "x": 0.27,
+            "y": 0.67,
+            "scale": 1,
+            "angle": -0.42,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_12"
+          },
+          {
+            "kind": "concrete_barrier",
+            "x": 0.73,
+            "y": 0.66,
+            "scale": 1,
+            "angle": 0.42,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_13"
+          },
+          {
+            "kind": "ambulance_van",
+            "x": 0.6725620240727094,
+            "y": 0.6726497526055374,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_18"
+          },
+          {
+            "kind": "red_hatchback",
+            "x": 0.4957013018914272,
+            "y": 0.23260343194020433,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop"
+          },
+          {
+            "kind": "red_hatchback",
+            "x": 0.49447310243183495,
+            "y": 0.3441941256974419,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_7"
+          },
+          {
+            "kind": "yellow_bus",
+            "x": 0.44970498648980595,
+            "y": 0.7354219391514896,
+            "scale": 1,
+            "angle": 1.5707963267948966,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_15"
+          },
+          {
+            "kind": "yellow_bus",
+            "x": 0.49815770081061167,
+            "y": 0.8200336877566058,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_16"
+          },
+          {
+            "kind": "ambulance_van",
+            "x": 0.587,
+            "y": 0.458,
+            "scale": 1,
+            "angle": 0.5235987755982988,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_17"
+          },
+          {
+            "kind": "ambulance_van",
+            "x": 0.5816752640628838,
+            "y": 0.5505316349089378,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_19"
+          },
+          {
+            "kind": "ambulance_van",
+            "x": 0.406,
+            "y": 0.441,
+            "scale": 1,
+            "angle": 0.767944870877505,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_20"
+          },
+          {
+            "kind": "ambulance_van",
+            "x": 0.4109555391795628,
+            "y": 0.5610590588482998,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_8"
+          },
+          {
+            "kind": "burnt_sedan",
+            "x": 0.33480717268484406,
+            "y": 0.3905147910306348,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_21"
+          },
+          {
+            "kind": "burnt_sedan",
+            "x": 0.6529108327192337,
+            "y": 0.3905147910306348,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_22"
+          },
+          {
+            "kind": "burnt_sedan",
+            "x": 0.33726357160402853,
+            "y": 0.27892409727339723,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_23"
+          },
+          {
+            "kind": "burnt_sedan",
+            "x": 0.6627364283959716,
+            "y": 0.28734603642488693,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_24"
+          },
+          {
+            "kind": "burnt_sedan",
+            "x": 0.16654384672070752,
+            "y": 0.6958100852721338,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_25"
+          },
+          {
+            "kind": "burnt_sedan",
+            "x": 0.8371407516580692,
+            "y": 0.6789662069691546,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_26"
+          },
+          {
+            "kind": "burnt_sedan",
+            "x": 0.493,
+            "y": 0.447,
+            "scale": 1,
+            "angle": -0.2792526803190927,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_9"
+          },
+          {
+            "kind": "burnt_sedan",
+            "x": 0.49324490297224266,
+            "y": 0.5505316349089378,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_11"
+          },
+          {
+            "kind": "industrial_tank",
+            "x": 0.3323507737656596,
+            "y": 0.5084219391514895,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_14"
+          },
+          {
+            "kind": "reactor_block",
+            "x": 0.6776747727831001,
+            "y": 0.5042109695757448,
+            "scale": 1,
+            "angle": 2.0943951023931953,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_27"
+          },
+          {
+            "kind": "red_hatchback",
+            "x": 0.83,
+            "y": 0.552,
+            "scale": 1,
+            "angle": 1.5707963267948966,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_28"
+          },
+          {
+            "kind": "ambulance_van",
+            "x": 0.8309997543601082,
+            "y": 0.7989788398778819,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_29"
+          },
+          {
+            "kind": "reactor_block",
+            "x": 0.751,
+            "y": 0.302,
+            "scale": 0.5,
+            "angle": 2.0943951023931953,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_27_copy"
+          },
+          {
+            "kind": "yellow_bus",
+            "x": 0.5508533529845246,
+            "y": 0.7330506369091483,
+            "scale": 1,
+            "angle": 1.5707963267948966,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_15_copy"
+          },
+          {
+            "kind": "yellow_bus",
+            "x": 0.4973655121591746,
+            "y": 0.6513290872723443,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_16_copy"
+          }
+        ],
+        "randomProps": {
+          "countMin": 10,
+          "countMax": 20,
+          "kinds": [
+            "red_hatchback",
+            "burnt_sedan",
+            "concrete_barrier",
+            "yellow_bus",
+            "road_shack"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ringroad_bbq",
+      "name": "Ringroad BBQ",
+      "subtitle": "Пробка длиной в апокалипсис",
+      "description": "Широкая трасса с обочинами, на которых зомби ведут себя как очень злые дачники.",
+      "worldWidth": 5200,
+      "worldHeight": 2400,
+      "treeDensityMul": 0.52,
+      "cover": {
+        "from": "#2a1810",
+        "to": "#111720",
+        "accent": "#fb7185",
+        "glow": "rgba(251, 113, 133, 0.22)",
+        "artLabel": ""
+      },
+      "scene": {
+        "themeId": "ringroad",
+        "baseMaterial": "dirt",
+        "terrainZones": [
+          {
+            "material": "asphalt",
+            "shape": "band",
+            "x": 0.5,
+            "y": 0.5,
+            "w": 1.18,
+            "h": 0.26,
+            "feather": 0.18,
+            "alpha": 0.98,
+            "angle": 0,
+            "centerStripe": false,
+            "id": "zone_1"
+          },
+          {
+            "material": "asphalt",
+            "shape": "band",
+            "x": 0.5,
+            "y": 0.36,
+            "w": 1.18,
+            "h": 0.16,
+            "feather": 0.18,
+            "alpha": 0.78,
+            "angle": 0,
+            "centerStripe": false,
+            "id": "zone_2"
+          },
+          {
+            "material": "asphalt",
+            "shape": "band",
+            "x": 0.5,
+            "y": 0.64,
+            "w": 1.18,
+            "h": 0.16,
+            "feather": 0.18,
+            "alpha": 0.78,
+            "angle": 0,
+            "centerStripe": false,
+            "id": "zone_3"
+          },
+          {
+            "material": "concrete",
+            "shape": "ellipse",
+            "x": 0.16,
+            "y": 0.2,
+            "w": 0.16,
+            "h": 0.11,
+            "feather": 0.24,
+            "alpha": 0.44,
+            "angle": 0,
+            "centerStripe": false,
+            "id": "zone_4"
+          },
+          {
+            "material": "concrete",
+            "shape": "ellipse",
+            "x": 0.86,
+            "y": 0.82,
+            "w": 0.18,
+            "h": 0.12,
+            "feather": 0.24,
+            "alpha": 0.42,
+            "angle": 0,
+            "centerStripe": false,
+            "id": "zone_5"
+          },
+          {
+            "material": "dirt",
+            "shape": "ellipse",
+            "x": 0.12,
+            "y": 0.5,
+            "w": 0.22,
+            "h": 0.34,
+            "feather": 0.32,
+            "alpha": 0.68,
+            "angle": 0,
+            "centerStripe": false,
+            "id": "zone_6"
+          },
+          {
+            "material": "dirt",
+            "shape": "ellipse",
+            "x": 0.88,
+            "y": 0.48,
+            "w": 0.24,
+            "h": 0.36,
+            "feather": 0.32,
+            "alpha": 0.68,
+            "angle": 0,
+            "centerStripe": false,
+            "id": "zone_7"
+          }
+        ],
+        "plannedObjects": [
+          {
+            "kind": "yellow_bus",
+            "x": 0.16,
+            "y": 0.46,
+            "scale": 1,
+            "angle": 0.04,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_1"
+          },
+          {
+            "kind": "yellow_bus",
+            "x": 0.82,
+            "y": 0.58,
+            "scale": 1,
+            "angle": -0.05,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_2"
+          },
+          {
+            "kind": "red_hatchback",
+            "x": 0.31,
+            "y": 0.47,
+            "scale": 1,
+            "angle": 0.08,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_3"
+          },
+          {
+            "kind": "burnt_sedan",
+            "x": 0.41,
+            "y": 0.55,
+            "scale": 1,
+            "angle": -0.08,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_4"
+          },
+          {
+            "kind": "ambulance_van",
+            "x": 0.52,
+            "y": 0.43,
+            "scale": 1,
+            "angle": 0.05,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_5"
+          },
+          {
+            "kind": "red_hatchback",
+            "x": 0.63,
+            "y": 0.57,
+            "scale": 1,
+            "angle": -0.06,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_6"
+          },
+          {
+            "kind": "concrete_barrier",
+            "x": 0.25,
+            "y": 0.33,
+            "scale": 1.18,
+            "angle": 0.04,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_7"
+          },
+          {
+            "kind": "concrete_barrier",
+            "x": 0.75,
+            "y": 0.68,
+            "scale": 1.18,
+            "angle": -0.04,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_8"
+          },
+          {
+            "kind": "road_shack",
+            "x": 0.08,
+            "y": 0.18,
+            "scale": 0.92,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_9"
+          },
+          {
+            "kind": "road_shack",
+            "x": 0.92,
+            "y": 0.82,
+            "scale": 0.88,
+            "angle": 3.141592653589793,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_10"
+          }
+        ],
+        "randomProps": {
+          "countMin": 16,
+          "countMax": 26,
+          "kinds": [
+            "red_hatchback",
+            "burnt_sedan",
+            "yellow_bus",
+            "concrete_barrier",
+            "road_shack"
+          ]
+        }
+      }
+    },
+    {
+      "id": "clinic_yard",
+      "name": "Clinic Yard",
+      "subtitle": "Скорая уже приехала, но не по той причине",
+      "description": "Двор инфекционной клиники. Здесь пахнет антисептиком, плохими новостями и очень быстрой смертью.",
+      "worldWidth": 4400,
+      "worldHeight": 3200,
+      "treeDensityMul": 1.08,
+      "cover": {
+        "from": "#0d2b26",
+        "to": "#0c141b",
+        "accent": "#34d399",
+        "glow": "rgba(52, 211, 153, 0.22)",
+        "artLabel": ""
+      },
+      "scene": {
+        "themeId": "clinic",
+        "baseMaterial": "concrete",
+        "terrainZones": [
+          {
+            "material": "concrete",
+            "shape": "rect",
+            "x": 0.5,
+            "y": 0.5,
+            "w": 1.04,
+            "h": 0.96,
+            "feather": 0.08,
+            "alpha": 0.96,
+            "angle": 0,
+            "centerStripe": false,
+            "id": "zone_1"
+          },
+          {
+            "material": "asphalt",
+            "shape": "band",
+            "x": 0.5,
+            "y": 0.35,
+            "w": 0.92,
+            "h": 0.12,
+            "feather": 0.16,
+            "alpha": 0.64,
+            "angle": 0,
+            "centerStripe": false,
+            "id": "zone_2"
+          },
+          {
+            "material": "asphalt",
+            "shape": "band",
+            "x": 0.5,
+            "y": 0.66,
+            "w": 0.88,
+            "h": 0.12,
+            "feather": 0.16,
+            "alpha": 0.56,
+            "angle": 0.03,
+            "centerStripe": false,
+            "id": "zone_3"
+          },
+          {
+            "material": "grass",
+            "shape": "ellipse",
+            "x": 0.12,
+            "y": 0.14,
+            "w": 0.14,
+            "h": 0.16,
+            "feather": 0.26,
+            "alpha": 0.52,
+            "angle": 0,
+            "centerStripe": false,
+            "id": "zone_4"
+          },
+          {
+            "material": "grass",
+            "shape": "ellipse",
+            "x": 0.88,
+            "y": 0.16,
+            "w": 0.14,
+            "h": 0.16,
+            "feather": 0.26,
+            "alpha": 0.52,
+            "angle": 0,
+            "centerStripe": false,
+            "id": "zone_5"
+          },
+          {
+            "material": "toxic",
+            "shape": "ellipse",
+            "x": 0.22,
+            "y": 0.79,
+            "w": 0.18,
+            "h": 0.14,
+            "feather": 0.28,
+            "alpha": 0.28,
+            "angle": 0,
+            "centerStripe": false,
+            "id": "zone_6"
+          },
+          {
+            "material": "toxic",
+            "shape": "ellipse",
+            "x": 0.78,
+            "y": 0.78,
+            "w": 0.2,
+            "h": 0.16,
+            "feather": 0.28,
+            "alpha": 0.3,
+            "angle": 0,
+            "centerStripe": false,
+            "id": "zone_7"
+          }
+        ],
+        "plannedObjects": [
+          {
+            "kind": "clinic_block",
+            "x": 0.11,
+            "y": 0.16,
+            "scale": 1.04,
+            "angle": 1.5707963267948966,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_1"
+          },
+          {
+            "kind": "clinic_block",
+            "x": 0.89,
+            "y": 0.16,
+            "scale": 1.04,
+            "angle": -1.5707963267948966,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_2"
+          },
+          {
+            "kind": "ambulance_van",
+            "x": 0.31,
+            "y": 0.34,
+            "scale": 1,
+            "angle": 0.02,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_3"
+          },
+          {
+            "kind": "ambulance_van",
+            "x": 0.5,
+            "y": 0.34,
+            "scale": 1,
+            "angle": 0.02,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_4"
+          },
+          {
+            "kind": "ambulance_van",
+            "x": 0.69,
+            "y": 0.34,
+            "scale": 1,
+            "angle": 0.02,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_5"
+          },
+          {
+            "kind": "concrete_barrier",
+            "x": 0.5,
+            "y": 0.5,
+            "scale": 1.26,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_6"
+          },
+          {
+            "kind": "concrete_barrier",
+            "x": 0.36,
+            "y": 0.63,
+            "scale": 1,
+            "angle": -0.38,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_7"
+          },
+          {
+            "kind": "concrete_barrier",
+            "x": 0.64,
+            "y": 0.63,
+            "scale": 1,
+            "angle": 0.38,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_8"
+          },
+          {
+            "kind": "road_shack",
+            "x": 0.16,
+            "y": 0.82,
+            "scale": 0.88,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_9"
+          },
+          {
+            "kind": "road_shack",
+            "x": 0.84,
+            "y": 0.82,
+            "scale": 0.88,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_10"
+          }
+        ],
+        "randomProps": {
+          "countMin": 8,
+          "countMax": 14,
+          "kinds": [
+            "ambulance_van",
+            "concrete_barrier",
+            "road_shack",
+            "burnt_sedan"
+          ]
+        }
+      }
+    },
+    {
+      "id": "reactor_sprawl",
+      "name": "Reactor Sprawl",
+      "subtitle": "Промзона, где дозиметр просто смеётся",
+      "description": "Ржавая энергетическая зона с длинными прострелами, кучей хлама и заметно лишней радиацией.",
+      "worldWidth": 5600,
+      "worldHeight": 3000,
+      "treeDensityMul": 0.7,
+      "cover": {
+        "from": "#13240f",
+        "to": "#0d1118",
+        "accent": "#a3e635",
+        "glow": "rgba(163, 230, 53, 0.22)",
+        "artLabel": ""
+      },
+      "scene": {
+        "themeId": "reactor",
+        "baseMaterial": "dirt",
+        "terrainZones": [
+          {
+            "material": "concrete",
+            "shape": "rect",
+            "x": 0.5,
+            "y": 0.5,
+            "w": 0.9,
+            "h": 0.74,
+            "feather": 0.12,
+            "alpha": 0.54,
+            "angle": 0,
+            "centerStripe": false,
+            "id": "zone_1"
+          },
+          {
+            "material": "asphalt",
+            "shape": "band",
+            "x": 0.5,
+            "y": 0.24,
+            "w": 0.84,
+            "h": 0.12,
+            "feather": 0.16,
+            "alpha": 0.42,
+            "angle": 0.08,
+            "centerStripe": false,
+            "id": "zone_2"
+          },
+          {
+            "material": "asphalt",
+            "shape": "band",
+            "x": 0.52,
+            "y": 0.73,
+            "w": 0.9,
+            "h": 0.14,
+            "feather": 0.16,
+            "alpha": 0.38,
+            "angle": -0.06,
+            "centerStripe": false,
+            "id": "zone_3"
+          },
+          {
+            "material": "toxic",
+            "shape": "ellipse",
+            "x": 0.2,
+            "y": 0.22,
+            "w": 0.22,
+            "h": 0.18,
+            "feather": 0.3,
+            "alpha": 0.4,
+            "angle": 0,
+            "centerStripe": false,
+            "id": "zone_4"
+          },
+          {
+            "material": "toxic",
+            "shape": "ellipse",
+            "x": 0.74,
+            "y": 0.26,
+            "w": 0.18,
+            "h": 0.14,
+            "feather": 0.26,
+            "alpha": 0.34,
+            "angle": 0,
+            "centerStripe": false,
+            "id": "zone_5"
+          },
+          {
+            "material": "toxic",
+            "shape": "ellipse",
+            "x": 0.78,
+            "y": 0.76,
+            "w": 0.24,
+            "h": 0.18,
+            "feather": 0.3,
+            "alpha": 0.42,
+            "angle": 0,
+            "centerStripe": false,
+            "id": "zone_6"
+          },
+          {
+            "material": "toxic",
+            "shape": "ellipse",
+            "x": 0.3,
+            "y": 0.72,
+            "w": 0.18,
+            "h": 0.14,
+            "feather": 0.28,
+            "alpha": 0.28,
+            "angle": 0,
+            "centerStripe": false,
+            "id": "zone_7"
+          }
+        ],
+        "plannedObjects": [
+          {
+            "kind": "reactor_block",
+            "x": 0.18,
+            "y": 0.12,
+            "scale": 0.98,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_1"
+          },
+          {
+            "kind": "reactor_block",
+            "x": 0.82,
+            "y": 0.14,
+            "scale": 0.98,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_2"
+          },
+          {
+            "kind": "industrial_tank",
+            "x": 0.46,
+            "y": 0.21,
+            "scale": 1.1,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_3"
+          },
+          {
+            "kind": "industrial_tank",
+            "x": 0.62,
+            "y": 0.22,
+            "scale": 1.1,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_4"
+          },
+          {
+            "kind": "reactor_block",
+            "x": 0.52,
+            "y": 0.82,
+            "scale": 1.18,
+            "angle": 0,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_5"
+          },
+          {
+            "kind": "burnt_sedan",
+            "x": 0.24,
+            "y": 0.57,
+            "scale": 1,
+            "angle": 0.18,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_6"
+          },
+          {
+            "kind": "red_hatchback",
+            "x": 0.72,
+            "y": 0.59,
+            "scale": 1,
+            "angle": -0.18,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_7"
+          },
+          {
+            "kind": "concrete_barrier",
+            "x": 0.38,
+            "y": 0.48,
+            "scale": 1.16,
+            "angle": 0.22,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_8"
+          },
+          {
+            "kind": "concrete_barrier",
+            "x": 0.68,
+            "y": 0.48,
+            "scale": 1.16,
+            "angle": -0.22,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_9"
+          },
+          {
+            "kind": "road_shack",
+            "x": 0.12,
+            "y": 0.84,
+            "scale": 0.94,
+            "angle": -0.05,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_10"
+          },
+          {
+            "kind": "road_shack",
+            "x": 0.9,
+            "y": 0.84,
+            "scale": 0.94,
+            "angle": 0.05,
+            "hpMul": 1,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_11"
+          }
+        ],
+        "randomProps": {
+          "countMin": 12,
+          "countMax": 22,
+          "kinds": [
+            "burnt_sedan",
+            "red_hatchback",
+            "concrete_barrier",
+            "industrial_tank",
+            "road_shack"
+          ]
+        }
+      }
+    }
+  ],
+  "campaigns": [
+    {
+      "id": "mall_of_the_dead",
+      "name": "Mall Of The Dead",
+      "shortName": "ТЦ Конец Света",
+      "tagline": "Фудкорт пал, охрана мертва, скидки вечны.",
+      "description": "Торговый центр пережил всё, кроме клиентов-зомби. Нас ждут тележки, витрины и менеджер, у которого KPI теперь измеряется в мозгах.",
+      "cover": {
+        "from": "#3a1112",
+        "to": "#121925",
+        "accent": "#fb923c",
+        "glow": "rgba(251, 146, 60, 0.24)",
+        "artLabel": "MALL // PANIC"
+      },
+      "levels": [
+        {
+          "id": "foodcourt_warmup",
+          "title": "Открытие фудкорта",
+          "brief": "Продержаться, пока зомби спорят, можно ли считать кетчуп супом.",
+          "scenario": "Охрана пропала, музыка всё ещё играет, а фудкорт уже пытается укусить посетителей первым.",
+          "mapId": "mall_night",
+          "goals": [
+            {
+              "id": "goal_1",
+              "type": "survive",
+              "target": 90,
+              "label": "Продержаться 90 секунд"
+            }
+          ],
+          "modifiers": {
+            "enemySpawnMul": 1.08,
+            "enemyHpMul": 1,
+            "bossKillInterval": 28
+          }
+        },
+        {
+          "id": "manager_special",
+          "title": "Менеджер смены",
+          "brief": "Выжить и снести первого босса, пока он орёт про сервис.",
+          "scenario": "Из подсобки выходит менеджер фудкорта. Он очень недоволен отзывами и ещё сильнее недоволен тем, что у вас есть оружие.",
+          "mapId": "mall_night",
+          "goals": [
+            {
+              "id": "goal_1",
+              "type": "survive",
+              "target": 120,
+              "label": "Продержаться 2 минуты"
+            },
+            {
+              "id": "goal_2",
+              "type": "boss_kills",
+              "target": 1,
+              "label": "Убить 1 босса"
+            }
+          ],
+          "modifiers": {
+            "enemySpawnMul": 1.15,
+            "enemyHpMul": 1.08,
+            "bossKillInterval": 18
+          }
+        },
+        {
+          "id": "discount_stampede",
+          "title": "Чёрная пятница навсегда",
+          "brief": "Устроить большую чистку и пережить давку.",
+          "scenario": "Толпа заражённых услышала слово \"скидка\" и пришла оформлять право на ваше лицо.",
+          "mapId": "mall_night",
+          "goals": [
+            {
+              "id": "goal_1",
+              "type": "enemy_kills",
+              "target": 150,
+              "label": "Убить 150 врагов"
+            },
+            {
+              "id": "goal_2",
+              "type": "player_level",
+              "target": 6,
+              "label": "Поднять уровень до 6"
+            }
+          ],
+          "modifiers": {
+            "enemySpawnMul": 1.22,
+            "enemyHpMul": 1.14,
+            "bossKillInterval": 22
+          }
+        },
+        {
+          "id": "parking_lot_closure",
+          "title": "Парковка закрывается",
+          "brief": "Дожить до финала и пережить нашествие начальства.",
+          "scenario": "На парковке уже три босса, сирена орёт, а автоматические ворота почему-то решили спасать не вас.",
+          "mapId": "mall_night",
+          "goals": [
+            {
+              "id": "goal_1",
+              "type": "survive",
+              "target": 180,
+              "label": "Продержаться 3 минуты"
+            },
+            {
+              "id": "goal_2",
+              "type": "boss_kills",
+              "target": 3,
+              "label": "Убить 3 боссов"
+            }
+          ],
+          "modifiers": {
+            "enemySpawnMul": 1.28,
+            "enemyHpMul": 1.2,
+            "bossKillInterval": 16
+          }
+        }
+      ]
+    },
+    {
+      "id": "ambulance_late_as_usual",
+      "name": "Ambulance, But Make It Worse",
+      "shortName": "Скорая Опоздала",
+      "tagline": "Инфекционка, коридоры ужаса и три тонны плохих анализов.",
+      "description": "В клинике вспыхнул идеальный бардак: пациенты ожили, врачи исчезли, а табличка \"не бегать\" теперь звучит как издёвка.",
+      "cover": {
+        "from": "#10312a",
+        "to": "#0d151d",
+        "accent": "#34d399",
+        "glow": "rgba(52, 211, 153, 0.22)",
+        "artLabel": "ER // CHAOS"
+      },
+      "levels": [
+        {
+          "id": "triage_queue",
+          "title": "Приёмное отделение",
+          "brief": "Разобрать очередь пациентов, пока она не разобрала вас.",
+          "scenario": "Номерки отменены. Теперь талон к врачу выдаётся укусом в бедро.",
+          "mapId": "clinic_yard",
+          "goals": [
+            {
+              "id": "goal_1",
+              "type": "enemy_kills",
+              "target": 90,
+              "label": "Убить 90 врагов"
+            }
+          ],
+          "modifiers": {
+            "enemySpawnMul": 1.1,
+            "enemyHpMul": 1.04,
+            "bossKillInterval": 24
+          }
+        },
+        {
+          "id": "sterile_panic",
+          "title": "Стерильная паника",
+          "brief": "Дожить до конца карантина местного разлива.",
+          "scenario": "Карантин объявлен. Всем советуют не паниковать, что особенно смешно среди бегущих трупов.",
+          "mapId": "clinic_yard",
+          "goals": [
+            {
+              "id": "goal_1",
+              "type": "survive",
+              "target": 150,
+              "label": "Продержаться 150 секунд"
+            },
+            {
+              "id": "goal_2",
+              "type": "player_level",
+              "target": 7,
+              "label": "Поднять уровень до 7"
+            }
+          ],
+          "modifiers": {
+            "enemySpawnMul": 1.16,
+            "enemyHpMul": 1.1,
+            "bossKillInterval": 22
+          }
+        },
+        {
+          "id": "chief_physician",
+          "title": "Главврач на смене",
+          "brief": "Уволить босса клиники самым свинцовым способом.",
+          "scenario": "Главврач вышел лично объяснить, что жалобы на обслуживание больше не принимаются. Челюстью.",
+          "mapId": "clinic_yard",
+          "goals": [
+            {
+              "id": "goal_1",
+              "type": "boss_kills",
+              "target": 3,
+              "label": "Убить 3 боссов"
+            }
+          ],
+          "modifiers": {
+            "enemySpawnMul": 1.2,
+            "enemyHpMul": 1.14,
+            "bossKillInterval": 14
+          }
+        },
+        {
+          "id": "discharge_summary",
+          "title": "Выписка без анестезии",
+          "brief": "Финальная очистка двора клиники.",
+          "scenario": "Пять жирных боссов перекрыли выход. Формально это называется \"финальная выписка\", но выглядит как массовая драка за парковку.",
+          "mapId": "clinic_yard",
+          "goals": [
+            {
+              "id": "goal_1",
+              "type": "survive",
+              "target": 210,
+              "label": "Продержаться 210 секунд"
+            },
+            {
+              "id": "goal_2",
+              "type": "boss_kills",
+              "target": 5,
+              "label": "Убить 5 боссов"
+            }
+          ],
+          "modifiers": {
+            "enemySpawnMul": 1.26,
+            "enemyHpMul": 1.2,
+            "bossKillInterval": 12
+          }
+        }
+      ]
+    },
+    {
+      "id": "ringroad_grillfest",
+      "name": "Ringroad Grillfest",
+      "shortName": "Мясо на МКАДе",
+      "tagline": "Пробка, гарь и очень личная ненависть к живым.",
+      "description": "На кольцевой всё как обычно: пробка, агрессия и существа, которые лезут в окно даже без поворотника.",
+      "cover": {
+        "from": "#321410",
+        "to": "#121720",
+        "accent": "#fb7185",
+        "glow": "rgba(251, 113, 133, 0.24)",
+        "artLabel": "ROAD // FURY"
+      },
+      "levels": [
+        {
+          "id": "traffic_jam",
+          "title": "Пробка с зубами",
+          "brief": "Удержать трассу и не дать ей съесть вас целиком.",
+          "scenario": "Машины стоят, зомби бегут, а аварийка помогает ровно до тех пор, пока её не откусили.",
+          "mapId": "ringroad_bbq",
+          "goals": [
+            {
+              "id": "goal_1",
+              "type": "survive",
+              "target": 120,
+              "label": "Продержаться 2 минуты"
+            },
+            {
+              "id": "goal_2",
+              "type": "enemy_kills",
+              "target": 110,
+              "label": "Убить 110 врагов"
+            }
+          ],
+          "modifiers": {
+            "enemySpawnMul": 1.14,
+            "enemyHpMul": 1.06,
+            "bossKillInterval": 24
+          }
+        },
+        {
+          "id": "roadside_brigade",
+          "title": "Бригада обочечников",
+          "brief": "Показать, что по встречке сегодня едут только патроны.",
+          "scenario": "Особо наглые мутанты полезли по обочине. Пришло время объяснить им правила движения баллистикой.",
+          "mapId": "ringroad_bbq",
+          "goals": [
+            {
+              "id": "goal_1",
+              "type": "boss_kills",
+              "target": 2,
+              "label": "Убить 2 боссов"
+            },
+            {
+              "id": "goal_2",
+              "type": "enemy_kills",
+              "target": 130,
+              "label": "Убить 130 врагов"
+            }
+          ],
+          "modifiers": {
+            "enemySpawnMul": 1.2,
+            "enemyHpMul": 1.12,
+            "bossKillInterval": 18
+          }
+        },
+        {
+          "id": "gas_station_choir",
+          "title": "Хор на заправке",
+          "brief": "Сдержать оркестр бензиновой ярости.",
+          "scenario": "К заправке подтянулись бронированные уроды, и каждый уверен, что именно он сегодня будет вашим последним клиентом.",
+          "mapId": "ringroad_bbq",
+          "goals": [
+            {
+              "id": "goal_1",
+              "type": "survive",
+              "target": 180,
+              "label": "Продержаться 3 минуты"
+            },
+            {
+              "id": "goal_2",
+              "type": "boss_kills",
+              "target": 4,
+              "label": "Убить 4 боссов"
+            }
+          ],
+          "modifiers": {
+            "enemySpawnMul": 1.26,
+            "enemyHpMul": 1.18,
+            "bossKillInterval": 14
+          }
+        },
+        {
+          "id": "ringroad_bbq_finale",
+          "title": "Финальный шашлык",
+          "brief": "Устроить полное мясо и выжить в дыму.",
+          "scenario": "Пять боссов, гарь, клаксоны и чувство, что это всё можно было объехать, если бы апокалипсис начался вчера.",
+          "mapId": "ringroad_bbq",
+          "goals": [
+            {
+              "id": "goal_1",
+              "type": "survive",
+              "target": 240,
+              "label": "Продержаться 4 минуты"
+            },
+            {
+              "id": "goal_2",
+              "type": "boss_kills",
+              "target": 5,
+              "label": "Убить 5 боссов"
+            }
+          ],
+          "modifiers": {
+            "enemySpawnMul": 1.34,
+            "enemyHpMul": 1.24,
+            "bossKillInterval": 11
+          }
+        }
+      ]
+    },
+    {
+      "id": "reactor_afterparty",
+      "name": "Reactor Afterparty",
+      "shortName": "Реактор После Корпоратива",
+      "tagline": "Радиация, трубы и мутанты с профсоюзной злостью.",
+      "description": "Промзона пережила очень плохой корпоратив: бочки светятся, техника орёт, а бывшие сотрудники превратились в радиоактивных энтузиастов.",
+      "cover": {
+        "from": "#18290d",
+        "to": "#0e1218",
+        "accent": "#a3e635",
+        "glow": "rgba(163, 230, 53, 0.24)",
+        "artLabel": "REACTOR // HANGOVER"
+      },
+      "levels": [
+        {
+          "id": "night_shift",
+          "title": "Ночная смена",
+          "brief": "Поднять уровень, пока цех пытается поднять вас на вилы.",
+          "scenario": "Обычная ночная смена: сирены воют, мутанты бегут, начальства нет, но проблем почему-то больше.",
+          "mapId": "reactor_sprawl",
+          "goals": [
+            {
+              "id": "goal_1",
+              "type": "survive",
+              "target": 120,
+              "label": "Продержаться 2 минуты"
+            },
+            {
+              "id": "goal_2",
+              "type": "player_level",
+              "target": 6,
+              "label": "Поднять уровень до 6"
+            }
+          ],
+          "modifiers": {
+            "enemySpawnMul": 1.16,
+            "enemyHpMul": 1.08,
+            "bossKillInterval": 24
+          }
+        },
+        {
+          "id": "safety_briefing",
+          "title": "Инструктаж по ТБ",
+          "brief": "Пройти технику безопасности через бойню.",
+          "scenario": "Инструкция гласит: \"не стоять под трубой\". Инструкция не уточняет, что делать, если труба бежит на вас.",
+          "mapId": "reactor_sprawl",
+          "goals": [
+            {
+              "id": "goal_1",
+              "type": "enemy_kills",
+              "target": 160,
+              "label": "Убить 160 врагов"
+            },
+            {
+              "id": "goal_2",
+              "type": "boss_kills",
+              "target": 2,
+              "label": "Убить 2 боссов"
+            }
+          ],
+          "modifiers": {
+            "enemySpawnMul": 1.22,
+            "enemyHpMul": 1.14,
+            "bossKillInterval": 17
+          }
+        },
+        {
+          "id": "control_room",
+          "title": "Пульт, который всё испортил",
+          "brief": "Зачистить сердце промзоны.",
+          "scenario": "В диспетчерской засели мутанты, которые всё ещё считают себя отделом контроля качества. Очень смешно, пока они не бегут на таран.",
+          "mapId": "reactor_sprawl",
+          "goals": [
+            {
+              "id": "goal_1",
+              "type": "survive",
+              "target": 210,
+              "label": "Продержаться 210 секунд"
+            },
+            {
+              "id": "goal_2",
+              "type": "boss_kills",
+              "target": 4,
+              "label": "Убить 4 боссов"
+            }
+          ],
+          "modifiers": {
+            "enemySpawnMul": 1.28,
+            "enemyHpMul": 1.2,
+            "bossKillInterval": 13
+          }
+        },
+        {
+          "id": "reactor_core",
+          "title": "Сердце реактора",
+          "brief": "Финальный забег по зоне, где дозиметр плачет.",
+          "scenario": "Пять элитных боссов охраняют ядро так, будто им обещали вернуть квартальную премию. Не вернут. Но урон нанесут.",
+          "mapId": "reactor_sprawl",
+          "goals": [
+            {
+              "id": "goal_1",
+              "type": "survive",
+              "target": 260,
+              "label": "Продержаться 260 секунд"
+            },
+            {
+              "id": "goal_2",
+              "type": "boss_kills",
+              "target": 5,
+              "label": "Убить 5 боссов"
+            },
+            {
+              "id": "goal_3",
+              "type": "player_level",
+              "target": 8,
+              "label": "Поднять уровень до 8"
+            }
+          ],
+          "modifiers": {
+            "enemySpawnMul": 1.36,
+            "enemyHpMul": 1.26,
+            "bossKillInterval": 10
+          }
+        }
+      ]
+    }
+  ]
+}

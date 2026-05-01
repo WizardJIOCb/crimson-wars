@@ -11,6 +11,7 @@ const { WebSocketServer } = WebSocket;
 
 const config = require('./server/config');
 const { getMapDef, getCampaignDef, getCampaignLevelDef } = require('./server/world-content');
+const { createWorldContentStore } = require('./server/world-content-store');
 const { createAdminAuthStore } = require('./server/admin-auth-store');
 const { createPlayerAuthStore, normalizeNickname } = require('./server/player-auth-store');
 const { createRecordsStore } = require('./server/records-store');
@@ -142,6 +143,7 @@ const {
   DATA_DIR,
   RECORDS_DB_PATH,
   SKILLS_CONFIG_PATH,
+  WORLD_CONTENT_PATH,
   ADMIN_AUTH_DB_PATH,
   PLAYER_AUTH_DB_PATH,
   RUNTIME_REGISTRY_DB_PATH,
@@ -440,6 +442,11 @@ const playerAuthStore = createPlayerAuthStore({
   dbPath: PLAYER_AUTH_DB_PATH,
   mysql: MYSQL_STORE,
 });
+const worldContentStore = createWorldContentStore({
+  dataDir: DATA_DIR,
+  filePath: WORLD_CONTENT_PATH,
+  mysql: MYSQL_STORE,
+});
 const accountProgressionStore = createAccountProgressionStore({
   dataDir: DATA_DIR,
   dbPath: PLAYER_AUTH_DB_PATH,
@@ -554,6 +561,35 @@ const heroUniqueSkillDefsById = Object.fromEntries(
     .flatMap((list) => Array.isArray(list) ? list : [])
     .map((skill) => [skill.id, skill]),
 );
+
+function replaceArrayContents(target, nextItems) {
+  const items = Array.isArray(nextItems) ? nextItems : [];
+  if (!Array.isArray(target)) return items.slice();
+  target.splice(0, target.length, ...items);
+  return target;
+}
+
+function refreshWorldContentRuntime() {
+  accountProgressionStore.replaceWorldCatalog({
+    maps: MAP_DEFS,
+    campaigns: CAMPAIGN_DEFS,
+  });
+  const latestCatalog = accountProgressionStore.getCatalogPayload();
+  progressionCatalog.maps = replaceArrayContents(progressionCatalog.maps, latestCatalog.maps);
+  progressionCatalog.campaigns = replaceArrayContents(progressionCatalog.campaigns, latestCatalog.campaigns);
+  return latestCatalog;
+}
+
+function reloadWorldContentRuntime() {
+  try {
+    if (typeof worldContentStore.reload === 'function') {
+      worldContentStore.reload();
+      refreshWorldContentRuntime();
+    }
+  } catch (err) {
+    console.error('World content runtime reload failed:', err?.message || err);
+  }
+}
 
 function getCombatSkillDef(skillId, playerClass = '') {
   const id = String(skillId || '').trim().toLowerCase();
@@ -1987,6 +2023,10 @@ app.get('/admin/skills', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin-skills.html'));
 });
 
+app.get('/admin', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
 app.get('/api/admin/me', (req, res) => {
   if (!req.adminUser) {
     res.status(401).json({ ok: false, message: 'Authentication required' });
@@ -2276,6 +2316,33 @@ app.put('/api/admin/skills/:id', requireAdmin, (req, res) => {
     return;
   }
   res.json({ ok: true, skill: result.skill, ...skillsStore.getAdminPayload(result.collection?.id) });
+});
+
+app.get('/api/admin/world-content', requireAdmin, (_req, res) => {
+  res.json({ ok: true, ...worldContentStore.getAdminPayload(), now: Date.now() });
+});
+
+app.put('/api/admin/world-content', requireAdmin, (req, res) => {
+  const payload = req.body && typeof req.body === 'object' ? req.body : {};
+  const result = worldContentStore.saveAdminPayload(payload);
+  if (!result.ok) {
+    res.status(result.code || 400).json({ ok: false, message: result.message || 'Failed to save world content' });
+    return;
+  }
+  refreshWorldContentRuntime();
+  const refreshedRooms = refreshActiveRoomScenesFromWorldContent();
+  res.json({ ok: true, ...result, refreshedRooms, now: Date.now() });
+});
+
+app.post('/api/admin/world-content/reset', requireAdmin, (_req, res) => {
+  const result = worldContentStore.resetToDefaults();
+  if (!result.ok) {
+    res.status(result.code || 500).json({ ok: false, message: result.message || 'Failed to reset world content' });
+    return;
+  }
+  refreshWorldContentRuntime();
+  const refreshedRooms = refreshActiveRoomScenesFromWorldContent();
+  res.json({ ok: true, ...result, refreshedRooms, now: Date.now() });
 });
 
 function getRoomWorld(room = null) {
@@ -2568,7 +2635,7 @@ function instantiateSceneProp(blueprint, world, nextId) {
     y,
     w: width,
     h: height,
-    angle: 0,
+    angle: Number(blueprint?.angle) || 0,
     anchorY: Number(template.anchorY) || 0.56,
     shadowScale: Number(template.shadowScale) || 1,
     collisionW: Math.max(18, Math.round(width * collisionScaleX)),
@@ -2589,12 +2656,14 @@ function instantiateSceneProp(blueprint, world, nextId) {
   };
 }
 
-function canPlaceSceneProp(objects, candidate, world) {
+function canPlaceSceneProp(objects, candidate, world, options = {}) {
   if (!candidate) return false;
-  const centerDx = candidate.x - world.width * 0.5;
-  const centerDy = candidate.y - world.height * 0.5;
-  const centerClear = sceneCenterSafeRadius(world);
-  if ((centerDx * centerDx) + (centerDy * centerDy) < centerClear * centerClear) return false;
+  if (options.allowCenter !== true) {
+    const centerDx = candidate.x - world.width * 0.5;
+    const centerDy = candidate.y - world.height * 0.5;
+    const centerClear = sceneCenterSafeRadius(world);
+    if ((centerDx * centerDx) + (centerDy * centerDy) < centerClear * centerClear) return false;
+  }
   const rect = buildMapObjectRect(candidate, 42);
   for (const obj of objects) {
     if (!obj) continue;
@@ -2627,7 +2696,7 @@ function buildRoomScene(content) {
   let nextId = 1;
   for (const blueprint of Array.isArray(scene.plannedObjects) ? scene.plannedObjects : []) {
     const obj = instantiateSceneProp(blueprint, world, nextId);
-    if (!obj || !canPlaceSceneProp(objects, obj, world)) continue;
+    if (!obj) continue;
     objects.push(obj);
     nextId += 1;
   }
@@ -2668,6 +2737,33 @@ function buildRoomScene(content) {
       glow: String(mapDef?.cover?.glow || 'rgba(34, 197, 94, 0.2)'),
     },
   };
+}
+
+function applySceneToRoom(room, scene) {
+  if (!room || !scene) return;
+  room.trees = scene.trees;
+  room.terrainZones = scene.terrainZones;
+  room.mapObjects = scene.mapObjects;
+  room.sceneTheme = scene.theme;
+  markMapObjectsChanged(room);
+}
+
+function refreshActiveRoomScenesFromWorldContent() {
+  let refreshed = 0;
+  for (const room of rooms.values()) {
+    const mapDef = getMapDef(room?.mapId);
+    if (!room || !mapDef) continue;
+    const scene = buildRoomScene({
+      runType: room.runType,
+      mapId: mapDef.id,
+      mapDef,
+      world: room.world,
+      treeDensityMul: Math.max(0.15, Number(mapDef.treeDensityMul) || 1),
+    });
+    applySceneToRoom(room, scene);
+    refreshed += 1;
+  }
+  return refreshed;
 }
 
 function getSceneObjects(room, options = {}) {
@@ -2729,7 +2825,7 @@ function moveActorWithSceneCollision(room, startX, startY, dx, dy, radius, bound
   return { x, y };
 }
 
-function segmentIntersectsExpandedRect(x1, y1, x2, y2, rect, pad = 0) {
+function getSegmentExpandedRectHit(x1, y1, x2, y2, rect, pad = 0) {
   let t0 = 0;
   let t1 = 1;
   const dx = x2 - x1;
@@ -2746,19 +2842,37 @@ function segmentIntersectsExpandedRect(x1, y1, x2, y2, rect, pad = 0) {
   ];
   for (const [p, q] of tests) {
     if (Math.abs(p) < 0.000001) {
-      if (q < 0) return false;
+      if (q < 0) return null;
       continue;
     }
     const r = q / p;
     if (p < 0) {
-      if (r > t1) return false;
+      if (r > t1) return null;
       if (r > t0) t0 = r;
     } else {
-      if (r < t0) return false;
+      if (r < t0) return null;
       if (r < t1) t1 = r;
     }
   }
-  return true;
+  const hitX = x1 + dx * t0;
+  const hitY = y1 + dy * t0;
+  const eps = 0.75;
+  let nx = 0;
+  let ny = 0;
+  if (Math.abs(hitX - minX) <= eps) nx = -1;
+  else if (Math.abs(hitX - maxX) <= eps) nx = 1;
+  else if (Math.abs(hitY - minY) <= eps) ny = -1;
+  else if (Math.abs(hitY - maxY) <= eps) ny = 1;
+  if (!nx && !ny) {
+    const len = Math.hypot(dx, dy) || 1;
+    nx = -dx / len;
+    ny = -dy / len;
+  }
+  return { x: hitX, y: hitY, nx, ny, t: t0 };
+}
+
+function segmentIntersectsExpandedRect(x1, y1, x2, y2, rect, pad = 0) {
+  return Boolean(getSegmentExpandedRectHit(x1, y1, x2, y2, rect, pad));
 }
 
 function isPointInsideRect(x, y, rect) {
@@ -3275,6 +3389,7 @@ function createCampaignMission(campaignDef, levelDef) {
 }
 
 function resolveNewRoomContent(options = {}) {
+  reloadWorldContentRuntime();
   const requestedRunType = String(options.runType || 'free').trim().toLowerCase() === 'campaign' ? 'campaign' : 'free';
   if (requestedRunType === 'campaign') {
     const campaignId = String(options.campaignId || '').trim();
@@ -3499,6 +3614,8 @@ function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode, reques
       bullets: [],
       shotEvents: [],
       replayShotEvents: [],
+      objectImpactEvents: [],
+      replayObjectImpactEvents: [],
       enemies: [],
       drops: [],
       xpOrbs: [],
@@ -3514,6 +3631,7 @@ function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode, reques
       nextCompanionId: 1,
       nextBulletId: 1,
       nextShotEventId: 1,
+      nextObjectImpactEventId: 1,
       nextDropId: 1,
       nextXpOrbId: 1,
       nextSkillOrbId: 1,
@@ -3817,6 +3935,7 @@ function collectSerializedStatePayloadStats(payload) {
     drops: Array.isArray(source.drops) ? source.drops.length : 0,
     skillOrbs: Array.isArray(source.skillOrbs) ? source.skillOrbs.length : 0,
     shotEvents: Array.isArray(source.shotEvents) ? source.shotEvents.length : 0,
+    objectImpactEvents: Array.isArray(source.objectImpactEvents) ? source.objectImpactEvents.length : 0,
   };
 }
 
@@ -3912,6 +4031,48 @@ function pushRoomShotEvent(room, event) {
   }
   if (room.replayShotEvents.length > 512) {
     room.replayShotEvents.splice(0, room.replayShotEvents.length - 512);
+  }
+}
+
+function getMapObjectImpactMaterial(obj) {
+  const key = `${String(obj?.kind || '')} ${String(obj?.spriteKey || '')} ${String(obj?.styleTag || '')}`.toLowerCase();
+  if (/(car|hatchback|sedan|bus|ambulance|van|tank)/.test(key)) return 'metal';
+  if (/(shack|wood|hut)/.test(key)) return 'wood';
+  if (/(mall|clinic|reactor|barrier|concrete|block|industrial)/.test(key)) return 'concrete';
+  return obj?.destructible ? 'metal' : 'concrete';
+}
+
+function pushRoomObjectImpactEvent(room, obj, hit, bullet, now = Date.now()) {
+  if (!room || !obj || !hit) return;
+  if (!Array.isArray(room.objectImpactEvents)) room.objectImpactEvents = [];
+  if (!Array.isArray(room.replayObjectImpactEvents)) room.replayObjectImpactEvents = [];
+  if (!Number.isFinite(Number(room.nextObjectImpactEventId))) room.nextObjectImpactEventId = 1;
+  const vx = Number(bullet?.vx) || 0;
+  const vy = Number(bullet?.vy) || 0;
+  const speed = Math.hypot(vx, vy) || 1;
+  const payload = {
+    id: room.nextObjectImpactEventId++,
+    at: now,
+    objectId: String(obj.id || ''),
+    kind: String(obj.kind || ''),
+    spriteKey: String(obj.spriteKey || ''),
+    material: getMapObjectImpactMaterial(obj),
+    bulletKind: String(bullet?.kind || 'bullet'),
+    x: Number(hit.x) || Number(obj.x) || 0,
+    y: Number(hit.y) || Number(obj.y) || 0,
+    dirX: vx / speed,
+    dirY: vy / speed,
+    nx: Number(hit.nx) || 0,
+    ny: Number(hit.ny) || 0,
+    damage: Math.max(0, Number(bullet?.damage) || 0),
+  };
+  room.objectImpactEvents.push(payload);
+  room.replayObjectImpactEvents.push(payload);
+  if (room.objectImpactEvents.length > 96) {
+    room.objectImpactEvents.splice(0, room.objectImpactEvents.length - 96);
+  }
+  if (room.replayObjectImpactEvents.length > 512) {
+    room.replayObjectImpactEvents.splice(0, room.replayObjectImpactEvents.length - 512);
   }
 }
 
@@ -4955,6 +5116,22 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
       radius: Math.max(2, Number(event.radius) || BULLET_RADIUS),
       at: Math.max(0, Number(event.at) || 0),
     })) : undefined,
+    objectImpactEvents: Array.isArray(room.objectImpactEvents) && room.objectImpactEvents.length > 0 ? room.objectImpactEvents.map((event) => ({
+      id: event.id,
+      objectId: event.objectId || '',
+      kind: event.kind || '',
+      spriteKey: event.spriteKey || '',
+      material: event.material || 'concrete',
+      bulletKind: event.bulletKind || 'bullet',
+      x: event.x,
+      y: event.y,
+      dirX: Number(event.dirX) || 0,
+      dirY: Number(event.dirY) || 0,
+      nx: Number(event.nx) || 0,
+      ny: Number(event.ny) || 0,
+      damage: Math.max(0, Number(event.damage) || 0),
+      at: Math.max(0, Number(event.at) || 0),
+    })) : undefined,
     enemies: room.enemies.map((e) => {
       const enemyType = e.type || 'normal';
       const radius = Math.max(ENEMY_RADIUS, Number(e.radius) || ENEMY_RADIUS);
@@ -5940,6 +6117,7 @@ function buildReplayFrameBase(room, now) {
     xpOrbs,
     bossPortals,
     replayShotEvents: Array.isArray(room.replayShotEvents) ? room.replayShotEvents : [],
+    replayObjectImpactEvents: Array.isArray(room.replayObjectImpactEvents) ? room.replayObjectImpactEvents : [],
     totalEnemyKills: Math.max(0, Number(room.totalEnemyKills) || 0),
     totalBossKills: Math.max(0, Number(room.totalBossKills) || 0),
     bossAlive: hasAliveBoss(room) ? 1 : 0,
@@ -5980,6 +6158,29 @@ function captureReplayFrame(room, replay, now, options = {}) {
       Math.max(0, Math.round((Number(event.at) || now) - replay.startedAt)),
       event.kind || 'bullet',
     ]));
+  const objectImpactEvents = (Array.isArray(baseFrame.replayObjectImpactEvents) ? baseFrame.replayObjectImpactEvents : [])
+    .filter((event) => {
+      const at = Math.max(0, Number(event?.at) || 0);
+      return at >= Math.max(0, Number(replay.startedAt) || 0)
+        && at > Math.max(0, Number(replay.lastCaptureAt) || 0)
+        && at <= now;
+    })
+    .map((event) => ([
+      Math.max(0, Number(event.id) || 0),
+      event.objectId || '',
+      event.kind || '',
+      event.spriteKey || '',
+      event.material || 'concrete',
+      event.bulletKind || 'bullet',
+      roundReplayCoord(event.x),
+      roundReplayCoord(event.y),
+      Number((Number(event.dirX) || 0).toFixed(3)),
+      Number((Number(event.dirY) || 0).toFixed(3)),
+      Number((Number(event.nx) || 0).toFixed(3)),
+      Number((Number(event.ny) || 0).toFixed(3)),
+      Math.max(0, Math.round(Number(event.damage) || 0)),
+      Math.max(0, Math.round((Number(event.at) || now) - replay.startedAt)),
+    ]));
 
   replay.frames.push({
     t: Math.max(0, now - replay.startedAt),
@@ -5991,6 +6192,7 @@ function captureReplayFrame(room, replay, now, options = {}) {
     e: baseFrame.enemies,
     b: baseFrame.bullets,
     se: shotEvents,
+    oe: objectImpactEvents,
     d: baseFrame.drops,
     x: baseFrame.xpOrbs,
     bp: baseFrame.bossPortals,
@@ -7964,12 +8166,21 @@ function tickRoom(room, dtSec, now) {
 
       if (!hit) {
         const solidObjects = getSceneObjects(room, { solidOnly: true });
+        let hitObject = null;
+        let hitInfo = null;
         for (const obj of solidObjects) {
           const rect = buildMapObjectRect(obj);
-          const collides = segmentIntersectsExpandedRect(prevX, prevY, b.x, b.y, rect, bulletR);
-          if (!collides) continue;
-          if (obj.destructible) {
-            damageMapObject(room, obj, Math.max(1, Number(b.damage) || 1), b.ownerPlayerId || b.ownerId, now, {
+          const objectHit = getSegmentExpandedRectHit(prevX, prevY, b.x, b.y, rect, bulletR);
+          if (!objectHit) continue;
+          if (!hitInfo || Number(objectHit.t) < Number(hitInfo.t)) {
+            hitObject = obj;
+            hitInfo = objectHit;
+          }
+        }
+        if (hitObject && hitInfo) {
+          pushRoomObjectImpactEvent(room, hitObject, hitInfo, b, now);
+          if (hitObject.destructible) {
+            damageMapObject(room, hitObject, Math.max(1, Number(b.damage) || 1), b.ownerPlayerId || b.ownerId, now, {
               cause: 'bullet',
             });
           }
@@ -7977,7 +8188,6 @@ function tickRoom(room, dtSec, now) {
             explodeRocket(room, b, now);
           }
           hit = true;
-          break;
         }
       }
     }
@@ -8410,8 +8620,10 @@ setInterval(() => {
         dropsSent: payloadStats.drops,
         skillOrbsSent: payloadStats.skillOrbs,
         shotEventsSent: payloadStats.shotEvents,
+        objectImpactEventsSent: payloadStats.objectImpactEvents,
       };
       room.shotEvents = [];
+      room.objectImpactEvents = [];
     }
 
     const roomLoopMs = Number(process.hrtime.bigint() - roomLoopStartedNs) / 1e6;

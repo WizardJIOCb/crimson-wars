@@ -18,7 +18,8 @@ echo Starting Crimson Wars local server...
 echo.
 echo Local URLs:
 echo   Game:  %APP_URL%
-echo   Admin: %APP_URL%/admin-skills.html
+echo   Admin Hub: %APP_URL%/admin
+echo   Legacy skills admin: %APP_URL%/admin-skills.html
 echo.
 echo Admin login:
 echo   %ADMIN_BOOTSTRAP_LOGIN_LOCAL%

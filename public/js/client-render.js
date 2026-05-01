@@ -1700,6 +1700,53 @@ function drawFx() {
     ctx.globalAlpha = 1;
   }
 
+  if (Array.isArray(visuals.objectImpactFx)) {
+    for (const fx of visuals.objectImpactFx) {
+      if (!isVisibleWorld(fx.x, fx.y, 72)) continue;
+      const lifeRatio = Math.max(0, Math.min(1, (Number(fx.life) || 0) / Math.max(0.001, Number(fx.ttl) || 1)));
+      const sx = fx.x - camera.x;
+      const sy = fx.y - camera.y;
+      if (fx.kind === 'spark') {
+        const vx = Number(fx.vx) || 0;
+        const vy = Number(fx.vy) || 0;
+        const len = Math.max(3, Number(fx.len) || 10) * (0.5 + lifeRatio * 0.7);
+        const angle = Math.atan2(vy, vx);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = Math.min(1, lifeRatio * 1.15);
+        ctx.strokeStyle = fx.color || '#fde68a';
+        ctx.lineWidth = Math.max(1, Number(fx.r) || 1.4);
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(sx - Math.cos(angle) * len, sy - Math.sin(angle) * len);
+        ctx.stroke();
+        ctx.restore();
+      } else if (fx.kind === 'smoke') {
+        const r = Math.max(2, Number(fx.r) || 6);
+        ctx.save();
+        ctx.globalAlpha = Math.min(0.48, lifeRatio * 0.42);
+        ctx.fillStyle = hexToRgba(fx.color || '#94a3b8', 1);
+        ctx.beginPath();
+        ctx.ellipse(sx, sy, r * 1.35, r * 0.82, (Number(fx.vx) || 0) * 0.004, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      } else {
+        const r = Math.max(3, Number(fx.r) || 10) * (0.35 + (1 - lifeRatio) * 0.9);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = Math.min(0.75, lifeRatio * 0.75);
+        const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
+        glow.addColorStop(0, hexToRgba(fx.color || '#facc15', 0.9));
+        glow.addColorStop(1, hexToRgba(fx.color || '#facc15', 0));
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+  }
+
   for (const f of visuals.muzzleGroundFlashes) {
     if (!game.bulletTracersEnabled) continue;
     if (!isVisibleWorld(f.x, f.y, 72)) continue;
@@ -1960,11 +2007,36 @@ function drawMinimap() {
     }
   }
 
-  for (const player of game.state.players || []) {
-    if (player.isCompanion) continue;
+  const minimapPlayers = Array.isArray(game.state.players) ? game.state.players : [];
+  for (const player of minimapPlayers) {
+    if (!player || player.id === game.myId || player.alive === false) continue;
     if (!isVisibleInMini(player.x, player.y, 60)) continue;
-    const isMe = player.id === game.myId;
-    dot(player.x, player.y, isMe ? Math.max(3.4 * dpr, 3) : Math.max(2.3 * dpr, 2), isMe ? '#22d3ee' : '#a5f3fc');
+    const isCompanion = Boolean(player.isCompanion);
+    dot(
+      player.x,
+      player.y,
+      isCompanion ? Math.max(2.5 * dpr, 2.2) : Math.max(2.3 * dpr, 2),
+      isCompanion ? '#4ade80' : '#a5f3fc',
+    );
+  }
+
+  if (me && me.alive !== false && isVisibleInMini(me.x, me.y, 60)) {
+    const mx = toMapX(me.x);
+    const my = toMapY(me.y);
+    const coreR = Math.max(3.6 * dpr, 3.2);
+    minimapCtx.fillStyle = 'rgba(34, 197, 94, 0.36)';
+    minimapCtx.beginPath();
+    minimapCtx.arc(mx, my, coreR + Math.max(2.4 * dpr, 2), 0, Math.PI * 2);
+    minimapCtx.fill();
+    minimapCtx.fillStyle = '#22c55e';
+    minimapCtx.beginPath();
+    minimapCtx.arc(mx, my, coreR, 0, Math.PI * 2);
+    minimapCtx.fill();
+    minimapCtx.strokeStyle = 'rgba(220, 252, 231, 0.95)';
+    minimapCtx.lineWidth = Math.max(1, dpr * 0.85);
+    minimapCtx.beginPath();
+    minimapCtx.arc(mx, my, Math.max(1.8, coreR - Math.max(0.8, dpr * 0.35)), 0, Math.PI * 2);
+    minimapCtx.stroke();
   }
 
   minimapCtx.strokeStyle = 'rgba(255,255,255,0.14)';

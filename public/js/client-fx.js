@@ -295,6 +295,78 @@ function spawnRadialHitFx(x, y, radius, options = {}) {
   if (visuals.hitFx.length > 220) visuals.hitFx.splice(0, visuals.hitFx.length - 220);
 }
 
+function spawnObjectImpactFx(event) {
+  if (!game.hitEffectsEnabled) return;
+  if (!Array.isArray(visuals.objectImpactFx)) visuals.objectImpactFx = [];
+  const x = Number(event?.x) || 0;
+  const y = Number(event?.y) || 0;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+  const material = String(event?.material || 'concrete').toLowerCase();
+  const dirX = Number(event?.dirX) || 0;
+  const dirY = Number(event?.dirY) || -1;
+  const backX = -dirX;
+  const backY = -dirY;
+  const hitNudgeX = (Number(event?.nx) || backX) * 3;
+  const hitNudgeY = (Number(event?.ny) || backY) * 3;
+  const damage = Math.max(1, Number(event?.damage) || 1);
+  const isRocket = String(event?.bulletKind || '').toLowerCase() === 'rocket';
+  const sparkCount = material === 'metal' ? 8 : (material === 'wood' ? 3 : 2);
+  const dustCount = material === 'metal' ? 5 : (material === 'wood' ? 8 : 10);
+  const burst = Math.max(0.8, Math.min(1.85, 0.85 + damage * 0.015 + (isRocket ? 0.55 : 0)));
+
+  for (let i = 0; i < sparkCount; i += 1) {
+    const spread = (Math.random() - 0.5) * 1.35;
+    const speed = (130 + Math.random() * 260) * burst;
+    const angle = Math.atan2(backY, backX) + spread;
+    const vx = (Math.cos(angle) + (Math.random() - 0.5) * 0.5) * speed;
+    const vy = (Math.sin(angle) + (Math.random() - 0.5) * 0.5) * speed;
+    visuals.objectImpactFx.push({
+      kind: 'spark',
+      x: x + hitNudgeX + (Math.random() * 6 - 3),
+      y: y + hitNudgeY + (Math.random() * 6 - 3),
+      vx,
+      vy,
+      len: 8 + Math.random() * 15,
+      r: 1.2 + Math.random() * 1.8,
+      color: material === 'wood' ? '#fbbf24' : '#fde68a',
+      life: 0.16 + Math.random() * 0.18,
+      ttl: 0.16 + Math.random() * 0.18,
+    });
+  }
+
+  for (let i = 0; i < dustCount; i += 1) {
+    const angle = Math.atan2(backY, backX) + (Math.random() - 0.5) * 1.65;
+    const speed = (24 + Math.random() * 76) * burst;
+    const color = material === 'wood'
+      ? (Math.random() > 0.45 ? '#a16207' : '#d6a56a')
+      : (material === 'metal' ? '#64748b' : '#9ca3af');
+    visuals.objectImpactFx.push({
+      kind: 'smoke',
+      x: x + hitNudgeX + (Math.random() * 10 - 5),
+      y: y + hitNudgeY + (Math.random() * 10 - 5),
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - Math.random() * 18,
+      r: (4 + Math.random() * 8) * (material === 'concrete' ? 1.25 : 1),
+      grow: 10 + Math.random() * 20,
+      color,
+      life: 0.42 + Math.random() * 0.38,
+      ttl: 0.42 + Math.random() * 0.38,
+    });
+  }
+
+  visuals.objectImpactFx.push({
+    kind: 'flash',
+    x: x + hitNudgeX,
+    y: y + hitNudgeY,
+    r: (12 + Math.random() * 10) * burst,
+    color: material === 'metal' ? '#facc15' : '#e5e7eb',
+    life: 0.07,
+    ttl: 0.07,
+  });
+
+  if (visuals.objectImpactFx.length > 360) visuals.objectImpactFx.splice(0, visuals.objectImpactFx.length - 360);
+}
+
 const trFx = (key, fallback = key) => {
   if (typeof window.cwI18nT !== 'function') return fallback;
   const out = window.cwI18nT(key);
@@ -638,6 +710,16 @@ function processStateFx(nextState) {
   const nowMs = Date.now();
   if (!Array.isArray(visuals.recentImpactSources)) visuals.recentImpactSources = [];
   visuals.recentImpactSources = visuals.recentImpactSources.filter((src) => Number(src?.expireAt) > nowMs);
+  if (!(visuals.objectImpactEventIds instanceof Map)) visuals.objectImpactEventIds = new Map();
+  for (const [key, seenAt] of Array.from(visuals.objectImpactEventIds.entries())) {
+    if (nowMs - Number(seenAt || 0) > 5000) visuals.objectImpactEventIds.delete(key);
+  }
+  for (const event of nextState.objectImpactEvents || []) {
+    const eventKey = `${event?.id ?? ''}:${event?.objectId || ''}:${Math.round(Number(event?.at) || 0)}`;
+    if (visuals.objectImpactEventIds.has(eventKey)) continue;
+    visuals.objectImpactEventIds.set(eventKey, nowMs);
+    spawnObjectImpactFx(event);
+  }
 
   const prevBulletsForImpact = visuals.prevBulletsForImpact instanceof Map ? visuals.prevBulletsForImpact : new Map();
   const currentBulletIds = new Set((nextState.bullets || []).map((b) => b.id));
@@ -1371,5 +1453,18 @@ function updateFx(dt) {
   for (let i = visuals.hitFx.length - 1; i >= 0; i -= 1) {
     visuals.hitFx[i].life -= dt;
     if (visuals.hitFx[i].life <= 0) visuals.hitFx.splice(i, 1);
+  }
+
+  if (Array.isArray(visuals.objectImpactFx)) {
+    for (let i = visuals.objectImpactFx.length - 1; i >= 0; i -= 1) {
+      const fx = visuals.objectImpactFx[i];
+      fx.life -= dt;
+      fx.x += (Number(fx.vx) || 0) * dt;
+      fx.y += (Number(fx.vy) || 0) * dt;
+      fx.vx = (Number(fx.vx) || 0) * Math.pow(0.045, dt);
+      fx.vy = (Number(fx.vy) || 0) * Math.pow(0.08, dt) - (fx.kind === 'smoke' ? 6 : 0) * dt;
+      if (fx.kind === 'smoke') fx.r += (Number(fx.grow) || 0) * dt;
+      if (fx.life <= 0) visuals.objectImpactFx.splice(i, 1);
+    }
   }
 }

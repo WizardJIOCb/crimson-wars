@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Crimson Wars Admin Hub</title>
+  <link rel="stylesheet" href="/admin-hub.css" />
+</head>
+<body>
+  <div id="admin-login" class="admin-login">
+    <div class="login-card">
+      <div class="eyebrow">Crimson Wars</div>
+      <h1>Admin Hub</h1>
+      <p>Одна точка входа для новостей, навыков, карт и кампаний. Логин общий, редакторы теперь собраны в одном месте.</p>
+      <div class="field-grid">
+        <div class="field">
+          <label for="login-name">Логин</label>
+          <input id="login-name" autocomplete="username" />
+        </div>
+        <div class="field">
+          <label for="login-password">Пароль</label>
+          <input id="login-password" type="password" autocomplete="current-password" />
+        </div>
+      </div>
+      <div class="btn-row" style="margin-top:16px">
+        <button id="login-btn" class="btn btn-primary">Войти в админку</button>
+      </div>
+      <div id="login-status" class="status-line">Используйте учётку администратора.</div>
+    </div>
+  </div>
+
+  <div id="admin-app" class="admin-app hidden">
+    <aside class="admin-sidebar">
+      <div class="brand">
+        <div class="brand-mark">Battle Hub Control</div>
+        <div class="brand-title">Crimson<br/>Admin</div>
+        <div class="brand-subtitle">Единая админка проекта без прыжков между разными страницами.</div>
+      </div>
+
+      <div class="profile-card">
+        <span>Текущий админ</span>
+        <strong id="admin-user-name">-</strong>
+        <span id="admin-user-role">editor</span>
+      </div>
+
+      <nav class="nav-list">
+        <button class="nav-btn active" data-section="overview"><span>Обзор</span><span>hub</span></button>
+        <button class="nav-btn" data-section="maps"><span>Карты</span><span id="maps-nav-count">0</span></button>
+        <button class="nav-btn" data-section="campaigns"><span>Кампании</span><span id="campaigns-nav-count">0</span></button>
+        <button class="nav-btn" data-section="news"><span>Новости</span><span>legacy</span></button>
+        <button class="nav-btn" data-section="skills"><span>Навыки</span><span>legacy</span></button>
+      </nav>
+
+      <div class="sidebar-actions btn-row">
+        <button id="reload-btn" class="btn btn-ghost">Обновить</button>
+        <button id="logout-btn" class="btn btn-primary">Выйти</button>
+      </div>
+
+      <div class="sidebar-footnote">
+        Изменения карт и кампаний влияют на новые комнаты и новые забеги. Уже идущие бои продолжают жить на старом снапшоте.
+      </div>
+    </aside>
+
+    <main class="admin-main">
+      <header class="topbar">
+        <div>
+          <h2 id="section-title">Обзор</h2>
+          <p id="section-copy">Центр управления проектом: быстро перейти в новости, навыки, карты и кампании, не теряя общий контекст.</p>
+        </div>
+        <div class="stack" style="align-items:flex-end">
+          <div class="topbar-meta">
+            <div id="world-dirty-pill" class="pill hidden">Есть несохранённые правки карт/кампаний</div>
+            <div id="runtime-pill" class="pill">Новые сохранения уходят в новые комнаты</div>
+          </div>
+          <div class="btn-row">
+            <button id="save-world-btn" class="btn btn-primary" disabled>Сохранить карты/кампании</button>
+            <button id="reset-world-btn" class="btn btn-ghost">Сбросить к дефолту</button>
+            <button id="open-play-btn" class="btn btn-ghost">Открыть игру</button>
+          </div>
+          <div id="global-status" class="status-line">Готово.</div>
+        </div>
+      </header>
+
+      <section id="section-overview" class="admin-section">
+        <div class="dashboard-grid">
+          <div class="card metric-card">
+            <strong id="metric-maps">0</strong>
+            <span>Карт в каталоге</span>
+          </div>
+          <div class="card metric-card">
+            <strong id="metric-campaigns">0</strong>
+            <span>Кампаний</span>
+          </div>
+          <div class="card metric-card">
+            <strong id="metric-levels">0</strong>
+            <span>Уровней в кампаниях</span>
+          </div>
+          <div class="card metric-card">
+            <strong id="metric-legacy">2</strong>
+            <span>Встроенных legacy-редактора</span>
+          </div>
+        </div>
+
+        <div class="shortcut-grid">
+          <div class="card shortcut-card">
+            <div>
+              <h3>Карты</h3>
+              <p>Редактирование размеров мира, поверхности, объектов, случайных пропсов и визуального вайба карты.</p>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-primary" data-jump="maps">Открыть редактор карт</button>
+            </div>
+          </div>
+
+          <div class="card shortcut-card">
+            <div>
+              <h3>Кампании</h3>
+              <p>Управление цепочками уровней, сценарием, целями миссий и привязкой каждого уровня к карте.</p>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-primary" data-jump="campaigns">Открыть редактор кампаний</button>
+            </div>
+          </div>
+
+          <div class="card shortcut-card">
+            <div>
+              <h3>Новости</h3>
+              <p>Существующий редактор новостей встроен прямо в хаб и использует тот же admin-session.</p>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-ghost" data-jump="news">Перейти к новостям</button>
+              <a class="btn btn-ghost" href="/admin/news" target="_blank" rel="noreferrer">Открыть отдельно</a>
+            </div>
+          </div>
+
+          <div class="card shortcut-card">
+            <div>
+              <h3>Навыки</h3>
+              <p>Редактор скиллов и аккаунтов админов теперь тоже живёт внутри общей оболочки.</p>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-ghost" data-jump="skills">Перейти к навыкам</button>
+              <a class="btn btn-ghost" href="/admin/skills" target="_blank" rel="noreferrer">Открыть отдельно</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="section-maps" class="admin-section hidden">
+        <div class="maps-shell">
+          <div class="maps-top-grid">
+            <div class="card list-panel maps-fixed-panel">
+            <div class="panel-head">
+              <div>
+                <h3>Списки</h3>
+                <div class="panel-note">Карты, объекты, ландшафт и технические настройки выбранной сцены.</div>
+              </div>
+            </div>
+            <div class="panel-body map-side-body">
+              <div class="field map-tab-select-field">
+                <label for="map-panel-select">Раздел</label>
+                <select id="map-panel-select">
+                  <option value="maps">Карты</option>
+                  <option value="objects" selected>Объекты</option>
+                  <option value="surface">Ландшафт</option>
+                  <option value="settings">Настройки</option>
+                </select>
+              </div>
+              <div class="map-tab-panel active" data-map-tab-panel="objects">
+                <div class="section-toolbar">
+                  <button id="prop-add-btn" class="btn btn-primary">В центр</button>
+                </div>
+                <div id="object-palette" class="object-palette"></div>
+                <div class="mini-divider"></div>
+                <h4>На карте</h4>
+                <div id="map-object-list" class="object-list"></div>
+              </div>
+              <div class="map-tab-panel" data-map-tab-panel="maps">
+                <div class="section-toolbar">
+                  <button id="map-add-btn" class="btn btn-primary">Новая карта</button>
+                  <button id="map-clone-btn" class="btn btn-ghost">Клон</button>
+                  <button id="map-delete-btn" class="btn btn-danger">Удалить</button>
+                </div>
+                <div id="map-list" class="list-stack"></div>
+              </div>
+              <div class="map-tab-panel" data-map-tab-panel="surface">
+                <div class="surface-actions">
+                  <button class="btn btn-primary" type="button" data-add-zone-template="road">Дорога</button>
+                  <button class="btn btn-ghost" type="button" data-add-zone-template="road_wide">Широкая дорога</button>
+                  <button class="btn btn-ghost" type="button" data-add-zone-template="light_spot">Овальный свет</button>
+                  <button class="btn btn-ghost" type="button" data-add-zone-template="dirt_spot">Пятно земли</button>
+                </div>
+                <div class="mini-divider"></div>
+                <h4>Зоны ландшафта</h4>
+                <div id="map-zone-list" class="object-list"></div>
+              </div>
+              <div class="map-tab-panel" data-map-tab-panel="settings">
+                <div class="field-grid">
+                  <div class="field"><label for="map-id">ID</label><input id="map-id" class="mono" /></div>
+                  <div class="field"><label for="map-name">Название</label><input id="map-name" /></div>
+                  <div class="field"><label for="map-subtitle">Подзаголовок</label><input id="map-subtitle" /></div>
+                  <div class="field"><label for="map-theme">Theme ID</label><input id="map-theme" class="mono" /></div>
+                  <div class="field-grid field-grid--two">
+                    <div class="field"><label for="map-width">Ширина</label><input id="map-width" type="number" /></div>
+                    <div class="field"><label for="map-height">Высота</label><input id="map-height" type="number" /></div>
+                  </div>
+                  <div class="field-grid field-grid--two">
+                    <div class="field"><label for="map-tree-density">Деревья</label><input id="map-tree-density" type="number" step="0.05" /></div>
+                    <div class="field"><label for="map-base-material">Материал</label><select id="map-base-material"></select></div>
+                  </div>
+                  <div class="field"><label for="map-description">Описание</label><textarea id="map-description"></textarea></div>
+                  <div class="field"><label for="map-cover-from">Cover from</label><input id="map-cover-from" class="mono" /></div>
+                  <div class="field"><label for="map-cover-to">Cover to</label><input id="map-cover-to" class="mono" /></div>
+                  <div class="field"><label for="map-cover-accent">Cover accent</label><input id="map-cover-accent" class="mono" /></div>
+                  <div class="field"><label for="map-cover-glow">Cover glow</label><input id="map-cover-glow" class="mono" /></div>
+                </div>
+                <div class="note-box">Если менять `id` живой карты, старые ссылки и прогресс кампаний могут потерять привязку.</div>
+              </div>
+            </div>
+            </div>
+
+            <div class="card preview-panel maps-fixed-panel">
+              <div class="panel-head">
+                <div>
+                  <h3>Превью</h3>
+                  <div class="panel-note">Схематичное превью сцены, зон и объектов, чтобы быстро увидеть композицию уровня.</div>
+                </div>
+                <div class="map-tool-row">
+                  <button class="icon-btn active" type="button" data-map-tool="place" title="Ставить объекты">＋</button>
+                  <button class="icon-btn" type="button" data-map-tool="select" title="Выбирать объекты">◎</button>
+                  <button class="icon-btn" type="button" data-map-clear-selection title="Сбросить выделение">×</button>
+                  <button class="icon-btn" type="button" data-map-zoom="out" title="Отдалить">−</button>
+                  <button class="icon-btn" type="button" data-map-zoom="in" title="Приблизить">＋</button>
+                  <button class="icon-btn" type="button" data-map-zoom="reset" title="Сбросить камеру">⌂</button>
+                </div>
+              </div>
+              <div class="panel-body preview-panel-body">
+                <div class="preview-stage">
+                  <canvas id="map-preview-canvas" class="preview-canvas map-editor-canvas" width="1280" height="760"></canvas>
+                  <div class="map-canvas-hud">
+                    <span id="map-active-tool-label">Постановка объектов</span>
+                    <span id="map-zoom-label">100%</span>
+                  </div>
+                  <div id="map-usage" class="usage-list"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card editor-panel editor-panel--full">
+            <div class="panel-head">
+              <div>
+                <h3>Редактор карты</h3>
+                <div class="panel-note">Меняйте мету, поверхность и сцену. Координаты зон и объектов нормализованы от `0` до `1`.</div>
+              </div>
+            </div>
+            <div class="panel-body stack">
+              <div class="card">
+                <div class="card-pad stack">
+                  <div class="section-toolbar">
+                    <h4>Зоны ландшафта</h4>
+                    <button id="zone-add-btn" class="btn btn-ghost">Добавить зону</button>
+                  </div>
+                  <div class="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Material</th>
+                          <th>Shape</th>
+                          <th>X</th>
+                          <th>Y</th>
+                          <th>W</th>
+                          <th>H</th>
+                          <th>Feather</th>
+                          <th>Alpha</th>
+                          <th>Angle</th>
+                          <th>Stripe</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody id="map-zones-body"></tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-pad stack">
+                  <div class="section-toolbar">
+                    <h4>Плановые объекты</h4>
+                  </div>
+                  <div class="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Kind</th>
+                          <th>X</th>
+                          <th>Y</th>
+                          <th>Scale</th>
+                          <th>Angle</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody id="map-props-body"></tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-pad stack">
+                  <h4>Случайные пропсы</h4>
+                  <div class="field-grid field-grid--two">
+                    <div class="field"><label for="random-count-min">Count min</label><input id="random-count-min" type="number" /></div>
+                    <div class="field"><label for="random-count-max">Count max</label><input id="random-count-max" type="number" /></div>
+                  </div>
+                  <div id="random-kind-chips" class="chip-row"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card preview-panel">
+            <div class="panel-head">
+              <div>
+                <h3>Превью</h3>
+                <div class="panel-note">Схематичное превью сцены, зон и объектов, чтобы быстро увидеть композицию уровня.</div>
+              </div>
+            </div>
+            <div class="panel-body preview-stage">
+              <canvas id="map-preview-canvas-legacy" class="preview-canvas" width="720" height="460"></canvas>
+              <div id="map-usage-legacy" class="usage-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="map-context-menu" class="map-context-menu hidden">
+          <button type="button" data-context-action="properties">Свойства</button>
+          <button type="button" data-context-action="clone">Клон рядом</button>
+          <button type="button" data-context-action="delete">Удалить</button>
+        </div>
+
+        <div id="prop-properties-modal" class="modal-backdrop hidden">
+          <div class="modal-card prop-modal-card">
+            <div class="modal-head">
+              <div>
+                <h3>Свойства объекта</h3>
+                <div class="panel-note">ID, имя и игровые параметры объекта на карте.</div>
+              </div>
+              <button id="prop-modal-close" class="icon-btn" type="button" title="Закрыть">×</button>
+            </div>
+            <div class="field-grid field-grid--two">
+              <div class="field"><label for="prop-modal-id">ID</label><input id="prop-modal-id" class="mono" /></div>
+              <div class="field"><label for="prop-modal-name">Имя</label><input id="prop-modal-name" /></div>
+              <div class="field"><label for="prop-modal-kind">Тип</label><select id="prop-modal-kind"></select></div>
+              <div class="field"><label for="prop-modal-style">Style tag</label><input id="prop-modal-style" class="mono" /></div>
+              <div class="field"><label for="prop-modal-x">X</label><input id="prop-modal-x" type="number" step="0.001" /></div>
+              <div class="field"><label for="prop-modal-y">Y</label><input id="prop-modal-y" type="number" step="0.001" /></div>
+              <div class="field"><label for="prop-modal-scale">Scale</label><input id="prop-modal-scale" type="number" step="0.01" /></div>
+              <div class="field"><label for="prop-modal-angle">Angle °</label><input id="prop-modal-angle" type="number" step="1" /></div>
+              <div class="field"><label for="prop-modal-hp-mul">HP multiplier</label><input id="prop-modal-hp-mul" type="number" step="0.05" /></div>
+              <div class="field"><label>Шаблон</label><div id="prop-modal-template" class="readonly-field"></div></div>
+            </div>
+            <div class="btn-row modal-actions">
+              <button id="prop-modal-save" class="btn btn-primary" type="button">Сохранить</button>
+              <button id="prop-modal-delete" class="btn btn-danger" type="button">Удалить</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="zone-properties-modal" class="modal-backdrop hidden">
+          <div class="modal-card prop-modal-card">
+            <div class="modal-head">
+              <div>
+                <h3>Свойства ландшафта</h3>
+                <div class="panel-note">Дороги, световые пятна и другие зоны поверхности.</div>
+              </div>
+              <button id="zone-modal-close" class="icon-btn" type="button" title="Закрыть">×</button>
+            </div>
+            <div class="field-grid field-grid--two">
+              <div class="field"><label for="zone-modal-id">ID</label><input id="zone-modal-id" class="mono" /></div>
+              <div class="field"><label for="zone-modal-material">Материал</label><select id="zone-modal-material"></select></div>
+              <div class="field"><label for="zone-modal-shape">Форма</label><select id="zone-modal-shape"></select></div>
+              <div class="field"><label for="zone-modal-stripe">Полоса по центру</label><input id="zone-modal-stripe" type="checkbox" /></div>
+              <div class="field"><label for="zone-modal-x">X</label><input id="zone-modal-x" type="number" step="0.001" /></div>
+              <div class="field"><label for="zone-modal-y">Y</label><input id="zone-modal-y" type="number" step="0.001" /></div>
+              <div class="field"><label for="zone-modal-w">W</label><input id="zone-modal-w" type="number" step="0.001" /></div>
+              <div class="field"><label for="zone-modal-h">H</label><input id="zone-modal-h" type="number" step="0.001" /></div>
+              <div class="field"><label for="zone-modal-feather">Feather</label><input id="zone-modal-feather" type="number" step="0.01" /></div>
+              <div class="field"><label for="zone-modal-alpha">Alpha</label><input id="zone-modal-alpha" type="number" step="0.01" /></div>
+              <div class="field"><label for="zone-modal-angle">Angle</label><input id="zone-modal-angle" type="number" step="0.01" /></div>
+            </div>
+            <div class="btn-row modal-actions">
+              <button id="zone-modal-save" class="btn btn-primary" type="button">Сохранить</button>
+              <button id="zone-modal-delete" class="btn btn-danger" type="button">Удалить</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="section-campaigns" class="admin-section hidden">
+        <div class="editor-layout editor-layout--campaigns">
+          <div class="card list-panel">
+            <div class="panel-head">
+              <div>
+                <h3>Кампании</h3>
+                <div class="panel-note">Сюжетные арки, уровни и цели миссий.</div>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="section-toolbar">
+                <button id="campaign-add-btn" class="btn btn-primary">Новая кампания</button>
+                <button id="campaign-clone-btn" class="btn btn-ghost">Клон</button>
+                <button id="campaign-delete-btn" class="btn btn-danger">Удалить</button>
+              </div>
+              <div id="campaign-list" class="list-stack"></div>
+            </div>
+          </div>
+
+          <div class="card editor-panel">
+            <div class="panel-head">
+              <div>
+                <h3>Редактор кампании</h3>
+                <div class="panel-note">Редактируйте общую драму кампании, а ниже управляйте конкретными уровнями и картами.</div>
+              </div>
+            </div>
+            <div class="panel-body stack">
+              <div class="field-grid field-grid--two">
+                <div class="field"><label for="campaign-id">ID</label><input id="campaign-id" class="mono" /></div>
+                <div class="field"><label for="campaign-name">Название</label><input id="campaign-name" /></div>
+                <div class="field"><label for="campaign-short-name">Short name</label><input id="campaign-short-name" /></div>
+                <div class="field"><label for="campaign-tagline">Tagline</label><input id="campaign-tagline" /></div>
+              </div>
+
+              <div class="field">
+                <label for="campaign-description">Описание кампании</label>
+                <textarea id="campaign-description"></textarea>
+              </div>
+
+              <div class="split-card">
+                <div class="field"><label for="campaign-cover-from">Cover from</label><input id="campaign-cover-from" class="mono" /></div>
+                <div class="field"><label for="campaign-cover-to">Cover to</label><input id="campaign-cover-to" class="mono" /></div>
+                <div class="field"><label for="campaign-cover-accent">Cover accent</label><input id="campaign-cover-accent" class="mono" /></div>
+                <div class="field"><label for="campaign-cover-glow">Cover glow</label><input id="campaign-cover-glow" class="mono" /></div>
+                <div class="field"><label for="campaign-cover-art">Art label</label><input id="campaign-cover-art" class="mono" /></div>
+              </div>
+
+              <div class="card">
+                <div class="card-pad stack">
+                  <div class="section-toolbar">
+                    <h4>Уровни</h4>
+                    <button id="level-add-btn" class="btn btn-primary">Новый уровень</button>
+                    <button id="level-clone-btn" class="btn btn-ghost">Клон уровня</button>
+                    <button id="level-delete-btn" class="btn btn-danger">Удалить уровень</button>
+                    <button id="level-up-btn" class="btn btn-ghost">Выше</button>
+                    <button id="level-down-btn" class="btn btn-ghost">Ниже</button>
+                  </div>
+
+                  <div class="level-shell">
+                    <div class="level-list" id="campaign-level-list"></div>
+
+                    <div class="stack">
+                      <div class="field-grid field-grid--two">
+                        <div class="field"><label for="level-id">ID уровня</label><input id="level-id" class="mono" /></div>
+                        <div class="field"><label for="level-map-id">Карта уровня</label><select id="level-map-id"></select></div>
+                        <div class="field"><label for="level-title">Заголовок</label><input id="level-title" /></div>
+                        <div class="field"><label for="level-brief">Короткий бриф</label><input id="level-brief" /></div>
+                      </div>
+
+                      <div class="field">
+                        <label for="level-scenario">Сценарий / текст миссии</label>
+                        <textarea id="level-scenario"></textarea>
+                      </div>
+
+                      <div class="card">
+                        <div class="card-pad stack">
+                          <div class="section-toolbar">
+                            <h4>Цели миссии</h4>
+                            <button id="goal-add-btn" class="btn btn-ghost">Добавить цель</button>
+                          </div>
+                          <div class="table-wrap">
+                            <table>
+                              <thead>
+                                <tr>
+                                  <th>Тип</th>
+                                  <th>Target</th>
+                                  <th>Label</th>
+                                  <th></th>
+                                </tr>
+                              </thead>
+                              <tbody id="level-goals-body"></tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="card">
+                        <div class="card-pad stack">
+                          <h4>Модификаторы</h4>
+                          <div class="field-grid field-grid--two">
+                            <div class="field"><label for="modifier-enemy-spawn">Enemy spawn mul</label><input id="modifier-enemy-spawn" type="number" step="0.01" /></div>
+                            <div class="field"><label for="modifier-enemy-hp">Enemy HP mul</label><input id="modifier-enemy-hp" type="number" step="0.01" /></div>
+                            <div class="field"><label for="modifier-boss-interval">Boss kill interval</label><input id="modifier-boss-interval" type="number" /></div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="section-news" class="admin-section hidden">
+        <div class="card frame-shell">
+          <div class="btn-row" style="margin-bottom:12px">
+            <a class="btn btn-ghost" href="/admin/news" target="_blank" rel="noreferrer">Открыть news editor отдельно</a>
+          </div>
+          <iframe id="news-frame" class="frame-embed" title="News admin" loading="lazy"></iframe>
+        </div>
+      </section>
+
+      <section id="section-skills" class="admin-section hidden">
+        <div class="card frame-shell">
+          <div class="btn-row" style="margin-bottom:12px">
+            <a class="btn btn-ghost" href="/admin/skills" target="_blank" rel="noreferrer">Открыть skills editor отдельно</a>
+          </div>
+          <iframe id="skills-frame" class="frame-embed" title="Skills admin" loading="lazy"></iframe>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/js/admin-hub.js"></script>
+</body>
+</html>

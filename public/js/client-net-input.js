@@ -2476,6 +2476,8 @@ function seekReplayGame(elapsedMs, { keepPaused = null } = {}) {
   visuals.bloodPuddles = [];
   visuals.gore = [];
   visuals.hitFx = [];
+  visuals.objectImpactFx = [];
+  visuals.objectImpactEventIds = new Map();
   visuals.muzzle = [];
   visuals.muzzleGroundFlashes = [];
   visuals.bossBlast = [];
@@ -2971,6 +2973,28 @@ function parseReplayShotEvents(frame, payload) {
     at: startedAt + Math.max(0, Number(event?.[12]) || 0),
     kind: event?.[13] || 'bullet',
     replayShot: true,
+  }));
+}
+
+function parseReplayObjectImpactEvents(frame, payload) {
+  const events = Array.isArray(frame?.oe) ? frame.oe : [];
+  const startedAt = Math.max(0, Number(payload?.startedAt) || Date.now());
+  return events.map((event) => ({
+    id: event?.[0],
+    objectId: event?.[1] || '',
+    kind: event?.[2] || '',
+    spriteKey: event?.[3] || '',
+    material: event?.[4] || 'concrete',
+    bulletKind: event?.[5] || 'bullet',
+    x: Number(event?.[6]) || 0,
+    y: Number(event?.[7]) || 0,
+    dirX: Number(event?.[8]) || 0,
+    dirY: Number(event?.[9]) || 0,
+    nx: Number(event?.[10]) || 0,
+    ny: Number(event?.[11]) || 0,
+    damage: Math.max(0, Number(event?.[12]) || 0),
+    at: startedAt + Math.max(0, Number(event?.[13]) || 0),
+    replayImpact: true,
   }));
 }
 
@@ -3576,6 +3600,7 @@ function buildReplayState(payload, elapsedMs) {
     players: playerList,
     bullets,
     shotEvents: parseReplayShotEvents(current, payload),
+    objectImpactEvents: parseReplayObjectImpactEvents(current, payload),
     enemies,
     bossPortals,
     drops,
@@ -3703,6 +3728,8 @@ function startReplayGame(payload, record) {
   visuals.bloodPuddles = [];
   visuals.gore = [];
   visuals.hitFx = [];
+  visuals.objectImpactFx = [];
+  visuals.objectImpactEventIds = new Map();
   visuals.muzzle = [];
   visuals.muzzleGroundFlashes = [];
   visuals.bossBlast = [];
@@ -6087,6 +6114,8 @@ message: (ev) => {
     visuals.bloodPuddles = [];
     visuals.gore = [];
     visuals.hitFx = [];
+    visuals.objectImpactFx = [];
+    visuals.objectImpactEventIds = new Map();
     visuals.muzzle = [];
     visuals.muzzleGroundFlashes = [];
     visuals.bossBlast = [];

@@ -77,25 +77,35 @@ function createAccountProgressionStore({
 
   const heroes = Array.isArray(heroDefs) ? heroDefs.map((h) => ({ ...h })) : [];
   const heroMap = Object.fromEntries(heroes.map((hero) => [hero.id, hero]));
-  const mapDefs = Array.isArray(maps) ? maps.map((mapDef) => ({ ...mapDef })) : [];
-  const campaignDefs = Array.isArray(campaigns)
-    ? campaigns.map((campaign) => ({
-      ...campaign,
-      levels: Array.isArray(campaign.levels)
-        ? campaign.levels.map((level, index) => ({
-          ...level,
-          index: Number.isFinite(Number(level?.index)) ? Number(level.index) : index,
-        }))
-        : [],
-    }))
-    : [];
-  const campaignMap = Object.fromEntries(campaignDefs.map((campaign) => [campaign.id, campaign]));
-  const campaignLevelMap = {};
-  for (const campaign of campaignDefs) {
-    campaignLevelMap[campaign.id] = Object.fromEntries(
-      (Array.isArray(campaign.levels) ? campaign.levels : []).map((level) => [level.id, level]),
-    );
+  let mapDefs = [];
+  let campaignDefs = [];
+  const campaignMap = Object.create(null);
+  const campaignLevelMap = Object.create(null);
+
+  function replaceWorldCatalog({ maps: nextMaps, campaigns: nextCampaigns } = {}) {
+    mapDefs = Array.isArray(nextMaps) ? nextMaps.map((mapDef) => ({ ...mapDef })) : [];
+    campaignDefs = Array.isArray(nextCampaigns)
+      ? nextCampaigns.map((campaign) => ({
+        ...campaign,
+        levels: Array.isArray(campaign.levels)
+          ? campaign.levels.map((level, index) => ({
+            ...level,
+            index: Number.isFinite(Number(level?.index)) ? Number(level.index) : index,
+          }))
+          : [],
+      }))
+      : [];
+    for (const key of Object.keys(campaignMap)) delete campaignMap[key];
+    for (const key of Object.keys(campaignLevelMap)) delete campaignLevelMap[key];
+    for (const campaign of campaignDefs) {
+      campaignMap[campaign.id] = campaign;
+      campaignLevelMap[campaign.id] = Object.fromEntries(
+        (Array.isArray(campaign.levels) ? campaign.levels : []).map((level) => [level.id, level]),
+      );
+    }
   }
+
+  replaceWorldCatalog({ maps, campaigns });
   const skillTrees = heroSkillTreeDefs && typeof heroSkillTreeDefs === 'object' ? heroSkillTreeDefs : {};
   const uniqueHeroSkills = heroUniqueSkillDefs && typeof heroUniqueSkillDefs === 'object' ? heroUniqueSkillDefs : {};
   const itemSlots = Array.isArray(itemSlotDefs) ? itemSlotDefs.map((slot) => ({ ...slot })) : [];
@@ -1555,6 +1565,7 @@ function createAccountProgressionStore({
 
   return {
     getCatalogPayload,
+    replaceWorldCatalog,
     getOrCreateProgression,
     listCachedProgressions,
     toPublicProgression,
