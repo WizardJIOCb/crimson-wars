@@ -45,6 +45,7 @@
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = 'mini';
+    closeBtn.setAttribute('data-i18n-key', 'ui.close');
     closeBtn.textContent = trWithFallback('ui.close', 'Закрыть');
     closeBtn.addEventListener('click', () => {
       modal.classList.add('hidden');

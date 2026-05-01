@@ -11,6 +11,11 @@
       .replace(/'/g, '&#39;');
   }
 
+  function tr(key, fallback, params = null) {
+    if (typeof window.cwI18nT === 'function') return window.cwI18nT(key, params);
+    return fallback;
+  }
+
   function getSelection() {
     if (typeof window.cwGetRunSelection === 'function') return window.cwGetRunSelection();
     return {
@@ -123,7 +128,7 @@
     }).join('');
 
     runSetupHostEl.innerHTML = ''
-      + '<div class="run-setup-copy">Свободный забег стартует сразу на выбранной карте. Просто выберите место, где вам будет удобнее страдать.</div>'
+      + `<div class="run-setup-copy">${escapeHtml(tr('ui.play.free_run_hint', 'Свободный забег стартует сразу на выбранной карте. Просто выберите место, где вам будет удобнее страдать.'))}</div>`
       + `<div class="run-map-grid">${mapCardsHtml}</div>`;
 
     runSetupHostEl.querySelectorAll('[data-map-id]').forEach((button) => {

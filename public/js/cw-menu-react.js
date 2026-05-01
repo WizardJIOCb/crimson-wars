@@ -13,6 +13,13 @@
     return Array.from(arguments).filter(Boolean).join(' ');
   }
 
+  function tr(key, fallback) {
+    const translate = globalThis.cwI18nT;
+    if (typeof translate !== 'function') return fallback;
+    const value = translate(key);
+    return value && value !== key ? value : fallback;
+  }
+
   function CwButton(props) {
     return h(
       'button',
@@ -115,14 +122,14 @@
 
   function CwNavTabs() {
     const tabs = [
-      ['run', 'Забег'],
-      ['story', 'Сюжет'],
-      ['characters', 'Персонажи'],
-      ['skills', 'Навыки'],
-      ['profile', 'Профиль'],
-      ['rating', 'Рейтинг'],
-      ['news', 'Новости'],
-      ['menu', 'Настройки'],
+      ['run', tr('ui.main.run', 'Забег')],
+      ['story', tr('ui.main.story', 'Сюжет')],
+      ['characters', tr('ui.main.characters', 'Персонажи')],
+      ['skills', tr('ui.main.skills', 'Навыки')],
+      ['profile', tr('ui.main.profile', 'Профиль')],
+      ['rating', tr('ui.main.rating', 'Рейтинг')],
+      ['news', tr('ui.main.news', 'Новости')],
+      ['menu', tr('ui.main.settings', 'Настройки')],
     ];
     return h('div', { id: 'main-menu-tabs', className: 'main-menu-tabs cw-nav-tabs', role: 'tablist', 'aria-label': 'Main menu' },
       tabs.map((tab, index) => h(CwButton, {
@@ -154,7 +161,7 @@
         h('div', { className: 'auth-head' },
           h('div', null,
             h('div', { id: 'player-auth-summary', className: 'auth-summary' }, 'Guest mode. Registered nicknames require login.'),
-            h('div', { className: 'cw-auth-headline' }, 'Здесь остаётся полноценный экран логина/пароля и место под Google, VK и Mail.')
+            h('div', { className: 'cw-auth-headline', 'data-i18n-key': 'ui.auth.headline' }, tr('ui.auth.headline', 'Здесь остаётся полноценный экран логина/пароля и место под Google, VK и Mail.'))
           ),
           h('button', { id: 'player-logout', type: 'button', className: 'mini ghost hidden' }, 'Log out')
         ),
@@ -206,9 +213,9 @@
     return h(CwRunCard, { id: props.id || 'settings-sync-card', className: cx('cw-subpanel', 'cw-subpanel-emphasis', props.className) },
       h('div', { className: 'cw-subpanel-head' },
         h('span', { className: 'cw-kicker' }, 'Sync'),
-        h('strong', null, '\u041f\u0430\u0440\u0430\u043c\u0435\u0442\u0440\u044b \u043a\u043e\u043c\u043d\u0430\u0442\u044b')
+        h('strong', { 'data-i18n-key': 'ui.play.room_settings' }, tr('ui.play.room_settings', '\u041f\u0430\u0440\u0430\u043c\u0435\u0442\u0440\u044b \u043a\u043e\u043c\u043d\u0430\u0442\u044b'))
       ),
-      h('p', { className: 'cw-copy' }, '\u0421\u0435\u0442\u0435\u0432\u043e\u0439 \u0440\u0435\u0436\u0438\u043c \u043d\u043e\u0432\u043e\u0439 \u043a\u043e\u043c\u043d\u0430\u0442\u044b: \u043f\u0440\u0435\u0441\u0435\u0442, \u0447\u0430\u0441\u0442\u043e\u0442\u0430 \u0442\u0438\u043a\u043e\u0432 \u0438 \u043f\u043b\u0430\u0432\u043d\u043e\u0441\u0442\u044c \u0441\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0430\u0446\u0438\u0438.'),
+      h('p', { className: 'cw-copy', 'data-i18n-key': 'ui.play.room_settings_desc' }, tr('ui.play.room_settings_desc', '\u0421\u0435\u0442\u0435\u0432\u043e\u0439 \u0440\u0435\u0436\u0438\u043c \u043d\u043e\u0432\u043e\u0439 \u043a\u043e\u043c\u043d\u0430\u0442\u044b: \u043f\u0440\u0435\u0441\u0435\u0442, \u0447\u0430\u0441\u0442\u043e\u0442\u0430 \u0442\u0438\u043a\u043e\u0432 \u0438 \u043f\u043b\u0430\u0432\u043d\u043e\u0441\u0442\u044c \u0441\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0430\u0446\u0438\u0438.')),
       h('details', { id: 'sync-settings', className: 'sync-settings' },
         h('summary', null, 'Sync settings (Create room)'),
         h('label', { htmlFor: 'sync-preset' }, 'Preset'),
@@ -254,8 +261,8 @@
       h('div', { className: 'cw-column cw-column-main' },
         h(CwPanel, { tag: 'div', id: 'play-deploy-card', className: 'cw-subpanel cw-subpanel-emphasis' },
           h('div', { className: 'cw-subpanel-head' },
-            h('span', { className: 'cw-kicker' }, 'Deploy'),
-            h('strong', null, '\u0412\u0445\u043e\u0434 \u0432 \u043c\u0430\u0442\u0447')
+            h('span', { className: 'cw-kicker', 'data-i18n-key': 'ui.play.deploy' }, tr('ui.play.deploy', 'Deploy')),
+            h('strong', { 'data-i18n-key': 'ui.play.match_entry' }, tr('ui.play.match_entry', '\u0412\u0445\u043e\u0434 \u0432 \u043c\u0430\u0442\u0447'))
           ),
           h('label', { id: 'room-code-label', htmlFor: 'room-code' }, '\u041a\u043e\u0434 \u043a\u043e\u043c\u043d\u0430\u0442\u044b'),
           h('input', { id: 'room-code', maxLength: 10, placeholder: 'AUTO or ABC123' }),
@@ -268,8 +275,8 @@
         ),
         h(CwPanel, { tag: 'div', id: 'run-setup-card', className: 'cw-subpanel battle-tab-card battle-tab-run' },
           h('div', { className: 'cw-subpanel-head' },
-            h('span', { className: 'cw-kicker' }, 'Run Setup'),
-            h('strong', null, '\u041a\u0430\u0440\u0442\u044b \u0437\u0430\u0431\u0435\u0433\u0430')
+            h('span', { className: 'cw-kicker', 'data-i18n-key': 'ui.play.run_setup' }, tr('ui.play.run_setup', 'Run Setup')),
+            h('strong', { 'data-i18n-key': 'ui.play.run_maps' }, tr('ui.play.run_maps', '\u041a\u0430\u0440\u0442\u044b \u0437\u0430\u0431\u0435\u0433\u0430'))
           ),
           h('div', { id: 'run-setup-host', className: 'run-setup-host' }, 'Loading run setup...')
         ),
@@ -292,8 +299,8 @@
         ),
         h(CwPanel, { tag: 'div', id: 'campaign-browser-card', className: 'cw-subpanel battle-tab-card battle-tab-story hidden' },
           h('div', { className: 'cw-subpanel-head' },
-            h('span', { className: 'cw-kicker' }, 'Story'),
-            h('strong', null, '\u0421\u044e\u0436\u0435\u0442\u043d\u044b\u0435 \u043a\u0430\u043c\u043f\u0430\u043d\u0438\u0438')
+            h('span', { className: 'cw-kicker', 'data-i18n-key': 'ui.play.story_kicker' }, tr('ui.play.story_kicker', 'Story')),
+            h('strong', { 'data-i18n-key': 'ui.play.story_campaigns' }, tr('ui.play.story_campaigns', '\u0421\u044e\u0436\u0435\u0442\u043d\u044b\u0435 \u043a\u0430\u043c\u043f\u0430\u043d\u0438\u0438'))
           ),
           h('div', { id: 'campaign-browser-host', className: 'campaign-browser-host' }, 'Campaign data loading...')
         ),
@@ -315,15 +322,15 @@
     return h(CwPanel, { id: 'menu-panel-characters', className: 'menu-panel', dataMenuPanel: 'characters' },
         h(CwPanel, { tag: 'div', className: 'cw-subpanel' },
           h('div', { className: 'cw-subpanel-head' },
-            h('span', { className: 'cw-kicker' }, 'Roster'),
-            h('strong', null, 'Персонажи арены')
+            h('span', { className: 'cw-kicker', 'data-i18n-key': 'ui.characters.roster' }, tr('ui.characters.roster', 'Roster')),
+            h('strong', { 'data-i18n-key': 'ui.characters.arena' }, tr('ui.characters.arena', 'Персонажи арены'))
           ),
           h('div', { id: 'hero-gallery-v2', className: 'hero-gallery-v2', 'aria-live': 'polite' })
         ),
         h(CwPanel, { tag: 'div', className: 'cw-subpanel' },
           h('div', { className: 'cw-subpanel-head' },
-            h('span', { className: 'cw-kicker' }, 'Loadout'),
-            h('strong', null, 'Тактическое досье')
+            h('span', { className: 'cw-kicker', 'data-i18n-key': 'ui.characters.loadout' }, tr('ui.characters.loadout', 'Loadout')),
+            h('strong', { 'data-i18n-key': 'ui.characters.tactical_dossier' }, tr('ui.characters.tactical_dossier', 'Тактическое досье'))
           ),
           h('div', { id: 'hero-character-panel', className: 'hero-tree-panel' })
         )
@@ -334,13 +341,13 @@
     return h(CwPanel, { id: 'menu-panel-skills', className: 'menu-panel', dataMenuPanel: 'skills' },
       h(CwPanel, { tag: 'div', className: 'cw-subpanel' },
         h('div', { className: 'cw-subpanel-head' },
-          h('span', { className: 'cw-kicker' }, 'Skills'),
-          h('strong', null, 'Навыки и ветки')
+          h('span', { className: 'cw-kicker', 'data-i18n-key': 'ui.characters.skills' }, tr('ui.characters.skills', 'Skills')),
+          h('strong', { 'data-i18n-key': 'ui.characters.skills_tree' }, tr('ui.characters.skills_tree', 'Навыки и ветки'))
         ),
         h('div', { className: 'cw-skill-legend' },
-          h(CwSkillNode, { label: 'База', state: 'is-ready' }),
-          h(CwSkillNode, { label: 'Редкий', state: 'is-locked' }),
-          h(CwSkillNode, { label: 'Ульта', state: 'is-elite' })
+          h(CwSkillNode, { label: tr('ui.characters.skill_base', 'База'), state: 'is-ready' }),
+          h(CwSkillNode, { label: tr('ui.characters.skill_rare', 'Редкий'), state: 'is-locked' }),
+          h(CwSkillNode, { label: tr('ui.characters.skill_ultimate', 'Ульта'), state: 'is-elite' })
         ),
         h('label', { id: 'character-label' }, 'Character'),
         h('div', { id: 'account-progress-summary', className: 'account-progress-summary' }),
@@ -385,22 +392,22 @@
       h(CwSettingsRow, { className: 'cw-settings-shell' },
         h(CwPanel, { tag: 'section', className: 'cw-subpanel cw-settings-section' },
           h('div', { className: 'cw-subpanel-head' },
-            h('span', { className: 'cw-kicker' }, '\u0413\u0440\u0430\u0444\u0438\u043a\u0430'),
-            h('strong', null, '\u041a\u0430\u0447\u0435\u0441\u0442\u0432\u043e')
+            h('span', { className: 'cw-kicker', 'data-i18n-key': 'ui.settings.section.graphics' }, tr('ui.settings.section.graphics', '\u0413\u0440\u0430\u0444\u0438\u043a\u0430')),
+            h('strong', { 'data-i18n-key': 'ui.settings.section.quality' }, tr('ui.settings.section.quality', '\u041a\u0430\u0447\u0435\u0441\u0442\u0432\u043e'))
           ),
           h('div', { id: 'settings-graphics-host', className: 'cw-settings-host' })
         ),
         h(CwPanel, { tag: 'section', className: 'cw-subpanel cw-settings-section' },
           h('div', { className: 'cw-subpanel-head' },
-            h('span', { className: 'cw-kicker' }, '\u0418\u043d\u0442\u0435\u0440\u0444\u0435\u0439\u0441'),
-            h('strong', null, '\u041f\u0430\u0440\u0430\u043c\u0435\u0442\u0440\u044b \u0438\u043d\u0442\u0435\u0440\u0444\u0435\u0439\u0441\u0430')
+            h('span', { className: 'cw-kicker', 'data-i18n-key': 'ui.settings.section.interface' }, tr('ui.settings.section.interface', '\u0418\u043d\u0442\u0435\u0440\u0444\u0435\u0439\u0441')),
+            h('strong', { 'data-i18n-key': 'ui.settings.section.interface_options' }, tr('ui.settings.section.interface_options', '\u041f\u0430\u0440\u0430\u043c\u0435\u0442\u0440\u044b \u0438\u043d\u0442\u0435\u0440\u0444\u0435\u0439\u0441\u0430'))
           ),
           h('div', { id: 'settings-toggles-host', className: 'cw-settings-host' })
         ),
         h(SyncSettingsCard, { id: 'settings-sync-card', className: 'cw-settings-sync-section' }),
         h('div', { className: 'cw-subpanel-head' },
-          h('span', { className: 'cw-kicker' }, 'System'),
-          h('strong', null, '\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438 \u0445\u0430\u0431\u0430 \u0438 HUD')
+          h('span', { className: 'cw-kicker', 'data-i18n-key': 'ui.settings.section.system' }, tr('ui.settings.section.system', 'System')),
+          h('strong', { 'data-i18n-key': 'ui.settings.section.hub_hud' }, tr('ui.settings.section.hub_hud', '\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438 \u0445\u0430\u0431\u0430 \u0438 HUD'))
         ),
         h('div', { id: 'info-panel-menu-host', className: 'info-panel-menu-host settings-source-host' })
       )
