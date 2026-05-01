@@ -744,6 +744,19 @@ main {
   padding: clamp(24px, 4vw, 44px);
 }
 
+#play.landing-section {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+  padding: 0;
+}
+
+#play.landing-section::before {
+  display: none;
+}
+
 .section-heading {
   max-width: 900px;
   margin-bottom: 24px;
@@ -865,6 +878,13 @@ main {
   min-width: 0;
   display: grid;
   gap: 0;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(30, 10, 14, 0.82), rgba(13, 5, 8, 0.88)),
+    radial-gradient(circle at top, rgba(255, 133, 104, 0.08), transparent 44%);
+  box-shadow: var(--shadow);
+  overflow: hidden;
 }
 
 .battle-hub-head {
@@ -873,8 +893,9 @@ main {
   gap: 16px;
   align-items: center;
   padding: 22px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 24px 24px 0 0;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.035);
 }
 
@@ -891,8 +912,7 @@ main {
 
 .battle-hub-frame-wrap {
   position: relative;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-top: 0;
+  border: 0;
   overflow: hidden;
   background:
     radial-gradient(circle at top, rgba(255, 114, 84, 0.09), transparent 34%),
