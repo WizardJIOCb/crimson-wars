@@ -445,6 +445,39 @@ function spawnDodgeWindFx(x, y, dirX = 1, dirY = 0, isMe = false) {
   if (visuals.dodgeWind.length > 220) visuals.dodgeWind.splice(0, visuals.dodgeWind.length - 220);
 }
 
+function spawnForceShieldFx(player, previous = null) {
+  if (!game.hitEffectsEnabled) return;
+  if (!Array.isArray(visuals.forceShield)) visuals.forceShield = [];
+  const renderPos = typeof getPlayerRenderPos === 'function' ? getPlayerRenderPos(player) : null;
+  const x = Number(renderPos?.x) || Number(player?.x) || 0;
+  const y = Number(renderPos?.y) || Number(player?.y) || 0;
+  let dirX = Number(player?.shieldHitDirX) || 0;
+  let dirY = Number(player?.shieldHitDirY) || -1;
+  if (Math.hypot(dirX, dirY) < 0.001 && previous) {
+    dirX = (Number(previous.x) || x) - x;
+    dirY = (Number(previous.y) || y) - y;
+  }
+  if (Math.hypot(dirX, dirY) < 0.001) {
+    dirX = 0;
+    dirY = -1;
+  }
+  const len = Math.hypot(dirX, dirY) || 1;
+  const absorbed = Math.max(1, Number(player?.shieldLastAbsorbed) || 1);
+  visuals.forceShield.push({
+    x,
+    y: y - 8,
+    dirX: dirX / len,
+    dirY: dirY / len,
+    radius: Math.max(34, Math.min(68, 38 + absorbed * 0.42)),
+    width: Math.max(5, Math.min(12, 5 + absorbed * 0.08)),
+    life: 0.46,
+    ttl: 0.46,
+    isMe: player?.id === game.myId,
+    broken: Math.max(0, Number(player?.shieldHp) || 0) <= 0,
+  });
+  if (visuals.forceShield.length > 80) visuals.forceShield.splice(0, visuals.forceShield.length - 80);
+}
+
 function spawnBladeOrbitFx(x, y) {
   const bladeCount = 5;
   for (let i = 0; i < bladeCount; i += 1) {
@@ -895,10 +928,16 @@ function processStateFx(nextState) {
       magazineAmmo: Math.max(0, Number(p.magazineAmmo) || 0),
       reloadLeftMs: Math.max(0, Number(p.reloadLeftMs) || 0),
       reloadTotalMs: Math.max(0, Number(p.reloadTotalMs) || 0),
+      shieldHp: Math.max(0, Number(p.shieldHp) || 0),
+      shieldMax: Math.max(0, Number(p.shieldMax) || 0),
+      shieldHitSeq: Math.max(0, Number(p.shieldHitSeq) || 0),
       isCompanion: Boolean(p.isCompanion),
       ownerId: p.ownerId || '',
     });
     const prev = prevPlayerMap.get(p.id);
+    if (prev && Math.max(0, Number(p.shieldHitSeq) || 0) > Math.max(0, Number(prev.shieldHitSeq) || 0)) {
+      spawnForceShieldFx(p, prev);
+    }
     if (prev && p.hp < prev.hp) {
       const hitDamage = Math.max(1, prev.hp - p.hp);
       const meBonus = p.id === game.myId ? 1.45 : 1.2;
@@ -1430,6 +1469,16 @@ function updateFx(dt) {
     w.vy *= 0.92;
     w.r *= 0.985;
     if (w.life <= 0 || w.r <= 0.6) visuals.dodgeWind.splice(i, 1);
+  }
+
+  if (Array.isArray(visuals.forceShield)) {
+    for (let i = visuals.forceShield.length - 1; i >= 0; i -= 1) {
+      const s = visuals.forceShield[i];
+      s.life -= dt;
+      s.radius += 24 * dt;
+      s.width = Math.max(1, (Number(s.width) || 6) - 7 * dt);
+      if (s.life <= 0) visuals.forceShield.splice(i, 1);
+    }
   }
 
   for (let i = visuals.dodgeWindScheduled.length - 1; i >= 0; i -= 1) {

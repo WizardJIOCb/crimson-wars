@@ -2095,6 +2095,7 @@ app.delete('/api/admin/users/:id', requireAdminManager, (req, res) => {
 
 registerNewsRoutes(app, {
   adminNewsHtmlPath: path.join(__dirname, 'public', 'admin-news.html'),
+  newsImageDir: path.join(DATA_DIR, 'news-images'),
   newsStore,
   requireAdmin,
 });
@@ -3333,7 +3334,11 @@ function explodeMapObject(room, obj, now, ownerId = '') {
     const dist = Math.hypot(player.x - obj.x, player.y - obj.y);
     if (dist > reach) continue;
     const falloff = 1 - Math.min(0.42, (dist / Math.max(1, reach)) * 0.42);
-    applyEnemyHitToPlayer(room, player, Math.max(1, Math.round(damage * 0.45 * falloff)), now, true);
+    applyEnemyHitToPlayer(room, player, Math.max(1, Math.round(damage * 0.45 * falloff)), now, {
+      applySlow: true,
+      sourceX: obj.x,
+      sourceY: obj.y,
+    });
   }
   damageSceneObjectsInRadius(room, obj.x, obj.y, radius * 0.95, damage * 0.78, ownerKey, now, {
     excludeId: obj.id,
@@ -4374,6 +4379,9 @@ function fireCompanionWeapon(room, companion, owner, now) {
       segmentHit: String(companion.weaponKey || '').toLowerCase() === 'sniper',
       pierceRemaining: bulletSkill.pierce,
       hitEnemyIds: bulletSkill.pierce > 0 ? [] : undefined,
+      homingRange: bulletSkill.homingRange,
+      homingTurnRate: bulletSkill.homingTurnRate,
+      homingDelayMs: 45,
       shooterType: 'companion',
     });
   }
@@ -4736,6 +4744,54 @@ function explodeRocket(room, bullet, now) {
   });
 }
 
+function findBulletHomingTarget(room, bullet, maxRange) {
+  if (!room || !bullet || maxRange <= 0) return null;
+  const speed = Math.hypot(Number(bullet.vx) || 0, Number(bullet.vy) || 0) || 1;
+  const dirX = (Number(bullet.vx) || 0) / speed;
+  const dirY = (Number(bullet.vy) || 0) / speed;
+  const ownerId = String(bullet.ownerPlayerId || bullet.ownerId || '');
+  let best = null;
+  let bestScore = Infinity;
+  const range2 = maxRange * maxRange;
+
+  for (const enemy of room.enemies || []) {
+    if (!enemy || Number(enemy.hp) <= 0) continue;
+    if (Array.isArray(bullet.hitEnemyIds) && bullet.hitEnemyIds.includes(enemy.id)) continue;
+    const dx = (Number(enemy.x) || 0) - (Number(bullet.x) || 0);
+    const dy = (Number(enemy.y) || 0) - (Number(bullet.y) || 0);
+    const d2 = dx * dx + dy * dy;
+    if (d2 <= 0.01 || d2 > range2) continue;
+    const dist = Math.sqrt(d2);
+    const dot = (dx / dist) * dirX + (dy / dist) * dirY;
+    if (dot < 0.12) continue;
+    const score = d2 / Math.max(0.12, dot * dot);
+    if (score < bestScore) {
+      bestScore = score;
+      best = enemy;
+    }
+  }
+
+  if (!best && isPvpRoom(room)) {
+    for (const player of room.players.values()) {
+      if (!player || !player.alive || String(player.id) === ownerId) continue;
+      const dx = (Number(player.x) || 0) - (Number(bullet.x) || 0);
+      const dy = (Number(player.y) || 0) - (Number(bullet.y) || 0);
+      const d2 = dx * dx + dy * dy;
+      if (d2 <= 0.01 || d2 > range2) continue;
+      const dist = Math.sqrt(d2);
+      const dot = (dx / dist) * dirX + (dy / dist) * dirY;
+      if (dot < 0.12) continue;
+      const score = d2 / Math.max(0.12, dot * dot);
+      if (score < bestScore) {
+        bestScore = score;
+        best = player;
+      }
+    }
+  }
+
+  return best;
+}
+
 function castPlayerActiveSkill(room, player, def, st, now) {
   const skillId = String(def?.castType || def?.id || '').toLowerCase();
   if (skillId === 'homing_missiles') {
@@ -4941,6 +4997,13 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
     moveSpeedMul: Number(Math.max(0.2, Number(p.moveSpeedMul) || 1).toFixed(3)),
     pickupRadius: Math.max(0, Math.round(Number(p.pickupRadius) || PLAYER_PICKUP_RADIUS_BASE)),
     hpRegenPerSec: Number(Math.max(0, Number(p.hpRegenPerSec) || 0).toFixed(2)),
+    shieldHp: Math.max(0, Math.round(Number(p.shieldHp) || 0)),
+    shieldMax: Math.max(0, Math.round(Number(p.shieldMax) || 0)),
+    shieldRestoreAt: Math.max(0, Math.round(Number(p.shieldRestoreAt) || 0)),
+    shieldHitSeq: Math.max(0, Math.floor(Number(p.shieldHitSeq) || 0)),
+    shieldHitDirX: Number((Number(p.shieldHitDirX) || 0).toFixed(3)),
+    shieldHitDirY: Number((Number(p.shieldHitDirY) || -1).toFixed(3)),
+    shieldLastAbsorbed: Math.max(0, Math.round(Number(p.shieldLastAbsorbed) || 0)),
     moveSpeed: Math.max(1, Math.round(PLAYER_SPEED * PLAYER_MOVE_SPEED_GLOBAL_MUL * Math.max(0.2, Number(p.moveSpeedMul) || 1))),
     shotDamage: Math.max(1, Math.round((WEAPONS[p.weaponKey]?.bulletDamage || WEAPONS.pistol.bulletDamage) * Math.max(0.2, Number(p.damageMul) || 1) * getPlayerBulletSkillStats(p).damageMul)),
     shotIntervalMs: Math.max(35, Math.round((WEAPONS[p.weaponKey]?.cooldownMs || WEAPONS.pistol.cooldownMs) / Math.max(0.2, Number(p.fireRateMul) || 1))),
@@ -5005,6 +5068,13 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
     moveSpeedMul: 1,
     pickupRadius: 0,
     hpRegenPerSec: 0,
+    shieldHp: 0,
+    shieldMax: 0,
+    shieldRestoreAt: 0,
+    shieldHitSeq: 0,
+    shieldHitDirX: 0,
+    shieldHitDirY: -1,
+    shieldLastAbsorbed: 0,
     moveSpeed: Math.max(1, Math.round(Math.hypot(Number(companion.vx) || 0, Number(companion.vy) || 0))),
     shotDamage: Math.max(1, Math.round(WEAPONS[companion.weaponKey]?.bulletDamage || WEAPONS.pistol.bulletDamage)),
     shotIntervalMs: Math.max(35, Math.round(WEAPONS[companion.weaponKey]?.cooldownMs || WEAPONS.pistol.cooldownMs)),
@@ -5617,6 +5687,9 @@ function fireFromPlayer(room, player, now = Date.now()) {
       segmentHit: String(player.weaponKey || '').toLowerCase() === 'sniper',
       pierceRemaining: bulletSkill.pierce,
       hitEnemyIds: bulletSkill.pierce > 0 ? [] : undefined,
+      homingRange: bulletSkill.homingRange,
+      homingTurnRate: bulletSkill.homingTurnRate,
+      homingDelayMs: 45,
       shooterType: player.isCompanion ? 'companion' : 'player',
     });
   }
@@ -5717,11 +5790,115 @@ function applyEnemyHitToPlayer(room, target, damage, now, applySlow = true) {
   if (!target || !target.alive) return;
   if (target.godMode) return;
   if ((Number(target.dodgeInvulnUntil) || 0) > now) return;
-  target.hp -= damage;
-  if (applySlow) target.slowUntil = Math.max(target.slowUntil || 0, now + PLAYER_SLOW_DURATION_MS);
+  const options = typeof applySlow === 'object' && applySlow ? applySlow : {};
+  const shouldSlow = typeof applySlow === 'boolean' ? applySlow : options.applySlow !== false;
+  const amount = applyPlayerForceShield(target, Math.max(1, Math.round(Number(damage) || 1)), now, options);
+  if (amount > 0) target.hp -= amount;
+  if (shouldSlow) target.slowUntil = Math.max(target.slowUntil || 0, now + PLAYER_SLOW_DURATION_MS);
   if (target.hp <= 0) {
     downPlayer(room, target, now);
   }
+}
+
+function getPlayerForceShieldConfig(player) {
+  if (!player || !player.skills || typeof player.skills !== 'object') return null;
+  let maxShield = 0;
+  let absorb = 0;
+  let restoreMs = 30000;
+  for (const skillId of Object.keys(player.skills)) {
+    const def = getCombatSkillDef(skillId, player.playerClass);
+    if (!def) continue;
+    const lvl = getSkillRank(player, def.id);
+    if (lvl <= 0) continue;
+    const base = Math.max(0, Number(def.shieldMaxBase) || 0);
+    const perLevel = Math.max(0, Number(def.shieldMaxPerLevel) || 0);
+    const skillShield = base > 0 ? (base + perLevel * Math.max(0, lvl - 1)) : perLevel * lvl;
+    if (skillShield > 0) {
+      maxShield += skillShield;
+      absorb = Math.max(absorb, (Number(def.shieldAbsorbBase) || 0) + (Number(def.shieldAbsorbPerLevel) || 0) * Math.max(0, lvl - 1));
+      restoreMs = Math.min(restoreMs, Math.max(3000, Number(def.shieldRestoreMs) || 30000));
+    }
+  }
+  if (maxShield <= 0 || absorb <= 0) return null;
+  return {
+    maxShield: Math.max(1, Math.round(maxShield)),
+    absorb: Math.max(0.05, Math.min(0.9, absorb)),
+    restoreMs,
+  };
+}
+
+function refreshPlayerForceShieldStats(player, now = Date.now()) {
+  if (!player) return;
+  const prevMax = Math.max(0, Number(player.shieldMax) || 0);
+  const prevHp = Math.max(0, Number(player.shieldHp) || 0);
+  const cfg = getPlayerForceShieldConfig(player);
+  if (!cfg) {
+    player.shieldMax = 0;
+    player.shieldHp = 0;
+    player.shieldAbsorbMul = 0;
+    player.shieldRestoreMs = 0;
+    player.shieldRestoreAt = 0;
+    return;
+  }
+
+  player.shieldMax = cfg.maxShield;
+  player.shieldAbsorbMul = cfg.absorb;
+  player.shieldRestoreMs = cfg.restoreMs;
+  if (prevMax <= 0) {
+    player.shieldHp = cfg.maxShield;
+    player.shieldRestoreAt = 0;
+    return;
+  }
+  const restoring = prevHp <= 0 && Math.max(0, Number(player.shieldRestoreAt) || 0) > now;
+  if (restoring) {
+    player.shieldHp = 0;
+    return;
+  }
+  player.shieldHp = clamp(prevHp + Math.max(0, cfg.maxShield - prevMax), 0, cfg.maxShield);
+  if (player.shieldHp > 0) player.shieldRestoreAt = 0;
+}
+
+function tickPlayerForceShield(player, now) {
+  if (!player || Math.max(0, Number(player.shieldMax) || 0) <= 0) return;
+  if (Math.max(0, Number(player.shieldHp) || 0) > 0) return;
+  const restoreAt = Math.max(0, Number(player.shieldRestoreAt) || 0);
+  if (restoreAt > 0 && now >= restoreAt) {
+    player.shieldHp = Math.max(1, Math.round(Number(player.shieldMax) || 0));
+    player.shieldRestoreAt = 0;
+  }
+}
+
+function applyPlayerForceShield(player, damage, now, options = {}) {
+  const amount = Math.max(1, Math.round(Number(damage) || 1));
+  if (!player || Math.max(0, Number(player.shieldMax) || 0) <= 0) return amount;
+  tickPlayerForceShield(player, now);
+  const shieldHp = Math.max(0, Number(player.shieldHp) || 0);
+  if (shieldHp <= 0) return amount;
+  const absorbMul = Math.max(0.05, Math.min(0.9, Number(player.shieldAbsorbMul) || 0));
+  const absorbed = Math.min(shieldHp, Math.max(1, Math.round(amount * absorbMul)));
+  if (absorbed <= 0) return amount;
+
+  player.shieldHp = Math.max(0, shieldHp - absorbed);
+  if (player.shieldHp <= 0) {
+    player.shieldRestoreAt = now + Math.max(3000, Number(player.shieldRestoreMs) || 30000);
+  }
+
+  const sourceX = Number(options.sourceX);
+  const sourceY = Number(options.sourceY);
+  let dirX = Number.isFinite(sourceX) ? (sourceX - (Number(player.x) || 0)) : Number(options.dirX);
+  let dirY = Number.isFinite(sourceY) ? (sourceY - (Number(player.y) || 0)) : Number(options.dirY);
+  if (Math.hypot(dirX || 0, dirY || 0) < 0.001) {
+    dirX = 0;
+    dirY = -1;
+  }
+  const len = Math.hypot(dirX, dirY) || 1;
+  player.shieldHitDirX = dirX / len;
+  player.shieldHitDirY = dirY / len;
+  player.shieldLastHitAt = now;
+  player.shieldLastAbsorbed = absorbed;
+  player.shieldHitSeq = Math.max(0, Number(player.shieldHitSeq) || 0) + 1;
+
+  return Math.max(0, amount - absorbed);
 }
 
 
@@ -5739,6 +5916,8 @@ function getPlayerBulletSkillStats(player) {
   const out = {
     pierce: 0,
     damageMul: 1,
+    homingRange: 0,
+    homingTurnRate: 0,
   };
   if (!player || !player.skills || typeof player.skills !== 'object') return out;
   for (const skillId of Object.keys(player.skills)) {
@@ -5749,9 +5928,21 @@ function getPlayerBulletSkillStats(player) {
     out.pierce += Math.max(0, Number(def.bulletPierceFlat) || 0);
     out.pierce += Math.max(0, Number(def.bulletPiercePerLevel) || 0) * lvl;
     out.damageMul += Math.max(0, Number(def.bulletDamageMulPerLevel) || 0) * lvl;
+    const homingBase = Math.max(0, Number(def.bulletHomingRangeBase) || 0);
+    const homingPerLevel = Math.max(0, Number(def.bulletHomingRangePerLevel) || 0);
+    const homingRange = homingBase > 0 ? (homingBase + homingPerLevel * Math.max(0, lvl - 1)) : homingPerLevel * lvl;
+    if (homingRange > 0) {
+      out.homingRange = Math.max(out.homingRange, homingRange);
+      out.homingTurnRate = Math.max(
+        out.homingTurnRate,
+        (Number(def.bulletHomingTurnBase) || 0) + (Number(def.bulletHomingTurnPerLevel) || 0) * Math.max(0, lvl - 1),
+      );
+    }
   }
   out.pierce = Math.max(0, Math.min(24, Math.floor(out.pierce)));
   out.damageMul = Math.max(0.2, Number(out.damageMul) || 1);
+  out.homingRange = Math.max(0, Math.min(1400, Number(out.homingRange) || 0));
+  out.homingTurnRate = Math.max(0, Math.min(12, Number(out.homingTurnRate) || 0));
   return out;
 }
 
@@ -5854,6 +6045,7 @@ function rebuildPlayerDerivedStats(player) {
   const baseCharges = PLAYER_DODGE_MAX_CHARGES + Math.max(0, Math.floor(player.extraDodgeCharges || 0));
   player.dodgeChargesMax = baseCharges;
   player.dodgeCharges = Math.max(0, Math.min(player.dodgeChargesMax, Number(player.dodgeCharges) || player.dodgeChargesMax));
+  refreshPlayerForceShieldStats(player);
 }
 
 function getPlayerQuickSlotState(player, slotKey) {
@@ -5982,8 +6174,13 @@ function applyPlayerHitToPlayer(room, attacker, target, damage, now, options = {
   if (!allowDeadAttacker && !attacker.alive) return false;
   if (target.godMode) return false;
   if ((Number(target.dodgeInvulnUntil) || 0) > now) return false;
-  const amount = Math.max(1, Math.round(Number(damage) || 1));
-  target.hp -= amount;
+  const amount = applyPlayerForceShield(target, Math.max(1, Math.round(Number(damage) || 1)), now, {
+    sourceX: options.sourceX ?? attacker.x,
+    sourceY: options.sourceY ?? attacker.y,
+    dirX: options.dirX,
+    dirY: options.dirY,
+  });
+  if (amount > 0) target.hp -= amount;
   if (target.hp <= 0) {
     downPlayer(room, target, now, { killerId: attacker.id });
   }
@@ -6587,6 +6784,7 @@ function tickPlayerSkills(room, player, dtSec, now) {
   if (player.hpRegenPerSec > 0) {
     player.hp = clamp(player.hp + player.hpRegenPerSec * dtSec, 0, player.maxHp || PLAYER_HP_MAX);
   }
+  tickPlayerForceShield(player, now);
   if (!player.skills) return;
 
   for (const skillId of player.skillOrder || []) {
@@ -7591,6 +7789,15 @@ function joinRoom(ws, join) {
     reloadSpeedMul: 1,
     moveSpeedMul: 1,
     hpRegenPerSec: 0,
+    shieldHp: 0,
+    shieldMax: 0,
+    shieldAbsorbMul: 0,
+    shieldRestoreMs: 0,
+    shieldRestoreAt: 0,
+    shieldHitSeq: 0,
+    shieldHitDirX: 0,
+    shieldHitDirY: -1,
+    shieldLastAbsorbed: 0,
     pickupRadius: PLAYER_PICKUP_RADIUS_BASE,
     enemyKills: 0,
     bossKills: 0,
@@ -8003,6 +8210,10 @@ function tickRoom(room, dtSec, now) {
         p.dodgeRechargeMs = 0;
         p.dodgeInvulnUntil = 0;
         p.jumpQueued = false;
+        if (Math.max(0, Number(p.shieldMax) || 0) > 0) {
+          p.shieldHp = Math.max(1, Math.round(Number(p.shieldMax) || 0));
+          p.shieldRestoreAt = 0;
+        }
       }
       continue;
     }
@@ -8084,6 +8295,20 @@ function tickRoom(room, dtSec, now) {
       angle += Math.sin(ageSec * (Number(b.wobbleFreq) || 8) + (Number(b.wobblePhase) || 0)) * Math.max(0, Number(b.wobbleAmp) || 0) * dtSec;
       b.vx = Math.cos(angle) * speed;
       b.vy = Math.sin(angle) * speed;
+    } else if (!b.fromEnemy && Math.max(0, Number(b.homingTurnRate) || 0) > 0) {
+      b.homingAgeMs = Math.max(0, Number(b.homingAgeMs) || 0) + dtSec * 1000;
+      if (b.homingAgeMs >= Math.max(0, Number(b.homingDelayMs) || 0)) {
+        const target = findBulletHomingTarget(room, b, Math.max(0, Number(b.homingRange) || 0));
+        if (target) {
+          const speed = Math.max(120, Math.hypot(Number(b.vx) || 0, Number(b.vy) || 0) || 120);
+          let angle = Math.atan2(Number(b.vy) || 0, Number(b.vx) || speed);
+          const desiredAngle = Math.atan2((Number(target.y) || 0) - (Number(b.y) || 0), (Number(target.x) || 0) - (Number(b.x) || 0));
+          const maxTurn = Math.max(0.1, Number(b.homingTurnRate) || 0) * dtSec;
+          angle += clamp(wrapAngleDelta(desiredAngle - angle), -maxTurn, maxTurn);
+          b.vx = Math.cos(angle) * speed;
+          b.vy = Math.sin(angle) * speed;
+        }
+      }
     }
 
     const prevX = b.x;
@@ -8108,7 +8333,13 @@ function tickRoom(room, dtSec, now) {
           ? segmentIntersectsCircle(prevX, prevY, b.x, b.y, p.x, p.y, rr)
           : (((p.x - b.x) ** 2 + (p.y - b.y) ** 2) <= rr * rr);
         if (collides) {
-          applyEnemyHitToPlayer(room, p, Math.max(1, Number(b.damage) || ENEMY_RANGED_DAMAGE), now, true);
+          applyEnemyHitToPlayer(room, p, Math.max(1, Number(b.damage) || ENEMY_RANGED_DAMAGE), now, {
+            applySlow: true,
+            sourceX: prevX,
+            sourceY: prevY,
+            dirX: Number(b.vx) || 0,
+            dirY: Number(b.vy) || 0,
+          });
           hit = true;
           break;
         }
@@ -8123,7 +8354,13 @@ function tickRoom(room, dtSec, now) {
             ? segmentIntersectsCircle(prevX, prevY, b.x, b.y, p.x, p.y, rr)
             : (((p.x - b.x) ** 2 + (p.y - b.y) ** 2) <= rr * rr);
           if (!collides) continue;
-          if (applyPlayerHitToPlayer(room, owner, p, b.damage, now, { allowDeadAttacker: true })) {
+          if (applyPlayerHitToPlayer(room, owner, p, b.damage, now, {
+            allowDeadAttacker: true,
+            sourceX: prevX,
+            sourceY: prevY,
+            dirX: Number(b.vx) || 0,
+            dirY: Number(b.vy) || 0,
+          })) {
             hit = true;
             break;
           }
@@ -8319,7 +8556,11 @@ function tickRoom(room, dtSec, now) {
           const baseDamage = e.type === 'boss' ? BOSS_ATTACK_DAMAGE : ENEMY_ATTACK_DAMAGE;
           const damage = Math.max(1, Math.round(baseDamage * Math.max(1, Number(e.damageMul) || 1)));
           if (adx * adx + ady * ady <= hitRange * hitRange) {
-            applyEnemyHitToPlayer(room, lockedTarget, damage, now, true);
+            applyEnemyHitToPlayer(room, lockedTarget, damage, now, {
+              applySlow: true,
+              sourceX: e.x,
+              sourceY: e.y,
+            });
           }
         }
         e.attackWindupMs = 0;

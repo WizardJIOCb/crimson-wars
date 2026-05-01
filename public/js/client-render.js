@@ -1684,6 +1684,50 @@ function drawFx() {
     ctx.restore();
   }
 
+  if (Array.isArray(visuals.forceShield)) {
+    for (const s of visuals.forceShield) {
+      if (!isVisibleWorld(s.x, s.y, 96)) continue;
+      const a = Math.max(0, Math.min(1, (Number(s.life) || 0) / Math.max(0.001, Number(s.ttl) || 1)));
+      if (a <= 0.01) continue;
+      const sx = s.x - camera.x;
+      const sy = s.y - camera.y;
+      const dirX = Number(s.dirX) || 0;
+      const dirY = Number(s.dirY) || -1;
+      const angle = Math.atan2(dirY, dirX);
+      const radius = Math.max(18, Number(s.radius) || 42);
+      const arcWidth = s.broken ? 1.5 : 1.18;
+      const start = angle - arcWidth;
+      const end = angle + arcWidth;
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = `rgba(125, 211, 252, ${(a * 0.92).toFixed(3)})`;
+      ctx.lineWidth = Math.max(1.2, Number(s.width) || 5);
+      ctx.beginPath();
+      ctx.arc(sx, sy, radius, start, end);
+      ctx.stroke();
+
+      ctx.strokeStyle = `rgba(191, 219, 254, ${(a * 0.58).toFixed(3)})`;
+      ctx.lineWidth = Math.max(1, (Number(s.width) || 5) * 0.38);
+      ctx.beginPath();
+      ctx.arc(sx, sy, radius + 7, start + 0.08, end - 0.08);
+      ctx.stroke();
+
+      const glow = ctx.createRadialGradient(sx, sy, Math.max(4, radius * 0.55), sx, sy, radius + 16);
+      glow.addColorStop(0, 'rgba(14, 165, 233, 0)');
+      glow.addColorStop(0.62, `rgba(56, 189, 248, ${(a * 0.16).toFixed(3)})`);
+      glow.addColorStop(1, 'rgba(147, 197, 253, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.arc(sx, sy, radius + 16, start, end);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
   for (const h of visuals.hitFx) {
     if (!isVisibleWorld(h.x, h.y, 24)) continue;
     const a = Math.max(0, h.life / h.ttl);

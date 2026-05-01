@@ -372,6 +372,7 @@ const visuals = {
   skillLinks: [],
   skillLabels: [],
   dodgeWind: [],
+  forceShield: [],
   dodgeWindScheduled: [],
   skillCdPrev: new Map(),
   skillOfferPrev: new Map(),

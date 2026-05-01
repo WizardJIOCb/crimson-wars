@@ -48,6 +48,19 @@
           "desc": "Shilo Rap Machine: bullets pierce enemies and hit harder"
         },
         {
+          "id": "bullet_gps",
+          "name": "Bullet GPS",
+          "kind": "passive",
+          "rarity": "rare",
+          "maxLevel": 7,
+          "weight": 0.68,
+          "bulletHomingRangeBase": 360,
+          "bulletHomingRangePerLevel": 44,
+          "bulletHomingTurnBase": 1.7,
+          "bulletHomingTurnPerLevel": 0.42,
+          "desc": "Bullets politely curve into nearby enemies"
+        },
+        {
           "id": "vitality",
           "name": "Vitality",
           "kind": "passive",
@@ -97,6 +110,20 @@
           "weight": 0.85,
           "hpRegenPerSecPerLevel": 1.15,
           "desc": "HP regen/sec"
+        },
+        {
+          "id": "force_shield",
+          "name": "Force Shield",
+          "kind": "passive",
+          "rarity": "rare",
+          "maxLevel": 6,
+          "weight": 0.74,
+          "shieldMaxBase": 26,
+          "shieldMaxPerLevel": 18,
+          "shieldAbsorbBase": 0.42,
+          "shieldAbsorbPerLevel": 0.045,
+          "shieldRestoreMs": 30000,
+          "desc": "Blue barrier absorbs damage and reboots"
         },
         {
           "id": "dodge_instinct",

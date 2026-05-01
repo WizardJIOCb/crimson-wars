@@ -24,6 +24,19 @@ function normalizeItems(raw) {
   return source.map((line) => safeText(line, 420)).filter(Boolean).slice(0, 80);
 }
 
+function normalizeImages(raw) {
+  const source = Array.isArray(raw) ? raw : [];
+  return source.map((image) => {
+    const url = safeText(image?.url || image, 420);
+    if (!url || !/^\/api\/news\/images\/[a-z0-9_.-]+$/i.test(url)) return null;
+    return {
+      id: toId(image?.id || path.basename(url)) || `img-${nowMs()}`,
+      url,
+      alt: safeText(image?.alt || '', 180),
+    };
+  }).filter(Boolean).slice(0, 12);
+}
+
 function commentId() {
   return `c-${nowMs()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -67,6 +80,7 @@ function normalizeNewsItem(raw, fallback = {}) {
   const title = safeText(raw?.title || fallback.title || '', 180);
   const summary = safeText(raw?.summary || fallback.summary || '', 1000);
   const items = normalizeItems(raw?.items || fallback.items);
+  const images = normalizeImages(raw?.images || fallback.images);
   const idSource = raw?.id || fallback.id || title;
   const id = toId(idSource) || `news-${nowMs()}`;
   const createdAt = clampInt(raw?.createdAt || fallback.createdAt || nowMs(), 0);
@@ -83,6 +97,7 @@ function normalizeNewsItem(raw, fallback = {}) {
     title,
     summary,
     items,
+    images,
     isPublished,
     createdAt,
     updatedAt,
@@ -210,6 +225,7 @@ function createNewsStore({ dataDir, filePath, mysql }) {
       id: item.id,
       title: item.title,
       summary: item.summary,
+      images: item.images,
       publishedAt: item.publishedAt,
       views: item.views,
       commentsCount: countComments(item),
@@ -240,6 +256,7 @@ function createNewsStore({ dataDir, filePath, mysql }) {
         title: current.title,
         summary: current.summary,
         items: current.items,
+        images: current.images,
         publishedAt: current.publishedAt,
         views: current.views,
         commentsCount: countComments(current),
@@ -345,6 +362,7 @@ function createNewsStore({ dataDir, filePath, mysql }) {
         title: item.title,
         summary: item.summary,
         items: item.items,
+        images: item.images,
         publishedAt: item.publishedAt,
         views: item.views,
         commentsCount: countComments(item),
@@ -420,6 +438,7 @@ function createNewsStore({ dataDir, filePath, mysql }) {
         title: item.title,
         summary: item.summary,
         items: item.items,
+        images: item.images,
         publishedAt: item.publishedAt,
         views: item.views,
         commentsCount: countComments(item),

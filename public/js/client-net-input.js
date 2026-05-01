@@ -2491,6 +2491,7 @@ function seekReplayGame(elapsedMs, { keepPaused = null } = {}) {
   visuals.skillLinks = [];
   visuals.skillLabels = [];
   visuals.dodgeWind = [];
+  visuals.forceShield = [];
   visuals.dodgeWindScheduled = [];
   replayGame.fxFrameIndex = -1;
   tickReplayGame(performance.now());
@@ -3742,6 +3743,7 @@ function startReplayGame(payload, record) {
   visuals.skillLinks = [];
   visuals.skillLabels = [];
   visuals.dodgeWind = [];
+  visuals.forceShield = [];
   visuals.dodgeWindScheduled = [];
   visuals.skillCdPrev = new Map();
   visuals.skillOfferPrev = new Map();
@@ -5940,6 +5942,7 @@ function clearLocalSessionState() {
   visuals.skillLinks = [];
   visuals.skillLabels = [];
   visuals.dodgeWind = [];
+  visuals.forceShield = [];
   visuals.dodgeWindScheduled = [];
   visuals.skillCdPrev = new Map();
   visuals.skillOfferPrev = new Map();
@@ -6127,8 +6130,9 @@ message: (ev) => {
     visuals.skillArcs = [];
     visuals.skillLinks = [];
     visuals.skillLabels = [];
-  visuals.dodgeWind = [];
-  visuals.dodgeWindScheduled = [];
+    visuals.dodgeWind = [];
+    visuals.forceShield = [];
+    visuals.dodgeWindScheduled = [];
     visuals.skillCdPrev = new Map();
     visuals.skillOfferPrev = new Map();
     visuals.rocketPrev = new Map();

@@ -54,6 +54,7 @@
     replyTargetId: '',
     replyDraftByParent: {},
     shareCopied: false,
+    lightboxIndex: -1,
   };
   let newsShareToastTimer = null;
 
@@ -65,6 +66,7 @@
       ...newsUi.items[idx],
       title: item.title,
       summary: item.summary,
+      images: Array.isArray(item.images) ? item.images : [],
       publishedAt: item.publishedAt,
       views: Math.max(0, Number(item.views) || 0),
       commentsCount: Math.max(0, Number(item.commentsCount) || 0),
@@ -78,9 +80,102 @@
       ...item,
       views: Math.max(0, Number(item.views) || 0),
       commentsCount: Math.max(0, Number(item.commentsCount) || 0),
+      images: Array.isArray(item.images) ? item.images : [],
       comments: Array.isArray(item.comments) ? item.comments : [],
     };
     upsertNewsListCounters(newsUi.activeItem);
+  }
+
+  function openNewsImage(index) {
+    const images = Array.isArray(newsUi.activeItem?.images) ? newsUi.activeItem.images : [];
+    if (!images.length) return;
+    newsUi.lightboxIndex = Math.max(0, Math.min(images.length - 1, Number(index) || 0));
+    renderNewsFeed();
+  }
+
+  function closeNewsImage() {
+    newsUi.lightboxIndex = -1;
+    renderNewsFeed();
+  }
+
+  function renderNewsImages(container, images, options = {}) {
+    const list = Array.isArray(images) ? images.filter((image) => image && image.url) : [];
+    if (!list.length) return;
+    const wrap = document.createElement('div');
+    wrap.className = options.detail ? 'news-media-carousel' : 'news-media-strip';
+    list.forEach((image, index) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'news-media-thumb';
+      const img = document.createElement('img');
+      img.src = String(image.url || '');
+      img.alt = String(image.alt || '');
+      img.loading = 'lazy';
+      btn.appendChild(img);
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (options.detail) openNewsImage(index);
+        else void openNewsItem(options.newsId || newsUi.activeId || '');
+      });
+      wrap.appendChild(btn);
+    });
+    container.appendChild(wrap);
+  }
+
+  function renderNewsLightbox() {
+    const images = Array.isArray(newsUi.activeItem?.images) ? newsUi.activeItem.images : [];
+    const rawIndex = Number(newsUi.lightboxIndex);
+    const index = Number.isFinite(rawIndex) ? Math.max(-1, Math.min(images.length - 1, rawIndex)) : -1;
+    if (index < 0 || !images[index]) return null;
+    const overlay = document.createElement('div');
+    overlay.className = 'news-lightbox';
+    overlay.addEventListener('click', closeNewsImage);
+
+    const panel = document.createElement('div');
+    panel.className = 'news-lightbox-panel';
+    panel.addEventListener('click', (e) => e.stopPropagation());
+
+    const img = document.createElement('img');
+    img.src = String(images[index].url || '');
+    img.alt = String(images[index].alt || '');
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'mini news-lightbox-close';
+    closeBtn.textContent = 'x';
+    closeBtn.addEventListener('click', closeNewsImage);
+
+    const counter = document.createElement('div');
+    counter.className = 'news-lightbox-counter';
+    counter.textContent = `${index + 1} / ${images.length}`;
+
+    const prevBtn = document.createElement('button');
+    prevBtn.type = 'button';
+    prevBtn.className = 'mini news-lightbox-prev';
+    prevBtn.textContent = '<';
+    prevBtn.disabled = images.length <= 1;
+    prevBtn.addEventListener('click', () => {
+      newsUi.lightboxIndex = (index - 1 + images.length) % images.length;
+      renderNewsFeed();
+    });
+
+    const nextBtn = document.createElement('button');
+    nextBtn.type = 'button';
+    nextBtn.className = 'mini news-lightbox-next';
+    nextBtn.textContent = '>';
+    nextBtn.disabled = images.length <= 1;
+    nextBtn.addEventListener('click', () => {
+      newsUi.lightboxIndex = (index + 1) % images.length;
+      renderNewsFeed();
+    });
+
+    panel.appendChild(img);
+    panel.appendChild(closeBtn);
+    panel.appendChild(counter);
+    panel.appendChild(prevBtn);
+    panel.appendChild(nextBtn);
+    overlay.appendChild(panel);
+    return overlay;
   }
 
   function updateMenuUrlState(tabId, newsId = '') {
@@ -376,6 +471,7 @@
         newsUi.commentError = '';
         newsUi.replyTargetId = '';
         newsUi.shareCopied = false;
+        newsUi.lightboxIndex = -1;
         updateMenuUrlState('news', '');
         renderNewsFeed();
       });
@@ -431,6 +527,7 @@
       article.appendChild(h);
       article.appendChild(meta);
       if (summary.textContent) article.appendChild(summary);
+      renderNewsImages(article, item?.images, { detail: true, newsId: item?.id || '' });
 
       const lines = Array.isArray(item?.items) ? item.items : [];
       if (lines.length > 0) {
@@ -521,6 +618,8 @@
         }
       }
       newsFeedEl.appendChild(commentsWrap);
+      const lightbox = renderNewsLightbox();
+      if (lightbox) newsFeedEl.appendChild(lightbox);
       return;
     }
 
@@ -555,6 +654,7 @@
       card.appendChild(h);
       card.appendChild(meta);
       if (summary.textContent) card.appendChild(summary);
+      renderNewsImages(card, item?.images, { detail: false, newsId: item?.id || '' });
 
       card.addEventListener('click', () => {
         void openNewsItem(item?.id || '');
@@ -643,6 +743,7 @@
     newsUi.commentError = '';
     newsUi.replyTargetId = '';
     newsUi.shareCopied = false;
+    newsUi.lightboxIndex = -1;
     updateMenuUrlState('news', '');
     renderNewsFeed();
   }

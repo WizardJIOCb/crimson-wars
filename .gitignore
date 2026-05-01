@@ -7,6 +7,7 @@ data/*.db-shm
 data/*.db-wal
 data/run-persist-queue/
 data/run-persist-worker.log
+data/news-images/
 data/news.json
 news.json
 .vexp/
