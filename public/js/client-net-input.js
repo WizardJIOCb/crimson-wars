@@ -2080,6 +2080,7 @@ async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
     }
   }
   if (ws.readyState !== WebSocket.OPEN) return;
+  game.connected = true;
   const name = (game.playerAuth?.player?.nickname || nameInput.value.trim() || 'Fighter').trim();
   localStorage.setItem(NICKNAME_STORAGE_KEY, name);
   if (authLoginNicknameEl && !authLoginNicknameEl.value) authLoginNicknameEl.value = name;
@@ -2139,6 +2140,7 @@ async function sendSpectateRequest(roomCode, options = {}) {
     }
   }
   if (ws.readyState !== WebSocket.OPEN) return;
+  game.connected = true;
   waitingForFirstState = true;
   resetNetStats();
   waitingForFirstStateSince = performance.now();
@@ -6243,6 +6245,7 @@ message: (ev) => {
 
   if (msg.type === 'welcome') {
     clearJoinFeedback();
+    game.connected = true;
     game.spectating = Boolean(msg.spectator);
     game.myId = msg.id || null;
     game.spectatorCount = Math.max(0, Number(msg.spectators ?? msg.spectatorCount) || 0);
