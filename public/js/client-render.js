@@ -232,8 +232,13 @@ function drawGround() {
   const q = getQ();
   const theme = getSceneTheme();
   const baseMaterial = String(theme.baseMaterial || 'asphalt_wet');
+  const viewportScale = typeof getRunStartViewportScale === 'function' ? getRunStartViewportScale() : 1;
+  const safeScale = Math.max(0.34, Math.min(1, viewportScale || 1));
+  const viewportW = canvas.width / safeScale;
+  const viewportH = canvas.height / safeScale;
+  const edgePad = 32 / safeScale;
   ctx.fillStyle = getGroundFallbackColor(baseMaterial);
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(-edgePad, -edgePad, viewportW + edgePad * 2, viewportH + edgePad * 2);
 
   if (q.groundTexture) {
     const tileSet = getGroundTileSetForMaterial(baseMaterial);
@@ -241,8 +246,8 @@ function drawGround() {
       const pad = visuals.groundTileSize || tileSet.variants?.[0]?.width || 128;
       const startX = camera.x - pad;
       const startY = camera.y - pad;
-      const endX = camera.x + canvas.width + pad;
-      const endY = camera.y + canvas.height + pad;
+      const endX = camera.x + viewportW + pad;
+      const endY = camera.y + viewportH + pad;
       drawMaterialTileField(baseMaterial, startX, startY, endX, endY);
       drawMaterialMacroField(baseMaterial, startX, startY, endX, endY);
     }
@@ -2154,8 +2159,14 @@ function render(ts) {
     const me = game.state.players.find((p) => p.id === game.myId) || game.state.players[0];
     if (me) {
       const m = getPlayerRenderPos(me);
-      const targetCamX = Math.max(0, Math.min(m.x - canvas.width / 2, game.world.width - canvas.width));
-      const targetCamY = Math.max(0, Math.min(m.y - canvas.height / 2, game.world.height - canvas.height));
+      const viewportScale = typeof getRunStartViewportScale === 'function' ? getRunStartViewportScale(ts) : 1;
+      const safeScale = Math.max(0.34, Math.min(1, viewportScale || 1));
+      const viewportW = canvas.width / safeScale;
+      const viewportH = canvas.height / safeScale;
+      const worldW = Math.max(canvas.width, Number(game.world?.width) || canvas.width);
+      const worldH = Math.max(canvas.height, Number(game.world?.height) || canvas.height);
+      const targetCamX = Math.max(0, Math.min(m.x - viewportW / 2, worldW - viewportW));
+      const targetCamY = Math.max(0, Math.min(m.y - viewportH / 2, worldH - viewportH));
       const camDx = targetCamX - camera.x;
       const camDy = targetCamY - camera.y;
       const camDist = Math.hypot(camDx, camDy);
@@ -2169,6 +2180,15 @@ function render(ts) {
         camera.y += camDy * k;
       }
     }
+  }
+  const sceneTransform = typeof getRunStartSceneTransform === 'function'
+    ? getRunStartSceneTransform(ts)
+    : { active: false, scale: 1, shakeX: 0, shakeY: 0 };
+  const sceneTransformActive = Boolean(sceneTransform?.active && Math.abs((Number(sceneTransform.scale) || 1) - 1) > 0.001);
+  if (sceneTransformActive) {
+    ctx.save();
+    ctx.translate(Number(sceneTransform.shakeX) || 0, Number(sceneTransform.shakeY) || 0);
+    ctx.scale(Number(sceneTransform.scale) || 1, Number(sceneTransform.scale) || 1);
   }
   drawGround();
   drawBloodPuddles();
@@ -2272,14 +2292,17 @@ function render(ts) {
   drawFx();
   renderDiagEnd('fx', diagStartedAt);
 
+  ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(-camera.x, -camera.y, game.world.width, game.world.height);
+  if (sceneTransformActive) ctx.restore();
+
+  if (typeof drawRunStartCinematicOverlay === 'function') drawRunStartCinematicOverlay(ts);
+
   diagStartedAt = renderDiagStart();
   drawBossPortalEdgeIndicator(game.state.bossPortals || [], Number(game.state.now) || Date.now());
   drawSkillOrbEdgeIndicators(game.state.skillOrbs || []);
   renderDiagEnd('indicators', diagStartedAt);
-
-  ctx.strokeStyle = 'rgba(255,255,255,0.16)';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(-camera.x, -camera.y, game.world.width, game.world.height);
 
   diagStartedAt = renderDiagStart();
   drawMinimap();

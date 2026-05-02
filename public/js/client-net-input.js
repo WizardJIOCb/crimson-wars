@@ -2050,6 +2050,9 @@ async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
   }
   clearJoinFeedback();
   clearReplayUrlIntent();
+  const runStartToken = typeof window.cwBeginRunStartLoading === 'function'
+    ? window.cwBeginRunStartLoading({ mode, source, resumeOnly })
+    : 0;
   if (!skipRouting) {
     try {
       const route = await resolveRoomRoute(mode, roomCode, { gameMode: selectedGameMode, pvpDurationMin: selectedPvpDurationMin });
@@ -2057,6 +2060,7 @@ async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
         const message = `Room ${route.room.code} is full (${route.room.players}/${route.room.maxPlayers}).`;
         statusEl.textContent = message;
         setJoinFeedback(message);
+        window.cwCancelRunStartLoading?.({ token: runStartToken });
         joinOverlay.style.display = 'grid';
         joinOverlay.classList.remove('death-mode');
         setDeathCinematicActive(false);
@@ -2068,6 +2072,7 @@ async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
     } catch (err) {
       statusEl.textContent = err.message || 'Failed to resolve room route.';
       setJoinFeedback(err.message || 'Failed to resolve room route.');
+      window.cwCancelRunStartLoading?.({ token: runStartToken });
       return;
     }
   } else {
@@ -2076,10 +2081,14 @@ async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
     } catch (err) {
       statusEl.textContent = err.message || 'Failed to connect to game server.';
       setJoinFeedback(err.message || 'Failed to connect to game server.');
+      window.cwCancelRunStartLoading?.({ token: runStartToken });
       return;
     }
   }
-  if (ws.readyState !== WebSocket.OPEN) return;
+  if (ws.readyState !== WebSocket.OPEN) {
+    window.cwCancelRunStartLoading?.({ token: runStartToken });
+    return;
+  }
   game.connected = true;
   const name = (game.playerAuth?.player?.nickname || nameInput.value.trim() || 'Fighter').trim();
   localStorage.setItem(NICKNAME_STORAGE_KEY, name);
@@ -5402,7 +5411,10 @@ function sampleBufferedState() {
 function isVisibleWorld(x, y, pad = 0) {
   const sx = x - camera.x;
   const sy = y - camera.y;
-  return sx >= -pad && sx <= canvas.width + pad && sy >= -pad && sy <= canvas.height + pad;
+  const viewportScale = typeof getRunStartViewportScale === 'function' ? getRunStartViewportScale() : 1;
+  const viewportW = canvas.width / Math.max(0.34, Math.min(1, viewportScale || 1));
+  const viewportH = canvas.height / Math.max(0.34, Math.min(1, viewportScale || 1));
+  return sx >= -pad && sx <= viewportW + pad && sy >= -pad && sy <= viewportH + pad;
 }
 
 function setTabScoreboardVisible(visible) {
@@ -6004,6 +6016,7 @@ function scheduleDeathOverlay(result) {
 }
 
 function clearLocalSessionState() {
+  window.cwCancelRunStartLoading?.();
   cancelPendingDeathOverlay();
   clearDeathCameraLock();
   clearHitScreenOverlayFx();
@@ -6193,6 +6206,7 @@ open: () => {
 close: () => {
   game.connected = false;
   netStats.pendingPings.clear();
+  window.cwCancelRunStartLoading?.();
   if (!restartReloadTimer) {
     statusEl.textContent = 'Disconnected';
   }
@@ -6448,6 +6462,7 @@ message: (ev) => {
       }
       return;
     }
+    window.cwCancelRunStartLoading?.();
     if (pendingStoredRunResume) {
       pendingStoredRunResume = false;
       if (typeof window.cwClearStoredActiveRunResume === 'function') {
@@ -6500,6 +6515,7 @@ message: (ev) => {
     onStateNetSample(s.now);
     game.state = s;
     game.world = s.world;
+    window.cwMarkRunStartFirstStateReady?.();
     game.roomCode = s.roomCode;
     game.runType = String(s.runType || game.runType || 'free');
     game.mapId = String(s.mapId || game.mapId || 'mall_night');

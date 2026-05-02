@@ -154,6 +154,11 @@ const replayLoadOverlayEl = document.getElementById('replay-load-overlay');
 const replayLoadLabelEl = document.getElementById('replay-load-label');
 const replayLoadFillEl = document.getElementById('replay-load-fill');
 const replayLoadMetaEl = document.getElementById('replay-load-meta');
+const runStartOverlayEl = document.getElementById('run-start-overlay');
+const runStartLabelEl = document.getElementById('run-start-label');
+const runStartFillEl = document.getElementById('run-start-fill');
+const runStartMetaEl = document.getElementById('run-start-meta');
+const runStartImpactImgEl = document.getElementById('run-start-impact-img');
 const bottomHudEl = document.getElementById('bottom-hud');
 const skillBarEl = document.getElementById('skill-bar');
 const xpLevelEl = document.getElementById('xp-level');
@@ -388,6 +393,7 @@ const visuals = {
   mapObjectPrev: new Map(),
   objectImpactEventIds: new Map(),
   prevBossAlive: false,
+  runStartFireworks: [],
   groundTileCanvas: null,
   groundTiles: {},
   groundTileSize: 0,
@@ -633,6 +639,28 @@ const replayGame = {
   seeking: false,
   chatShownCount: -1,
   chatPayloadRef: null,
+};
+const RUN_START_LOADING_IMAGE = '/assets/backgrounds/screen-loading.jpg';
+const RUN_START_IMPACT_IMAGES = ['/assets/backgrounds/start-1.png', '/assets/backgrounds/start-2.png'];
+const RUN_START_MIN_LOADING_MS = 650;
+const RUN_START_INTRO_DURATION_MS = 2850;
+const runStartSequence = {
+  token: 0,
+  active: false,
+  loading: false,
+  firstStateReady: false,
+  resourcesReady: false,
+  resourceLoaded: 0,
+  resourceTotal: 0,
+  progress: 0,
+  startedAt: 0,
+  introActive: false,
+  introStartedAt: 0,
+  impactSrc: RUN_START_IMPACT_IMAGES[0],
+  impactTimer: 0,
+  finishTimer: 0,
+  progressTimer: 0,
+  minLoadingTimer: 0,
 };
 const DEV_CMD_HISTORY_LIMIT = 60;
 const DEV_CMD_HISTORY_STORAGE_KEY = 'cw:devConsoleHistory';
@@ -2551,7 +2579,385 @@ const sprites = {
     industrial_tank: loadImage('/assets/map-props/industrial_tank.png'),
     reactor_block: loadImage('/assets/map-props/reactor_block.svg'),
   },
+  backgrounds: {
+    runLoading: loadImage(RUN_START_LOADING_IMAGE),
+    start1: loadImage(RUN_START_IMPACT_IMAGES[0]),
+    start2: loadImage(RUN_START_IMPACT_IMAGES[1]),
+  },
 };
+
+function runStartEaseOutCubic(t) {
+  const p = clamp(t, 0, 1);
+  return 1 - Math.pow(1 - p, 3);
+}
+
+function runStartEaseInOut(t) {
+  const p = clamp(t, 0, 1);
+  return p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) * 0.5;
+}
+
+function collectRunStartImageResources(value, out = []) {
+  if (!value) return out;
+  if (value instanceof HTMLImageElement) {
+    out.push(value);
+    return out;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectRunStartImageResources(item, out);
+    return out;
+  }
+  if (typeof value === 'object') {
+    for (const item of Object.values(value)) collectRunStartImageResources(item, out);
+  }
+  return out;
+}
+
+function getRunStartImageResources() {
+  const seen = new Set();
+  return collectRunStartImageResources(sprites, [])
+    .filter((img) => {
+      const key = String(img.currentSrc || img.src || '').trim();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function waitForRunStartImage(img) {
+  if (!img) return Promise.resolve(false);
+  if (img.complete && Number(img.naturalWidth) > 0) {
+    if (typeof img.decode === 'function') return img.decode().then(() => true).catch(() => true);
+    return Promise.resolve(true);
+  }
+  return new Promise((resolve) => {
+    let done = false;
+    let timer = 0;
+    const finish = (ok) => {
+      if (done) return;
+      done = true;
+      window.clearTimeout(timer);
+      img.removeEventListener('load', onLoad);
+      img.removeEventListener('error', onError);
+      resolve(Boolean(ok));
+    };
+    const onLoad = () => finish(true);
+    const onError = () => finish(false);
+    img.addEventListener('load', onLoad, { once: true });
+    img.addEventListener('error', onError, { once: true });
+    timer = window.setTimeout(() => finish(img.complete && Number(img.naturalWidth) > 0), 6500);
+  });
+}
+
+function updateRunStartLoadingUi() {
+  if (!runStartSequence.active || !runStartSequence.loading) return;
+  const resourceTotal = Math.max(0, Number(runStartSequence.resourceTotal) || 0);
+  const resourceLoaded = Math.max(0, Math.min(resourceTotal, Number(runStartSequence.resourceLoaded) || 0));
+  const resourceRatio = resourceTotal > 0 ? resourceLoaded / resourceTotal : 1;
+  const stateRatio = runStartSequence.firstStateReady ? 1 : 0;
+  const elapsedMs = Math.max(0, performance.now() - (Number(runStartSequence.startedAt) || performance.now()));
+  const waitDrift = Math.min(0.1, elapsedMs / 9000);
+  const targetProgress = Math.min(
+    runStartSequence.resourcesReady && runStartSequence.firstStateReady ? 1 : 0.94,
+    resourceRatio * 0.72 + stateRatio * 0.18 + waitDrift,
+  );
+  runStartSequence.progress = Math.max(Number(runStartSequence.progress) || 0, targetProgress);
+  if (runStartFillEl) runStartFillEl.style.width = `${Math.round(runStartSequence.progress * 100)}%`;
+  if (runStartLabelEl) runStartLabelEl.textContent = 'Загрузка боя';
+  if (runStartMetaEl) {
+    if (!runStartSequence.resourcesReady) {
+      runStartMetaEl.textContent = `Ресурсы: ${resourceLoaded}/${resourceTotal || '...'} | сервер ${runStartSequence.firstStateReady ? 'готов' : 'подключается'}`;
+    } else if (!runStartSequence.firstStateReady) {
+      runStartMetaEl.textContent = 'Ресурсы готовы | ждём первый кадр боя';
+    } else {
+      runStartMetaEl.textContent = 'Бой готов | вход в зону';
+    }
+  }
+}
+
+function buildRunStartFireworks() {
+  const colors = ['#facc15', '#fb7185', '#38bdf8', '#22c55e', '#f97316', '#f8fafc'];
+  const specs = [];
+  const count = window.innerWidth < 760 ? 16 : 24;
+  for (let i = 0; i < count; i += 1) {
+    const sideBias = i % 2 === 0 ? -1 : 1;
+    const startX = 0.08 + Math.random() * 0.84;
+    const targetX = clamp(0.5 + sideBias * (0.08 + Math.random() * 0.26), 0.12, 0.88);
+    specs.push({
+      startX,
+      startY: 1.08 + Math.random() * 0.1,
+      targetX,
+      targetY: 0.22 + Math.random() * 0.42,
+      delay: 180 + Math.random() * 1250,
+      duration: 760 + Math.random() * 860,
+      sway: (Math.random() - 0.5) * 110,
+      color: colors[i % colors.length],
+      size: 2.2 + Math.random() * 3.6,
+      burst: 6 + Math.floor(Math.random() * 8),
+      spin: Math.random() * Math.PI * 2,
+    });
+  }
+  return specs;
+}
+
+function clearRunStartTimers() {
+  window.clearTimeout(runStartSequence.impactTimer);
+  window.clearTimeout(runStartSequence.finishTimer);
+  window.clearTimeout(runStartSequence.minLoadingTimer);
+  window.clearInterval(runStartSequence.progressTimer);
+  runStartSequence.impactTimer = 0;
+  runStartSequence.finishTimer = 0;
+  runStartSequence.minLoadingTimer = 0;
+  runStartSequence.progressTimer = 0;
+}
+
+function hideRunStartOverlay() {
+  if (runStartOverlayEl) {
+    runStartOverlayEl.classList.add('hidden');
+    runStartOverlayEl.classList.remove('is-intro', 'impact-active');
+  }
+  if (runStartImpactImgEl) runStartImpactImgEl.removeAttribute('src');
+}
+
+function cancelRunStartLoading(options = {}) {
+  const targetToken = Math.max(0, Number(options?.token) || 0);
+  if (targetToken > 0 && targetToken !== runStartSequence.token) return;
+  runStartSequence.token += 1;
+  runStartSequence.active = false;
+  runStartSequence.loading = false;
+  runStartSequence.introActive = false;
+  runStartSequence.firstStateReady = false;
+  runStartSequence.resourcesReady = false;
+  runStartSequence.resourceLoaded = 0;
+  runStartSequence.resourceTotal = 0;
+  runStartSequence.progress = 0;
+  visuals.runStartFireworks = [];
+  clearRunStartTimers();
+  hideRunStartOverlay();
+}
+
+function finishRunStartIntro(token) {
+  if (token !== runStartSequence.token) return;
+  runStartSequence.active = false;
+  runStartSequence.loading = false;
+  runStartSequence.introActive = false;
+  runStartSequence.progress = 0;
+  visuals.runStartFireworks = [];
+  clearRunStartTimers();
+  hideRunStartOverlay();
+}
+
+function triggerRunStartImpact(token) {
+  if (token !== runStartSequence.token || !runStartSequence.introActive || !runStartOverlayEl || !runStartImpactImgEl) return;
+  runStartImpactImgEl.src = runStartSequence.impactSrc;
+  runStartOverlayEl.classList.remove('impact-active');
+  void runStartOverlayEl.offsetWidth;
+  runStartOverlayEl.classList.add('impact-active');
+  runStartSequence.impactTimer = window.setTimeout(() => {
+    if (token === runStartSequence.token && runStartOverlayEl) runStartOverlayEl.classList.remove('impact-active');
+  }, 940);
+}
+
+function startRunIntroTransition(token) {
+  if (token !== runStartSequence.token || !runStartSequence.active || !runStartSequence.loading) return;
+  runStartSequence.loading = false;
+  runStartSequence.introActive = true;
+  runStartSequence.introStartedAt = performance.now();
+  runStartSequence.progress = 1;
+  runStartSequence.impactSrc = RUN_START_IMPACT_IMAGES[Math.floor(Math.random() * RUN_START_IMPACT_IMAGES.length)] || RUN_START_IMPACT_IMAGES[0];
+  visuals.runStartFireworks = buildRunStartFireworks();
+  window.clearInterval(runStartSequence.progressTimer);
+  runStartSequence.progressTimer = 0;
+  if (runStartFillEl) runStartFillEl.style.width = '100%';
+  if (runStartMetaEl) runStartMetaEl.textContent = 'Бой готов | вход в зону';
+  if (runStartOverlayEl) {
+    runStartOverlayEl.classList.remove('hidden');
+    runStartOverlayEl.classList.add('is-intro');
+  }
+  runStartSequence.impactTimer = window.setTimeout(() => triggerRunStartImpact(token), 620);
+  runStartSequence.finishTimer = window.setTimeout(() => finishRunStartIntro(token), RUN_START_INTRO_DURATION_MS + 320);
+}
+
+function maybeStartRunIntroTransition() {
+  if (!runStartSequence.active || !runStartSequence.loading || !runStartSequence.resourcesReady || !runStartSequence.firstStateReady) return;
+  if (runStartSequence.minLoadingTimer) return;
+  const token = runStartSequence.token;
+  const elapsedMs = Math.max(0, performance.now() - (Number(runStartSequence.startedAt) || performance.now()));
+  const delayMs = Math.max(0, RUN_START_MIN_LOADING_MS - elapsedMs);
+  updateRunStartLoadingUi();
+  runStartSequence.minLoadingTimer = window.setTimeout(() => {
+    runStartSequence.minLoadingTimer = 0;
+    startRunIntroTransition(token);
+  }, delayMs);
+}
+
+async function preloadRunStartResources(token) {
+  const images = getRunStartImageResources();
+  runStartSequence.resourceTotal = images.length;
+  runStartSequence.resourceLoaded = 0;
+  updateRunStartLoadingUi();
+  await Promise.all(images.map((img) => waitForRunStartImage(img).then(() => {
+    if (token !== runStartSequence.token) return;
+    runStartSequence.resourceLoaded += 1;
+    updateRunStartLoadingUi();
+  })));
+  if (token !== runStartSequence.token) return;
+  runStartSequence.resourcesReady = true;
+  updateRunStartLoadingUi();
+  maybeStartRunIntroTransition();
+}
+
+function beginRunStartLoading(options = {}) {
+  if (game.embedMode || replayGame.active || game.spectating) return 0;
+  const token = runStartSequence.token + 1;
+  runStartSequence.token = token;
+  runStartSequence.active = true;
+  runStartSequence.loading = true;
+  runStartSequence.firstStateReady = false;
+  runStartSequence.resourcesReady = false;
+  runStartSequence.resourceLoaded = 0;
+  runStartSequence.resourceTotal = 0;
+  runStartSequence.progress = 0;
+  runStartSequence.startedAt = performance.now();
+  runStartSequence.introActive = false;
+  runStartSequence.introStartedAt = 0;
+  runStartSequence.impactSrc = RUN_START_IMPACT_IMAGES[Math.floor(Math.random() * RUN_START_IMPACT_IMAGES.length)] || RUN_START_IMPACT_IMAGES[0];
+  visuals.runStartFireworks = [];
+  clearRunStartTimers();
+  if (runStartOverlayEl) {
+    runStartOverlayEl.classList.remove('hidden', 'is-intro', 'impact-active');
+  }
+  if (runStartImpactImgEl) runStartImpactImgEl.src = runStartSequence.impactSrc;
+  if (runStartFillEl) runStartFillEl.style.width = '0%';
+  if (runStartLabelEl) runStartLabelEl.textContent = options?.resumeOnly ? 'Возвращаемся в бой' : 'Загрузка боя';
+  if (runStartMetaEl) runStartMetaEl.textContent = 'Подготовка ресурсов...';
+  runStartSequence.progressTimer = window.setInterval(updateRunStartLoadingUi, 120);
+  void preloadRunStartResources(token);
+  updateRunStartLoadingUi();
+  return token;
+}
+
+function markRunStartFirstStateReady() {
+  if (!runStartSequence.active || !runStartSequence.loading) return;
+  runStartSequence.firstStateReady = true;
+  updateRunStartLoadingUi();
+  maybeStartRunIntroTransition();
+}
+
+function getRunStartIntroProgress(nowMs = performance.now()) {
+  if (!runStartSequence.introActive) return 1;
+  const elapsed = Math.max(0, Number(nowMs) - (Number(runStartSequence.introStartedAt) || Number(nowMs)));
+  return clamp(elapsed / RUN_START_INTRO_DURATION_MS, 0, 1);
+}
+
+function getRunStartSceneScale(nowMs = performance.now()) {
+  if (!runStartSequence.introActive) return 1;
+  const p = getRunStartIntroProgress(nowMs);
+  const eased = runStartEaseInOut(p);
+  return 0.34 + (1 - 0.34) * eased;
+}
+
+function getRunStartSceneTransform(nowMs = performance.now()) {
+  if (!runStartSequence.introActive) return { active: false, scale: 1, shakeX: 0, shakeY: 0 };
+  const p = getRunStartIntroProgress(nowMs);
+  const scale = getRunStartSceneScale(nowMs);
+  const impactP = clamp((Math.max(0, Number(nowMs) - runStartSequence.introStartedAt) - 620) / 520, 0, 1);
+  const shake = impactP > 0 && impactP < 1 ? (1 - impactP) * 8 : 0;
+  return {
+    active: p < 1,
+    scale,
+    shakeX: Math.sin(Number(nowMs) * 0.08) * shake,
+    shakeY: Math.cos(Number(nowMs) * 0.103) * shake * 0.72,
+  };
+}
+
+function getRunStartViewportScale(nowMs = performance.now()) {
+  return clamp(getRunStartSceneScale(nowMs), 0.34, 1);
+}
+
+function drawRunStartCinematicOverlay(nowMs = performance.now()) {
+  if (!runStartSequence.introActive) return;
+  const elapsed = Math.max(0, Number(nowMs) - runStartSequence.introStartedAt);
+  const p = getRunStartIntroProgress(nowMs);
+  const fade = Math.max(0, 1 - p);
+  const specs = Array.isArray(visuals.runStartFireworks) ? visuals.runStartFireworks : [];
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-over';
+  const vignette = ctx.createRadialGradient(
+    canvas.width * 0.5,
+    canvas.height * 0.48,
+    Math.max(120, Math.min(canvas.width, canvas.height) * 0.18),
+    canvas.width * 0.5,
+    canvas.height * 0.5,
+    Math.max(canvas.width, canvas.height) * 0.78,
+  );
+  vignette.addColorStop(0, `rgba(0, 0, 0, ${(0.02 * fade).toFixed(3)})`);
+  vignette.addColorStop(1, `rgba(0, 0, 0, ${(0.42 * fade).toFixed(3)})`);
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const spec of specs) {
+    const local = clamp((elapsed - spec.delay) / spec.duration, 0, 1);
+    if (local <= 0 || local >= 1) continue;
+    const eased = runStartEaseOutCubic(local);
+    const startX = spec.startX * canvas.width;
+    const startY = spec.startY * canvas.height;
+    const targetX = spec.targetX * canvas.width;
+    const targetY = spec.targetY * canvas.height;
+    const x = startX + (targetX - startX) * eased + Math.sin(local * Math.PI) * spec.sway;
+    const y = startY + (targetY - startY) * eased;
+    const prevT = Math.max(0, local - 0.1);
+    const prevE = runStartEaseOutCubic(prevT);
+    const px = startX + (targetX - startX) * prevE + Math.sin(prevT * Math.PI) * spec.sway;
+    const py = startY + (targetY - startY) * prevE;
+    const alpha = Math.sin(local * Math.PI);
+    ctx.strokeStyle = spec.color;
+    ctx.globalAlpha = alpha * 0.52;
+    ctx.lineWidth = spec.size;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    ctx.globalAlpha = Math.min(1, alpha * 0.92);
+    ctx.fillStyle = spec.color;
+    ctx.beginPath();
+    ctx.arc(x, y, spec.size * (1.1 + local * 1.5), 0, Math.PI * 2);
+    ctx.fill();
+    if (local > 0.68) {
+      const burstT = clamp((local - 0.68) / 0.32, 0, 1);
+      const burstAlpha = Math.max(0, 1 - burstT);
+      for (let i = 0; i < spec.burst; i += 1) {
+        const a = spec.spin + (i / spec.burst) * Math.PI * 2;
+        const dist = (18 + spec.size * 8) * runStartEaseOutCubic(burstT);
+        ctx.globalAlpha = burstAlpha * 0.58;
+        ctx.beginPath();
+        ctx.arc(x + Math.cos(a) * dist, y + Math.sin(a) * dist, Math.max(1, spec.size * 0.55), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+  const impactT = clamp((elapsed - 620) / 680, 0, 1);
+  if (impactT > 0 && impactT < 1) {
+    const a = Math.sin(impactT * Math.PI);
+    const r = Math.max(canvas.width, canvas.height) * (0.12 + impactT * 0.48);
+    const flash = ctx.createRadialGradient(canvas.width * 0.5, canvas.height * 0.5, 0, canvas.width * 0.5, canvas.height * 0.5, r);
+    flash.addColorStop(0, `rgba(255, 255, 255, ${(0.34 * a).toFixed(3)})`);
+    flash.addColorStop(0.35, `rgba(250, 204, 21, ${(0.18 * a).toFixed(3)})`);
+    flash.addColorStop(1, 'rgba(248, 113, 113, 0)');
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = flash;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+  ctx.restore();
+}
+
+window.cwBeginRunStartLoading = beginRunStartLoading;
+window.cwCancelRunStartLoading = cancelRunStartLoading;
+window.cwMarkRunStartFirstStateReady = markRunStartFirstStateReady;
 
 function getQ() {
   return QUALITY[game.qualityKey] || QUALITY.medium;
