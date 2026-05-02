@@ -2580,6 +2580,13 @@ const sprites = {
     clinic_block: loadImage('/assets/map-props/clinic_block.svg'),
     industrial_tank: loadImage('/assets/map-props/industrial_tank.png'),
     reactor_block: loadImage('/assets/map-props/reactor_block.svg'),
+    build_1: loadImage('/assets/buildings/build-1.png'),
+    build_2: loadImage('/assets/buildings/build-2.png'),
+    build_3: loadImage('/assets/buildings/build-3.png'),
+    build_4: loadImage('/assets/buildings/build-4.png'),
+    build_5: loadImage('/assets/buildings/build-5.png'),
+    build_6: loadImage('/assets/buildings/build-6.png'),
+    build_7: loadImage('/assets/buildings/build-7.png'),
   },
   backgrounds: {
     runLoading: loadImage(RUN_START_LOADING_IMAGE),

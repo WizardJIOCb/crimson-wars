@@ -20,6 +20,13 @@ const PROP_KINDS = [
   'clinic_block',
   'industrial_tank',
   'reactor_block',
+  'bullet_bistro_bunker',
+  'fuel_hell_checkpoint',
+  'haven_nope_tower',
+  'fix_or_die_garage',
+  'almost_alive_clinic',
+  'hellmart_24_7',
+  'dead_signal_station',
 ];
 const GOAL_TYPES = ['survive', 'enemy_kills', 'boss_kills', 'player_level'];
 

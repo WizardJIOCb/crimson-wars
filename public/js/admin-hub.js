@@ -42,6 +42,13 @@
     clinic_block: '#7fd3c5',
     industrial_tank: '#9ecb64',
     reactor_block: '#b3c244',
+    bullet_bistro_bunker: '#ad3d3d',
+    fuel_hell_checkpoint: '#d08b36',
+    haven_nope_tower: '#8fa3b7',
+    fix_or_die_garage: '#a96d4a',
+    almost_alive_clinic: '#c85a5a',
+    hellmart_24_7: '#dc3645',
+    dead_signal_station: '#69a6bd',
   };
   const PROP_META = {
     red_hatchback: { label: 'Красная тачка', w: 104, h: 62, hp: 78, destructible: true, explosive: true },
@@ -54,6 +61,13 @@
     clinic_block: { label: 'Клиника', w: 520, h: 232, hp: 1, destructible: false, explosive: false },
     industrial_tank: { label: 'Промышленный бак', w: 246, h: 198, hp: 1, destructible: false, explosive: false },
     reactor_block: { label: 'Реакторный блок', w: 436, h: 256, hp: 1, destructible: false, explosive: false },
+    bullet_bistro_bunker: { label: 'Бункер "Пулевой буфет"', w: 520, h: 520, hp: 1, destructible: false, explosive: false },
+    fuel_hell_checkpoint: { label: 'Заправка "До полного ада"', w: 540, h: 540, hp: 1, destructible: false, explosive: false },
+    haven_nope_tower: { label: 'Отель "Хэйвен, ага"', w: 520, h: 520, hp: 1, destructible: false, explosive: false },
+    fix_or_die_garage: { label: 'Гараж "Починись или помри"', w: 520, h: 520, hp: 1, destructible: false, explosive: false },
+    almost_alive_clinic: { label: 'Клиника "Почти жив"', w: 520, h: 520, hp: 1, destructible: false, explosive: false },
+    hellmart_24_7: { label: 'Hellmart 24/7', w: 500, h: 500, hp: 1, destructible: false, explosive: false },
+    dead_signal_station: { label: 'Вышка "Алло, мёртвые?"', w: 520, h: 520, hp: 1, destructible: false, explosive: false },
   };
 
   const ZOMBIE_BREAKABLE_PROP_HP = {
@@ -62,6 +76,13 @@
     clinic_block: 560,
     industrial_tank: 320,
     reactor_block: 620,
+    bullet_bistro_bunker: 900,
+    fuel_hell_checkpoint: 780,
+    haven_nope_tower: 980,
+    fix_or_die_garage: 760,
+    almost_alive_clinic: 840,
+    hellmart_24_7: 740,
+    dead_signal_station: 820,
   };
 
   const dom = {
@@ -1192,7 +1213,7 @@
       ctx.globalAlpha = 1;
       ctx.fillStyle = '#061018';
       ctx.font = '12px Bahnschrift';
-      ctx.fillText((prop.name || prop.kind).replace(/_.*/, ''), -size.w * 0.45, -size.h * 0.5 - 7);
+      ctx.fillText(String(prop.name || getPropMeta(prop.kind).label || prop.kind).slice(0, 24), -size.w * 0.45, -size.h * 0.5 - 7);
       ctx.restore();
     }
 
