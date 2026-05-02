@@ -256,7 +256,7 @@ cd /var/www/crimsonwars.ru
 git fetch origin main
 git checkout main
 git pull --ff-only origin main
-npm install --omit=dev
+npm ci --omit=dev
 ```
 
 Перезапустить все инстансы:

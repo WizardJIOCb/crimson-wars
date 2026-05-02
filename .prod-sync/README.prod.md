@@ -92,7 +92,7 @@ sudo mkdir -p /var/www
 sudo chown -R $USER:$USER /var/www
 git clone <YOUR_REPO_URL> /var/www/crimson-wars
 cd /var/www/crimson-wars
-npm install --omit=dev
+npm ci --omit=dev
 ```
 
 ### 4) systemd

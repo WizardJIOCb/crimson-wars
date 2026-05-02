@@ -2,6 +2,7 @@ node_modules/
 npm-debug.log*
 .env
 .env*.local
+.codex/
 data/*.db
 data/*.db-shm
 data/*.db-wal
