@@ -2421,6 +2421,17 @@ function generateTrees(worldOrRoom = null, densityMul = 1, options = {}) {
   return trees;
 }
 
+const BUILDING_FOOTPRINT_POINTS = Object.freeze([
+  [-0.5, -0.02],
+  [-0.32, -0.38],
+  [0, -0.5],
+  [0.32, -0.38],
+  [0.5, -0.02],
+  [0.42, 0.38],
+  [0, 0.5],
+  [-0.42, 0.38],
+]);
+
 const SCENE_PROP_TEMPLATES = {
   red_hatchback: {
     spriteKey: 'car_red',
@@ -2579,8 +2590,10 @@ const SCENE_PROP_TEMPLATES = {
     h: 520,
     anchorY: 0.68,
     shadowScale: 1.34,
-    collisionScaleX: 0.78,
-    collisionScaleY: 0.46,
+    collisionShape: 'polygon',
+    collisionPoints: BUILDING_FOOTPRINT_POINTS,
+    collisionScaleX: 0.66,
+    collisionScaleY: 0.3,
     collisionOffsetY: 88,
     solid: true,
     destructible: false,
@@ -2593,9 +2606,11 @@ const SCENE_PROP_TEMPLATES = {
     h: 540,
     anchorY: 0.68,
     shadowScale: 1.32,
-    collisionScaleX: 0.8,
-    collisionScaleY: 0.46,
-    collisionOffsetY: 88,
+    collisionShape: 'polygon',
+    collisionPoints: BUILDING_FOOTPRINT_POINTS,
+    collisionScaleX: 0.68,
+    collisionScaleY: 0.3,
+    collisionOffsetY: 94,
     solid: true,
     destructible: false,
     maxHp: 780,
@@ -2607,9 +2622,11 @@ const SCENE_PROP_TEMPLATES = {
     h: 520,
     anchorY: 0.7,
     shadowScale: 1.28,
-    collisionScaleX: 0.74,
-    collisionScaleY: 0.42,
-    collisionOffsetY: 98,
+    collisionShape: 'polygon',
+    collisionPoints: BUILDING_FOOTPRINT_POINTS,
+    collisionScaleX: 0.62,
+    collisionScaleY: 0.27,
+    collisionOffsetY: 83,
     solid: true,
     destructible: false,
     maxHp: 980,
@@ -2621,9 +2638,11 @@ const SCENE_PROP_TEMPLATES = {
     h: 520,
     anchorY: 0.68,
     shadowScale: 1.3,
-    collisionScaleX: 0.8,
-    collisionScaleY: 0.46,
-    collisionOffsetY: 86,
+    collisionShape: 'polygon',
+    collisionPoints: BUILDING_FOOTPRINT_POINTS,
+    collisionScaleX: 0.68,
+    collisionScaleY: 0.29,
+    collisionOffsetY: 88,
     solid: true,
     destructible: false,
     maxHp: 760,
@@ -2635,9 +2654,11 @@ const SCENE_PROP_TEMPLATES = {
     h: 520,
     anchorY: 0.68,
     shadowScale: 1.34,
-    collisionScaleX: 0.8,
-    collisionScaleY: 0.46,
-    collisionOffsetY: 88,
+    collisionShape: 'polygon',
+    collisionPoints: BUILDING_FOOTPRINT_POINTS,
+    collisionScaleX: 0.68,
+    collisionScaleY: 0.3,
+    collisionOffsetY: 90,
     solid: true,
     destructible: false,
     maxHp: 840,
@@ -2649,8 +2670,10 @@ const SCENE_PROP_TEMPLATES = {
     h: 500,
     anchorY: 0.68,
     shadowScale: 1.28,
-    collisionScaleX: 0.78,
-    collisionScaleY: 0.45,
+    collisionShape: 'polygon',
+    collisionPoints: BUILDING_FOOTPRINT_POINTS,
+    collisionScaleX: 0.66,
+    collisionScaleY: 0.29,
     collisionOffsetY: 84,
     solid: true,
     destructible: false,
@@ -2663,8 +2686,10 @@ const SCENE_PROP_TEMPLATES = {
     h: 520,
     anchorY: 0.68,
     shadowScale: 1.32,
-    collisionScaleX: 0.78,
-    collisionScaleY: 0.45,
+    collisionShape: 'polygon',
+    collisionPoints: BUILDING_FOOTPRINT_POINTS,
+    collisionScaleX: 0.66,
+    collisionScaleY: 0.29,
     collisionOffsetY: 88,
     solid: true,
     destructible: false,
@@ -2691,6 +2716,227 @@ function buildMapObjectRect(obj, pad = 0) {
 
 function rectsOverlap(a, b) {
   return a.minX < b.maxX && a.maxX > b.minX && a.minY < b.maxY && a.maxY > b.minY;
+}
+
+function getMapObjectCollisionPolygon(obj, pad = 0) {
+  const points = Array.isArray(obj?.collisionPoints) ? obj.collisionPoints : [];
+  if (points.length < 3) return null;
+  const centerX = Number(obj?.x) || 0;
+  const centerY = (Number(obj?.y) || 0) + (Number(obj?.collisionOffsetY) || 0);
+  const width = Math.max(16, Number(obj?.collisionW) || Number(obj?.w) || 0);
+  const height = Math.max(16, Number(obj?.collisionH) || Number(obj?.h) || 0);
+  const inflate = Math.max(0, Number(pad) || 0);
+  return points
+    .map((point) => {
+      const px = Array.isArray(point) ? Number(point[0]) : Number(point?.x);
+      const py = Array.isArray(point) ? Number(point[1]) : Number(point?.y);
+      if (!Number.isFinite(px) || !Number.isFinite(py)) return null;
+      let x = centerX + px * width;
+      let y = centerY + py * height;
+      if (inflate > 0) {
+        const dx = x - centerX;
+        const dy = y - centerY;
+        const len = Math.hypot(dx, dy) || 1;
+        x += (dx / len) * inflate;
+        y += (dy / len) * inflate;
+      }
+      return { x, y };
+    })
+    .filter(Boolean);
+}
+
+function getPolygonBounds(points) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const point of points || []) {
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+  }
+  if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+    return null;
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+function pointInsidePolygon(x, y, points) {
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
+    const a = points[i];
+    const b = points[j];
+    const crosses = ((a.y > y) !== (b.y > y))
+      && (x < ((b.x - a.x) * (y - a.y)) / ((b.y - a.y) || 0.000001) + a.x);
+    if (crosses) inside = !inside;
+  }
+  return inside;
+}
+
+function getClosestPointOnSegment(x, y, ax, ay, bx, by) {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const lenSq = abx * abx + aby * aby;
+  if (lenSq <= 0.000001) return { x: ax, y: ay, t: 0 };
+  const t = clamp(((x - ax) * abx + (y - ay) * aby) / lenSq, 0, 1);
+  return { x: ax + abx * t, y: ay + aby * t, t };
+}
+
+function getClosestPointOnPolygon(x, y, points) {
+  let best = null;
+  let bestD2 = Infinity;
+  for (let i = 0; i < points.length; i += 1) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    const point = getClosestPointOnSegment(x, y, a.x, a.y, b.x, b.y);
+    const dx = x - point.x;
+    const dy = y - point.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < bestD2) {
+      bestD2 = d2;
+      best = { ...point, edgeA: a, edgeB: b, d2 };
+    }
+  }
+  return best || { x, y, d2: 0 };
+}
+
+function getClosestPointOnMapObject(x, y, obj, pad = 0) {
+  const polygon = getMapObjectCollisionPolygon(obj, pad);
+  if (polygon && polygon.length >= 3) return getClosestPointOnPolygon(Number(x) || 0, Number(y) || 0, polygon);
+  return getClosestPointOnRect(x, y, buildMapObjectRect(obj, pad));
+}
+
+function isPointInsideMapObject(x, y, obj, pad = 0) {
+  const polygon = getMapObjectCollisionPolygon(obj, pad);
+  if (polygon && polygon.length >= 3) return pointInsidePolygon(Number(x) || 0, Number(y) || 0, polygon);
+  return isPointInsideRect(x, y, buildMapObjectRect(obj, pad));
+}
+
+function pushCircleOutOfPolygon(x, y, radius, points) {
+  if (!Array.isArray(points) || points.length < 3) return { x, y };
+  const closest = getClosestPointOnPolygon(x, y, points);
+  const inside = pointInsidePolygon(x, y, points);
+  let dx = x - closest.x;
+  let dy = y - closest.y;
+  let dist = Math.hypot(dx, dy);
+  if (!inside && dist >= radius) return { x, y };
+  if (inside) {
+    dx = closest.x - x;
+    dy = closest.y - y;
+    dist = Math.hypot(dx, dy);
+  }
+  if (dist <= 0.001) {
+    const bounds = getPolygonBounds(points);
+    const cx = bounds ? (bounds.minX + bounds.maxX) * 0.5 : x;
+    const cy = bounds ? (bounds.minY + bounds.maxY) * 0.5 : y;
+    if (inside && closest.edgeA && closest.edgeB) {
+      const ex = closest.edgeB.x - closest.edgeA.x;
+      const ey = closest.edgeB.y - closest.edgeA.y;
+      dx = -ey;
+      dy = ex;
+      const mx = (closest.edgeA.x + closest.edgeB.x) * 0.5;
+      const my = (closest.edgeA.y + closest.edgeB.y) * 0.5;
+      if ((dx * (mx - cx) + dy * (my - cy)) < 0) {
+        dx = -dx;
+        dy = -dy;
+      }
+    } else {
+      dx = x - cx;
+      dy = y - cy;
+    }
+    dist = Math.hypot(dx, dy) || 1;
+  }
+  const push = inside ? radius + dist + 0.5 : radius - dist + 0.5;
+  return {
+    x: x + (dx / dist) * push,
+    y: y + (dy / dist) * push,
+  };
+}
+
+function pushCircleOutOfMapObject(x, y, radius, obj) {
+  const polygon = getMapObjectCollisionPolygon(obj);
+  if (polygon && polygon.length >= 3) return pushCircleOutOfPolygon(x, y, radius, polygon);
+  return pushCircleOutOfRect(x, y, radius, buildMapObjectRect(obj));
+}
+
+function segmentIntersectsSegment(ax, ay, bx, by, cx, cy, dx, dy) {
+  const rX = bx - ax;
+  const rY = by - ay;
+  const sX = dx - cx;
+  const sY = dy - cy;
+  const denom = rX * sY - rY * sX;
+  if (Math.abs(denom) <= 0.000001) return null;
+  const qpx = cx - ax;
+  const qpy = cy - ay;
+  const t = (qpx * sY - qpy * sX) / denom;
+  const u = (qpx * rY - qpy * rX) / denom;
+  if (t < 0 || t > 1 || u < 0 || u > 1) return null;
+  return { x: ax + rX * t, y: ay + rY * t, t };
+}
+
+function getSegmentPolygonHit(x1, y1, x2, y2, points) {
+  if (!Array.isArray(points) || points.length < 3) return null;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const bounds = getPolygonBounds(points);
+  const centerX = bounds ? (bounds.minX + bounds.maxX) * 0.5 : x1;
+  const centerY = bounds ? (bounds.minY + bounds.maxY) * 0.5 : y1;
+  if (pointInsidePolygon(x1, y1, points)) {
+    const len = Math.hypot(dx, dy) || 1;
+    return { x: x1, y: y1, nx: -dx / len, ny: -dy / len, t: 0 };
+  }
+  let best = null;
+  for (let i = 0; i < points.length; i += 1) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    const hit = segmentIntersectsSegment(x1, y1, x2, y2, a.x, a.y, b.x, b.y);
+    if (!hit || (best && hit.t >= best.t)) continue;
+    const ex = b.x - a.x;
+    const ey = b.y - a.y;
+    let nx = -ey;
+    let ny = ex;
+    const mx = (a.x + b.x) * 0.5;
+    const my = (a.y + b.y) * 0.5;
+    if ((nx * (mx - centerX) + ny * (my - centerY)) < 0) {
+      nx = -nx;
+      ny = -ny;
+    }
+    const nLen = Math.hypot(nx, ny) || 1;
+    best = { x: hit.x, y: hit.y, nx: nx / nLen, ny: ny / nLen, t: hit.t };
+  }
+  return best;
+}
+
+function getSegmentMapObjectHit(x1, y1, x2, y2, obj, pad = 0) {
+  const polygon = getMapObjectCollisionPolygon(obj, pad);
+  if (polygon && polygon.length >= 3) return getSegmentPolygonHit(x1, y1, x2, y2, polygon);
+  return getSegmentExpandedRectHit(x1, y1, x2, y2, buildMapObjectRect(obj), pad);
+}
+
+function rectIntersectsLine(ax, ay, bx, by, rect) {
+  return segmentIntersectsExpandedRect(ax, ay, bx, by, rect, 0);
+}
+
+function rectIntersectsMapObject(rect, obj, pad = 0) {
+  const polygon = getMapObjectCollisionPolygon(obj, pad);
+  if (!polygon || polygon.length < 3) return rectsOverlap(rect, buildMapObjectRect(obj, pad));
+  const bounds = getPolygonBounds(polygon);
+  if (!bounds || !rectsOverlap(rect, bounds)) return false;
+  const corners = [
+    { x: rect.minX, y: rect.minY },
+    { x: rect.maxX, y: rect.minY },
+    { x: rect.maxX, y: rect.maxY },
+    { x: rect.minX, y: rect.maxY },
+  ];
+  if (corners.some((point) => pointInsidePolygon(point.x, point.y, polygon))) return true;
+  if (polygon.some((point) => isPointInsideRect(point.x, point.y, rect))) return true;
+  for (let i = 0; i < polygon.length; i += 1) {
+    const a = polygon[i];
+    const b = polygon[(i + 1) % polygon.length];
+    if (rectIntersectsLine(a.x, a.y, b.x, b.y, rect)) return true;
+  }
+  return false;
 }
 
 function isTreePlacementBlocked(x, y, options = {}) {
@@ -2728,6 +2974,11 @@ function instantiateSceneProp(blueprint, world, nextId) {
   const maxHp = destructible ? Math.max(1, Math.round((Number(template.maxHp) || 1) * Math.max(0.6, Number(blueprint?.hpMul) || 1))) : 1;
   const collisionScaleX = Math.max(0.24, Number(template.collisionScaleX) || 1);
   const collisionScaleY = Math.max(0.24, Number(template.collisionScaleY) || 1);
+  const collisionPoints = Array.isArray(template.collisionPoints)
+    ? template.collisionPoints
+      .map((point) => (Array.isArray(point) ? [Number(point[0]), Number(point[1])] : null))
+      .filter((point) => point && Number.isFinite(point[0]) && Number.isFinite(point[1]))
+    : [];
   const fallbackExplosionRadius = zombieBreakable ? clamp(Math.max(width, height) * 0.34, 72, 180) : 0;
   const fallbackExplosionDamage = zombieBreakable ? clamp(Math.round(maxHp * 0.14), 18, 48) : 0;
   return {
@@ -2744,6 +2995,8 @@ function instantiateSceneProp(blueprint, world, nextId) {
     collisionW: Math.max(18, Math.round(width * collisionScaleX)),
     collisionH: Math.max(18, Math.round(height * collisionScaleY)),
     collisionOffsetY: Math.round(Number(template.collisionOffsetY) || 0),
+    collisionShape: collisionPoints.length >= 3 ? 'polygon' : String(template.collisionShape || 'rect'),
+    collisionPoints,
     solid: template.solid !== false,
     solidAfterDestroyed: zombieBreakable ? false : template.solidAfterDestroyed === true,
     destructible,
@@ -2912,7 +3165,7 @@ function resolveCircleAgainstScene(room, x, y, radius) {
   const objects = getSceneObjects(room, { solidOnly: true });
   for (let pass = 0; pass < 2; pass += 1) {
     for (const obj of objects) {
-      resolved = pushCircleOutOfRect(resolved.x, resolved.y, radius, buildMapObjectRect(obj));
+      resolved = pushCircleOutOfMapObject(resolved.x, resolved.y, radius, obj);
     }
   }
   return resolved;
@@ -3022,15 +3275,16 @@ function findSceneBlockingObject(room, x1, y1, x2, y2, pad = 0, options = {}) {
   for (const obj of solidObjects) {
     if (!obj) continue;
     if (excludeId && String(obj.id) === excludeId) continue;
-    const rect = buildMapObjectRect(obj, pad);
-    if (!segmentIntersectsExpandedRect(x1, y1, x2, y2, rect, 0)) continue;
-    const cx = (rect.minX + rect.maxX) * 0.5;
-    const cy = (rect.minY + rect.maxY) * 0.5;
+    const hit = getSegmentMapObjectHit(x1, y1, x2, y2, obj, pad);
+    if (!hit) continue;
+    const rect = getPolygonBounds(getMapObjectCollisionPolygon(obj, pad)) || buildMapObjectRect(obj, pad);
+    const cx = Number(hit.x) || (rect.minX + rect.maxX) * 0.5;
+    const cy = Number(hit.y) || (rect.minY + rect.maxY) * 0.5;
     const along = ((cx - x1) * segDx + (cy - y1) * segDy) / segLenSq;
     if (along < -0.05 || along > 1.05) continue;
     if (along < bestAlong) {
       bestAlong = along;
-      best = { obj, rect, centerX: cx, centerY: cy, along };
+      best = { obj, rect, centerX: cx, centerY: cy, along, hit };
     }
   }
   return best;
@@ -3049,7 +3303,7 @@ function pointBlockedByScene(room, x, y, options = {}) {
   for (const obj of getSceneObjects(room, { solidOnly: true })) {
     if (!obj) continue;
     if (excludeId && String(obj.id) === excludeId) continue;
-    if (isPointInsideRect(x, y, buildMapObjectRect(obj, Number(options.pad) || 0))) return true;
+    if (isPointInsideMapObject(x, y, obj, Number(options.pad) || 0)) return true;
   }
   return false;
 }
@@ -3160,7 +3414,7 @@ function getRoomSceneNavGrid(room) {
       let isBlocked = false;
       for (const obj of solidObjects) {
         if (!obj) continue;
-        if (rectsOverlap(cellRect, buildMapObjectRect(obj, SCENE_NAV_BLOCK_PAD))) {
+        if (rectIntersectsMapObject(cellRect, obj, SCENE_NAV_BLOCK_PAD)) {
           isBlocked = true;
           break;
         }
@@ -3382,8 +3636,8 @@ function getClosestPointOnRect(x, y, rect) {
 }
 
 function getEnemyMapObjectAttackPoint(enemy, obj, radius, bounds = {}) {
-  const rect = buildMapObjectRect(obj);
-  const closest = getClosestPointOnRect(enemy?.x, enemy?.y, rect);
+  const rect = getPolygonBounds(getMapObjectCollisionPolygon(obj)) || buildMapObjectRect(obj);
+  const closest = getClosestPointOnMapObject(enemy?.x, enemy?.y, obj);
   let nx = (Number(enemy?.x) || 0) - closest.x;
   let ny = (Number(enemy?.y) || 0) - closest.y;
   let len = Math.hypot(nx, ny);
@@ -3485,9 +3739,9 @@ function damageSceneObjectsInRadius(room, x, y, radius, damage, ownerId, now, op
   for (const obj of getSceneObjects(room)) {
     if (!obj.destructible || obj.destroyed) continue;
     if (excludeId && String(obj.id) === excludeId) continue;
-    const rect = buildMapObjectRect(obj);
-    const nearestX = clamp(x, rect.minX, rect.maxX);
-    const nearestY = clamp(y, rect.minY, rect.maxY);
+    const nearest = getClosestPointOnMapObject(x, y, obj);
+    const nearestX = nearest.x;
+    const nearestY = nearest.y;
     const dx = nearestX - x;
     const dy = nearestY - y;
     const dist = Math.hypot(dx, dy);
@@ -4291,8 +4545,7 @@ function findBulletObjectImpact(room, prevX, prevY, nextX, nextY, bulletRadius) 
   let hitObject = null;
   let hitInfo = null;
   for (const obj of solidObjects) {
-    const rect = buildMapObjectRect(obj);
-    const objectHit = getSegmentExpandedRectHit(prevX, prevY, nextX, nextY, rect, bulletRadius);
+    const objectHit = getSegmentMapObjectHit(prevX, prevY, nextX, nextY, obj, bulletRadius);
     if (!objectHit) continue;
     if (!hitInfo || Number(objectHit.t) < Number(hitInfo.t)) {
       hitObject = obj;
@@ -4320,8 +4573,7 @@ function applyBulletObjectImpact(room, bullet, impact, now = Date.now()) {
 
 function isEnemyInMapObjectAttackRange(enemy, obj, radius) {
   if (!enemy || !obj) return false;
-  const rect = buildMapObjectRect(obj);
-  const closest = getClosestPointOnRect(enemy.x, enemy.y, rect);
+  const closest = getClosestPointOnMapObject(enemy.x, enemy.y, obj);
   const dx = (Number(enemy.x) || 0) - closest.x;
   const dy = (Number(enemy.y) || 0) - closest.y;
   const bonus = enemy.type === 'boss' ? 44 : (enemy.type === 'charger' ? 26 : 20);
@@ -4338,8 +4590,7 @@ function getEnemyMapObjectAttackDamage(enemy) {
 function applyEnemyHitToMapObject(room, enemy, obj, now) {
   if (!room || !enemy || !canEnemyBreakMapObject(obj)) return false;
   const damage = getEnemyMapObjectAttackDamage(enemy);
-  const rect = buildMapObjectRect(obj);
-  const hitPoint = getClosestPointOnRect(enemy.x, enemy.y, rect);
+  const hitPoint = getClosestPointOnMapObject(enemy.x, enemy.y, obj);
   const dirX = hitPoint.x - (Number(enemy.x) || 0);
   const dirY = hitPoint.y - (Number(enemy.y) || 0);
   const len = Math.hypot(dirX, dirY) || 1;
@@ -5186,6 +5437,10 @@ function serializeMapObject(obj) {
     collisionW: Math.max(1, Number(obj.collisionW) || Number(obj.w) || 1),
     collisionH: Math.max(1, Number(obj.collisionH) || Number(obj.h) || 1),
     collisionOffsetY: Number(obj.collisionOffsetY) || 0,
+    collisionShape: String(obj.collisionShape || 'rect'),
+    collisionPoints: Array.isArray(obj.collisionPoints)
+      ? obj.collisionPoints.map((point) => (Array.isArray(point) ? [Number(point[0]) || 0, Number(point[1]) || 0] : [Number(point?.x) || 0, Number(point?.y) || 0]))
+      : [],
     angle: Number(obj.angle) || 0,
     anchorY: Number(obj.anchorY) || 0.56,
     shadowScale: Number(obj.shadowScale) || 1,
