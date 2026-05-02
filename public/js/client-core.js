@@ -656,6 +656,7 @@ const runStartSequence = {
   startedAt: 0,
   introActive: false,
   introStartedAt: 0,
+  cameraMode: 'zoom',
   impactSrc: RUN_START_IMPACT_IMAGES[0],
   impactTimer: 0,
   finishTimer: 0,
@@ -2675,25 +2676,42 @@ function updateRunStartLoadingUi() {
 }
 
 function buildRunStartFireworks() {
-  const colors = ['#facc15', '#fb7185', '#38bdf8', '#22c55e', '#f97316', '#f8fafc'];
+  const palettes = [
+    ['#facc15', '#fb923c', '#fff7ed'],
+    ['#fb7185', '#f472b6', '#ffe4e6'],
+    ['#38bdf8', '#22d3ee', '#ecfeff'],
+    ['#22c55e', '#86efac', '#f0fdf4'],
+    ['#a78bfa', '#f0abfc', '#f5f3ff'],
+    ['#f8fafc', '#f43f5e', '#fed7aa'],
+  ];
   const specs = [];
-  const count = window.innerWidth < 760 ? 16 : 24;
+  const count = window.innerWidth < 760 ? 18 : 30;
   for (let i = 0; i < count; i += 1) {
+    const palette = palettes[i % palettes.length];
     const sideBias = i % 2 === 0 ? -1 : 1;
     const startX = 0.08 + Math.random() * 0.84;
     const targetX = clamp(0.5 + sideBias * (0.08 + Math.random() * 0.26), 0.12, 0.88);
+    const sparkCount = 18 + Math.floor(Math.random() * 18);
+    const ringCount = 1 + Math.floor(Math.random() * 3);
     specs.push({
       startX,
-      startY: 1.08 + Math.random() * 0.1,
+      startY: 1.05 + Math.random() * 0.16,
       targetX,
-      targetY: 0.22 + Math.random() * 0.42,
-      delay: 180 + Math.random() * 1250,
-      duration: 760 + Math.random() * 860,
-      sway: (Math.random() - 0.5) * 110,
-      color: colors[i % colors.length],
-      size: 2.2 + Math.random() * 3.6,
-      burst: 6 + Math.floor(Math.random() * 8),
+      targetY: 0.16 + Math.random() * 0.48,
+      delay: 80 + Math.random() * 1560,
+      duration: 920 + Math.random() * 980,
+      sway: (Math.random() - 0.5) * 160,
+      color: palette[0],
+      color2: palette[1],
+      coreColor: palette[2],
+      size: 2 + Math.random() * 3.9,
+      sparkCount,
+      ringCount,
+      shellRadius: 38 + Math.random() * 72,
+      crackle: 0.35 + Math.random() * 0.55,
+      gravity: 18 + Math.random() * 36,
       spin: Math.random() * Math.PI * 2,
+      starPoints: 5 + Math.floor(Math.random() * 4),
     });
   }
   return specs;
@@ -2725,6 +2743,7 @@ function cancelRunStartLoading(options = {}) {
   runStartSequence.active = false;
   runStartSequence.loading = false;
   runStartSequence.introActive = false;
+  runStartSequence.cameraMode = 'zoom';
   runStartSequence.firstStateReady = false;
   runStartSequence.resourcesReady = false;
   runStartSequence.resourceLoaded = 0;
@@ -2740,6 +2759,7 @@ function finishRunStartIntro(token) {
   runStartSequence.active = false;
   runStartSequence.loading = false;
   runStartSequence.introActive = false;
+  runStartSequence.cameraMode = 'zoom';
   runStartSequence.progress = 0;
   visuals.runStartFireworks = [];
   clearRunStartTimers();
@@ -2763,6 +2783,7 @@ function startRunIntroTransition(token) {
   runStartSequence.introActive = true;
   runStartSequence.introStartedAt = performance.now();
   runStartSequence.progress = 1;
+  runStartSequence.cameraMode = Math.random() < 0.5 ? 'zoom' : 'spin';
   runStartSequence.impactSrc = RUN_START_IMPACT_IMAGES[Math.floor(Math.random() * RUN_START_IMPACT_IMAGES.length)] || RUN_START_IMPACT_IMAGES[0];
   visuals.runStartFireworks = buildRunStartFireworks();
   window.clearInterval(runStartSequence.progressTimer);
@@ -2820,6 +2841,7 @@ function beginRunStartLoading(options = {}) {
   runStartSequence.startedAt = performance.now();
   runStartSequence.introActive = false;
   runStartSequence.introStartedAt = 0;
+  runStartSequence.cameraMode = 'zoom';
   runStartSequence.impactSrc = RUN_START_IMPACT_IMAGES[Math.floor(Math.random() * RUN_START_IMPACT_IMAGES.length)] || RUN_START_IMPACT_IMAGES[0];
   visuals.runStartFireworks = [];
   clearRunStartTimers();
@@ -2857,14 +2879,19 @@ function getRunStartSceneScale(nowMs = performance.now()) {
 }
 
 function getRunStartSceneTransform(nowMs = performance.now()) {
-  if (!runStartSequence.introActive) return { active: false, scale: 1, shakeX: 0, shakeY: 0 };
+  if (!runStartSequence.introActive) return { active: false, scale: 1, rotation: 0, shakeX: 0, shakeY: 0 };
   const p = getRunStartIntroProgress(nowMs);
   const scale = getRunStartSceneScale(nowMs);
+  const spinProgress = runStartEaseOutCubic(p);
+  const rotation = runStartSequence.cameraMode === 'spin'
+    ? (Math.PI * 2 * 3 * (1 - spinProgress))
+    : 0;
   const impactP = clamp((Math.max(0, Number(nowMs) - runStartSequence.introStartedAt) - 620) / 520, 0, 1);
-  const shake = impactP > 0 && impactP < 1 ? (1 - impactP) * 8 : 0;
+  const shake = impactP > 0 && impactP < 1 ? (1 - impactP) * (runStartSequence.cameraMode === 'spin' ? 11 : 8) : 0;
   return {
     active: p < 1,
     scale,
+    rotation,
     shakeX: Math.sin(Number(nowMs) * 0.08) * shake,
     shakeY: Math.cos(Number(nowMs) * 0.103) * shake * 0.72,
   };
@@ -2872,6 +2899,40 @@ function getRunStartSceneTransform(nowMs = performance.now()) {
 
 function getRunStartViewportScale(nowMs = performance.now()) {
   return clamp(getRunStartSceneScale(nowMs), 0.34, 1);
+}
+
+function getRunStartViewportWorldPad(nowMs = performance.now()) {
+  if (!runStartSequence.introActive) return 0;
+  const scale = Math.max(0.34, getRunStartViewportScale(nowMs));
+  const rotationPad = runStartSequence.cameraMode === 'spin' ? Math.hypot(canvas.width, canvas.height) * 0.58 : 90;
+  return Math.ceil(rotationPad / scale) + 140;
+}
+
+function runStartColorAlpha(color, alpha = 1) {
+  const raw = String(color || '#ffffff').replace('#', '').trim();
+  const full = raw.length === 3 ? raw.split('').map((ch) => ch + ch).join('') : raw;
+  const value = Number.parseInt(full, 16);
+  const a = clamp(alpha, 0, 1).toFixed(3);
+  if (!Number.isFinite(value)) return `rgba(255,255,255,${a})`;
+  return `rgba(${(value >> 16) & 255},${(value >> 8) & 255},${value & 255},${a})`;
+}
+
+function drawRunStartStar(x, y, radius, points, rotation, color, alpha) {
+  const p = Math.max(4, Math.round(Number(points) || 5));
+  const outer = Math.max(1, Number(radius) || 1);
+  const inner = outer * 0.42;
+  ctx.beginPath();
+  for (let i = 0; i < p * 2; i += 1) {
+    const r = i % 2 === 0 ? outer : inner;
+    const a = rotation - Math.PI * 0.5 + (i / (p * 2)) * Math.PI * 2;
+    const sx = x + Math.cos(a) * r;
+    const sy = y + Math.sin(a) * r;
+    if (i === 0) ctx.moveTo(sx, sy);
+    else ctx.lineTo(sx, sy);
+  }
+  ctx.closePath();
+  ctx.fillStyle = runStartColorAlpha(color, alpha);
+  ctx.fill();
 }
 
 function drawRunStartCinematicOverlay(nowMs = performance.now()) {
@@ -2902,41 +2963,96 @@ function drawRunStartCinematicOverlay(nowMs = performance.now()) {
   for (const spec of specs) {
     const local = clamp((elapsed - spec.delay) / spec.duration, 0, 1);
     if (local <= 0 || local >= 1) continue;
-    const eased = runStartEaseOutCubic(local);
+    const eased = runStartEaseOutCubic(Math.min(local, 0.68) / 0.68);
     const startX = spec.startX * canvas.width;
     const startY = spec.startY * canvas.height;
     const targetX = spec.targetX * canvas.width;
     const targetY = spec.targetY * canvas.height;
-    const x = startX + (targetX - startX) * eased + Math.sin(local * Math.PI) * spec.sway;
-    const y = startY + (targetY - startY) * eased;
-    const prevT = Math.max(0, local - 0.1);
-    const prevE = runStartEaseOutCubic(prevT);
-    const px = startX + (targetX - startX) * prevE + Math.sin(prevT * Math.PI) * spec.sway;
-    const py = startY + (targetY - startY) * prevE;
-    const alpha = Math.sin(local * Math.PI);
-    ctx.strokeStyle = spec.color;
-    ctx.globalAlpha = alpha * 0.52;
-    ctx.lineWidth = spec.size;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(px, py);
-    ctx.lineTo(x, y);
-    ctx.stroke();
-    ctx.globalAlpha = Math.min(1, alpha * 0.92);
-    ctx.fillStyle = spec.color;
-    ctx.beginPath();
-    ctx.arc(x, y, spec.size * (1.1 + local * 1.5), 0, Math.PI * 2);
-    ctx.fill();
-    if (local > 0.68) {
-      const burstT = clamp((local - 0.68) / 0.32, 0, 1);
-      const burstAlpha = Math.max(0, 1 - burstT);
-      for (let i = 0; i < spec.burst; i += 1) {
-        const a = spec.spin + (i / spec.burst) * Math.PI * 2;
-        const dist = (18 + spec.size * 8) * runStartEaseOutCubic(burstT);
-        ctx.globalAlpha = burstAlpha * 0.58;
+    const arc = Math.sin(Math.min(1, local / 0.68) * Math.PI) * spec.sway;
+    const x = startX + (targetX - startX) * eased + arc;
+    const y = startY + (targetY - startY) * eased - Math.sin(Math.min(1, local / 0.68) * Math.PI) * 80;
+    const launchAlpha = local < 0.72 ? Math.sin(clamp(local / 0.72, 0, 1) * Math.PI) : 0;
+    if (launchAlpha > 0.01) {
+      for (let t = 1; t <= 5; t += 1) {
+        const trailT = Math.max(0, local - t * 0.045);
+        const trailE = runStartEaseOutCubic(Math.min(trailT, 0.68) / 0.68);
+        const trailArc = Math.sin(Math.min(1, trailT / 0.68) * Math.PI) * spec.sway;
+        const tx = startX + (targetX - startX) * trailE + trailArc;
+        const ty = startY + (targetY - startY) * trailE - Math.sin(Math.min(1, trailT / 0.68) * Math.PI) * 80;
+        const tailAlpha = launchAlpha * (1 - t / 6);
+        ctx.strokeStyle = t % 2 === 0 ? spec.color2 : spec.color;
+        ctx.globalAlpha = tailAlpha * 0.38;
+        ctx.lineWidth = Math.max(1, spec.size * (1.7 - t * 0.18));
+        ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.arc(x + Math.cos(a) * dist, y + Math.sin(a) * dist, Math.max(1, spec.size * 0.55), 0, Math.PI * 2);
+        ctx.moveTo(tx, ty);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+      }
+      const glow = ctx.createRadialGradient(x, y, 0, x, y, spec.size * 9);
+      glow.addColorStop(0, runStartColorAlpha(spec.coreColor, launchAlpha * 0.54));
+      glow.addColorStop(0.35, runStartColorAlpha(spec.color, launchAlpha * 0.24));
+      glow.addColorStop(1, runStartColorAlpha(spec.color2, 0));
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(x, y, spec.size * 9, 0, Math.PI * 2);
+      ctx.fill();
+      drawRunStartStar(x, y, spec.size * 2.7, spec.starPoints, spec.spin + local * 10, spec.coreColor, launchAlpha);
+    }
+    if (local > 0.54) {
+      const burstT = clamp((local - 0.54) / 0.46, 0, 1);
+      const burstEase = runStartEaseOutCubic(burstT);
+      const burstAlpha = Math.max(0, Math.pow(1 - burstT, 1.4));
+      const shellR = spec.shellRadius * burstEase;
+      const smokeAlpha = Math.max(0, (1 - burstT) * 0.18);
+      if (smokeAlpha > 0.005) {
+        const smoke = ctx.createRadialGradient(x, y, shellR * 0.2, x, y, shellR * 1.45 + 24);
+        smoke.addColorStop(0, `rgba(226,232,240,${smokeAlpha.toFixed(3)})`);
+        smoke.addColorStop(0.45, `rgba(148,163,184,${(smokeAlpha * 0.35).toFixed(3)})`);
+        smoke.addColorStop(1, 'rgba(15,23,42,0)');
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = smoke;
+        ctx.beginPath();
+        ctx.arc(x, y, shellR * 1.45 + 24, 0, Math.PI * 2);
         ctx.fill();
+      }
+      for (let ring = 0; ring < spec.ringCount; ring += 1) {
+        const ringR = shellR * (1 + ring * 0.28);
+        ctx.globalAlpha = burstAlpha * (0.22 - ring * 0.045);
+        ctx.strokeStyle = ring % 2 === 0 ? spec.color : spec.color2;
+        ctx.lineWidth = Math.max(1, spec.size * (1.4 - ring * 0.22));
+        ctx.beginPath();
+        ctx.arc(x, y, ringR, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      for (let i = 0; i < spec.sparkCount; i += 1) {
+        const a = spec.spin + (i / spec.sparkCount) * Math.PI * 2 + Math.sin(i * 7.13) * 0.13;
+        const drift = 0.74 + (((i * 37) % 100) / 100) * 0.48;
+        const dist = shellR * drift;
+        const fall = spec.gravity * burstT * burstT * (0.35 + (i % 5) * 0.1);
+        const sx = x + Math.cos(a) * dist;
+        const sy = y + Math.sin(a) * dist + fall;
+        const back = Math.max(4, spec.size * 3.8) * (1 - burstT * 0.55);
+        const px = sx - Math.cos(a) * back;
+        const py = sy - Math.sin(a) * back - fall * 0.12;
+        const sparkColor = i % 3 === 0 ? spec.coreColor : (i % 2 === 0 ? spec.color2 : spec.color);
+        ctx.strokeStyle = sparkColor;
+        ctx.globalAlpha = burstAlpha * (0.42 + (i % 4) * 0.08);
+        ctx.lineWidth = Math.max(0.8, spec.size * (0.72 - burstT * 0.22));
+        ctx.beginPath();
+        ctx.moveTo(px, py);
+        ctx.lineTo(sx, sy);
+        ctx.stroke();
+        if ((i + Math.floor(elapsed * 0.02)) % 5 === 0 && burstT < spec.crackle) {
+          drawRunStartStar(sx, sy, spec.size * (1.6 + (i % 3) * 0.32), 5, a + elapsed * 0.018, sparkColor, burstAlpha * 0.78);
+        } else {
+          ctx.globalAlpha = burstAlpha * 0.66;
+          ctx.fillStyle = sparkColor;
+          ctx.beginPath();
+          ctx.arc(sx, sy, Math.max(0.9, spec.size * 0.45), 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
     }
   }

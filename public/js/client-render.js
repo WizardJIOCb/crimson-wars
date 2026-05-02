@@ -236,7 +236,8 @@ function drawGround() {
   const safeScale = Math.max(0.34, Math.min(1, viewportScale || 1));
   const viewportW = canvas.width / safeScale;
   const viewportH = canvas.height / safeScale;
-  const edgePad = 32 / safeScale;
+  const introPad = typeof getRunStartViewportWorldPad === 'function' ? getRunStartViewportWorldPad() : 0;
+  const edgePad = 32 / safeScale + introPad;
   ctx.fillStyle = getGroundFallbackColor(baseMaterial);
   ctx.fillRect(-edgePad, -edgePad, viewportW + edgePad * 2, viewportH + edgePad * 2);
 
@@ -244,10 +245,10 @@ function drawGround() {
     const tileSet = getGroundTileSetForMaterial(baseMaterial);
     if (tileSet) {
       const pad = visuals.groundTileSize || tileSet.variants?.[0]?.width || 128;
-      const startX = camera.x - pad;
-      const startY = camera.y - pad;
-      const endX = camera.x + viewportW + pad;
-      const endY = camera.y + viewportH + pad;
+      const startX = camera.x - pad - introPad;
+      const startY = camera.y - pad - introPad;
+      const endX = camera.x + viewportW + pad + introPad;
+      const endY = camera.y + viewportH + pad + introPad;
       drawMaterialTileField(baseMaterial, startX, startY, endX, endY);
       drawMaterialMacroField(baseMaterial, startX, startY, endX, endY);
     }
@@ -2183,12 +2184,16 @@ function render(ts) {
   }
   const sceneTransform = typeof getRunStartSceneTransform === 'function'
     ? getRunStartSceneTransform(ts)
-    : { active: false, scale: 1, shakeX: 0, shakeY: 0 };
-  const sceneTransformActive = Boolean(sceneTransform?.active && Math.abs((Number(sceneTransform.scale) || 1) - 1) > 0.001);
+    : { active: false, scale: 1, rotation: 0, shakeX: 0, shakeY: 0 };
+  const sceneScale = Number(sceneTransform.scale) || 1;
+  const sceneRotation = Number(sceneTransform.rotation) || 0;
+  const sceneTransformActive = Boolean(sceneTransform?.active && (Math.abs(sceneScale - 1) > 0.001 || Math.abs(sceneRotation) > 0.001));
   if (sceneTransformActive) {
     ctx.save();
-    ctx.translate(Number(sceneTransform.shakeX) || 0, Number(sceneTransform.shakeY) || 0);
-    ctx.scale(Number(sceneTransform.scale) || 1, Number(sceneTransform.scale) || 1);
+    ctx.translate(canvas.width * 0.5 + (Number(sceneTransform.shakeX) || 0), canvas.height * 0.5 + (Number(sceneTransform.shakeY) || 0));
+    if (sceneRotation) ctx.rotate(sceneRotation);
+    ctx.translate(-canvas.width * 0.5, -canvas.height * 0.5);
+    ctx.scale(sceneScale, sceneScale);
   }
   drawGround();
   drawBloodPuddles();
