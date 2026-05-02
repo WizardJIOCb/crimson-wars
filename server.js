@@ -4081,6 +4081,37 @@ function pushRoomObjectImpactEvent(room, obj, hit, bullet, now = Date.now()) {
   }
 }
 
+function findBulletObjectImpact(room, prevX, prevY, nextX, nextY, bulletRadius) {
+  const solidObjects = getSceneObjects(room, { solidOnly: true });
+  let hitObject = null;
+  let hitInfo = null;
+  for (const obj of solidObjects) {
+    const rect = buildMapObjectRect(obj);
+    const objectHit = getSegmentExpandedRectHit(prevX, prevY, nextX, nextY, rect, bulletRadius);
+    if (!objectHit) continue;
+    if (!hitInfo || Number(objectHit.t) < Number(hitInfo.t)) {
+      hitObject = obj;
+      hitInfo = objectHit;
+    }
+  }
+  return hitObject && hitInfo ? { obj: hitObject, hit: hitInfo } : null;
+}
+
+function applyBulletObjectImpact(room, bullet, impact, now = Date.now()) {
+  if (!room || !bullet || !impact?.obj || !impact?.hit) return false;
+  const obj = impact.obj;
+  pushRoomObjectImpactEvent(room, obj, impact.hit, bullet, now);
+  if (obj.destructible) {
+    damageMapObject(room, obj, Math.max(1, Number(bullet.damage) || 1), bullet.ownerPlayerId || bullet.ownerId, now, {
+      cause: bullet.fromEnemy ? 'enemy_bullet' : 'bullet',
+    });
+  }
+  if (bullet.kind === 'rocket') {
+    explodeRocket(room, bullet, now);
+  }
+  return true;
+}
+
 function broadcastRoom(room, payload, options = {}) {
   const raw = typeof options.raw === 'string' ? options.raw : JSON.stringify(payload);
   const isRealtimeState = options.isRealtimeState ?? (payload?.type === 'state');
@@ -8344,6 +8375,12 @@ function tickRoom(room, dtSec, now) {
           break;
         }
       }
+      if (!hit) {
+        const objectImpact = findBulletObjectImpact(room, prevX, prevY, b.x, b.y, bulletR);
+        if (objectImpact) {
+          hit = applyBulletObjectImpact(room, b, objectImpact, now);
+        }
+      }
     } else {
       const owner = room.players.get(b.ownerPlayerId || b.ownerId);
       if (normalizeGameMode(room.gameMode) === 'pvp' && owner) {
@@ -8402,29 +8439,9 @@ function tickRoom(room, dtSec, now) {
       }
 
       if (!hit) {
-        const solidObjects = getSceneObjects(room, { solidOnly: true });
-        let hitObject = null;
-        let hitInfo = null;
-        for (const obj of solidObjects) {
-          const rect = buildMapObjectRect(obj);
-          const objectHit = getSegmentExpandedRectHit(prevX, prevY, b.x, b.y, rect, bulletR);
-          if (!objectHit) continue;
-          if (!hitInfo || Number(objectHit.t) < Number(hitInfo.t)) {
-            hitObject = obj;
-            hitInfo = objectHit;
-          }
-        }
-        if (hitObject && hitInfo) {
-          pushRoomObjectImpactEvent(room, hitObject, hitInfo, b, now);
-          if (hitObject.destructible) {
-            damageMapObject(room, hitObject, Math.max(1, Number(b.damage) || 1), b.ownerPlayerId || b.ownerId, now, {
-              cause: 'bullet',
-            });
-          }
-          if (b.kind === 'rocket') {
-            explodeRocket(room, b, now);
-          }
-          hit = true;
+        const objectImpact = findBulletObjectImpact(room, prevX, prevY, b.x, b.y, bulletR);
+        if (objectImpact) {
+          hit = applyBulletObjectImpact(room, b, objectImpact, now);
         }
       }
     }
