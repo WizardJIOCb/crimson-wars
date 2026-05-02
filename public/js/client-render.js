@@ -759,6 +759,37 @@ function getMapObjectBaseY(obj) {
   return (Number(obj?.y) || 0) + Math.max(22, Number(obj?.h) || 22) * (1 - anchorY);
 }
 
+function getMapObjectCollisionBounds(obj) {
+  const points = Array.isArray(obj?.collisionPoints) ? obj.collisionPoints : [];
+  if (points.length < 3) return null;
+  const centerX = Number(obj?.x) || 0;
+  const centerY = (Number(obj?.y) || 0) + (Number(obj?.collisionOffsetY) || 0);
+  const width = Math.max(16, Number(obj?.collisionW) || Number(obj?.w) || 0);
+  const height = Math.max(16, Number(obj?.collisionH) || Number(obj?.h) || 0);
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const point of points) {
+    const px = Array.isArray(point) ? Number(point[0]) : Number(point?.x);
+    const py = Array.isArray(point) ? Number(point[1]) : Number(point?.y);
+    if (!Number.isFinite(px) || !Number.isFinite(py)) continue;
+    const x = centerX + px * width;
+    const y = centerY + py * height;
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y);
+  }
+  if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) return null;
+  return { minX, minY, maxX, maxY };
+}
+
+function getMapObjectOcclusionBaseY(obj) {
+  const collisionBounds = getMapObjectCollisionBounds(obj);
+  return collisionBounds ? collisionBounds.maxY : getMapObjectBaseY(obj);
+}
+
 function getMapObjectTopY(obj) {
   const anchorY = Math.max(0.45, Math.min(0.72, Number(obj?.anchorY) || 0.56));
   return (Number(obj?.y) || 0) - Math.max(22, Number(obj?.h) || 22) * anchorY;
@@ -840,7 +871,7 @@ function shouldObjectOccludeActor(obj, actor) {
   const actorX = Number(actor.x) || 0;
   const actorY = Number(actor.y) || 0;
   const topY = getMapObjectTopY(obj);
-  const baseY = getMapObjectBaseY(obj);
+  const baseY = getMapObjectOcclusionBaseY(obj);
   if (actorY <= topY + 4 || actorY >= baseY - 4) return false;
   const halfW = Math.max(
     14,
@@ -858,7 +889,7 @@ function drawMapObjectOcclusionOverlay(actors, nowMs = Date.now()) {
     const shouldOverlay = actors.some((actor) => shouldObjectOccludeActor(obj, actor));
     if (shouldOverlay) overlay.push(obj);
   }
-  overlay.sort((a, b) => getMapObjectBaseY(a) - getMapObjectBaseY(b));
+  overlay.sort((a, b) => getMapObjectOcclusionBaseY(a) - getMapObjectOcclusionBaseY(b));
   for (const obj of overlay) drawSingleMapObject(obj, nowMs, { drawShadow: false, drawHp: false });
 }
 
