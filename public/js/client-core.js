@@ -2775,7 +2775,7 @@ function triggerRunStartImpact(token) {
   runStartOverlayEl.classList.add('impact-active');
   runStartSequence.impactTimer = window.setTimeout(() => {
     if (token === runStartSequence.token && runStartOverlayEl) runStartOverlayEl.classList.remove('impact-active');
-  }, 940);
+  }, 1880);
 }
 
 function startRunIntroTransition(token) {
