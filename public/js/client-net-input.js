@@ -5412,8 +5412,8 @@ function isVisibleWorld(x, y, pad = 0) {
   const sx = x - camera.x;
   const sy = y - camera.y;
   const viewportScale = typeof getRunStartViewportScale === 'function' ? getRunStartViewportScale() : 1;
-  const viewportW = canvas.width / Math.max(0.34, Math.min(1, viewportScale || 1));
-  const viewportH = canvas.height / Math.max(0.34, Math.min(1, viewportScale || 1));
+  const viewportW = canvas.width / Math.max(0.12, Math.min(1, viewportScale || 1));
+  const viewportH = canvas.height / Math.max(0.12, Math.min(1, viewportScale || 1));
   const introPad = typeof getRunStartViewportWorldPad === 'function' ? getRunStartViewportWorldPad() : 0;
   const totalPad = Math.max(0, Number(pad) || 0) + Math.max(0, Number(introPad) || 0);
   return sx >= -totalPad && sx <= viewportW + totalPad && sy >= -totalPad && sy <= viewportH + totalPad;

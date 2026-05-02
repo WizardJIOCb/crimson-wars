@@ -643,7 +643,8 @@ const replayGame = {
 const RUN_START_LOADING_IMAGE = '/assets/backgrounds/screen-loading.jpg';
 const RUN_START_IMPACT_IMAGES = ['/assets/backgrounds/start-1.png', '/assets/backgrounds/start-2.png'];
 const RUN_START_MIN_LOADING_MS = 650;
-const RUN_START_INTRO_DURATION_MS = 2850;
+const RUN_START_ZOOM_INTRO_DURATION_MS = 2850;
+const RUN_START_SPIN_INTRO_DURATION_MS = 4300;
 const runStartSequence = {
   token: 0,
   active: false,
@@ -2795,7 +2796,7 @@ function startRunIntroTransition(token) {
     runStartOverlayEl.classList.add('is-intro');
   }
   runStartSequence.impactTimer = window.setTimeout(() => triggerRunStartImpact(token), 620);
-  runStartSequence.finishTimer = window.setTimeout(() => finishRunStartIntro(token), RUN_START_INTRO_DURATION_MS + 320);
+  runStartSequence.finishTimer = window.setTimeout(() => finishRunStartIntro(token), getRunStartIntroDurationMs() + 320);
 }
 
 function maybeStartRunIntroTransition() {
@@ -2868,14 +2869,32 @@ function markRunStartFirstStateReady() {
 function getRunStartIntroProgress(nowMs = performance.now()) {
   if (!runStartSequence.introActive) return 1;
   const elapsed = Math.max(0, Number(nowMs) - (Number(runStartSequence.introStartedAt) || Number(nowMs)));
-  return clamp(elapsed / RUN_START_INTRO_DURATION_MS, 0, 1);
+  return clamp(elapsed / getRunStartIntroDurationMs(), 0, 1);
+}
+
+function getRunStartIntroDurationMs() {
+  return runStartSequence.cameraMode === 'spin' ? RUN_START_SPIN_INTRO_DURATION_MS : RUN_START_ZOOM_INTRO_DURATION_MS;
+}
+
+function getRunStartMapFitScale() {
+  const worldW = Math.max(1, Number(game.world?.width) || Number(game.state?.world?.width) || canvas.width);
+  const worldH = Math.max(1, Number(game.world?.height) || Number(game.state?.world?.height) || canvas.height);
+  const fit = Math.min(canvas.width / worldW, canvas.height / worldH, 1);
+  return clamp(fit, 0.12, 1);
 }
 
 function getRunStartSceneScale(nowMs = performance.now()) {
   if (!runStartSequence.introActive) return 1;
   const p = getRunStartIntroProgress(nowMs);
   const eased = runStartEaseInOut(p);
-  return 0.34 + (1 - 0.34) * eased;
+  const startScale = getRunStartMapFitScale();
+  return startScale + (1 - startScale) * eased;
+}
+
+function getRunStartCameraFocusProgress(nowMs = performance.now()) {
+  if (!runStartSequence.introActive) return 1;
+  const p = getRunStartIntroProgress(nowMs);
+  return runStartEaseInOut(clamp((p - 0.04) / 0.96, 0, 1));
 }
 
 function getRunStartSceneTransform(nowMs = performance.now()) {
@@ -2884,10 +2903,10 @@ function getRunStartSceneTransform(nowMs = performance.now()) {
   const scale = getRunStartSceneScale(nowMs);
   const spinProgress = runStartEaseOutCubic(p);
   const rotation = runStartSequence.cameraMode === 'spin'
-    ? (Math.PI * 2 * 3 * (1 - spinProgress))
+    ? (Math.PI * 2 * (1 - spinProgress))
     : 0;
   const impactP = clamp((Math.max(0, Number(nowMs) - runStartSequence.introStartedAt) - 620) / 520, 0, 1);
-  const shake = impactP > 0 && impactP < 1 ? (1 - impactP) * (runStartSequence.cameraMode === 'spin' ? 11 : 8) : 0;
+  const shake = impactP > 0 && impactP < 1 ? (1 - impactP) * (runStartSequence.cameraMode === 'spin' ? 7 : 8) : 0;
   return {
     active: p < 1,
     scale,
@@ -2898,13 +2917,13 @@ function getRunStartSceneTransform(nowMs = performance.now()) {
 }
 
 function getRunStartViewportScale(nowMs = performance.now()) {
-  return clamp(getRunStartSceneScale(nowMs), 0.34, 1);
+  return clamp(getRunStartSceneScale(nowMs), 0.12, 1);
 }
 
 function getRunStartViewportWorldPad(nowMs = performance.now()) {
   if (!runStartSequence.introActive) return 0;
-  const scale = Math.max(0.34, getRunStartViewportScale(nowMs));
-  const rotationPad = runStartSequence.cameraMode === 'spin' ? Math.hypot(canvas.width, canvas.height) * 0.58 : 90;
+  const scale = Math.max(0.12, getRunStartViewportScale(nowMs));
+  const rotationPad = runStartSequence.cameraMode === 'spin' ? Math.hypot(canvas.width, canvas.height) * 0.36 : 90;
   return Math.ceil(rotationPad / scale) + 140;
 }
 

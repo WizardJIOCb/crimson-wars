@@ -233,7 +233,7 @@ function drawGround() {
   const theme = getSceneTheme();
   const baseMaterial = String(theme.baseMaterial || 'asphalt_wet');
   const viewportScale = typeof getRunStartViewportScale === 'function' ? getRunStartViewportScale() : 1;
-  const safeScale = Math.max(0.34, Math.min(1, viewportScale || 1));
+  const safeScale = Math.max(0.12, Math.min(1, viewportScale || 1));
   const viewportW = canvas.width / safeScale;
   const viewportH = canvas.height / safeScale;
   const introPad = typeof getRunStartViewportWorldPad === 'function' ? getRunStartViewportWorldPad() : 0;
@@ -2161,18 +2161,28 @@ function render(ts) {
     if (me) {
       const m = getPlayerRenderPos(me);
       const viewportScale = typeof getRunStartViewportScale === 'function' ? getRunStartViewportScale(ts) : 1;
-      const safeScale = Math.max(0.34, Math.min(1, viewportScale || 1));
+      const safeScale = Math.max(0.12, Math.min(1, viewportScale || 1));
       const viewportW = canvas.width / safeScale;
       const viewportH = canvas.height / safeScale;
       const worldW = Math.max(canvas.width, Number(game.world?.width) || canvas.width);
       const worldH = Math.max(canvas.height, Number(game.world?.height) || canvas.height);
-      const targetCamX = Math.max(0, Math.min(m.x - viewportW / 2, worldW - viewportW));
-      const targetCamY = Math.max(0, Math.min(m.y - viewportH / 2, worldH - viewportH));
+      const clampCameraCenter = (center, viewport, world) => (
+        viewport >= world
+          ? -((viewport - world) * 0.5)
+          : Math.max(0, Math.min(center - viewport * 0.5, world - viewport))
+      );
+      const mapCamX = clampCameraCenter(worldW * 0.5, viewportW, worldW);
+      const mapCamY = clampCameraCenter(worldH * 0.5, viewportH, worldH);
+      const playerCamX = clampCameraCenter(Number(m.x) || worldW * 0.5, viewportW, worldW);
+      const playerCamY = clampCameraCenter(Number(m.y) || worldH * 0.5, viewportH, worldH);
+      const introFocus = typeof getRunStartCameraFocusProgress === 'function' ? getRunStartCameraFocusProgress(ts) : 1;
+      const targetCamX = mapCamX + (playerCamX - mapCamX) * introFocus;
+      const targetCamY = mapCamY + (playerCamY - mapCamY) * introFocus;
       const camDx = targetCamX - camera.x;
       const camDy = targetCamY - camera.y;
       const camDist = Math.hypot(camDx, camDy);
 
-      if (camDist >= CLIENT_CAMERA_SNAP_DIST) {
+      if (introFocus < 1 || camDist >= CLIENT_CAMERA_SNAP_DIST) {
         camera.x = targetCamX;
         camera.y = targetCamY;
       } else {
