@@ -815,9 +815,7 @@ function getMapObjectFrontYAtX(obj, actorX) {
     const y = a.y + (b.y - a.y) * Math.max(0, Math.min(1, t));
     frontY = Math.max(frontY, y);
   }
-  const bounds = getMapObjectCollisionBounds(obj);
-  if (!Number.isFinite(frontY)) return bounds ? bounds.maxY : getMapObjectBaseY(obj);
-  return frontY;
+  return Number.isFinite(frontY) ? frontY : null;
 }
 
 function getMapObjectTopY(obj) {
@@ -902,12 +900,15 @@ function shouldObjectOccludeActor(obj, actor) {
   const actorY = Number(actor.y) || 0;
   const topY = getMapObjectTopY(obj);
   const frontY = getMapObjectFrontYAtX(obj, actorX);
-  if (actorY <= topY + 4 || actorY >= frontY - 4) return false;
+  if (frontY === null || actorY <= topY + 4 || actorY >= frontY - 4) return false;
+  const bounds = getMapObjectCollisionBounds(obj);
+  if (bounds && (actorX < bounds.minX - 8 || actorX > bounds.maxX + 8)) return false;
   const halfW = Math.max(
     14,
-    (Math.max(Number(obj.collisionW) || 0, Number(obj.w) || 0) * 0.5) + 10,
+    ((bounds ? (bounds.maxX - bounds.minX) : Math.max(Number(obj.collisionW) || 0, Number(obj.w) || 0)) * 0.5) + 10,
   );
-  return actorX >= (Number(obj.x) || 0) - halfW && actorX <= (Number(obj.x) || 0) + halfW;
+  const centerX = bounds ? (bounds.minX + bounds.maxX) * 0.5 : (Number(obj.x) || 0);
+  return actorX >= centerX - halfW && actorX <= centerX + halfW;
 }
 
 function drawMapObjectOcclusionOverlay(actors, nowMs = Date.now()) {
