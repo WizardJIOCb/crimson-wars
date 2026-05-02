@@ -56,6 +56,14 @@
     reactor_block: { label: 'Реакторный блок', w: 436, h: 256, hp: 1, destructible: false, explosive: false },
   };
 
+  const ZOMBIE_BREAKABLE_PROP_HP = {
+    road_shack: 168,
+    mall_block: 720,
+    clinic_block: 560,
+    industrial_tank: 320,
+    reactor_block: 620,
+  };
+
   const dom = {
     loginView: $('admin-login'),
     loginName: $('login-name'),
@@ -140,6 +148,7 @@
     propModalScale: $('prop-modal-scale'),
     propModalAngle: $('prop-modal-angle'),
     propModalHpMul: $('prop-modal-hp-mul'),
+    propModalZombieBreakable: $('prop-modal-zombie-breakable'),
     propModalTemplate: $('prop-modal-template'),
     zoneModal: $('zone-properties-modal'),
     zoneModalClose: $('zone-modal-close'),
@@ -383,6 +392,13 @@
     return PROP_META[String(kind || '')] || { label: String(kind || 'object'), w: 110, h: 70, hp: 1, destructible: false, explosive: false };
   }
 
+  function getEditorFieldValue(input) {
+    if (!input) return '';
+    if (input.type === 'checkbox') return !!input.checked;
+    if (input.type === 'number') return Number(input.value);
+    return input.value;
+  }
+
   function ensureMapScene(map) {
     if (!map) return null;
     map.scene = map.scene && typeof map.scene === 'object' ? map.scene : {};
@@ -590,7 +606,7 @@
           <i class="object-swatch" style="background:${escapeHtml(PROP_COLORS[prop.kind] || '#f8fafc')}"></i>
           <span>
             <strong>${escapeHtml(prop.name || meta.label)}</strong>
-            <span class="list-item-meta mono">${escapeHtml(prop.id || `prop_${index + 1}`)}</span>
+            <span class="list-item-meta mono">${escapeHtml(prop.id || `prop_${index + 1}`)}${prop.zombieBreakable ? ' • break' : ''}</span>
           </span>
           <span class="list-item-meta">${Math.round((Number(prop.x) || 0) * 100)}%</span>
         </button>
@@ -627,6 +643,7 @@
       scale: 1,
       angle: 0,
       hpMul: 1,
+      zombieBreakable: false,
       name: '',
       styleTag: '',
     };
@@ -871,6 +888,7 @@
         <td><input data-field="y" type="number" step="0.01" value="${prop.y ?? 0.5}" /></td>
         <td><input data-field="scale" type="number" step="0.01" value="${prop.scale ?? 1}" /></td>
         <td><input data-field="angle" type="number" step="0.01" value="${prop.angle ?? 0}" /></td>
+        <td><input data-field="zombieBreakable" type="checkbox" ${prop.zombieBreakable ? 'checked' : ''} /></td>
         <td><button class="btn btn-danger" data-action="delete-prop">✕</button></td>
       </tr>
     `).join('');
@@ -962,9 +980,12 @@
     dom.propModalScale.value = String(prop.scale ?? 1);
     dom.propModalAngle.value = String(Number(radToDeg(prop.angle)).toFixed(1));
     dom.propModalHpMul.value = String(prop.hpMul ?? 1);
+    if (dom.propModalZombieBreakable) dom.propModalZombieBreakable.checked = prop.zombieBreakable === true;
     const meta = getPropMeta(prop.kind);
-    const hp = Math.round((Number(meta.hp) || 1) * Math.max(0.1, Number(prop.hpMul) || 1));
+    const baseHp = prop.zombieBreakable ? (Number(ZOMBIE_BREAKABLE_PROP_HP[prop.kind]) || Number(meta.hp) || 1) : (Number(meta.hp) || 1);
+    const hp = Math.round(baseHp * Math.max(0.1, Number(prop.hpMul) || 1));
     dom.propModalTemplate.textContent = `${meta.destructible ? 'Разрушаемый' : 'Неразрушаемый'} • HP ${hp}${meta.explosive ? ' • взрывается' : ''}`;
+    if (prop.zombieBreakable) dom.propModalTemplate.textContent = `Zombie break • HP ${hp} • explodes, disappears`;
     dom.propModal.classList.remove('hidden');
   }
 
@@ -1034,6 +1055,7 @@
     prop.scale = clamp(Number(dom.propModalScale.value), 0.1, 4);
     prop.angle = clamp(degToRad(dom.propModalAngle.value), -Math.PI * 2, Math.PI * 2);
     prop.hpMul = clamp(Number(dom.propModalHpMul.value), 0.1, 5);
+    prop.zombieBreakable = !!dom.propModalZombieBreakable?.checked;
     setDirty(true);
     renderMapProps();
     renderObjectList();
@@ -1159,6 +1181,14 @@
       ctx.fillStyle = color;
       ctx.globalAlpha = 0.88;
       ctx.fillRect(-size.w * 0.5, -size.h * 0.5, size.w, size.h);
+      if (prop.zombieBreakable) {
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = '#f87171';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 4]);
+        ctx.strokeRect(-size.w * 0.5 + 3, -size.h * 0.5 + 3, size.w - 6, size.h - 6);
+        ctx.setLineDash([]);
+      }
       ctx.globalAlpha = 1;
       ctx.fillStyle = '#061018';
       ctx.font = '12px Bahnschrift';
@@ -2048,8 +2078,9 @@
       const prop = getSelectedMap()?.scene?.plannedObjects?.[Number(row.dataset.propIndex)];
       if (!prop) return;
       const field = event.target.dataset.field;
-      prop[field] = event.target.type === 'number' ? Number(event.target.value) : event.target.value;
+      prop[field] = getEditorFieldValue(event.target);
       setDirty(true);
+      if (field === 'zombieBreakable') renderObjectList();
       renderMapPreview();
     });
     dom.mapPropsBody.addEventListener('change', (event) => {
@@ -2058,8 +2089,9 @@
       const prop = getSelectedMap()?.scene?.plannedObjects?.[Number(row.dataset.propIndex)];
       if (!prop) return;
       const field = event.target.dataset.field;
-      prop[field] = event.target.type === 'number' ? Number(event.target.value) : event.target.value;
+      prop[field] = getEditorFieldValue(event.target);
       setDirty(true);
+      if (field === 'zombieBreakable') renderObjectList();
       renderMapPreview();
     });
     dom.mapPropsBody.addEventListener('click', (event) => {

@@ -158,6 +158,7 @@
             "scale": 1.28,
             "angle": 0,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_1"
@@ -169,6 +170,7 @@
             "scale": 0.78,
             "angle": -0.04,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_2"
@@ -180,6 +182,7 @@
             "scale": 0.78,
             "angle": 0.04,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_3"
@@ -191,6 +194,7 @@
             "scale": 1.08,
             "angle": 0,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_4"
@@ -202,6 +206,7 @@
             "scale": 1.08,
             "angle": 0,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_5"
@@ -213,6 +218,7 @@
             "scale": 1,
             "angle": 1.5707963267948966,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_6"
@@ -224,6 +230,7 @@
             "scale": 1,
             "angle": 0.06,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_10"
@@ -235,6 +242,7 @@
             "scale": 1,
             "angle": -0.42,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_12"
@@ -246,6 +254,7 @@
             "scale": 1,
             "angle": 0.42,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_13"
@@ -257,6 +266,7 @@
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_18"
@@ -268,6 +278,7 @@
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop"
@@ -279,6 +290,7 @@
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_7"
@@ -290,6 +302,7 @@
             "scale": 1,
             "angle": 1.5707963267948966,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_15"
@@ -301,53 +314,10 @@
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_16"
-          },
-          {
-            "kind": "ambulance_van",
-            "x": 0.587,
-            "y": 0.458,
-            "scale": 1,
-            "angle": 0.5235987755982988,
-            "hpMul": 1,
-            "name": "",
-            "styleTag": "",
-            "id": "prop_17"
-          },
-          {
-            "kind": "ambulance_van",
-            "x": 0.5816752640628838,
-            "y": 0.5505316349089378,
-            "scale": 1,
-            "angle": 0,
-            "hpMul": 1,
-            "name": "",
-            "styleTag": "",
-            "id": "prop_19"
-          },
-          {
-            "kind": "ambulance_van",
-            "x": 0.406,
-            "y": 0.441,
-            "scale": 1,
-            "angle": 0.767944870877505,
-            "hpMul": 1,
-            "name": "",
-            "styleTag": "",
-            "id": "prop_20"
-          },
-          {
-            "kind": "ambulance_van",
-            "x": 0.4109555391795628,
-            "y": 0.5610590588482998,
-            "scale": 1,
-            "angle": 0,
-            "hpMul": 1,
-            "name": "",
-            "styleTag": "",
-            "id": "prop_8"
           },
           {
             "kind": "burnt_sedan",
@@ -356,6 +326,7 @@
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_21"
@@ -367,6 +338,7 @@
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_22"
@@ -378,6 +350,7 @@
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_23"
@@ -389,6 +362,7 @@
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_24"
@@ -400,6 +374,7 @@
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_25"
@@ -411,50 +386,31 @@
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_26"
           },
           {
-            "kind": "burnt_sedan",
-            "x": 0.493,
-            "y": 0.447,
-            "scale": 1,
-            "angle": -0.2792526803190927,
-            "hpMul": 1,
-            "name": "",
-            "styleTag": "",
-            "id": "prop_9"
-          },
-          {
-            "kind": "burnt_sedan",
-            "x": 0.49324490297224266,
-            "y": 0.5505316349089378,
-            "scale": 1,
-            "angle": 0,
-            "hpMul": 1,
-            "name": "",
-            "styleTag": "",
-            "id": "prop_11"
-          },
-          {
             "kind": "industrial_tank",
-            "x": 0.3323507737656596,
-            "y": 0.5084219391514895,
+            "x": 0.2953873213792067,
+            "y": 0.5104021241007637,
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_14"
           },
           {
             "kind": "reactor_block",
-            "x": 0.6776747727831001,
-            "y": 0.5042109695757448,
+            "x": 0.678,
+            "y": 0.504,
             "scale": 1,
             "angle": 2.0943951023931953,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_27"
@@ -466,6 +422,7 @@
             "scale": 1,
             "angle": 1.5707963267948966,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_28"
@@ -477,6 +434,7 @@
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_29"
@@ -488,6 +446,7 @@
             "scale": 0.5,
             "angle": 2.0943951023931953,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_27_copy"
@@ -499,20 +458,106 @@
             "scale": 1,
             "angle": 1.5707963267948966,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_15_copy"
           },
           {
-            "kind": "yellow_bus",
-            "x": 0.4973655121591746,
-            "y": 0.6513290872723443,
+            "kind": "clinic_block",
+            "x": 0.511,
+            "y": 0.6,
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
+            "zombieBreakable": true,
             "name": "",
             "styleTag": "",
-            "id": "prop_16_copy"
+            "id": "prop_30"
+          },
+          {
+            "kind": "clinic_block",
+            "x": 0.433,
+            "y": 0.474,
+            "scale": 1,
+            "angle": 1.5707963267948966,
+            "hpMul": 1,
+            "zombieBreakable": true,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_30_copy"
+          },
+          {
+            "kind": "clinic_block",
+            "x": 0.575,
+            "y": 0.479,
+            "scale": 1,
+            "angle": 1.5707963267948966,
+            "hpMul": 1,
+            "zombieBreakable": true,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_30_copy_copy"
+          },
+          {
+            "kind": "clinic_block",
+            "x": 0.5,
+            "y": 0.357,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": true,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_30_copy_2"
+          },
+          {
+            "kind": "clinic_block",
+            "x": 0.435,
+            "y": 0.406,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": true,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_30_copy_2_copy"
+          },
+          {
+            "kind": "clinic_block",
+            "x": 0.578,
+            "y": 0.409,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": true,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_30_copy_2_copy_copy"
+          },
+          {
+            "kind": "clinic_block",
+            "x": 0.442,
+            "y": 0.547,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": true,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_30_copy_2_copy_copy_copy"
+          },
+          {
+            "kind": "clinic_block",
+            "x": 0.58,
+            "y": 0.548,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": true,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_30_copy_2_copy_copy_copy_copy"
           }
         ],
         "randomProps": {
@@ -647,6 +692,7 @@
             "scale": 1,
             "angle": 0.04,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_1"
@@ -658,6 +704,7 @@
             "scale": 1,
             "angle": -0.05,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_2"
@@ -669,6 +716,7 @@
             "scale": 1,
             "angle": 0.08,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_3"
@@ -680,6 +728,7 @@
             "scale": 1,
             "angle": -0.08,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_4"
@@ -691,6 +740,7 @@
             "scale": 1,
             "angle": 0.05,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_5"
@@ -702,6 +752,7 @@
             "scale": 1,
             "angle": -0.06,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_6"
@@ -713,6 +764,7 @@
             "scale": 1.18,
             "angle": 0.04,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_7"
@@ -724,6 +776,7 @@
             "scale": 1.18,
             "angle": -0.04,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_8"
@@ -735,6 +788,7 @@
             "scale": 0.92,
             "angle": 0,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_9"
@@ -746,6 +800,7 @@
             "scale": 0.88,
             "angle": 3.141592653589793,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_10"
@@ -883,6 +938,7 @@
             "scale": 1.04,
             "angle": 1.5707963267948966,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_1"
@@ -894,6 +950,7 @@
             "scale": 1.04,
             "angle": -1.5707963267948966,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_2"
@@ -905,6 +962,7 @@
             "scale": 1,
             "angle": 0.02,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_3"
@@ -916,6 +974,7 @@
             "scale": 1,
             "angle": 0.02,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_4"
@@ -927,6 +986,7 @@
             "scale": 1,
             "angle": 0.02,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_5"
@@ -938,6 +998,7 @@
             "scale": 1.26,
             "angle": 0,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_6"
@@ -949,6 +1010,7 @@
             "scale": 1,
             "angle": -0.38,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_7"
@@ -960,6 +1022,7 @@
             "scale": 1,
             "angle": 0.38,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_8"
@@ -971,6 +1034,7 @@
             "scale": 0.88,
             "angle": 0,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_9"
@@ -982,6 +1046,7 @@
             "scale": 0.88,
             "angle": 0,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_10"
@@ -1118,6 +1183,7 @@
             "scale": 0.98,
             "angle": 0,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_1"
@@ -1129,6 +1195,7 @@
             "scale": 0.98,
             "angle": 0,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_2"
@@ -1140,6 +1207,7 @@
             "scale": 1.1,
             "angle": 0,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_3"
@@ -1151,6 +1219,7 @@
             "scale": 1.1,
             "angle": 0,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_4"
@@ -1162,6 +1231,7 @@
             "scale": 1.18,
             "angle": 0,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_5"
@@ -1173,6 +1243,7 @@
             "scale": 1,
             "angle": 0.18,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_6"
@@ -1184,6 +1255,7 @@
             "scale": 1,
             "angle": -0.18,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_7"
@@ -1195,6 +1267,7 @@
             "scale": 1.16,
             "angle": 0.22,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_8"
@@ -1206,6 +1279,7 @@
             "scale": 1.16,
             "angle": -0.22,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_9"
@@ -1217,6 +1291,7 @@
             "scale": 0.94,
             "angle": -0.05,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_10"
@@ -1228,6 +1303,7 @@
             "scale": 0.94,
             "angle": 0.05,
             "hpMul": 1,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_11"

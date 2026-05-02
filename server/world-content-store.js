@@ -98,6 +98,7 @@ function normalizePlannedProp(raw, index = 0) {
     scale: clampNum(raw?.scale, 0.1, 4, 1),
     angle: clampNum(raw?.angle, -Math.PI * 2, Math.PI * 2, 0),
     hpMul: clampNum(raw?.hpMul, 0.1, 5, 1),
+    zombieBreakable: raw?.zombieBreakable === true,
     name: String(raw?.name || '').trim().slice(0, 80),
     styleTag: String(raw?.styleTag || '').trim().slice(0, 80),
     id: normalizeId(raw?.id, `prop_${index + 1}`),

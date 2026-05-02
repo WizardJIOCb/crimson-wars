@@ -760,6 +760,7 @@ function getMapObjectTopY(obj) {
 
 function drawSingleMapObject(obj, nowMs = Date.now(), options = {}) {
   if (!obj) return;
+  if (obj.destroyed && obj.hideAfterDestroyed) return;
   const drawShadow = options.drawShadow !== false;
   const drawHp = options.drawHp !== false;
   const radius = Math.max(Number(obj.w) || 0, Number(obj.h) || 0) * 0.55;
@@ -1974,6 +1975,7 @@ function drawMinimap() {
   minimapCtx.restore();
 
   for (const obj of game.state.decor?.objects || []) {
+    if (obj?.destroyed && obj?.hideAfterDestroyed) continue;
     if (!isVisibleInMini(obj.x, obj.y, Math.max(Number(obj.w) || 0, Number(obj.h) || 0))) continue;
     const objW = Math.max(2, (Number(obj.w) || 20) * sx);
     const objH = Math.max(2, (Number(obj.h) || 20) * sy);
