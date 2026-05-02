@@ -2049,6 +2049,7 @@ async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
     });
   }
   clearJoinFeedback();
+  clearReplayUrlIntent();
   if (!skipRouting) {
     try {
       const route = await resolveRoomRoute(mode, roomCode, { gameMode: selectedGameMode, pvpDurationMin: selectedPvpDurationMin });
@@ -2196,6 +2197,31 @@ function buildReplayShareUrl(recordId, startSec = 0, replayApiPath = '') {
   else url.searchParams.delete('replayAt');
   url.searchParams.delete('t');
   return url.toString();
+}
+
+function clearReplayUrlIntent() {
+  pendingReplayRecordId = 0;
+  pendingReplayStartSec = 0;
+  pendingReplayApiPath = '';
+  try {
+    const url = new URL(window.location.href);
+    const hasReplayIntent = url.searchParams.has('replay')
+      || url.searchParams.has('replayPath')
+      || url.searchParams.has('replayApiPath')
+      || url.searchParams.has('replayAt');
+    let changed = false;
+    for (const key of ['replay', 'replayPath', 'replayApiPath', 'replayAt']) {
+      if (url.searchParams.has(key)) {
+        url.searchParams.delete(key);
+        changed = true;
+      }
+    }
+    if (hasReplayIntent && url.searchParams.has('t')) {
+      url.searchParams.delete('t');
+      changed = true;
+    }
+    if (changed) window.history.replaceState({}, document.title, url.toString());
+  } catch {}
 }
 
 function formatReplayClock(ms) {
@@ -3753,6 +3779,7 @@ function buildReplayState(payload, elapsedMs) {
 }
 
 function stopReplayGame({ showMenu = true } = {}) {
+  clearReplayUrlIntent();
   replayGame.active = false;
   replayGame.recordId = 0;
   replayGame.payload = null;
