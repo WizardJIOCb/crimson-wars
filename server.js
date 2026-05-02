@@ -5100,6 +5100,7 @@ function serializeMapObject(obj) {
     explosive: Boolean(obj.explosive),
     destroyed: Boolean(obj.destroyed),
     destroyedAt: Math.max(0, Number(obj.destroyedAt) || 0),
+    explodedAt: Math.max(0, Number(obj.explodedAt) || 0),
     lastHitAt: Math.max(0, Number(obj.lastHitAt) || 0),
     styleTag: String(obj.styleTag || ''),
   };
@@ -6268,9 +6269,36 @@ function roundReplayCoord(value) {
   return Math.max(0, Math.round(Number(value) || 0));
 }
 
+function buildReplayMapObjectStates(room) {
+  const states = [];
+  for (const obj of Array.isArray(room?.mapObjects) ? room.mapObjects : []) {
+    if (!obj || !obj.destructible) continue;
+    const maxHp = Math.max(1, Math.round(Number(obj.maxHp) || 1));
+    const hp = Math.max(0, Math.round(Number(obj.hp) || 0));
+    const destroyed = Boolean(obj.destroyed);
+    const lastHitAt = Math.max(0, Number(obj.lastHitAt) || 0);
+    const destroyedAt = Math.max(0, Number(obj.destroyedAt) || 0);
+    const explodedAt = Math.max(0, Number(obj.explodedAt) || 0);
+    if (hp >= maxHp && !destroyed && lastHitAt <= 0 && destroyedAt <= 0 && explodedAt <= 0) continue;
+    states.push({
+      id: String(obj.id || ''),
+      hp,
+      maxHp,
+      destroyed,
+      solid: Boolean(obj.solid),
+      lastHitAt,
+      destroyedAt,
+      explodedAt,
+      hideAfterDestroyed: Boolean(obj.hideAfterDestroyed),
+      explosive: Boolean(obj.explosive),
+    });
+  }
+  return states;
+}
+
 function createRunReplay(room, player, now) {
   return {
-    version: 1,
+    version: 2,
     captureIntervalMs: REPLAY_CAPTURE_INTERVAL_MS,
     startedAt: now,
     endedAt: now,
@@ -6487,6 +6515,7 @@ function buildReplayFrameBase(room, now) {
     roundReplayCoord(bp.y),
     Math.max(0, Math.round((Number(bp.spawnAt) || now) - now)),
   ]));
+  const mapObjects = buildReplayMapObjectStates(room);
 
   return {
     players,
@@ -6496,6 +6525,7 @@ function buildReplayFrameBase(room, now) {
     drops,
     xpOrbs,
     bossPortals,
+    mapObjects,
     replayShotEvents: Array.isArray(room.replayShotEvents) ? room.replayShotEvents : [],
     replayObjectImpactEvents: Array.isArray(room.replayObjectImpactEvents) ? room.replayObjectImpactEvents : [],
     totalEnemyKills: Math.max(0, Number(room.totalEnemyKills) || 0),
@@ -6561,6 +6591,25 @@ function captureReplayFrame(room, replay, now, options = {}) {
       Math.max(0, Math.round(Number(event.damage) || 0)),
       Math.max(0, Math.round((Number(event.at) || now) - replay.startedAt)),
     ]));
+  const replayStartedAt = Math.max(0, Number(replay.startedAt) || now);
+  const replayOffsetMs = (at) => {
+    const value = Math.max(0, Number(at) || 0);
+    return value > 0 ? Math.max(0, Math.round(value - replayStartedAt)) : 0;
+  };
+  const mapObjectStates = (Array.isArray(baseFrame.mapObjects) ? baseFrame.mapObjects : [])
+    .filter((obj) => obj && obj.id)
+    .map((obj) => ([
+      obj.id,
+      Math.max(0, Math.round(Number(obj.hp) || 0)),
+      Math.max(1, Math.round(Number(obj.maxHp) || 1)),
+      obj.destroyed ? 1 : 0,
+      obj.solid ? 1 : 0,
+      replayOffsetMs(obj.lastHitAt),
+      replayOffsetMs(obj.destroyedAt),
+      replayOffsetMs(obj.explodedAt),
+      obj.hideAfterDestroyed ? 1 : 0,
+      obj.explosive ? 1 : 0,
+    ]));
 
   replay.frames.push({
     t: Math.max(0, now - replay.startedAt),
@@ -6573,6 +6622,7 @@ function captureReplayFrame(room, replay, now, options = {}) {
     b: baseFrame.bullets,
     se: shotEvents,
     oe: objectImpactEvents,
+    mo: mapObjectStates,
     d: baseFrame.drops,
     x: baseFrame.xpOrbs,
     bp: baseFrame.bossPortals,
@@ -8989,6 +9039,10 @@ function tickRoom(room, dtSec, now) {
   if (Array.isArray(room.replayShotEvents) && room.replayShotEvents.length > 0) {
     const oldestKeepAt = Math.max(0, now - 8000);
     room.replayShotEvents = room.replayShotEvents.filter((event) => Math.max(0, Number(event?.at) || 0) >= oldestKeepAt);
+  }
+  if (Array.isArray(room.replayObjectImpactEvents) && room.replayObjectImpactEvents.length > 0) {
+    const oldestKeepAt = Math.max(0, now - 8000);
+    room.replayObjectImpactEvents = room.replayObjectImpactEvents.filter((event) => Math.max(0, Number(event?.at) || 0) >= oldestKeepAt);
   }
   phaseEnd('replayMs', phaseStartedNs);
   finishTickDiag();

@@ -2471,6 +2471,7 @@ function seekReplayGame(elapsedMs, { keepPaused = null } = {}) {
   visuals.skillOfferPrev = new Map();
   visuals.dropPrev = new Map();
   visuals.xpOrbPrev = new Map();
+  visuals.mapObjectPrev = new Map();
   visuals.prevBossAlive = false;
   visuals.blood = [];
   visuals.bloodPuddles = [];
@@ -2997,6 +2998,141 @@ function parseReplayObjectImpactEvents(frame, payload) {
     at: startedAt + Math.max(0, Number(event?.[13]) || 0),
     replayImpact: true,
   }));
+}
+
+function replayFrameHasMapObjectStates(frame) {
+  return Array.isArray(frame?.mo) && frame.mo.length > 0;
+}
+
+function parseReplayMapObjectStateMap(frame, payload) {
+  const states = new Map();
+  const startedAt = Math.max(0, Number(payload?.startedAt) || Date.now());
+  const toAbsoluteAt = (offsetMs) => {
+    const offset = Math.max(0, Number(offsetMs) || 0);
+    return offset > 0 ? startedAt + offset : 0;
+  };
+  for (const item of Array.isArray(frame?.mo) ? frame.mo : []) {
+    const id = String(item?.[0] || '');
+    if (!id) continue;
+    states.set(id, {
+      hp: Math.max(0, Number(item?.[1]) || 0),
+      maxHp: Math.max(1, Number(item?.[2]) || 1),
+      destroyed: Number(item?.[3]) === 1,
+      solid: Number(item?.[4]) === 1,
+      lastHitAt: toAbsoluteAt(item?.[5]),
+      destroyedAt: toAbsoluteAt(item?.[6]),
+      explodedAt: toAbsoluteAt(item?.[7]),
+      hideAfterDestroyed: Number(item?.[8]) === 1,
+      explosive: Number(item?.[9]) === 1,
+    });
+  }
+  return states;
+}
+
+function getReplayObjectImpactTimeline(payload) {
+  const frames = Array.isArray(payload?.frames) ? payload.frames : [];
+  if (
+    payload
+    && Array.isArray(payload.__objectImpactTimeline)
+    && payload.__objectImpactTimelineSourceLen === frames.length
+  ) {
+    return payload.__objectImpactTimeline;
+  }
+
+  const seen = new Set();
+  const timeline = [];
+  for (let frameIndex = 0; frameIndex < frames.length; frameIndex += 1) {
+    const frame = frames[frameIndex];
+    const events = Array.isArray(frame?.oe) ? frame.oe : [];
+    for (let eventIndex = 0; eventIndex < events.length; eventIndex += 1) {
+      const event = events[eventIndex];
+      const id = event?.[0] ?? `${frameIndex}:${eventIndex}`;
+      const objectId = String(event?.[1] || '');
+      if (!objectId) continue;
+      const dedupeKey = String(id);
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      timeline.push({
+        id,
+        objectId,
+        damage: Math.max(0, Number(event?.[12]) || 0),
+        offsetMs: Math.max(0, Number(event?.[13]) || Number(frame?.t) || 0),
+      });
+    }
+  }
+  timeline.sort((a, b) => (a.offsetMs - b.offsetMs) || (Number(a.id) || 0) - (Number(b.id) || 0));
+  if (payload) {
+    payload.__objectImpactTimeline = timeline;
+    payload.__objectImpactTimelineSourceLen = frames.length;
+  }
+  return timeline;
+}
+
+function buildReplayFallbackObjectStateMap(payload, elapsedMs) {
+  const baseObjects = Array.isArray(payload?.decor?.objects) ? payload.decor.objects : [];
+  if (baseObjects.length <= 0) return new Map();
+  const baseById = new Map(baseObjects.map((obj) => [String(obj?.id || ''), obj]).filter(([id]) => id));
+  const states = new Map();
+  const startedAt = Math.max(0, Number(payload?.startedAt) || Date.now());
+  const nowOffset = Math.max(0, Number(elapsedMs) || 0);
+
+  for (const event of getReplayObjectImpactTimeline(payload)) {
+    if (Number(event?.offsetMs) > nowOffset) break;
+    const objectId = String(event?.objectId || '');
+    const base = baseById.get(objectId);
+    if (!base || !base.destructible) continue;
+    const maxHp = Math.max(1, Number(base.maxHp) || 1);
+    let state = states.get(objectId);
+    if (!state) {
+      state = {
+        hp: Math.max(0, Number(base.hp) || maxHp),
+        maxHp,
+        destroyed: Boolean(base.destroyed),
+        solid: Boolean(base.solid),
+        lastHitAt: 0,
+        destroyedAt: Math.max(0, Number(base.destroyedAt) || 0),
+        explodedAt: Math.max(0, Number(base.explodedAt) || 0),
+        hideAfterDestroyed: Boolean(base.hideAfterDestroyed),
+        explosive: Boolean(base.explosive),
+      };
+      states.set(objectId, state);
+    }
+    if (state.destroyed) continue;
+    state.hp = Math.max(0, state.hp - Math.max(0, Number(event.damage) || 0));
+    state.lastHitAt = startedAt + Math.max(0, Number(event.offsetMs) || 0);
+    if (state.hp <= 0) {
+      state.destroyed = true;
+      state.destroyedAt = state.lastHitAt;
+      state.explodedAt = state.explosive ? state.lastHitAt : 0;
+      state.solid = state.hideAfterDestroyed ? false : Boolean(base.solid);
+    }
+  }
+  return states;
+}
+
+function buildReplayDecorObjects(payload, frame, elapsedMs) {
+  const baseObjects = Array.isArray(payload?.decor?.objects) ? payload.decor.objects : [];
+  if (baseObjects.length <= 0) return [];
+  const stateMap = replayFrameHasMapObjectStates(frame)
+    ? parseReplayMapObjectStateMap(frame, payload)
+    : buildReplayFallbackObjectStateMap(payload, elapsedMs);
+  if (!(stateMap instanceof Map) || stateMap.size <= 0) return baseObjects;
+  return baseObjects.map((obj) => {
+    const state = stateMap.get(String(obj?.id || ''));
+    if (!state) return obj;
+    return {
+      ...obj,
+      hp: Math.max(0, Number(state.hp) || 0),
+      maxHp: Math.max(1, Number(state.maxHp) || Number(obj.maxHp) || 1),
+      destroyed: Boolean(state.destroyed),
+      solid: Boolean(state.solid),
+      lastHitAt: Math.max(0, Number(state.lastHitAt) || 0),
+      destroyedAt: Math.max(0, Number(state.destroyedAt) || 0),
+      explodedAt: Math.max(0, Number(state.explodedAt) || 0),
+      hideAfterDestroyed: Boolean(state.hideAfterDestroyed),
+      explosive: Boolean(state.explosive),
+    };
+  });
 }
 
 function getReplayShotTimeline(payload) {
@@ -3610,7 +3746,7 @@ function buildReplayState(payload, elapsedMs) {
       trees: Array.isArray(payload?.decor?.trees) ? payload.decor.trees : [],
       terrainZones: Array.isArray(payload?.decor?.terrainZones) ? payload.decor.terrainZones : [],
       theme: payload?.decor?.theme && typeof payload.decor.theme === 'object' ? payload.decor.theme : null,
-      objects: Array.isArray(payload?.decor?.objects) ? payload.decor.objects : [],
+      objects: buildReplayDecorObjects(payload, current, elapsedMs),
       objectsVersion: Math.max(0, Number(payload?.decor?.objectsVersion) || 0),
     },
   };
@@ -3749,6 +3885,7 @@ function startReplayGame(payload, record) {
   visuals.skillOfferPrev = new Map();
   visuals.dropPrev = new Map();
   visuals.xpOrbPrev = new Map();
+  visuals.mapObjectPrev = new Map();
   visuals.prevBossAlive = false;
   closeGameVersionModal();
   joinOverlay.style.display = 'none';
@@ -5949,6 +6086,7 @@ function clearLocalSessionState() {
   visuals.rocketPrev = new Map();
   visuals.dropPrev = new Map();
   visuals.xpOrbPrev = new Map();
+  visuals.mapObjectPrev = new Map();
   visuals.prevBossAlive = false;
   updateTopCenterHud(Date.now());
   updateBottomHud();
@@ -6139,6 +6277,7 @@ message: (ev) => {
     visuals.spectatorMuzzleBulletIds = new Set();
     visuals.dropPrev = new Map();
     visuals.xpOrbPrev = new Map();
+    visuals.mapObjectPrev = new Map();
     visuals.prevBossAlive = false;
     roomMetaEl.textContent = `Room: ${msg.roomCode}`;
     if (!game.spectating) copyRoomCodeToClipboard(msg.roomCode, { silent: true });
