@@ -759,27 +759,35 @@ function getMapObjectBaseY(obj) {
   return (Number(obj?.y) || 0) + Math.max(22, Number(obj?.h) || 22) * (1 - anchorY);
 }
 
-function getMapObjectCollisionBounds(obj) {
+function getMapObjectCollisionPolygon(obj) {
   const points = Array.isArray(obj?.collisionPoints) ? obj.collisionPoints : [];
   if (points.length < 3) return null;
   const centerX = Number(obj?.x) || 0;
   const centerY = (Number(obj?.y) || 0) + (Number(obj?.collisionOffsetY) || 0);
   const width = Math.max(16, Number(obj?.collisionW) || Number(obj?.w) || 0);
   const height = Math.max(16, Number(obj?.collisionH) || Number(obj?.h) || 0);
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
+  const polygon = [];
   for (const point of points) {
     const px = Array.isArray(point) ? Number(point[0]) : Number(point?.x);
     const py = Array.isArray(point) ? Number(point[1]) : Number(point?.y);
     if (!Number.isFinite(px) || !Number.isFinite(py)) continue;
-    const x = centerX + px * width;
-    const y = centerY + py * height;
-    minX = Math.min(minX, x);
-    minY = Math.min(minY, y);
-    maxX = Math.max(maxX, x);
-    maxY = Math.max(maxY, y);
+    polygon.push({ x: centerX + px * width, y: centerY + py * height });
+  }
+  return polygon.length >= 3 ? polygon : null;
+}
+
+function getMapObjectCollisionBounds(obj) {
+  const polygon = getMapObjectCollisionPolygon(obj);
+  if (!polygon) return null;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const point of polygon) {
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
   }
   if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) return null;
   return { minX, minY, maxX, maxY };
@@ -788,6 +796,28 @@ function getMapObjectCollisionBounds(obj) {
 function getMapObjectOcclusionBaseY(obj) {
   const collisionBounds = getMapObjectCollisionBounds(obj);
   return collisionBounds ? collisionBounds.maxY : getMapObjectBaseY(obj);
+}
+
+function getMapObjectFrontYAtX(obj, actorX) {
+  const polygon = getMapObjectCollisionPolygon(obj);
+  if (!polygon) return getMapObjectBaseY(obj);
+  const x = Number(actorX) || 0;
+  let frontY = -Infinity;
+  for (let i = 0; i < polygon.length; i += 1) {
+    const a = polygon[i];
+    const b = polygon[(i + 1) % polygon.length];
+    const minX = Math.min(a.x, b.x);
+    const maxX = Math.max(a.x, b.x);
+    if (x < minX - 0.001 || x > maxX + 0.001) continue;
+    const dx = b.x - a.x;
+    const t = Math.abs(dx) <= 0.000001 ? 0 : (x - a.x) / dx;
+    if (t < -0.001 || t > 1.001) continue;
+    const y = a.y + (b.y - a.y) * Math.max(0, Math.min(1, t));
+    frontY = Math.max(frontY, y);
+  }
+  const bounds = getMapObjectCollisionBounds(obj);
+  if (!Number.isFinite(frontY)) return bounds ? bounds.maxY : getMapObjectBaseY(obj);
+  return frontY;
 }
 
 function getMapObjectTopY(obj) {
@@ -871,8 +901,8 @@ function shouldObjectOccludeActor(obj, actor) {
   const actorX = Number(actor.x) || 0;
   const actorY = Number(actor.y) || 0;
   const topY = getMapObjectTopY(obj);
-  const baseY = getMapObjectOcclusionBaseY(obj);
-  if (actorY <= topY + 4 || actorY >= baseY - 4) return false;
+  const frontY = getMapObjectFrontYAtX(obj, actorX);
+  if (actorY <= topY + 4 || actorY >= frontY - 4) return false;
   const halfW = Math.max(
     14,
     (Math.max(Number(obj.collisionW) || 0, Number(obj.w) || 0) * 0.5) + 10,
