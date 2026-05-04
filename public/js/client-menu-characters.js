@@ -1,6 +1,14 @@
 'use strict';
 
 (() => {
+  const HERO_EQUIP_SLOT_FX_MS = 1500;
+  const HERO_LOADOUT_SWAP_FX_MS = 1350;
+  let heroEquipSlotFx = null;
+  let heroEquipSlotFxTimer = 0;
+  let heroLoadoutSwapFx = null;
+  let heroLoadoutSwapFxTimer = 0;
+  let lastHeroLoadoutRenderId = '';
+
   function getPlayerVariant(id) {
     return PLAYER_VARIANTS.find((x) => x.id === id) || PLAYER_VARIANTS[0];
   }
@@ -31,6 +39,91 @@
   }
   function getProgressionState() {
     return game.playerAuth?.progression || null;
+  }
+  function normalizeHeroEquipFxKey(value) {
+    return String(value || '').trim().toLowerCase();
+  }
+  function getHeroEquipFxNow() {
+    return typeof performance !== 'undefined' && typeof performance.now === 'function'
+      ? performance.now()
+      : Date.now();
+  }
+  function getInventoryRarityFxColor(rarity) {
+    switch (String(rarity || '').trim().toLowerCase()) {
+      case 'legendary': return '#f59e0b';
+      case 'epic': return '#a855f7';
+      case 'rare': return '#38bdf8';
+      case 'uncommon': return '#22c55e';
+      default: return '#d1d5db';
+    }
+  }
+  function getInventoryItemFxColorByUid(itemUid) {
+    const uid = String(itemUid || '').trim();
+    if (!uid) return '';
+    const progression = getProgressionState();
+    const catalog = getProgressionCatalog();
+    const itemMap = getCatalogItemMap(catalog);
+    const item = (Array.isArray(progression?.inventoryItems) ? progression.inventoryItems : [])
+      .find((entry) => String(entry?.uid || '') === uid);
+    return getInventoryRarityFxColor(itemMap[item?.itemId]?.rarity);
+  }
+  function getEquippedSlotFxColor(heroId, slotKey) {
+    const catalog = getProgressionCatalog();
+    const progression = getProgressionState();
+    const equippedItems = getHeroEquipmentItemMap(catalog, progression, heroId);
+    const item = equippedItems[String(slotKey || '').trim()] || null;
+    const itemMap = getCatalogItemMap(catalog);
+    return getInventoryRarityFxColor(itemMap[item?.itemId]?.rarity);
+  }
+  function markHeroEquipSlotFx(heroId, slotKey, kind, color = '') {
+    const nextHeroId = normalizeHeroEquipFxKey(heroId);
+    const nextSlotKey = normalizeHeroEquipFxKey(slotKey);
+    if (!nextHeroId || !nextSlotKey) return;
+    heroEquipSlotFx = {
+      heroId: nextHeroId,
+      slotKey: nextSlotKey,
+      kind: kind === 'unequip' ? 'unequip' : 'equip',
+      color: String(color || '').trim() || (kind === 'unequip' ? '#fb7185' : '#38bdf8'),
+      at: getHeroEquipFxNow(),
+    };
+    if (heroEquipSlotFxTimer) clearTimeout(heroEquipSlotFxTimer);
+    heroEquipSlotFxTimer = setTimeout(() => {
+      heroEquipSlotFx = null;
+      heroEquipSlotFxTimer = 0;
+    }, HERO_EQUIP_SLOT_FX_MS);
+  }
+  function getHeroEquipSlotFx(heroId, slotKey) {
+    if (!heroEquipSlotFx) return { className: '', color: '' };
+    const active = normalizeHeroEquipFxKey(heroId) === heroEquipSlotFx.heroId
+      && normalizeHeroEquipFxKey(slotKey) === heroEquipSlotFx.slotKey
+      && (getHeroEquipFxNow() - Number(heroEquipSlotFx.at || 0)) < HERO_EQUIP_SLOT_FX_MS;
+    if (!active) return { className: '', color: '' };
+    return {
+      className: heroEquipSlotFx.kind === 'unequip' ? 'is-unequip-flash' : 'is-equip-flash',
+      color: heroEquipSlotFx.color || '',
+    };
+  }
+  function markHeroLoadoutSwapFx(heroId, color = '') {
+    const nextHeroId = normalizeHeroEquipFxKey(heroId);
+    if (!nextHeroId) return;
+    heroLoadoutSwapFx = {
+      heroId: nextHeroId,
+      color: String(color || '').trim() || '#38bdf8',
+      at: getHeroEquipFxNow(),
+    };
+    if (heroLoadoutSwapFxTimer) clearTimeout(heroLoadoutSwapFxTimer);
+    heroLoadoutSwapFxTimer = setTimeout(() => {
+      heroLoadoutSwapFx = null;
+      heroLoadoutSwapFxTimer = 0;
+    }, HERO_LOADOUT_SWAP_FX_MS);
+  }
+  function getHeroLoadoutSwapFx(heroId) {
+    if (!heroLoadoutSwapFx) return { active: false, color: '' };
+    const active = normalizeHeroEquipFxKey(heroId) === heroLoadoutSwapFx.heroId
+      && (getHeroEquipFxNow() - Number(heroLoadoutSwapFx.at || 0)) < HERO_LOADOUT_SWAP_FX_MS;
+    return active
+      ? { active: true, color: heroLoadoutSwapFx.color || '' }
+      : { active: false, color: '' };
   }
   function getUnlockedHeroSet(catalog, progression) {
     if (progression?.unlockedHeroes && Array.isArray(progression.unlockedHeroes)) {
@@ -111,19 +204,23 @@
   }
   async function equipItemForAccount(heroId, itemUid, slotKey) {
     if (!game.playerAuth?.player) return;
+    const fxColor = getInventoryItemFxColorByUid(itemUid);
     const data = await apiJson('/api/player/progression/equip-item', {
       method: 'POST',
       body: JSON.stringify({ heroId, itemUid, slotKey }),
     });
     if (data?.progression) game.playerAuth.progression = data.progression;
+    markHeroEquipSlotFx(heroId, slotKey, 'equip', fxColor);
   }
   async function unequipItemForAccount(heroId, slotKey) {
     if (!game.playerAuth?.player) return;
+    const fxColor = getEquippedSlotFxColor(heroId, slotKey);
     const data = await apiJson('/api/player/progression/unequip-item', {
       method: 'POST',
       body: JSON.stringify({ heroId, slotKey }),
     });
     if (data?.progression) game.playerAuth.progression = data.progression;
+    markHeroEquipSlotFx(heroId, slotKey, 'unequip', fxColor);
   }
   async function sellInventoryItemForAccount(itemUid) {
     if (!game.playerAuth?.player) return;
@@ -179,21 +276,37 @@
     };
     return trWithFallback(`ui.inventory.category.${key}`, fallbackMap[key] || key || '-');
   }
+  function getItemIconPath(itemDef) {
+    const icon = String(itemDef?.icon || itemDef?.iconPath || '').trim();
+    if (!icon) return '';
+    if (/^(?:https?:)?\/\//.test(icon) || icon.startsWith('/') || icon.startsWith('data:')) return icon;
+    return `/assets/items/${icon}`;
+  }
   function getInventoryItemIconMeta(itemDef, equipTargets) {
+    const imagePath = getItemIconPath(itemDef);
+    const withImage = (meta) => ({ ...meta, imagePath });
     if (itemDef?.combatUse) {
-      return { glyph: 'FX', className: 'consumable' };
+      return withImage({ glyph: 'FX', className: 'consumable' });
     }
     const slotCategory = String(itemDef?.slotCategory || '').trim().toLowerCase();
-    if (slotCategory === 'head') return { glyph: 'HD', className: 'head' };
-    if (slotCategory === 'armor') return { glyph: 'AR', className: 'armor' };
-    if (slotCategory === 'legs') return { glyph: 'LG', className: 'legs' };
-    if (slotCategory === 'ring') return { glyph: 'RG', className: 'ring' };
+    if (slotCategory === 'head') return withImage({ glyph: 'HD', className: 'head' });
+    if (slotCategory === 'armor') return withImage({ glyph: 'AR', className: 'armor' });
+    if (slotCategory === 'legs') return withImage({ glyph: 'LG', className: 'legs' });
+    if (slotCategory === 'ring') return withImage({ glyph: 'RG', className: 'ring' });
     const hasLeftHand = equipTargets.some((slot) => String(slot?.key || '').trim().toLowerCase() === 'left_hand');
     const hasRightHand = equipTargets.some((slot) => String(slot?.key || '').trim().toLowerCase() === 'right_hand');
-    if (hasLeftHand && hasRightHand) return { glyph: 'WP', className: 'hands' };
-    if (hasLeftHand) return { glyph: 'LH', className: 'hands' };
-    if (hasRightHand) return { glyph: 'RH', className: 'hands' };
-    return { glyph: 'IT', className: 'other' };
+    if (hasLeftHand && hasRightHand) return withImage({ glyph: 'WP', className: 'hands' });
+    if (hasLeftHand) return withImage({ glyph: 'LH', className: 'hands' });
+    if (hasRightHand) return withImage({ glyph: 'RH', className: 'hands' });
+    return withImage({ glyph: 'IT', className: 'other' });
+  }
+  function renderInventoryItemIconHtml(iconMeta, extraClass = '') {
+    const imagePath = String(iconMeta?.imagePath || '').trim();
+    const className = `inventory-item-icon inventory-item-icon-${escapeHtml(iconMeta?.className || 'other')}${imagePath ? ' has-image' : ''}${extraClass ? ` ${escapeHtml(extraClass)}` : ''}`;
+    if (imagePath) {
+      return `<div class="${className}"><img src="${escapeHtml(imagePath)}" alt="" loading="lazy" decoding="async" /></div>`;
+    }
+    return `<div class="${className}">${escapeHtml(iconMeta?.glyph || 'IT')}</div>`;
   }
   function getItemRaritySortWeight(rarity) {
     switch (String(rarity || '').trim().toLowerCase()) {
@@ -328,9 +441,13 @@
         const swapStarted = await beginBattleHubHeroSwap(hero.id);
         selectedPlayerClass = hero.id;
         localStorage.setItem(PLAYER_CLASS_STORAGE_KEY, selectedPlayerClass);
-        await selectHeroForAccount(hero.id);
         renderCharacterPicker();
         endBattleHubHeroSwap(swapStarted);
+        try {
+          await selectHeroForAccount(hero.id);
+        } catch (err) {
+          setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to select hero.'), 'err');
+        }
       } catch (err) {
         setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to unlock hero.'), 'err');
         globalThis.cancelBattleHubPlayerSwapFx?.();
@@ -661,6 +778,10 @@
     }).join('');
     const gearSlots = (Array.isArray(catalog.itemSlots) ? catalog.itemSlots : []).filter((slot) => slot?.kind === 'gear');
     const quickSlots = (Array.isArray(catalog.itemSlots) ? catalog.itemSlots : []).filter((slot) => slot?.kind === 'consumable');
+    const heroAccent = String(hero?.accent || '').trim() || '#e11d2e';
+    const loadoutSwapFx = getHeroLoadoutSwapFx(hero.id);
+    const loadoutSwapClass = loadoutSwapFx.active ? ' is-loadout-enter' : '';
+    let heroLoadoutSlotEnterIndex = 0;
     const renderEquipSlotCard = (slot, extraMeta = '') => {
       const item = equippedItems[slot.key] || null;
       const itemDef = item ? itemMap[item.itemId] : null;
@@ -677,27 +798,45 @@
       const itemMeta = itemDef
         ? `${getItemRarityLabel(itemDef.rarity)} • Lv ${Math.max(1, Number(item.level) || 1)}${Math.max(1, Number(item.quantity) || 1) > 1 ? ` • x${Math.max(1, Number(item.quantity) || 1)}` : ''}`
         : (slot?.kind === 'consumable' ? '' : trWithFallback('ui.inventory.empty_slot_hint', 'Выберите предмет из инвентаря'));
-      return `<div class="hero-equip-slot ${item ? `filled rarity-${escapeHtml(String(itemDef?.rarity || 'common').toLowerCase())}` : 'empty'}"><div class="hero-equip-slot-layout"><div class="hero-equip-slot-side"><div class="hero-equip-slot-icon inventory-item-icon inventory-item-icon-${escapeHtml(iconMeta.className)}">${escapeHtml(iconMeta.glyph)}</div>${item ? `<button type="button" class="hero-equip-action" data-unequip-slot="${escapeHtml(slot.key)}">${escapeHtml(trWithFallback('ui.inventory.unequip', 'Снять'))}</button>` : '<div class="hero-equip-slot-empty-cta">' + escapeHtml(trWithFallback('ui.inventory.empty_slot_cta', 'Снарядите предмет из инвентаря')) + '</div>'}</div><div class="hero-equip-slot-copy"><div class="hero-equip-slot-label">${escapeHtml(getItemSlotLabel(slot))}${extraMeta ? `<span class="hero-equip-slot-hotkey">${escapeHtml(extraMeta)}</span>` : ''}</div><div class="hero-equip-slot-name">${escapeHtml(itemName)}</div><div class="hero-equip-slot-meta">${escapeHtml(itemMeta)}</div></div></div></div>`;
+      const slotFx = getHeroEquipSlotFx(hero.id, slot.key);
+      const loadoutSlotEnter = loadoutSwapFx.active && !slotFx.className;
+      const slotEnterIndex = heroLoadoutSlotEnterIndex++;
+      const slotFxColor = slotFx.color || (itemDef ? getInventoryRarityFxColor(itemDef.rarity) : (loadoutSlotEnter ? heroAccent : ''));
+      const slotEnterClass = loadoutSlotEnter ? ' is-equip-flash is-loadout-enter-slot' : '';
+      const slotClass = `hero-equip-slot ${item ? `filled rarity-${escapeHtml(String(itemDef?.rarity || 'common').toLowerCase())}` : 'empty'}${slotFx.className ? ` ${slotFx.className}` : ''}${slotEnterClass}`;
+      const slotStyleVars = [];
+      if (slotFxColor) slotStyleVars.push(`--skill-color:${escapeHtml(slotFxColor)}`);
+      if (loadoutSlotEnter) slotStyleVars.push(`--slot-enter-index:${slotEnterIndex}`);
+      const slotStyle = slotStyleVars.length ? ` style="${slotStyleVars.join(';')}"` : '';
+      const emptyAction = `<button type="button" class="hero-equip-action hero-equip-slot-empty-cta" data-open-slot-equip="${escapeHtml(slot.key)}">${escapeHtml(trWithFallback('ui.inventory.equip', 'Снарядить'))}</button>`;
+      return `<div class="${slotClass}" data-slot-key="${escapeHtml(slot.key)}"${slotStyle}><div class="hero-equip-slot-layout"><div class="hero-equip-slot-side">${renderInventoryItemIconHtml(iconMeta, 'hero-equip-slot-icon')}${item ? `<button type="button" class="hero-equip-action" data-unequip-slot="${escapeHtml(slot.key)}">${escapeHtml(trWithFallback('ui.inventory.unequip', 'Снять'))}</button>` : emptyAction}</div><div class="hero-equip-slot-copy"><div class="hero-equip-slot-label">${escapeHtml(getItemSlotLabel(slot))}${extraMeta ? `<span class="hero-equip-slot-hotkey">${escapeHtml(extraMeta)}</span>` : ''}</div><div class="hero-equip-slot-name">${escapeHtml(itemName)}</div><div class="hero-equip-slot-meta">${escapeHtml(itemMeta)}</div></div></div></div>`;
     };
     const gearSlotsByGroup = {
       core: gearSlots.filter((slot) => ['head', 'armor', 'legs'].includes(String(slot.key || ''))),
       hands: gearSlots.filter((slot) => ['left_hand', 'right_hand'].includes(String(slot.key || ''))),
       rings: gearSlots.filter((slot) => String(slot.category || '') === 'ring'),
     };
-    const buildGearGroupHtml = (group) => `<div class="hero-slot-group"><div class="hero-slot-group-title">${escapeHtml(group.title)}</div><div class="hero-slot-group-grid">${group.slots.map((slot) => renderEquipSlotCard(slot)).join('')}</div></div>`;
-    const coreGearGroupHtml = buildGearGroupHtml({
-      title: trWithFallback('ui.inventory.core_slots', 'Основные слоты'),
-      slots: gearSlotsByGroup.core,
-    });
-    const handGearGroupHtml = buildGearGroupHtml({
-      title: trWithFallback('ui.inventory.hand_slots', 'Руки и оружейные модули'),
-      slots: gearSlotsByGroup.hands,
-    });
-    const ringGearGroupHtml = buildGearGroupHtml({
-      title: trWithFallback('ui.inventory.ring_slots', 'Кольца'),
-      slots: gearSlotsByGroup.rings,
-    });
     const quickSlotsHtml = quickSlots.map((slot, index) => renderEquipSlotCard(slot, `[${index + 4}]`)).join('');
+    const slotByKey = new Map([...gearSlots, ...quickSlots].map((slot) => [String(slot?.key || ''), slot]));
+    const renderPaperSlot = (slotKey, areaClass, extraMeta = '') => {
+      const slot = slotByKey.get(slotKey);
+      return slot
+        ? `<div class="hero-paper-slot ${areaClass}">${renderEquipSlotCard(slot, extraMeta)}</div>`
+        : '';
+    };
+    const ringSlotsHtml = gearSlotsByGroup.rings
+      .map((slot) => `<div class="hero-paper-slot hero-paper-ring">${renderEquipSlotCard(slot)}</div>`)
+      .join('');
+    const heroDisplayName = trHeroName(hero.id, hero.name);
+    const heroTagline = trWithFallback(`hero.${String(hero.id || '').toLowerCase()}.tagline`, hero.tagline || '');
+    const heroStats = hero.baseStats && typeof hero.baseStats === 'object'
+      ? `POW ${Math.max(0, Number(hero.baseStats.power) || 0)} | AGI ${Math.max(0, Number(hero.baseStats.agility) || 0)} | VIT ${Math.max(0, Number(hero.baseStats.vitality) || 0)} | TEC ${Math.max(0, Number(hero.baseStats.tech) || 0)}`
+      : '';
+    const heroXpLabel = heroLevel >= heroLevelCap ? `Lv ${heroLevel}/${heroLevelCap} MAX` : `Lv ${heroLevel}/${heroLevelCap} | XP ${heroXpValue}/${heroXpNeed}`;
+    const heroPaperDollHtml = `<div class="hero-paper-doll${loadoutSwapClass}" style="--hero-accent:${escapeHtml(heroAccent)}"><div class="hero-paper-doll-grid">${renderPaperSlot('head', 'hero-paper-head')}${renderPaperSlot('left_hand', 'hero-paper-left-hand')}<div class="hero-paper-portrait${loadoutSwapClass}"><div class="hero-paper-portrait-ring"></div><img class="hero-loadout-portrait" src="${escapeHtml(getHeroCardImagePath(hero.id))}" alt="${escapeHtml(heroDisplayName)}" /><div class="hero-paper-portrait-name"><b>${escapeHtml(heroDisplayName)}</b><span>${escapeHtml(heroXpLabel)}</span></div></div>${renderPaperSlot('right_hand', 'hero-paper-right-hand')}${renderPaperSlot('armor', 'hero-paper-armor')}${renderPaperSlot('legs', 'hero-paper-legs')}<div class="hero-paper-rings">${ringSlotsHtml}</div></div></div>`;
+    const quickBeltHtml = quickSlots.length
+      ? `<div class="hero-quick-belt${loadoutSwapClass}"><div class="hero-slot-group-title">${escapeHtml(trWithFallback('ui.inventory.quick_slots', 'Combat consumables'))}</div><div class="hero-quick-belt-grid">${quickSlotsHtml}</div></div>`
+      : '';
     const inventoryGroupOrder = [
       ['consumable', trWithFallback('ui.inventory.group_consumables', 'Расходники')],
       ['armor', trWithFallback('ui.inventory.group_armor', 'Броня')],
@@ -743,7 +882,7 @@
         ? `<div class="inventory-item-chip inventory-item-chip-eq">${escapeHtml(equippedIn.map((slotKey) => getItemSlotLabel((catalog.itemSlots || []).find((slot) => slot.key === slotKey) || { key: slotKey })).join(', '))}</div>`
         : '';
       const actionButtonsHtml = `${equipButtons || ''}${!itemDef.combatUse ? `<button type="button" class="inventory-mini-btn inventory-text-action upgrade${canUpgradeItem ? '' : ' disabled-like'}" data-item-upgrade="${escapeHtml(item.uid)}" title="${escapeHtml(upgradeCostLabel)}" aria-label="${escapeHtml(upgradeCostLabel)}">${escapeHtml(upgradeLabel)}</button>` : ''}<button type="button" class="inventory-mini-btn inventory-text-action danger" data-item-sell="${escapeHtml(item.uid)}" title="${escapeHtml(sellCostLabel)}" aria-label="${escapeHtml(sellCostLabel)}">${escapeHtml(sellLabel)}</button>`;
-      const cardHtml = `<div class="inventory-item-card inventory-item-card-compact rarity-${escapeHtml(String(itemDef.rarity || 'common').toLowerCase())}"><div class="inventory-item-layout"><div class="inventory-item-icon inventory-item-icon-${escapeHtml(iconMeta.className)}">${escapeHtml(iconMeta.glyph)}</div><div class="inventory-item-main"><div class="inventory-item-name">${escapeHtml(getItemDisplayName(itemDef))}</div><div class="inventory-item-meta">${escapeHtml(getItemRarityLabel(itemDef.rarity))} • ${escapeHtml(categoryLabel)}</div><div class="inventory-item-chip-row"><div class="inventory-item-chip">Lv ${Math.max(1, Number(item.level) || 1)}</div>${quantity > 1 ? `<div class="inventory-item-chip">x${quantity}</div>` : ''}<div class="inventory-item-chip">${escapeHtml(trWithFallback('ui.inventory.sell_value_short', 'Продажа'))}: ${Math.max(0, Number(item.sellValue) || 0)}</div>${equippedMeta}</div>${itemDef.combatUse ? `<div class="inventory-item-consumable">${escapeHtml(trWithFallback('ui.inventory.consumable_hint_keys', 'Клавиши 4/5/6 в бою'))}</div>` : ''}</div><div class="inventory-item-actions-compact">${actionButtonsHtml}</div></div></div>`;
+      const cardHtml = `<div class="inventory-item-card inventory-item-card-compact rarity-${escapeHtml(String(itemDef.rarity || 'common').toLowerCase())}"><div class="inventory-item-layout">${renderInventoryItemIconHtml(iconMeta)}<div class="inventory-item-main"><div class="inventory-item-name">${escapeHtml(getItemDisplayName(itemDef))}</div><div class="inventory-item-meta">${escapeHtml(getItemRarityLabel(itemDef.rarity))} • ${escapeHtml(categoryLabel)}</div><div class="inventory-item-chip-row"><div class="inventory-item-chip">Lv ${Math.max(1, Number(item.level) || 1)}</div>${quantity > 1 ? `<div class="inventory-item-chip">x${quantity}</div>` : ''}<div class="inventory-item-chip">${escapeHtml(trWithFallback('ui.inventory.sell_value_short', 'Продажа'))}: ${Math.max(0, Number(item.sellValue) || 0)}</div>${equippedMeta}</div>${itemDef.combatUse ? `<div class="inventory-item-consumable">${escapeHtml(trWithFallback('ui.inventory.consumable_hint_keys', 'Клавиши 4/5/6 в бою'))}</div>` : ''}</div><div class="inventory-item-actions-compact">${actionButtonsHtml}</div></div></div>`;
       const groupKey = getInventoryGroupKey(itemDef, equipTargets);
       inventoryCardsByGroup.get(groupKey)?.push(cardHtml);
       const slotCategory = String(itemDef?.slotCategory || '').trim().toLowerCase();
@@ -807,34 +946,7 @@
       : (!unlocked
         ? `<button type="button" class="hero-main-action" data-hero-unlock="1" ${canUnlock ? '' : 'disabled'}>${trWithFallback('ui.hero.unlock_btn', 'Unlock hero')}</button>`
         : '');
-    const heroDisplayName = trHeroName(hero.id, hero.name);
-    const heroTagline = trWithFallback(`hero.${String(hero.id || '').toLowerCase()}.tagline`, hero.tagline || '');
-    const heroStats = hero.baseStats && typeof hero.baseStats === 'object'
-      ? `POW ${Math.max(0, Number(hero.baseStats.power) || 0)} | AGI ${Math.max(0, Number(hero.baseStats.agility) || 0)} | VIT ${Math.max(0, Number(hero.baseStats.vitality) || 0)} | TEC ${Math.max(0, Number(hero.baseStats.tech) || 0)}`
-      : '';
-    const heroXpLabel = heroLevel >= heroLevelCap ? `Lv ${heroLevel}/${heroLevelCap} MAX` : `Lv ${heroLevel}/${heroLevelCap} | XP ${heroXpValue}/${heroXpNeed}`;
-    heroTreePanelEl.innerHTML = `<div class="hero-loadout-shell"><div class="hero-loadout-card"><div class="hero-tree-head"><div><b>${escapeHtml(heroDisplayName)}</b><div class="hero-tagline">${escapeHtml(heroTagline)}</div><div class="hero-tagline">${escapeHtml(heroXpLabel)}</div><div class="hero-tagline">${escapeHtml(heroStats)}</div></div>${unlockMeta}</div>${actionBtn}</div><div class="hero-loadout-layout"><div class="hero-loadout-card hero-loadout-stage"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.inventory.equipment', 'Equipment'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.equipment_hint', 'Equipment slots are on the left, portrait on the right, inventory and combat consumables below.'))}</div></div><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.salvage', 'Salvage'))}: ${salvage}</div></div><div class="hero-loadout-stage-grid"><div class="hero-loadout-stage-side">${coreGearGroupHtml}${handGearGroupHtml}${ringGearGroupHtml}<div class="hero-slot-group"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.inventory.items', 'Inventory'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.items_hint', 'Pick items, equip them into slots, upgrade or sell them right here.'))}</div></div><div class="hero-tagline">${inventoryItems.length}</div></div>${inventoryFilterTabsHtml}<div class="inventory-category-list">${inventorySectionsHtml || `<div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.empty', 'Inventory is empty.'))}</div>`}</div></div></div><div class="hero-loadout-stage-portrait"><div class="hero-loadout-portrait-wrap hero-loadout-portrait-large"><img class="hero-loadout-portrait" src="${escapeHtml(getHeroCardImagePath(hero.id))}" alt="${escapeHtml(heroDisplayName)}" /></div><div class="hero-tree-head hero-loadout-hero-head"><div><b>${escapeHtml(heroDisplayName)}</b><div class="hero-tagline">${escapeHtml(heroTagline)}</div><div class="hero-tagline">${escapeHtml(heroXpLabel)}</div><div class="hero-tagline">${escapeHtml(heroStats)}</div><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.quick_slots_hint', 'Quick slots work in battle on keys 4, 5 and 6.'))}</div></div></div><div class="hero-slot-group"><div class="hero-slot-group-title">${escapeHtml(trWithFallback('ui.inventory.quick_slots', 'Combat consumables'))}</div><div class="hero-slot-group-grid">${quickSlotsHtml}</div></div></div></div></div><div class="hero-loadout-card"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.hero.talent_tree', 'Hero talents'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.hero.talent_tree_hint', 'Passive account upgrades for the selected hero.'))}</div></div></div><div class="hero-tree-list">${rows.join('')}</div></div><div class="hero-loadout-card"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.hero.unique_skills', 'Unique skills'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.hero.unique_skills_hint', 'Active skills and passive effects for the selected hero.'))}</div></div></div><div class="hero-tree-list">${skillRows || `<div class="hero-tagline">${escapeHtml(trWithFallback('ui.hero.no_unique_skills', 'No unique skills.'))}</div>`}</div></div></div>`;
-    const renderedSlotOrder = [
-      ...gearSlotsByGroup.core,
-      ...gearSlotsByGroup.hands,
-      ...gearSlotsByGroup.rings,
-      ...quickSlots,
-    ];
-    const renderedSlotEls = Array.from(heroTreePanelEl.querySelectorAll('.hero-equip-slot'));
-    renderedSlotOrder.forEach((slot, index) => {
-      const slotEl = renderedSlotEls[index];
-      if (!(slotEl instanceof HTMLElement)) return;
-      slotEl.dataset.slotKey = String(slot.key || '');
-      if (!slotEl.classList.contains('empty')) return;
-      let actionEl = slotEl.querySelector('.hero-equip-slot-empty-cta');
-      if (!(actionEl instanceof HTMLElement)) return;
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'hero-equip-action';
-      btn.dataset.openSlotEquip = String(slot.key || '');
-      btn.textContent = trWithFallback('ui.inventory.equip', 'Снарядить');
-      actionEl.replaceWith(btn);
-    });
+    heroTreePanelEl.innerHTML = `<div class="hero-loadout-shell"><div class="hero-loadout-card"><div class="hero-tree-head"><div><b>${escapeHtml(heroDisplayName)}</b><div class="hero-tagline">${escapeHtml(heroTagline)}</div><div class="hero-tagline">${escapeHtml(heroXpLabel)}</div><div class="hero-tagline">${escapeHtml(heroStats)}</div></div>${unlockMeta}</div>${actionBtn}</div><div class="hero-loadout-layout"><div class="hero-loadout-card hero-loadout-stage${loadoutSwapClass}"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.inventory.equipment', 'Equipment'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.equipment_hint', 'Equipment slots surround the hero. Inventory and combat consumables are below.'))}</div></div><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.salvage', 'Salvage'))}: ${salvage}</div></div><div class="hero-paper-loadout${loadoutSwapClass}">${heroPaperDollHtml}${quickBeltHtml}<div class="hero-inventory-panel${loadoutSwapClass}"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.inventory.items', 'Inventory'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.items_hint', 'Pick items, equip them into slots, upgrade or sell them right here.'))}</div></div><div class="hero-tagline">${inventoryItems.length}</div></div>${inventoryFilterTabsHtml}<div class="inventory-category-list">${inventorySectionsHtml || `<div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.empty', 'Inventory is empty.'))}</div>`}</div></div></div></div><div class="hero-loadout-card"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.hero.talent_tree', 'Hero talents'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.hero.talent_tree_hint', 'Passive account upgrades for the selected hero.'))}</div></div></div><div class="hero-tree-list">${rows.join('')}</div></div><div class="hero-loadout-card"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.hero.unique_skills', 'Unique skills'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.hero.unique_skills_hint', 'Active skills and passive effects for the selected hero.'))}</div></div></div><div class="hero-tree-list">${skillRows || `<div class="hero-tagline">${escapeHtml(trWithFallback('ui.hero.no_unique_skills', 'No unique skills.'))}</div>`}</div></div></div>`;
     const unlockBtn = heroTreePanelEl.querySelector('[data-hero-unlock="1"]');
     unlockBtn?.addEventListener('click', async () => {
       try {
@@ -943,6 +1055,11 @@
     characterSelectEl.innerHTML = '';
     if (heroGalleryV2El) heroGalleryV2El.innerHTML = '';
     const focusedHero = heroes.find((hero) => hero.id === heroFocusId) || heroes[0] || null;
+    const focusedHeroId = String(focusedHero?.id || '');
+    if (focusedHeroId && focusedHeroId !== lastHeroLoadoutRenderId) {
+      markHeroLoadoutSwapFx(focusedHeroId, focusedHero?.accent || '#38bdf8');
+    }
+    lastHeroLoadoutRenderId = focusedHeroId;
     renderHeroGalleryV2(heroes, progression, unlockedHeroes);
     globalThis.CWProfile?.render?.(heroes, progression, unlockedHeroes);
     renderAccountSummary(catalog, progression);
@@ -973,9 +1090,10 @@
       const unlocked = unlockedHeroes.has(hero.id);
       const focused = hero.id === heroFocusId;
       const active = hero.id === selectedPlayerClass;
+      const rosterCardFx = focused ? getHeroLoadoutSwapFx(hero.id) : { active: false };
       const cardBtn = document.createElement('button');
       cardBtn.type = 'button';
-      cardBtn.className = `hero-v2-card${active ? ' active' : ''}${focused ? ' focused' : ''}${unlocked ? '' : ' locked'}`;
+      cardBtn.className = `hero-v2-card${active ? ' active' : ''}${focused ? ' focused' : ''}${rosterCardFx.active ? ' is-roster-select-flash' : ''}${unlocked ? '' : ' locked'}`;
       cardBtn.style.setProperty('--accent', hero.accent || '#38bdf8');
       cardBtn.setAttribute('aria-label', trWithFallback('ui.hero.aria', `Hero ${hero.name}`, { hero: trHeroName(hero.id, hero.name) }));
       const inner = document.createElement('div');
@@ -1020,6 +1138,8 @@
         const swapStarted = changingActiveHero ? await beginBattleHubHeroSwap(hero.id) : false;
         selectedPlayerClass = hero.id;
         localStorage.setItem(PLAYER_CLASS_STORAGE_KEY, selectedPlayerClass);
+        renderCharacterPicker();
+        endBattleHubHeroSwap(swapStarted);
         if (game.playerAuth?.player) {
           try {
             await selectHeroForAccount(hero.id);
@@ -1028,8 +1148,6 @@
             setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to select hero.'), 'err');
           }
         }
-        renderCharacterPicker();
-        endBattleHubHeroSwap(swapStarted);
       });
       const wrap = document.createElement('div');
       wrap.className = 'hero-v2-item';
@@ -1065,6 +1183,7 @@
     getItemSlotLabel,
     getItemCategoryLabel,
     getInventoryItemIconMeta,
+    renderInventoryItemIconHtml,
     getItemRaritySortWeight,
     getInventorySlotTargets,
     getHeroEquipmentItemMap,
@@ -1110,6 +1229,7 @@
     getItemSlotLabel,
     getItemCategoryLabel,
     getInventoryItemIconMeta,
+    renderInventoryItemIconHtml,
     getItemRaritySortWeight,
     getInventorySlotTargets,
     getHeroEquipmentItemMap,

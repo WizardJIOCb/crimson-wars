@@ -307,6 +307,8 @@ const battleStoryCardEl = document.getElementById('campaign-browser-card');
 let heroFocusId = selectedPlayerClass;
 let selectedInventoryFilterKey = 'all';
 let currentMainMenuTab = 'run';
+const MAIN_MENU_TAB_SELECT_FX_MS = 1350;
+const mainMenuTabSelectFxTimers = new WeakMap();
 let tabScoreboardVisible = false;
 let lastTabScoreboardHtml = '';
 let lastBattlePlayers = [];
@@ -1924,6 +1926,20 @@ function formatRunGameModeLabel(run) {
   return 'Неизвестно';
 }
 
+function playMainMenuTabSelectFx(tabBtn) {
+  if (!(tabBtn instanceof HTMLElement)) return;
+  const prevTimer = mainMenuTabSelectFxTimers.get(tabBtn);
+  if (prevTimer) clearTimeout(prevTimer);
+  tabBtn.classList.remove('is-menu-select-flash');
+  void tabBtn.offsetWidth;
+  tabBtn.classList.add('is-menu-select-flash');
+  const timer = setTimeout(() => {
+    tabBtn.classList.remove('is-menu-select-flash');
+    mainMenuTabSelectFxTimers.delete(tabBtn);
+  }, MAIN_MENU_TAB_SELECT_FX_MS);
+  mainMenuTabSelectFxTimers.set(tabBtn, timer);
+}
+
 function setMainMenuTab(tabId) {
   const normalizedTab = String(tabId || '').trim().toLowerCase();
   const nextTab = normalizedTab === 'play' ? 'run' : (normalizedTab || 'run');
@@ -1978,6 +1994,7 @@ function setMainMenuTab(tabId) {
 
 for (const btn of mainMenuTabButtons) {
   btn.addEventListener('click', () => {
+    playMainMenuTabSelectFx(btn);
     setMainMenuTab(btn.getAttribute('data-menu-tab'));
   });
 }

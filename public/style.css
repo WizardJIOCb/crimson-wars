@@ -1782,6 +1782,322 @@ body.replay-game-active #scoreboard {
   min-height: 280px;
 }
 
+.hero-paper-loadout {
+  display: grid;
+  gap: 14px;
+}
+
+.hero-paper-doll {
+  position: relative;
+  overflow: hidden;
+  width: min(100%, 980px);
+  margin: 0 auto;
+  border: 1px solid rgba(135, 143, 156, 0.18);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 50% 22%, color-mix(in srgb, var(--hero-accent, #e11d2e) 20%, transparent), transparent 42%),
+    linear-gradient(180deg, rgba(7, 10, 16, 0.74), rgba(5, 7, 11, 0.92));
+  padding: 10px;
+}
+
+.hero-paper-doll::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(115deg, transparent 0 30%, rgba(255, 255, 255, 0.055), transparent 60%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 22px);
+  opacity: 0.75;
+}
+
+.hero-paper-doll-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(180px, 230px) minmax(260px, 310px) minmax(180px, 230px);
+  grid-template-areas:
+    ". head ."
+    "left portrait right"
+    "armor portrait rings"
+    ". legs .";
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+}
+
+.hero-paper-slot {
+  min-width: 0;
+}
+
+.hero-paper-head { grid-area: head; }
+.hero-paper-left-hand { grid-area: left; }
+.hero-paper-right-hand { grid-area: right; }
+.hero-paper-armor { grid-area: armor; }
+.hero-paper-legs { grid-area: legs; }
+
+.hero-paper-head,
+.hero-paper-legs {
+  width: 100%;
+  justify-self: center;
+}
+
+.hero-paper-left-hand,
+.hero-paper-armor {
+  justify-self: end;
+}
+
+.hero-paper-right-hand,
+.hero-paper-rings {
+  justify-self: start;
+}
+
+.hero-paper-rings {
+  grid-area: rings;
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.hero-paper-portrait {
+  position: relative;
+  grid-area: portrait;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  max-width: 310px;
+  justify-self: center;
+  min-height: 330px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--hero-accent, #e11d2e) 34%, rgba(255, 255, 255, 0.14));
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 50% 28%, color-mix(in srgb, var(--hero-accent, #e11d2e) 22%, transparent), transparent 42%),
+    radial-gradient(circle at 50% 88%, rgba(225, 22, 30, 0.2), transparent 36%),
+    linear-gradient(180deg, rgba(15, 20, 30, 0.9), rgba(5, 7, 10, 0.98));
+  box-shadow:
+    inset 0 0 30px color-mix(in srgb, var(--hero-accent, #e11d2e) 13%, transparent),
+    0 16px 34px rgba(0, 0, 0, 0.24);
+}
+
+.hero-paper-portrait::before,
+.hero-paper-portrait::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+
+.hero-paper-portrait::before {
+  z-index: 2;
+  inset: 13px;
+  border: 1px solid color-mix(in srgb, var(--hero-accent, #e11d2e) 32%, transparent);
+  border-radius: 12px;
+  transform: rotate(2deg);
+}
+
+.hero-paper-portrait::after {
+  z-index: 1;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    linear-gradient(180deg, rgba(3, 7, 14, 0.1) 0%, rgba(3, 7, 14, 0.02) 42%, rgba(3, 7, 14, 0.72) 100%),
+    radial-gradient(ellipse at 50% 88%, color-mix(in srgb, var(--hero-accent, #e11d2e) 30%, transparent), transparent 62%);
+}
+
+.hero-paper-portrait .hero-loadout-portrait {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 30%;
+  filter: saturate(1.04) contrast(1.04);
+}
+
+.hero-paper-portrait-ring {
+  position: absolute;
+  z-index: 2;
+  width: 76%;
+  aspect-ratio: 1 / 1;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--hero-accent, #e11d2e) 28%, transparent);
+  box-shadow:
+    inset 0 0 22px color-mix(in srgb, var(--hero-accent, #e11d2e) 12%, transparent),
+    0 0 30px color-mix(in srgb, var(--hero-accent, #e11d2e) 13%, transparent);
+  opacity: 0.82;
+}
+
+.hero-paper-portrait-name {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  z-index: 3;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(5, 7, 10, 0.72);
+  color: #fff2eb;
+  backdrop-filter: blur(6px);
+}
+
+.hero-paper-portrait-name b,
+.hero-paper-portrait-name span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hero-paper-portrait-name span {
+  color: #cbd5e1;
+  font-size: 11px;
+}
+
+.hero-paper-slot .hero-equip-slot {
+  min-height: 88px;
+  padding: 6px;
+  border-radius: 8px;
+  border-color: color-mix(in srgb, var(--skill-color, #94a3b8) 28%, rgba(148, 163, 184, 0.24));
+  background:
+    radial-gradient(circle at 0% 0%, color-mix(in srgb, var(--skill-color, #94a3b8) 9%, transparent), transparent 40%),
+    rgba(9, 13, 20, 0.78);
+}
+
+.hero-paper-slot .hero-equip-slot-layout {
+  grid-template-columns: 52px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  gap: 8px;
+}
+
+.hero-paper-slot .hero-equip-slot-side {
+  display: contents;
+}
+
+.hero-paper-slot .hero-equip-slot .hero-equip-slot-icon {
+  grid-column: 1;
+  grid-row: 1;
+  width: 52px;
+  height: 52px;
+  min-height: 52px;
+  border-radius: 7px;
+}
+
+.hero-paper-slot .hero-equip-slot .hero-equip-action,
+.hero-paper-slot .hero-equip-slot .hero-equip-slot-empty-cta {
+  box-sizing: border-box;
+  grid-column: 1 / -1;
+  grid-row: 2;
+  justify-self: stretch;
+  width: 100%;
+  min-width: 0;
+  min-height: 28px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.hero-paper-slot .hero-equip-slot-copy {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: center;
+  gap: 3px;
+}
+
+.hero-paper-slot .hero-equip-slot-label {
+  gap: 6px;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
+.hero-paper-slot .hero-equip-slot-name {
+  font-size: 12px;
+  line-height: 1.1;
+}
+
+.hero-paper-slot .hero-equip-slot-meta {
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.hero-quick-belt,
+.hero-inventory-panel {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid rgba(135, 143, 156, 0.18);
+  border-radius: 12px;
+  background: rgba(7, 10, 16, 0.62);
+  padding: 12px;
+}
+
+.hero-quick-belt-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.hero-inventory-panel .inventory-category-list {
+  max-height: 520px;
+}
+
+.hero-inventory-panel .inventory-category-grid {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.hero-loadout-stage.is-loadout-enter,
+.hero-paper-loadout.is-loadout-enter {
+  animation: heroLoadoutStageEnter 760ms cubic-bezier(.16, .9, .22, 1) both;
+}
+
+.hero-paper-doll.is-loadout-enter {
+  animation: heroPaperDollEnter 820ms cubic-bezier(.16, .9, .22, 1) both;
+}
+
+.hero-paper-doll.is-loadout-enter::before {
+  animation: heroPaperDollSweep 1050ms cubic-bezier(.16, .9, .22, 1) both;
+}
+
+.hero-paper-portrait.is-loadout-enter {
+  animation:
+    heroPaperPortraitEnter 860ms cubic-bezier(.16, .9, .22, 1) both,
+    heroPaperPortraitAccentFlash 1.35s cubic-bezier(.16, .9, .22, 1) both;
+}
+
+.hero-paper-portrait.is-loadout-enter::after {
+  animation: heroPaperPortraitAccentSweep 1.05s cubic-bezier(.16, .9, .22, 1) both;
+}
+
+.hero-paper-portrait.is-loadout-enter .hero-loadout-portrait {
+  animation: heroPaperPortraitImageEnter 940ms cubic-bezier(.16, .9, .22, 1) both;
+}
+
+.hero-paper-portrait.is-loadout-enter .hero-paper-portrait-ring {
+  animation: heroPaperPortraitRingEnter 980ms cubic-bezier(.16, .9, .22, 1) both;
+}
+
+.hero-paper-portrait.is-loadout-enter .hero-paper-portrait-name {
+  animation: heroPaperPortraitNameEnter 720ms cubic-bezier(.16, .9, .22, 1) 110ms both;
+}
+
+.hero-quick-belt.is-loadout-enter,
+.hero-inventory-panel.is-loadout-enter {
+  animation: heroLoadoutPanelEnter 780ms cubic-bezier(.16, .9, .22, 1) 90ms both;
+}
+
+.hero-inventory-panel.is-loadout-enter .inventory-item-card {
+  animation: heroInventoryItemEnter 700ms cubic-bezier(.16, .9, .22, 1) 140ms both;
+}
+
 .hero-slot-group {
   display: grid;
   gap: 8px;
@@ -1808,14 +2124,28 @@ body.replay-game-active #scoreboard {
 }
 
 .hero-equip-slot {
+  position: relative;
   display: grid;
   gap: 6px;
   align-content: start;
   min-height: 128px;
+  overflow: hidden;
   border-radius: 10px;
   border: 1px solid rgba(148, 163, 184, 0.24);
   background: rgba(15, 23, 42, 0.62);
   padding: 8px;
+}
+
+.hero-equip-slot::after {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 26% 24%, color-mix(in srgb, var(--skill-color, #d1d5db) 34%, transparent), transparent 34%),
+    linear-gradient(115deg, transparent 0 26%, rgba(255, 255, 255, 0.18), transparent 58%);
+  transform: translateX(-26%) rotate(-8deg);
 }
 
 .hero-equip-slot-layout {
@@ -1840,6 +2170,311 @@ body.replay-game-active #scoreboard {
   min-height: 90px;
   justify-self: start;
   align-self: start;
+}
+
+.hero-equip-slot.is-equip-flash {
+  animation: battleHubSkillSlotFlash 1.35s cubic-bezier(.16, .9, .22, 1);
+}
+
+.hero-equip-slot.is-equip-flash::after {
+  animation: heroEquipSlotSweep 1.05s cubic-bezier(.16, .9, .22, 1);
+}
+
+.hero-equip-slot.is-equip-flash .hero-equip-slot-icon {
+  animation: battleHubSkillIconPop 900ms cubic-bezier(.16, .9, .22, 1);
+}
+
+.hero-equip-slot.is-loadout-enter-slot,
+.hero-equip-slot.is-loadout-enter-slot::after,
+.hero-equip-slot.is-loadout-enter-slot .hero-equip-slot-icon {
+  animation-delay: calc(var(--slot-enter-index, 0) * 55ms);
+  animation-fill-mode: both;
+}
+
+.hero-equip-slot.is-unequip-flash {
+  animation: heroEquipSlotUnequipFlash 1.2s cubic-bezier(.16, .9, .22, 1);
+}
+
+.hero-equip-slot.is-unequip-flash::after {
+  background:
+    radial-gradient(circle at 25% 24%, rgba(248, 113, 113, 0.28), transparent 34%),
+    linear-gradient(115deg, transparent 0 28%, rgba(248, 113, 113, 0.2), transparent 58%);
+  animation: heroEquipSlotUnequipSweep 960ms cubic-bezier(.4, 0, .22, 1);
+}
+
+.hero-equip-slot.is-unequip-flash .hero-equip-slot-icon {
+  animation: heroEquipSlotIconUnequip 820ms cubic-bezier(.4, 0, .22, 1);
+}
+
+@keyframes heroEquipSlotSweep {
+  0% {
+    opacity: 0;
+    transform: translateX(-34%) rotate(-8deg);
+  }
+
+  22% {
+    opacity: 0.9;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(34%) rotate(-8deg);
+  }
+}
+
+@keyframes heroEquipSlotUnequipFlash {
+  0% {
+    transform: scale(1.01);
+    filter: brightness(1.22) saturate(1.22);
+    box-shadow:
+      0 0 0 1px rgba(248, 113, 113, 0.34),
+      0 0 24px rgba(248, 113, 113, 0.2);
+  }
+
+  48% {
+    transform: scale(0.985);
+    filter: brightness(0.82) saturate(0.82);
+    box-shadow:
+      0 0 0 1px rgba(248, 113, 113, 0.18),
+      0 0 16px rgba(248, 113, 113, 0.12);
+  }
+
+  100% {
+    transform: scale(1);
+    filter: brightness(1) saturate(1);
+  }
+}
+
+@keyframes heroEquipSlotUnequipSweep {
+  0% {
+    opacity: 0;
+    transform: translateX(28%) rotate(8deg);
+  }
+
+  26% {
+    opacity: 0.78;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(-32%) rotate(8deg);
+  }
+}
+
+@keyframes heroEquipSlotIconUnequip {
+  0% {
+    opacity: 1;
+    transform: scale(1.08) rotate(3deg);
+    filter: brightness(1.35);
+  }
+
+  48% {
+    opacity: 0.54;
+    transform: scale(0.86) rotate(-5deg);
+    filter: brightness(0.78) saturate(0.78);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0);
+    filter: brightness(1);
+  }
+}
+
+@keyframes heroLoadoutStageEnter {
+  0% {
+    opacity: 0.24;
+    transform: translateY(12px) scale(0.992);
+    filter: blur(5px) saturate(0.75);
+  }
+
+  58% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.004);
+    filter: blur(0) saturate(1.12);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0) saturate(1);
+  }
+}
+
+@keyframes heroPaperDollEnter {
+  0% {
+    opacity: 0.3;
+    transform: translateY(10px) scale(0.985);
+    box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  }
+
+  48% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.006);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--hero-accent, #e11d2e) 36%, transparent),
+      0 0 34px color-mix(in srgb, var(--hero-accent, #e11d2e) 18%, transparent);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes heroPaperDollSweep {
+  0% {
+    opacity: 0.16;
+    transform: translateX(-16%);
+  }
+
+  38% {
+    opacity: 0.95;
+  }
+
+  100% {
+    opacity: 0.75;
+    transform: translateX(0);
+  }
+}
+
+@keyframes heroPaperPortraitEnter {
+  0% {
+    opacity: 0.36;
+    transform: translateY(14px) scale(0.94);
+    filter: brightness(0.75) saturate(0.72);
+  }
+
+  54% {
+    opacity: 1;
+    transform: translateY(-3px) scale(1.018);
+    filter: brightness(1.22) saturate(1.18);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: brightness(1) saturate(1);
+  }
+}
+
+@keyframes heroPaperPortraitAccentFlash {
+  0% {
+    border-color: color-mix(in srgb, var(--hero-accent, #e11d2e) 28%, rgba(255, 255, 255, 0.14));
+    box-shadow:
+      inset 0 0 30px color-mix(in srgb, var(--hero-accent, #e11d2e) 13%, transparent),
+      0 16px 34px rgba(0, 0, 0, 0.24);
+  }
+
+  22% {
+    border-color: color-mix(in srgb, var(--hero-accent, #e11d2e) 78%, rgba(255, 255, 255, 0.22));
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--hero-accent, #e11d2e) 62%, transparent),
+      0 0 28px color-mix(in srgb, var(--hero-accent, #e11d2e) 58%, transparent),
+      0 0 46px rgba(255, 255, 255, 0.1),
+      inset 0 0 42px color-mix(in srgb, var(--hero-accent, #e11d2e) 26%, transparent);
+  }
+
+  100% {
+    border-color: color-mix(in srgb, var(--hero-accent, #e11d2e) 34%, rgba(255, 255, 255, 0.14));
+    box-shadow:
+      inset 0 0 30px color-mix(in srgb, var(--hero-accent, #e11d2e) 13%, transparent),
+      0 16px 34px rgba(0, 0, 0, 0.24);
+  }
+}
+
+@keyframes heroPaperPortraitAccentSweep {
+  0% {
+    opacity: 0.15;
+    transform: translateX(-18%) rotate(-3deg) scale(1.04);
+  }
+
+  24% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateX(0) rotate(0) scale(1);
+  }
+}
+
+@keyframes heroPaperPortraitImageEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(18px) scale(0.9);
+    filter:
+      drop-shadow(0 18px 20px rgba(0, 0, 0, 0.46))
+      drop-shadow(0 0 0 color-mix(in srgb, var(--hero-accent, #e11d2e) 0%, transparent));
+  }
+
+  42% {
+    opacity: 1;
+    transform: translateY(-4px) scale(1.035);
+    filter:
+      drop-shadow(0 20px 24px rgba(0, 0, 0, 0.52))
+      drop-shadow(0 0 24px color-mix(in srgb, var(--hero-accent, #e11d2e) 34%, transparent));
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes heroPaperPortraitRingEnter {
+  0% {
+    opacity: 0;
+    transform: scale(0.72) rotate(-8deg);
+  }
+
+  58% {
+    opacity: 0.95;
+    transform: scale(1.08) rotate(2deg);
+  }
+
+  100% {
+    opacity: 0.82;
+    transform: scale(1) rotate(0);
+  }
+}
+
+@keyframes heroPaperPortraitNameEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes heroLoadoutPanelEnter {
+  0% {
+    opacity: 0.18;
+    transform: translateY(12px);
+    filter: blur(4px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes heroInventoryItemEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .hero-equip-slot-copy {
@@ -1957,6 +2592,15 @@ body.replay-game-active #scoreboard {
 
 .hero-equip-picker-meta-eq {
   color: #86efac;
+}
+
+.hero-equip-picker-icon {
+  width: 58px;
+  height: 58px;
+  min-width: 58px;
+  min-height: 58px;
+  border-radius: 8px;
+  flex: 0 0 auto;
 }
 
 .hero-equip-action,
@@ -2090,6 +2734,20 @@ body.replay-game-active #scoreboard {
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.inventory-item-icon.has-image {
+  overflow: hidden;
+  background: #05070b;
+  color: inherit;
+}
+
+.inventory-item-icon.has-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
 }
 
 .inventory-item-icon-head { color: #9cc8ff; }
@@ -2253,6 +2911,24 @@ body.replay-game-active #scoreboard {
   }
 
   .hero-loadout-card-top {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-paper-doll-grid {
+    grid-template-columns: repeat(2, minmax(0, 250px));
+    grid-template-areas:
+      "portrait portrait"
+      "head armor"
+      "left right"
+      "legs rings";
+    justify-content: center;
+  }
+
+  .hero-paper-portrait {
+    min-height: 320px;
+  }
+
+  .hero-quick-belt-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -4253,17 +4929,22 @@ body.levelup-open #dev-console-toggle {
 
 .hero-v2-card {
   --accent: #38bdf8;
+  --hero-card-rise: 0px;
   position: relative;
   width: 132px;
   height: 210px;
   border-radius: 11px;
   border: 2px solid color-mix(in srgb, var(--accent) 70%, #f8fafc);
   background: linear-gradient(160deg, rgba(8, 12, 20, 0.98), rgba(18, 24, 36, 0.94));
-  transform: none;
+  transform: translateY(var(--hero-card-rise));
   overflow: hidden;
   box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.95), 0 0 24px color-mix(in srgb, var(--accent) 30%, transparent), 0 16px 32px rgba(0, 0, 0, 0.34);
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    filter 180ms ease,
+    transform 180ms ease;
 }
 
 .hero-v2-card::before {
@@ -4275,21 +4956,104 @@ body.levelup-open #dev-console-toggle {
   box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.06), inset 0 -28px 30px rgba(2, 6, 23, 0.72);
 }
 
+.hero-v2-card::after {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  inset: -24%;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 26% 22%, color-mix(in srgb, var(--accent) 42%, transparent), transparent 34%),
+    linear-gradient(115deg, transparent 0 27%, rgba(255, 255, 255, 0.2), transparent 58%);
+  transform: translateX(-30%) rotate(-8deg);
+}
+
+.hero-v2-card.is-roster-select-flash {
+  animation: heroRosterCardSelectFlash 1.35s cubic-bezier(.16, .9, .22, 1) both;
+}
+
+.hero-v2-card.is-roster-select-flash::after {
+  animation: heroRosterCardSelectSweep 1.05s cubic-bezier(.16, .9, .22, 1) both;
+}
+
+.hero-v2-card.is-roster-select-flash .hero-v2-inner {
+  animation: heroRosterCardInnerPulse 900ms cubic-bezier(.16, .9, .22, 1) both;
+}
+
 .hero-v2-card:hover,
 .hero-v2-card.focused {
-  transform: translateY(-3px);
+  --hero-card-rise: -2px;
+  border-color: color-mix(in srgb, var(--accent) 78%, #f8fafc);
   filter: brightness(1.04);
   box-shadow: 0 0 0 1px rgba(186, 230, 253, 0.72), 0 0 28px color-mix(in srgb, var(--accent) 42%, transparent), 0 18px 36px rgba(0, 0, 0, 0.38);
 }
 
 .hero-v2-card.active {
-  border-color: rgba(74, 222, 128, 0.95);
-  box-shadow: 0 0 0 1px rgba(74, 222, 128, 0.58), 0 0 26px rgba(34, 197, 94, 0.34), 0 18px 36px rgba(0, 0, 0, 0.4);
+  --hero-card-rise: -2px;
+  border-color: color-mix(in srgb, var(--accent) 88%, #f8fafc);
+  filter: brightness(1.05);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 62%, transparent),
+    0 0 30px color-mix(in srgb, var(--accent) 46%, transparent),
+    0 18px 36px rgba(0, 0, 0, 0.4);
+}
+
+.hero-v2-card.active:hover,
+.hero-v2-card.active.focused {
+  border-color: color-mix(in srgb, var(--accent) 92%, #fff);
+  filter: brightness(1.07);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 70%, transparent),
+    0 0 34px color-mix(in srgb, var(--accent) 54%, transparent),
+    0 18px 36px rgba(0, 0, 0, 0.4);
 }
 
 .hero-v2-card.locked {
   filter: grayscale(0.35);
   opacity: 0.82;
+}
+
+@keyframes heroRosterCardSelectFlash {
+  0% {
+    filter: brightness(0.94) saturate(0.92);
+    box-shadow: 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent);
+  }
+
+  22% {
+    filter: brightness(1.5) saturate(1.42);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent) 68%, transparent),
+      0 0 30px color-mix(in srgb, var(--accent) 60%, transparent),
+      0 0 50px rgba(255, 255, 255, 0.1),
+      0 18px 36px rgba(0, 0, 0, 0.4);
+  }
+
+  100% {
+    filter: brightness(1.05) saturate(1);
+  }
+}
+
+@keyframes heroRosterCardSelectSweep {
+  0% {
+    opacity: 0;
+    transform: translateX(-34%) rotate(-8deg);
+  }
+
+  22% {
+    opacity: 0.9;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(34%) rotate(-8deg);
+  }
+}
+
+@keyframes heroRosterCardInnerPulse {
+  0% { transform: scale(0.985); }
+  34% { transform: scale(1.018); }
+  100% { transform: scale(1); }
 }
 
 .hero-v2-inner {
@@ -5638,8 +6402,15 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
   align-items: center;
 }
 
+@property --avatar-accent {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #39c1d9;
+}
+
 .battle-hub-player-card {
   --avatar-accent: #39c1d9;
+  --skill-color: var(--avatar-accent);
   position: relative;
   display: grid;
   grid-template-columns: clamp(104px, 12vw, 144px) minmax(0, 1fr) minmax(150px, 220px);
@@ -5663,6 +6434,15 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.05),
     0 16px 34px rgba(0, 0, 0, 0.34);
+  transition:
+    --avatar-accent 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    filter 180ms ease;
+}
+
+.battle-hub-player-card.is-hero-swap-revealing {
+  animation: battleHubPlayerCardEnter 820ms cubic-bezier(.16, .9, .22, 1) both;
 }
 
 .battle-hub-player-card::before {
@@ -5683,73 +6463,38 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
 .battle-hub-player-card::after {
   content: "";
   position: absolute;
-  inset: -30% -20%;
-  z-index: 8;
+  inset: -18% -10%;
+  z-index: 2;
   pointer-events: none;
   opacity: 0;
-  transform: translateX(-12%) scale(1.04);
+  transform: translateX(-34%) rotate(-7deg) scale(1.02);
   transform-origin: center;
   background:
-    radial-gradient(ellipse at 0% 48%, rgba(226, 241, 255, 0.24), transparent 46%),
-    radial-gradient(ellipse at 24% 38%, color-mix(in srgb, var(--avatar-accent) 26%, rgba(168, 205, 232, 0.16)), transparent 50%),
-    radial-gradient(ellipse at 54% 58%, rgba(206, 225, 244, 0.2), transparent 54%),
-    radial-gradient(ellipse at 96% 48%, color-mix(in srgb, var(--avatar-accent) 20%, rgba(164, 196, 224, 0.15)), transparent 48%),
-    linear-gradient(101deg,
-      transparent 0%,
-      rgba(160, 200, 226, 0.1) 16%,
-      color-mix(in srgb, var(--avatar-accent) 18%, rgba(170, 205, 226, 0.17)) 38%,
-      rgba(213, 232, 255, 0.16) 54%,
-      rgba(55, 81, 110, 0.08) 74%,
-      transparent 100%);
-  background-size:
-    82% 128%,
-    76% 118%,
-    92% 132%,
-    68% 116%,
-    100% 100%;
-  background-position:
-    -20% 48%,
-    18% 34%,
-    56% 62%,
-    118% 52%,
-    0 0;
-  filter: blur(19px) saturate(1.08);
+    radial-gradient(circle at 24% 20%, color-mix(in srgb, var(--avatar-accent) 38%, transparent), transparent 30%),
+    linear-gradient(115deg, transparent 0 34%, rgba(255, 255, 255, 0.2) 45%, transparent 58%);
   mix-blend-mode: screen;
-  will-change: opacity, transform, filter, background-position;
+  will-change: opacity, transform;
 }
 
 .battle-hub-player-card.is-hero-swap-covering::after {
-  animation: battleHubHeroFogCover 280ms cubic-bezier(.16, .9, .24, 1) forwards;
+  animation: none;
 }
 
 .battle-hub-player-card.is-hero-swap-revealing::after {
-  animation: battleHubHeroFogReveal 720ms cubic-bezier(.18, .82, .2, 1) forwards;
+  animation: battleHubPlayerAccentSweep 960ms cubic-bezier(.16, .9, .22, 1) both;
 }
 
 .battle-hub-player-card.is-hero-swap-covering::before,
 .battle-hub-player-card.is-hero-swap-revealing::before {
-  inset: -1px;
-  z-index: 7;
-  background:
-    linear-gradient(100deg,
-      rgba(4, 7, 12, 0.97) 0%,
-      rgba(9, 15, 24, 0.98) 18%,
-      color-mix(in srgb, var(--avatar-accent) 10%, rgba(15, 25, 38, 0.98)) 44%,
-      rgba(19, 30, 44, 0.98) 64%,
-      rgba(5, 8, 14, 0.97) 100%),
-    radial-gradient(ellipse at -8% 48%, color-mix(in srgb, var(--avatar-accent) 28%, rgba(188, 218, 244, 0.2)), transparent 52%),
-    radial-gradient(ellipse at 42% 38%, rgba(213, 232, 255, 0.2), transparent 56%),
-    radial-gradient(ellipse at 98% 60%, color-mix(in srgb, var(--avatar-accent) 18%, rgba(185, 215, 255, 0.14)), transparent 50%);
-  backdrop-filter: blur(9px) saturate(0.72);
-  will-change: opacity, filter, background-position;
+  will-change: opacity, filter;
 }
 
 .battle-hub-player-card.is-hero-swap-covering::before {
-  animation: battleHubHeroFogVeilCover 280ms ease-out forwards;
+  animation: battleHubPlayerAmbientCover 180ms ease-out forwards;
 }
 
 .battle-hub-player-card.is-hero-swap-revealing::before {
-  animation: battleHubHeroFogVeilReveal 680ms cubic-bezier(.18, .82, .2, 1) forwards;
+  animation: battleHubPlayerAmbientReveal 820ms cubic-bezier(.16, .9, .22, 1) both;
 }
 
 .battle-hub-player-card.is-hero-swap-covering > .battle-hub-player-avatar-wrap,
@@ -5773,95 +6518,94 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
   animation: battleHubHeroContentReveal 620ms cubic-bezier(.18, .82, .2, 1) forwards;
 }
 
-@keyframes battleHubHeroFogCover {
+.battle-hub-player-card.is-hero-swap-revealing > .battle-hub-player-avatar-wrap,
+.battle-hub-player-card.is-hero-swap-revealing > .battle-hub-profile-rating {
+  animation:
+    battleHubHeroContentReveal 620ms cubic-bezier(.18, .82, .2, 1) forwards,
+    battleHubPlayerPanelFlash 1.35s cubic-bezier(.16, .9, .22, 1) 90ms both;
+}
+
+.battle-hub-player-card.is-hero-swap-revealing .battle-hub-player-account-level,
+.battle-hub-player-card.is-hero-swap-revealing .battle-hub-player-xp-track,
+.battle-hub-player-card.is-hero-swap-revealing .battle-hub-profile-stat,
+.battle-hub-player-card.is-hero-swap-revealing .battle-hub-hero-skills,
+.battle-hub-player-card.is-hero-swap-revealing .battle-hub-hero-skill {
+  --skill-color: var(--avatar-accent);
+  animation: battleHubSkillSlotFlash 1.35s cubic-bezier(.16, .9, .22, 1) both;
+}
+
+.battle-hub-player-card.is-hero-swap-revealing .battle-hub-player-name,
+.battle-hub-player-card.is-hero-swap-revealing .battle-hub-profile-rating-value {
+  animation: battleHubPlayerTextFlash 1.15s cubic-bezier(.16, .9, .22, 1) 80ms both;
+}
+
+.battle-hub-player-card.is-hero-swap-revealing .battle-hub-profile-stat:nth-child(2),
+.battle-hub-player-card.is-hero-swap-revealing .battle-hub-hero-skill:nth-child(2) {
+  animation-delay: 55ms;
+}
+
+.battle-hub-player-card.is-hero-swap-revealing .battle-hub-profile-stat:nth-child(3),
+.battle-hub-player-card.is-hero-swap-revealing .battle-hub-hero-skill:nth-child(3) {
+  animation-delay: 110ms;
+}
+
+.battle-hub-player-card.is-hero-swap-revealing .battle-hub-profile-stat:nth-child(4),
+.battle-hub-player-card.is-hero-swap-revealing .battle-hub-hero-skill:nth-child(4) {
+  animation-delay: 165ms;
+}
+
+.battle-hub-player-card.is-hero-swap-revealing .battle-hub-profile-stat:nth-child(5),
+.battle-hub-player-card.is-hero-swap-revealing .battle-hub-hero-skill:nth-child(5) {
+  animation-delay: 220ms;
+}
+
+.battle-hub-player-card.is-hero-swap-revealing .battle-hub-profile-stat:nth-child(6),
+.battle-hub-player-card.is-hero-swap-revealing .battle-hub-hero-skill:nth-child(6) {
+  animation-delay: 275ms;
+}
+
+@keyframes battleHubPlayerAmbientCover {
   0% {
-    opacity: 0;
-    transform: translateX(-12%) scale(1.04);
-    background-position:
-      -24% 48%,
-      10% 34%,
-      46% 62%,
-      116% 52%,
-      0 0;
-    filter: blur(26px) saturate(0.94);
+    opacity: 0.55;
+    filter: saturate(1) brightness(1);
   }
 
-  68% {
+  100% {
+    opacity: 0.3;
+    filter: saturate(0.82) brightness(0.86);
+  }
+}
+
+@keyframes battleHubPlayerAmbientReveal {
+  0% {
+    opacity: 0.3;
+    filter: saturate(0.82) brightness(0.86);
+  }
+
+  52% {
+    opacity: 0.72;
+    filter: saturate(1.12) brightness(1.06);
+  }
+
+  100% {
+    opacity: 0.55;
+    filter: saturate(1) brightness(1);
+  }
+}
+
+@keyframes battleHubPlayerAccentSweep {
+  0% {
+    opacity: 0;
+    transform: translateX(-34%) rotate(-7deg) scale(1.02);
+  }
+
+  24% {
     opacity: 0.78;
   }
 
   100% {
-    opacity: 0.82;
-    transform: translateX(-2%) scale(1.1);
-    background-position:
-      -8% 44%,
-      28% 38%,
-      62% 56%,
-      106% 50%,
-      0 0;
-    filter: blur(17px) saturate(1.08);
-  }
-}
-
-@keyframes battleHubHeroFogReveal {
-  0% {
-    opacity: 0.82;
-    transform: translateX(-2%) scale(1.1);
-    background-position:
-      -8% 44%,
-      28% 38%,
-      62% 56%,
-      106% 50%,
-      0 0;
-    filter: blur(17px) saturate(1.08);
-  }
-
-  52% {
-    opacity: 0.58;
-  }
-
-  100% {
     opacity: 0;
-    transform: translateX(18%) scale(1.16);
-    background-position:
-      8% 42%,
-      44% 42%,
-      78% 54%,
-      126% 48%,
-      0 0;
-    filter: blur(30px) saturate(0.92);
-  }
-}
-
-@keyframes battleHubHeroFogVeilCover {
-  0% {
-    opacity: 0;
-    filter: saturate(1) brightness(1);
-    background-position: 0 0, -12% 48%, 36% 38%, 104% 60%;
-  }
-
-  100% {
-    opacity: 0.96;
-    filter: saturate(0.82) brightness(0.86);
-    background-position: 0 0, -2% 48%, 44% 42%, 94% 58%;
-  }
-}
-
-@keyframes battleHubHeroFogVeilReveal {
-  0% {
-    opacity: 0.96;
-    filter: saturate(0.82) brightness(0.86);
-    background-position: 0 0, -2% 48%, 44% 42%, 94% 58%;
-  }
-
-  44% {
-    opacity: 0.76;
-  }
-
-  100% {
-    opacity: 0;
-    filter: saturate(1) brightness(1);
-    background-position: 0 0, 8% 48%, 52% 44%, 84% 56%;
+    transform: translateX(34%) rotate(-7deg) scale(1.02);
   }
 }
 
@@ -5881,9 +6625,15 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
 
 @keyframes battleHubHeroContentReveal {
   0% {
-    opacity: 0.22;
-    transform: translateY(3px) scale(0.992);
-    filter: blur(7px) saturate(0.72);
+    opacity: 0.18;
+    transform: translateY(12px) scale(0.992);
+    filter: blur(4px) saturate(0.76);
+  }
+
+  58% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.004);
+    filter: blur(0) saturate(1.12);
   }
 
   100% {
@@ -5893,7 +6643,106 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
   }
 }
 
+@keyframes battleHubPlayerCardEnter {
+  0% {
+    opacity: 0.34;
+    transform: translateY(12px) scale(0.992);
+    filter: blur(5px) saturate(0.75);
+    border-color: rgba(135, 143, 156, 0.34);
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+      0 16px 34px rgba(0, 0, 0, 0.34);
+  }
+
+  58% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.004);
+    filter: blur(0) saturate(1.12);
+    border-color: color-mix(in srgb, var(--avatar-accent) 74%, rgba(255, 255, 255, 0.22));
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--avatar-accent) 58%, transparent),
+      0 0 28px color-mix(in srgb, var(--avatar-accent) 46%, transparent),
+      0 0 50px rgba(255, 255, 255, 0.08),
+      inset 0 0 34px color-mix(in srgb, var(--avatar-accent) 16%, transparent),
+      0 16px 34px rgba(0, 0, 0, 0.34);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0) saturate(1);
+    border-color: rgba(135, 143, 156, 0.34);
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+      0 16px 34px rgba(0, 0, 0, 0.34);
+  }
+}
+
+@keyframes battleHubPlayerPanelFlash {
+  0% {
+    border-color: color-mix(in srgb, var(--avatar-accent) 34%, rgba(255, 255, 255, 0.14));
+    box-shadow: 0 0 0 color-mix(in srgb, var(--avatar-accent) 0%, transparent);
+  }
+
+  24% {
+    border-color: color-mix(in srgb, var(--avatar-accent) 76%, rgba(255, 255, 255, 0.2));
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--avatar-accent) 52%, transparent),
+      0 0 24px color-mix(in srgb, var(--avatar-accent) 48%, transparent);
+  }
+
+  100% {
+    box-shadow: 0 0 18px color-mix(in srgb, var(--avatar-accent) 34%, transparent);
+  }
+}
+
+@keyframes battleHubPlayerTextFlash {
+  0% {
+    color: #fff2eb;
+    text-shadow:
+      0 0 18px rgba(255, 88, 76, 0.16),
+      0 0 32px rgba(225, 22, 30, 0.12);
+  }
+
+  24% {
+    color: #fffdf8;
+    text-shadow:
+      0 0 14px color-mix(in srgb, var(--avatar-accent) 72%, transparent),
+      0 0 30px color-mix(in srgb, var(--avatar-accent) 54%, transparent),
+      0 0 48px rgba(255, 255, 255, 0.1);
+  }
+
+  100% {
+    color: #fff2eb;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .hero-loadout-stage.is-loadout-enter,
+  .hero-paper-loadout.is-loadout-enter,
+  .hero-paper-doll.is-loadout-enter,
+  .hero-paper-doll.is-loadout-enter::before,
+  .hero-paper-portrait.is-loadout-enter,
+  .hero-paper-portrait.is-loadout-enter .hero-loadout-portrait,
+  .hero-paper-portrait.is-loadout-enter .hero-paper-portrait-ring,
+  .hero-paper-portrait.is-loadout-enter .hero-paper-portrait-name,
+  .hero-quick-belt.is-loadout-enter,
+  .hero-inventory-panel.is-loadout-enter,
+  .hero-inventory-panel.is-loadout-enter .inventory-item-card,
+  .hero-equip-slot.is-loadout-enter-slot,
+  .hero-equip-slot.is-loadout-enter-slot::after,
+  .hero-equip-slot.is-loadout-enter-slot .hero-equip-slot-icon,
+  .hero-v2-card.is-roster-select-flash,
+  .hero-v2-card.is-roster-select-flash::after,
+  .hero-v2-card.is-roster-select-flash .hero-v2-inner,
+  .battle-hub-player-card.is-hero-swap-revealing,
+  .battle-hub-player-card.is-hero-swap-revealing .battle-hub-player-account-level,
+  .battle-hub-player-card.is-hero-swap-revealing .battle-hub-player-xp-track,
+  .battle-hub-player-card.is-hero-swap-revealing .battle-hub-profile-stat,
+  .battle-hub-player-card.is-hero-swap-revealing .battle-hub-hero-skills,
+  .battle-hub-player-card.is-hero-swap-revealing .battle-hub-hero-skill,
+  .battle-hub-player-card.is-hero-swap-revealing .battle-hub-player-name,
+  .battle-hub-player-card.is-hero-swap-revealing .battle-hub-profile-rating-value,
   .battle-hub-player-card.is-hero-swap-covering::before,
   .battle-hub-player-card.is-hero-swap-revealing::before,
   .battle-hub-player-card.is-hero-swap-covering::after,
@@ -6927,6 +7776,124 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
 
   .battle-hub-skill-modal-art {
     min-height: 104px;
+  }
+}
+
+.battle-hub-skill-modal.hero-equip-modal {
+  z-index: 93;
+}
+
+.battle-hub-skill-modal.hero-equip-modal .hero-equip-modal-card {
+  width: min(760px, calc(100vw - 24px));
+  border-color: color-mix(in srgb, var(--skill-color, #39c1d9) 42%, rgba(255, 255, 255, 0.16));
+}
+
+.battle-hub-skill-modal.hero-equip-modal .hero-equip-modal-head strong {
+  font-size: clamp(22px, 3.2vw, 34px);
+  line-height: 1.05;
+}
+
+.battle-hub-skill-modal.hero-equip-modal .hero-equip-modal-body {
+  display: grid;
+  gap: 12px;
+}
+
+.battle-hub-skill-modal.hero-equip-modal .hero-equip-modal-empty {
+  padding: 14px;
+  border: 1px dashed rgba(148, 163, 184, 0.28);
+  border-radius: 8px;
+  background: rgba(7, 9, 12, 0.42);
+  color: #d7dde6;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.battle-hub-skill-modal.hero-equip-modal .hero-equip-picker-list {
+  display: grid;
+  gap: 10px;
+}
+
+.battle-hub-skill-modal.hero-equip-modal .hero-equip-picker-row {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  border-color: color-mix(in srgb, var(--skill-color, #39c1d9) 24%, rgba(148, 163, 184, 0.22));
+  background:
+    radial-gradient(circle at 0% 0%, color-mix(in srgb, var(--skill-color, #39c1d9) 13%, transparent), transparent 42%),
+    rgba(7, 9, 12, 0.62);
+}
+
+.battle-hub-skill-modal.hero-equip-modal .hero-equip-picker-row::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  opacity: 0.78;
+}
+
+.battle-hub-skill-modal.hero-equip-modal .hero-equip-picker-icon,
+.battle-hub-skill-modal.hero-equip-modal .hero-equip-picker-copy,
+.battle-hub-skill-modal.hero-equip-modal .hero-equip-picker-row .hero-equip-action {
+  position: relative;
+  z-index: 1;
+}
+
+.battle-hub-skill-modal.hero-equip-modal .hero-equip-picker-name {
+  color: #fff2eb;
+  font-size: 15px;
+}
+
+.battle-hub-skill-modal.hero-equip-modal .hero-equip-picker-meta {
+  color: #aeb8c4;
+}
+
+.battle-hub-skill-modal.hero-equip-modal .hero-equip-picker-meta-eq {
+  color: #bbf7d0;
+}
+
+.battle-hub-skill-modal.hero-equip-modal .hero-equip-action {
+  min-width: 118px;
+  min-height: 38px;
+  border-color: color-mix(in srgb, var(--skill-color, #ff5a45) 42%, rgba(255, 255, 255, 0.16));
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(255, 221, 148, 0.22), transparent 34%),
+    linear-gradient(180deg, rgba(62, 22, 26, 0.96), rgba(13, 10, 15, 0.92));
+  color: #fff2eb;
+  cursor: pointer;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    filter 160ms ease,
+    transform 160ms ease;
+}
+
+.battle-hub-skill-modal.hero-equip-modal .hero-equip-action:hover:not(:disabled),
+.battle-hub-skill-modal.hero-equip-modal .hero-equip-action:focus-visible:not(:disabled) {
+  border-color: color-mix(in srgb, var(--skill-color, #ff5a45) 72%, rgba(255, 255, 255, 0.24));
+  filter: brightness(1.12);
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 20px color-mix(in srgb, var(--skill-color, #ff5a45) 26%, transparent),
+    0 12px 22px rgba(0, 0, 0, 0.26);
+}
+
+.battle-hub-skill-modal.hero-equip-modal .hero-equip-action:disabled {
+  cursor: default;
+  opacity: 0.58;
+}
+
+@media (max-width: 720px) {
+  .battle-hub-skill-modal.hero-equip-modal .hero-equip-picker-row {
+    display: grid;
+    gap: 12px;
+  }
+
+  .battle-hub-skill-modal.hero-equip-modal .hero-equip-action {
+    width: 100%;
   }
 }
 
@@ -8844,6 +9811,34 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
   gap: 16px;
 }
 
+#menu-panel-play.is-story-run > .cw-column-main {
+  display: none;
+}
+
+#menu-panel-play.is-story-run > .cw-column-side {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+#menu-panel-play.is-story-run > .cw-column-side > #rooms-browser,
+#menu-panel-play.is-story-run > .cw-column-side > #player-access-card {
+  width: 100%;
+  min-width: 0;
+  align-self: stretch;
+}
+
+#menu-panel-play.is-story-run > .cw-column-side > #rooms-browser {
+  grid-column: 1;
+  margin-top: 0;
+}
+
+#menu-panel-play.is-story-run > .cw-column-side > #player-access-card {
+  grid-column: 2;
+}
+
 #join-form.cw-shell .cw-shell-heading,
 #join-form.cw-shell #main-menu-tabs,
 #join-form.cw-shell .menu-panel {
@@ -8859,6 +9854,8 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
 }
 
 #join-form.cw-shell #main-menu-tabs .main-menu-tab {
+  --accent: #ff4048;
+  --menu-tab-rise: 0px;
   width: 100%;
   min-width: 0;
   min-height: 45px;
@@ -8868,6 +9865,103 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
   line-height: 1;
   letter-spacing: 0.025em;
   white-space: nowrap;
+  isolation: isolate;
+  overflow: hidden;
+  transform: translateY(var(--menu-tab-rise));
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    filter 180ms ease,
+    transform 180ms ease;
+}
+
+#join-form.cw-shell #main-menu-tabs .main-menu-tab[data-menu-tab="run"] { --accent: #ff5a45; }
+#join-form.cw-shell #main-menu-tabs .main-menu-tab[data-menu-tab="story"] { --accent: #f59e0b; }
+#join-form.cw-shell #main-menu-tabs .main-menu-tab[data-menu-tab="characters"] { --accent: #38bdf8; }
+#join-form.cw-shell #main-menu-tabs .main-menu-tab[data-menu-tab="profile"] { --accent: #22c55e; }
+#join-form.cw-shell #main-menu-tabs .main-menu-tab[data-menu-tab="rating"] { --accent: #a855f7; }
+#join-form.cw-shell #main-menu-tabs .main-menu-tab[data-menu-tab="news"] { --accent: #f43f5e; }
+#join-form.cw-shell #main-menu-tabs .main-menu-tab[data-menu-tab="menu"] { --accent: #94a3b8; }
+
+#join-form.cw-shell #main-menu-tabs .main-menu-tab::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: -26%;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 26% 22%, color-mix(in srgb, var(--accent) 42%, transparent), transparent 34%),
+    linear-gradient(115deg, transparent 0 27%, rgba(255, 255, 255, 0.2), transparent 58%);
+  transform: translateX(-30%) rotate(-8deg);
+}
+
+#join-form.cw-shell #main-menu-tabs .main-menu-tab:hover,
+#join-form.cw-shell #main-menu-tabs .main-menu-tab:focus-visible {
+  --menu-tab-rise: -1px;
+  border-color: color-mix(in srgb, var(--accent) 66%, rgba(255, 255, 255, 0.2)) !important;
+  filter: brightness(1.06);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 34%, transparent),
+    0 0 22px color-mix(in srgb, var(--accent) 34%, transparent),
+    0 10px 22px rgba(0, 0, 0, 0.28);
+}
+
+#join-form.cw-shell #main-menu-tabs .main-menu-tab.active {
+  --menu-tab-rise: -1px;
+  color: #fff7ed !important;
+  border-color: color-mix(in srgb, var(--accent) 78%, rgba(255, 255, 255, 0.2)) !important;
+  background:
+    radial-gradient(circle at 18% 0%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 42%),
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 24%, rgba(24, 24, 27, 0.96)), rgba(9, 9, 11, 0.98)) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 0 0 1px color-mix(in srgb, var(--accent) 38%, transparent),
+    0 0 24px color-mix(in srgb, var(--accent) 42%, transparent);
+}
+
+#join-form.cw-shell #main-menu-tabs .main-menu-tab.active::after {
+  z-index: 1;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 78%, transparent);
+}
+
+#join-form.cw-shell #main-menu-tabs .main-menu-tab.is-menu-select-flash {
+  animation: mainMenuTabSelectFlash 1.15s cubic-bezier(.16, .9, .22, 1) both;
+}
+
+#join-form.cw-shell #main-menu-tabs .main-menu-tab.is-menu-select-flash::before {
+  animation: heroRosterCardSelectSweep 980ms cubic-bezier(.16, .9, .22, 1) both;
+}
+
+@keyframes mainMenuTabSelectFlash {
+  0% {
+    filter: brightness(0.94) saturate(0.92);
+    transform: translateY(var(--menu-tab-rise)) scale(0.99);
+    box-shadow: 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent);
+  }
+
+  22% {
+    filter: brightness(1.5) saturate(1.42);
+    transform: translateY(var(--menu-tab-rise)) scale(1.018);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent) 66%, transparent),
+      0 0 30px color-mix(in srgb, var(--accent) 58%, transparent),
+      0 0 50px rgba(255, 255, 255, 0.1),
+      0 12px 26px rgba(0, 0, 0, 0.34);
+  }
+
+  100% {
+    filter: brightness(1) saturate(1);
+    transform: translateY(var(--menu-tab-rise)) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #join-form.cw-shell #main-menu-tabs .main-menu-tab.is-menu-select-flash,
+  #join-form.cw-shell #main-menu-tabs .main-menu-tab.is-menu-select-flash::before {
+    animation: none;
+  }
 }
 
 #join-form.cw-shell #menu-panel-menu,
@@ -9020,6 +10114,50 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
 }
 
 @media (max-width: 720px) {
+  #menu-panel-play.is-story-run > .cw-column-side {
+    grid-template-columns: 1fr;
+  }
+
+  #menu-panel-characters .hero-paper-doll {
+    padding: 10px;
+  }
+
+  #menu-panel-characters .hero-paper-doll-grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "portrait"
+      "head"
+      "armor"
+      "left"
+      "right"
+      "legs"
+      "rings";
+  }
+
+  #menu-panel-characters .hero-paper-slot,
+  #menu-panel-characters .hero-paper-rings {
+    width: 100%;
+    justify-self: stretch;
+  }
+
+  #menu-panel-characters .hero-paper-portrait {
+    min-height: 300px;
+  }
+
+  #menu-panel-characters .hero-paper-portrait-name {
+    display: grid;
+  }
+
+  #menu-panel-characters .hero-paper-slot .hero-equip-slot-layout {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
+
+  #menu-panel-characters .hero-paper-slot .hero-equip-slot .hero-equip-slot-icon {
+    width: 56px;
+    height: 56px;
+    min-height: 56px;
+  }
+
   #menu-panel-characters .inventory-category-grid {
     grid-template-columns: 1fr;
   }

@@ -99,6 +99,7 @@ const roomCodeInput = document.getElementById('room-code');
 const refreshRoomsBtn = document.getElementById('refresh-rooms');
 const roomsListEl = document.getElementById('rooms-list');
 const presenceMetaEl = document.getElementById('presence-meta');
+const playMenuPanelEl = document.getElementById('menu-panel-play');
 const playSideColumnEl = document.querySelector('#menu-panel-play > .cw-column-side');
 const playDeployCardEl = document.getElementById('play-deploy-card');
 const playRoomsBrowserEl = document.getElementById('rooms-browser');
@@ -592,6 +593,13 @@ function getFirstCampaignLevelId(campaignId) {
   return String(levels[0]?.id || '').trim();
 }
 
+function syncRunTypeLayoutState() {
+  if (!playMenuPanelEl) return;
+  const storyRun = selectedRunType === 'campaign';
+  playMenuPanelEl.classList.toggle('is-story-run', storyRun);
+  playMenuPanelEl.classList.toggle('is-free-run', !storyRun);
+}
+
 function setSelectedRunType(runType) {
   selectedRunType = String(runType || '').trim().toLowerCase() === 'campaign' ? 'campaign' : 'free';
   if (selectedRunType === 'campaign' && selectedGameMode === 'pvp') {
@@ -602,6 +610,7 @@ function setSelectedRunType(runType) {
     }
   }
   localStorage.setItem(RUN_TYPE_STORAGE_KEY, selectedRunType);
+  syncRunTypeLayoutState();
   renderDeploySelectionSummary();
 }
 
@@ -1344,9 +1353,10 @@ function clearJoinFeedback() {
 }
 
 function getBattleHubPlayerHeroId(progression = null) {
+  const pendingHero = String(battleHubPlayerCardEl?.dataset?.nextHero || '').trim().toLowerCase();
   const activeHero = String(progression?.activeHero || '').trim().toLowerCase();
   const storedHero = String(localStorage.getItem(PLAYER_CLASS_STORAGE_KEY) || '').trim().toLowerCase();
-  const candidate = activeHero || storedHero || selectedPlayerClass || 'cyber';
+  const candidate = pendingHero || activeHero || storedHero || selectedPlayerClass || 'cyber';
   return PLAYER_VARIANTS.some((variant) => variant.id === candidate) ? candidate : 'cyber';
 }
 
@@ -1361,8 +1371,8 @@ function getBattleHubHeroAccent(heroId) {
   return PLAYER_VARIANTS.find((variant) => variant.id === heroId)?.accent || '#39c1d9';
 }
 
-const BATTLE_HUB_HERO_SWAP_COVER_MS = 280;
-const BATTLE_HUB_HERO_SWAP_REVEAL_MS = 720;
+const BATTLE_HUB_HERO_SWAP_COVER_MS = 180;
+const BATTLE_HUB_HERO_SWAP_REVEAL_MS = 1450;
 const BATTLE_HUB_SKILL_MODAL_CLOSE_MS = 360;
 const BATTLE_HUB_SKILL_MODAL_PURCHASE_CLOSE_MS = 520;
 let battleHubHeroSwapTimer = 0;
@@ -1390,8 +1400,10 @@ function clearBattleHubHeroSwapTimer() {
 async function beginBattleHubPlayerSwapFx(nextHeroId = '') {
   if (!battleHubPlayerCardEl || shouldReduceBattleHubFx()) return false;
   const token = ++battleHubHeroSwapToken;
+  const nextHero = String(nextHeroId || '').trim().toLowerCase();
   clearBattleHubHeroSwapTimer();
-  battleHubPlayerCardEl.dataset.nextHero = String(nextHeroId || '').trim().toLowerCase();
+  battleHubPlayerCardEl.dataset.nextHero = nextHero;
+  battleHubPlayerCardEl.style.setProperty('--avatar-accent', getBattleHubHeroAccent(nextHero));
   battleHubPlayerCardEl.classList.remove('is-hero-swap-covering', 'is-hero-swap-revealing');
   void battleHubPlayerCardEl.offsetWidth;
   battleHubPlayerCardEl.classList.add('is-hero-swap-covering');

@@ -1,9 +1,14 @@
 'use strict';
 
 (() => {
+  const HERO_EQUIP_MODAL_CLOSE_MS = 360;
+
   let heroEquipModalEl = null;
   let heroEquipModalTitleEl = null;
+  let heroEquipModalSubtitleEl = null;
+  let heroEquipModalIconEl = null;
   let heroEquipModalBodyEl = null;
+  let heroEquipModalCloseTimer = 0;
 
   const tr = (key, params = null) => {
     if (typeof window.cwI18nT === 'function') return window.cwI18nT(key, params);
@@ -27,54 +32,140 @@
 
   function ensureModal() {
     if (heroEquipModalEl) return;
+
     const modal = document.createElement('div');
     modal.id = 'hero-equip-modal';
-    modal.className = 'record-details-modal hidden';
+    modal.className = 'battle-hub-skill-modal hero-equip-modal hidden';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
     modal.setAttribute('aria-live', 'polite');
 
+    const backdrop = document.createElement('div');
+    backdrop.className = 'battle-hub-skill-modal-backdrop hero-equip-modal-backdrop';
+    backdrop.setAttribute('data-hero-equip-modal-close', '1');
+
     const card = document.createElement('div');
-    card.className = 'record-details-card hero-equip-modal-card';
-
-    const head = document.createElement('div');
-    head.className = 'record-details-head';
-
-    const title = document.createElement('b');
-    title.id = 'hero-equip-modal-title';
-    title.textContent = trWithFallback('ui.inventory.equip_slot_title', 'Снарядить слот');
+    card.className = 'battle-hub-skill-modal-card hero-equip-modal-card';
+    card.setAttribute('role', 'document');
 
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
-    closeBtn.className = 'mini';
-    closeBtn.setAttribute('data-i18n-key', 'ui.close');
-    closeBtn.textContent = trWithFallback('ui.close', 'Закрыть');
-    closeBtn.addEventListener('click', () => {
-      modal.classList.add('hidden');
-    });
+    closeBtn.className = 'battle-hub-skill-modal-close hero-equip-modal-close';
+    closeBtn.setAttribute('data-hero-equip-modal-close', '1');
+    closeBtn.setAttribute('aria-label', trWithFallback('ui.close', 'Close'));
+    closeBtn.setAttribute('title', trWithFallback('ui.close', 'Close'));
 
-    head.appendChild(title);
-    head.appendChild(closeBtn);
+    const content = document.createElement('div');
+    content.className = 'battle-hub-skill-modal-content hero-equip-modal-content';
+
+    const hero = document.createElement('div');
+    hero.className = 'battle-hub-skill-modal-hero hero-equip-modal-hero';
+
+    const art = document.createElement('div');
+    art.className = 'battle-hub-skill-modal-art hero-equip-modal-art';
+
+    const icon = document.createElement('span');
+    icon.textContent = 'EQ';
+    art.appendChild(icon);
+
+    const head = document.createElement('div');
+    head.className = 'battle-hub-skill-modal-head hero-equip-modal-head';
+
+    const kicker = document.createElement('span');
+    kicker.className = 'battle-hub-skill-modal-kicker';
+    kicker.textContent = trWithFallback('ui.inventory.equipment', 'Equipment');
+
+    const title = document.createElement('strong');
+    title.id = 'hero-equip-modal-title';
+    title.textContent = trWithFallback('ui.inventory.equip_slot_title', 'Equip slot');
+
+    const subtitle = document.createElement('small');
+    subtitle.id = 'hero-equip-modal-subtitle';
+    subtitle.textContent = trWithFallback('ui.inventory.items', 'Inventory');
 
     const body = document.createElement('div');
     body.id = 'hero-equip-modal-body';
-    body.className = 'record-details-body hero-equip-modal-body';
-    body.textContent = trWithFallback('ui.loading', 'Загрузка...');
+    body.className = 'hero-equip-modal-body';
+    body.textContent = trWithFallback('ui.loading', 'Loading...');
 
-    card.appendChild(head);
-    card.appendChild(body);
+    head.appendChild(kicker);
+    head.appendChild(title);
+    head.appendChild(subtitle);
+    hero.appendChild(art);
+    hero.appendChild(head);
+    content.appendChild(hero);
+    content.appendChild(body);
+    card.appendChild(closeBtn);
+    card.appendChild(content);
+    modal.appendChild(backdrop);
     modal.appendChild(card);
-    modal.addEventListener('click', (e) => {
-      if (e.target === modal) modal.classList.add('hidden');
+    modal.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (target.closest('[data-hero-equip-modal-close]')) close();
     });
 
-    const modalHost = document.getElementById('join-overlay') || document.body;
-    modalHost.appendChild(modal);
+    document.body.appendChild(modal);
     heroEquipModalEl = modal;
     heroEquipModalTitleEl = title;
+    heroEquipModalSubtitleEl = subtitle;
+    heroEquipModalIconEl = icon;
     heroEquipModalBodyEl = body;
   }
 
+  function showModal() {
+    if (!heroEquipModalEl) return;
+    if (heroEquipModalCloseTimer) {
+      globalThis.clearTimeout(heroEquipModalCloseTimer);
+      heroEquipModalCloseTimer = 0;
+    }
+    heroEquipModalEl.classList.remove('hidden', 'is-closing', 'is-purchased', 'is-busy');
+    void heroEquipModalEl.offsetWidth;
+    heroEquipModalEl.classList.add('is-open');
+  }
+
   function close() {
-    heroEquipModalEl?.classList.add('hidden');
+    if (!heroEquipModalEl) return;
+    if (heroEquipModalEl.classList.contains('hidden') || heroEquipModalEl.classList.contains('is-closing')) return;
+    if (heroEquipModalCloseTimer) globalThis.clearTimeout(heroEquipModalCloseTimer);
+    heroEquipModalEl.classList.remove('is-open', 'is-busy');
+    heroEquipModalEl.classList.add('is-closing');
+    heroEquipModalCloseTimer = globalThis.setTimeout(() => {
+      if (!heroEquipModalEl) return;
+      heroEquipModalEl.classList.add('hidden');
+      heroEquipModalEl.classList.remove('is-open', 'is-closing', 'is-purchased', 'is-busy');
+      heroEquipModalCloseTimer = 0;
+    }, HERO_EQUIP_MODAL_CLOSE_MS);
+  }
+
+  function getSlotAccent(slot) {
+    const key = String(slot?.key || '').trim().toLowerCase();
+    const category = String(slot?.category || '').trim().toLowerCase();
+    if (key === 'left_hand' || key === 'right_hand') return '#ef4444';
+    if (category === 'ring') return '#f59e0b';
+    if (category === 'head') return '#38bdf8';
+    if (category === 'armor') return '#22c55e';
+    if (category === 'legs') return '#a3e635';
+    if (category === 'quick') return '#fb7185';
+    return '#39c1d9';
+  }
+
+  function getSlotGlyph(slot) {
+    const key = String(slot?.key || '').trim().toLowerCase();
+    const category = String(slot?.category || '').trim().toLowerCase();
+    if (key === 'left_hand') return 'LH';
+    if (key === 'right_hand') return 'RH';
+    if (category === 'head') return 'HD';
+    if (category === 'armor') return 'AR';
+    if (category === 'legs') return 'LG';
+    if (category === 'ring') return 'RG';
+    if (category === 'quick') return 'FX';
+    return 'EQ';
+  }
+
+  function getHeroDisplayName(hero) {
+    if (typeof trHeroName === 'function') return trHeroName(hero?.id, hero?.name || hero?.id || 'Hero');
+    return String(hero?.name || hero?.id || 'Hero');
   }
 
   function open(hero, slotKey) {
@@ -105,39 +196,64 @@
           || String(getItemDisplayName(itemDefA)).localeCompare(String(getItemDisplayName(itemDefB)));
       });
 
-    heroEquipModalTitleEl.textContent = `${trWithFallback('ui.inventory.equip_slot_title', 'Снарядить слот')}: ${getItemSlotLabel(slot)}`;
+    const slotAccent = getSlotAccent(slot);
+    const heroAccent = String(hero?.accent || '').trim() || slotAccent;
+    const titleText = `${trWithFallback('ui.inventory.equip_slot_title', 'Equip slot')}: ${getItemSlotLabel(slot)}`;
+    heroEquipModalEl.style.setProperty('--avatar-accent', heroAccent);
+    heroEquipModalEl.style.setProperty('--skill-color', slotAccent);
+    heroEquipModalEl.setAttribute('aria-label', titleText);
+    heroEquipModalTitleEl.textContent = titleText;
+    if (heroEquipModalSubtitleEl) {
+      heroEquipModalSubtitleEl.textContent = `${getHeroDisplayName(hero)} | ${matchingItems.length} ${trWithFallback('ui.inventory.items', 'items')}`;
+    }
+    if (heroEquipModalIconEl) heroEquipModalIconEl.textContent = getSlotGlyph(slot);
+
     if (!matchingItems.length) {
-      heroEquipModalBodyEl.innerHTML = `<div class="hero-equip-modal-empty">${escapeHtml(trWithFallback('ui.inventory.no_matching_items', 'Для этого слота пока нет подходящих предметов.'))}</div>`;
-      heroEquipModalEl.classList.remove('hidden');
+      heroEquipModalBodyEl.innerHTML = `<div class="hero-equip-modal-empty">${escapeHtml(trWithFallback('ui.inventory.no_matching_items', 'No suitable items for this slot yet.'))}</div>`;
+      showModal();
       return;
     }
 
     const rowsHtml = matchingItems.map((item) => {
       const itemDef = itemMap[item.itemId] || {};
       const quantity = Math.max(1, Number(item.quantity) || 1);
+      const iconMeta = getInventoryItemIconMeta(itemDef, getInventorySlotTargets(catalog, itemDef));
+      const iconHtml = typeof renderInventoryItemIconHtml === 'function'
+        ? renderInventoryItemIconHtml(iconMeta, 'hero-equip-picker-icon')
+        : '';
       const equippedIn = Object.keys(equippedItems).filter((key) => equippedItems[key]?.uid === item.uid);
       const equippedMeta = equippedIn.length
-        ? `<div class="hero-equip-picker-meta hero-equip-picker-meta-eq">${escapeHtml(trWithFallback('ui.inventory.equipped_in', 'Экипировано'))}: ${escapeHtml(equippedIn.map((key) => getItemSlotLabel((catalog.itemSlots || []).find((entry) => entry.key === key) || { key })).join(', '))}</div>`
+        ? `<div class="hero-equip-picker-meta hero-equip-picker-meta-eq">${escapeHtml(trWithFallback('ui.inventory.equipped_in', 'Equipped'))}: ${escapeHtml(equippedIn.map((key) => getItemSlotLabel((catalog.itemSlots || []).find((entry) => entry.key === key) || { key })).join(', '))}</div>`
         : '';
-      return `<div class="hero-equip-picker-row rarity-${escapeHtml(String(itemDef.rarity || 'common').toLowerCase())}"><div class="hero-equip-picker-copy"><div class="hero-equip-picker-name">${escapeHtml(getItemDisplayName(itemDef))}</div><div class="hero-equip-picker-meta">${escapeHtml(getItemRarityLabel(itemDef.rarity))} • Lv ${Math.max(1, Number(item.level) || 1)}${quantity > 1 ? ` • x${quantity}` : ''}</div>${equippedMeta}</div><button type="button" class="hero-equip-action" data-modal-item-equip="${escapeHtml(item.uid)}" data-slot-key="${escapeHtml(slot.key)}">${escapeHtml(trWithFallback('ui.inventory.equip', 'Снарядить'))}</button></div>`;
+      return `<div class="hero-equip-picker-row rarity-${escapeHtml(String(itemDef.rarity || 'common').toLowerCase())}">${iconHtml}<div class="hero-equip-picker-copy"><div class="hero-equip-picker-name">${escapeHtml(getItemDisplayName(itemDef))}</div><div class="hero-equip-picker-meta">${escapeHtml(getItemRarityLabel(itemDef.rarity))} | Lv ${Math.max(1, Number(item.level) || 1)}${quantity > 1 ? ` | x${quantity}` : ''}</div>${equippedMeta}</div><button type="button" class="hero-equip-action" data-modal-item-equip="${escapeHtml(item.uid)}" data-slot-key="${escapeHtml(slot.key)}">${escapeHtml(trWithFallback('ui.inventory.equip', 'Equip'))}</button></div>`;
     }).join('');
 
     heroEquipModalBodyEl.innerHTML = `<div class="hero-equip-picker-list">${rowsHtml}</div>`;
     for (const btn of heroEquipModalBodyEl.querySelectorAll('[data-modal-item-equip]')) {
       btn.addEventListener('click', async () => {
         try {
+          heroEquipModalEl?.classList.add('is-busy');
+          btn.disabled = true;
           await equipItemForAccount(hero.id, btn.getAttribute('data-modal-item-equip') || '', btn.getAttribute('data-slot-key') || '');
           close();
-          setHeroActionFeedback(trWithFallback('ui.inventory.equipped', 'Предмет экипирован.'), 'ok');
+          setHeroActionFeedback(trWithFallback('ui.inventory.equipped', 'Item equipped.'), 'ok');
           renderCharacterPicker();
         } catch (err) {
+          heroEquipModalEl?.classList.remove('is-busy');
+          btn.disabled = false;
           setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to equip item.'), 'err');
         }
       });
     }
 
-    heroEquipModalEl.classList.remove('hidden');
+    showModal();
   }
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    if (!heroEquipModalEl || heroEquipModalEl.classList.contains('hidden')) return;
+    close();
+  });
 
   globalThis.CWHeroEquipModal = { open, close };
 })();
