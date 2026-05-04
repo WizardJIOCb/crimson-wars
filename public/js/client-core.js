@@ -1189,7 +1189,7 @@ function applyInitialRoomIntent() {
   const mode = (params.get('mode') || '').trim().toLowerCase();
   const spectate = mode === 'spectate' || mode === 'watch' || mode === 'observer';
   const embed = params.get('embed') === '1' || params.get('view') === 'embed';
-  const hubEmbed = params.get('hub') === '1' || params.get('view') === 'hub';
+  const hubEmbed = !embed && !spectate && params.get('hub') !== '0' && params.get('view') !== 'game';
   const integrationToken = String(params.get('integrationToken') || params.get('integration_token') || '').trim();
   const presetName = String(params.get('name') || '').trim();
   const presetHeroId = String(params.get('heroId') || params.get('hero_id') || '').trim().toLowerCase();
@@ -1215,6 +1215,7 @@ function applyInitialRoomIntent() {
   pendingAutoSpectate = Boolean(room && spectate);
   pendingAutoCreate = Boolean(!room && joinMode === 'create' && routed);
   game.embedMode = embed;
+  document.documentElement.classList.toggle('battle-hub-embed', hubEmbed);
   document.body.classList.toggle('live-embed', game.embedMode);
   document.body.classList.toggle('battle-hub-embed', hubEmbed);
   pendingIntegrationToken = integrationToken;
