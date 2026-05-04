@@ -7811,13 +7811,19 @@ body.battle-hub-embed #join-form.cw-shell {
 #join-form.cw-shell #main-menu-tabs.cw-nav-tabs {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
+  margin: 0;
 }
 
 #join-form.cw-shell #main-menu-tabs .main-menu-tab {
   width: 100%;
   min-width: 0;
+  min-height: 45px;
   padding-right: clamp(8px, 1.2vw, 16px);
   padding-left: clamp(8px, 1.2vw, 16px);
+  font-size: clamp(12px, 1.05vw, 14px);
+  line-height: 1;
+  letter-spacing: 0.025em;
+  white-space: nowrap;
 }
 
 #join-form.cw-shell #menu-panel-menu,
@@ -7828,6 +7834,29 @@ body.battle-hub-embed #join-form.cw-shell {
 #join-form.cw-shell #menu-panel-rating,
 #join-form.cw-shell #menu-panel-news {
   padding: 0;
+}
+
+#run-setup-card .run-setup-mode-panel {
+  margin: 0 0 14px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+#run-setup-card .run-setup-mode-panel .rooms-head {
+  margin-bottom: 10px;
+  color: #f0ece7;
+}
+
+#run-setup-card .run-setup-mode-panel .game-mode-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+#run-setup-card .run-setup-mode-panel .game-mode-option {
+  min-height: 58px;
 }
 
 #join-form #play-deploy-card button.secondary[data-mode="join"] {
@@ -7912,6 +7941,10 @@ body.battle-hub-embed #join-form.cw-shell {
 @media (max-width: 900px) {
   #join-form.cw-shell #main-menu-tabs.cw-nav-tabs {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #run-setup-card .run-setup-mode-panel .game-mode-options {
+    grid-template-columns: 1fr;
   }
 
   .campaign-browser-host {

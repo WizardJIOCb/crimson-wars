@@ -363,24 +363,24 @@
             h('span', { className: 'cw-kicker', 'data-i18n-key': 'ui.play.run_setup' }, tr('ui.play.run_setup', 'Run Setup')),
             h('strong', { 'data-i18n-key': 'ui.play.run_maps' }, tr('ui.play.run_maps', '\u041a\u0430\u0440\u0442\u044b \u0437\u0430\u0431\u0435\u0433\u0430'))
           ),
-          h('div', { id: 'run-setup-host', className: 'run-setup-host' }, 'Loading run setup...')
-        ),
-        h(CwRunCard, { id: 'game-mode-panel', className: 'rooms-browser game-mode-browser' },
-          h('div', { className: 'rooms-head' }, h('span', null, '\u0420\u0435\u0436\u0438\u043c \u0431\u043e\u044f')),
-          h('div', { className: 'game-mode-options' },
-            h(CwButton, { className: 'game-mode-option active', dataGameMode: 'normal', variant: 'tab' }, h('b', null, 'Normal'), h('span', null, '\u0422\u0435\u043a\u0443\u0449\u0438\u0439 \u0431\u0430\u043b\u0430\u043d\u0441 \u0438\u0433\u0440\u044b')),
-            h(CwButton, { className: 'game-mode-option', dataGameMode: 'hardcore', variant: 'tab' }, h('b', null, 'Hardcore'), h('span', null, 'x3 \u043c\u043e\u043d\u0441\u0442\u0440\u044b, x2 HP \u0432\u0440\u0430\u0433\u043e\u0432')),
-            h(CwButton, { className: 'game-mode-option', dataGameMode: 'pvp', variant: 'tab' }, h('b', null, 'PvP'), h('span', null, '\u0414\u043e 16 \u0438\u0433\u0440\u043e\u043a\u043e\u0432, \u043c\u0435\u043d\u044c\u0448\u0435 NPC'))
-          ),
-          h('div', { id: 'pvp-duration-wrap', className: 'field-row hidden' },
-            h('label', { htmlFor: 'pvp-duration-select' }, '\u0414\u043b\u0438\u0442\u0435\u043b\u044c\u043d\u043e\u0441\u0442\u044c \u043c\u0430\u0442\u0447\u0430'),
-            h('select', { id: 'pvp-duration-select', defaultValue: '10' },
-              h('option', { value: '3' }, '3 min'),
-              h('option', { value: '5' }, '5 min'),
-              h('option', { value: '10' }, '10 min'),
-              h('option', { value: '15' }, '15 min')
+          h(CwRunCard, { id: 'game-mode-panel', className: 'rooms-browser game-mode-browser run-setup-mode-panel' },
+            h('div', { className: 'rooms-head' }, h('span', null, '\u0420\u0435\u0436\u0438\u043c \u0431\u043e\u044f')),
+            h('div', { className: 'game-mode-options' },
+              h(CwButton, { className: 'game-mode-option active', dataGameMode: 'normal', variant: 'tab' }, h('b', null, 'Normal'), h('span', null, '\u0422\u0435\u043a\u0443\u0449\u0438\u0439 \u0431\u0430\u043b\u0430\u043d\u0441 \u0438\u0433\u0440\u044b')),
+              h(CwButton, { className: 'game-mode-option', dataGameMode: 'hardcore', variant: 'tab' }, h('b', null, 'Hardcore'), h('span', null, 'x3 \u043c\u043e\u043d\u0441\u0442\u0440\u044b, x2 HP \u0432\u0440\u0430\u0433\u043e\u0432')),
+              h(CwButton, { className: 'game-mode-option', dataGameMode: 'pvp', variant: 'tab' }, h('b', null, 'PvP'), h('span', null, '\u0414\u043e 16 \u0438\u0433\u0440\u043e\u043a\u043e\u0432, \u043c\u0435\u043d\u044c\u0448\u0435 NPC'))
+            ),
+            h('div', { id: 'pvp-duration-wrap', className: 'field-row hidden' },
+              h('label', { htmlFor: 'pvp-duration-select' }, '\u0414\u043b\u0438\u0442\u0435\u043b\u044c\u043d\u043e\u0441\u0442\u044c \u043c\u0430\u0442\u0447\u0430'),
+              h('select', { id: 'pvp-duration-select', defaultValue: '10' },
+                h('option', { value: '3' }, '3 min'),
+                h('option', { value: '5' }, '5 min'),
+                h('option', { value: '10' }, '10 min'),
+                h('option', { value: '15' }, '15 min')
+              )
             )
-          )
+          ),
+          h('div', { id: 'run-setup-host', className: 'run-setup-host' }, 'Loading run setup...')
         )
       ),
       h('div', { className: 'cw-column cw-column-side' },
