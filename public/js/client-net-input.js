@@ -2237,9 +2237,22 @@ function clearReplayUrlIntent() {
 
 function formatReplayClock(ms) {
   const totalSec = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
-  const mins = Math.floor(totalSec / 60);
+  if (typeof globalThis.cwFormatDurationSec === 'function') {
+    return globalThis.cwFormatDurationSec(totalSec, { clock: true });
+  }
+  const hours = Math.floor(totalSec / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
   const secs = totalSec % 60;
-  return `${mins}:${String(secs).padStart(2, '0')}`;
+  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+function formatRunDurationSecForUi(value) {
+  if (typeof globalThis.cwFormatDurationSec === 'function') return globalThis.cwFormatDurationSec(value);
+  const totalSec = Math.max(0, Math.floor(Number(value) || 0));
+  const hours = Math.floor(totalSec / 3600);
+  const minutes = Math.floor((totalSec % 3600) / 60);
+  const seconds = totalSec % 60;
+  return `${hours}ч ${String(minutes).padStart(2, '0')}м ${String(seconds).padStart(2, '0')}с`;
 }
 
 function formatReplayBytes(bytes) {
@@ -3974,7 +3987,7 @@ async function maybeStartReplayFromUrl() {
     }
     startReplayGameAt(replay, record, startSec);
     const replayName = record?.name || (recordId > 0 ? `Record #${recordId}` : 'Shared replay');
-    statusEl.textContent = `Replay loaded: ${replayName}${startSec > 0 ? ` from ${startSec}s` : ''}`;
+    statusEl.textContent = `Replay loaded: ${replayName}${startSec > 0 ? ` from ${formatReplayClock(startSec * 1000)}` : ''}`;
   } catch (err) {
     joinOverlay.style.display = 'grid';
     joinOverlay.classList.remove('death-mode');
@@ -4286,7 +4299,7 @@ async function copyReplayLink(recordId, options = {}) {
   const startSec = Math.max(0, Math.floor((Number(recordReplay.elapsedMs) || 0) / 1000));
   try {
     await navigator.clipboard.writeText(buildReplayShareUrl(id, startSec, replayApiPath));
-    if (recordReplayMetaEl) recordReplayMetaEl.textContent = `Replay link copied${startSec > 0 ? ` from ${startSec}s` : ''}.`;
+    if (recordReplayMetaEl) recordReplayMetaEl.textContent = `Replay link copied${startSec > 0 ? ` from ${formatReplayClock(startSec * 1000)}` : ''}.`;
     return true;
   } catch {
     if (recordReplayMetaEl) recordReplayMetaEl.textContent = 'Failed to copy replay link.';
@@ -4342,7 +4355,7 @@ function renderRunDetailsHtml(details) {
     ['Speed multiplier', `x${Math.max(0.1, Number(details.moveSpeedMul) || 1).toFixed(2)}`],
     ['Room kills at death', Math.max(0, Number(details.totalEnemyKills) || 0)],
     ['Bosses killed in room', Math.max(0, Number(details.totalBossKills) || 0)],
-    ['Survived', `${Math.max(1, Number(details.survivedSec) || 1)}s`],
+    ['Survived', formatRunDurationSecForUi(Math.max(1, Number(details.survivedSec) || 1))],
   ];
 
   const rows = list.map(([k, v]) => `<div class="rd-row"><span>${k}</span><b>${v}</b></div>`).join('');
@@ -4364,7 +4377,7 @@ function openRecordDetailsModal(record, rankLabel) {
   const playedAt = formatRecordDateTime(record?.at);
 
   recordDetailsTitleEl.textContent = `${rankLabel} ${name} | ${kills} kills | ${score} pts`;
-  const summary = `<div class="rd-summary">${playedAt} | Room ${roomCode} | ${durationSec}s</div>`;
+  const summary = `<div class="rd-summary">${playedAt} | Room ${roomCode} | ${formatRunDurationSecForUi(durationSec)}</div>`;
   recordDetailsBodyEl.innerHTML = summary + renderRunDetailsHtml(record?.runDetails || null);
   resetRecordReplayUi(record?.id);
   recordReplay.record = record || null;

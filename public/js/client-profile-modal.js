@@ -26,6 +26,15 @@
     }[ch]));
   }
 
+  function formatRunDuration(value) {
+    if (typeof globalThis.cwFormatDurationSec === 'function') return globalThis.cwFormatDurationSec(value);
+    const totalSec = Math.max(0, Math.floor(Number(value) || 0));
+    const hours = Math.floor(totalSec / 3600);
+    const minutes = Math.floor((totalSec % 3600) / 60);
+    const seconds = totalSec % 60;
+    return `${hours}ч ${String(minutes).padStart(2, '0')}м ${String(seconds).padStart(2, '0')}с`;
+  }
+
   function ensureModal() {
     if (authorProfileModalEl) return;
     const modal = document.createElement('div');
@@ -124,14 +133,14 @@
     const rows = runs.map((run, i) => {
       const kills = Math.max(0, Number(run?.kills) || 0);
       const score = Math.max(0, Number(run?.score) || 0);
-      const durationSec = Math.max(1, Number(run?.durationSec) || 1);
+      const duration = escapeHtml(formatRunDuration(Math.max(1, Number(run?.durationSec) || 1)));
       const heroXp = Math.max(0, Number(run?.runDetails?.xp) || 0);
       const roomCode = escapeHtml(String(run?.roomCode || '-'));
       const gameMode = escapeHtml(formatModalGameMode(run));
       return ''
         + '<button type="button" class="profile-run-row" data-author-run-idx="' + i + '">'
         + '<div class="profile-run-head"><span>' + escapeHtml(formatModalRunDate(run?.at)) + '</span><span>Room ' + roomCode + ' | ' + gameMode + '</span></div>'
-        + '<div class="profile-run-main"><span>' + kills + ' kills</span><span>' + score + ' pts</span><span>' + durationSec + 's</span><span class="profile-run-meta">XP ' + heroXp + '</span></div>'
+        + '<div class="profile-run-main"><span>' + kills + ' kills</span><span>' + score + ' pts</span><span>' + duration + '</span><span class="profile-run-meta">XP ' + heroXp + '</span></div>'
         + '</button>';
     }).join('');
 

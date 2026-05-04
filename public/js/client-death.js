@@ -1,4 +1,13 @@
 (function initClientDeath() {
+  function formatRunDuration(value) {
+    if (typeof globalThis.cwFormatDurationSec === 'function') return globalThis.cwFormatDurationSec(value);
+    const totalSec = Math.max(0, Math.floor(Number(value) || 0));
+    const hours = Math.floor(totalSec / 3600);
+    const minutes = Math.floor((totalSec % 3600) / 60);
+    const seconds = totalSec % 60;
+    return `${hours}ч ${String(minutes).padStart(2, '0')}м ${String(seconds).padStart(2, '0')}с`;
+  }
+
   function clearDeathRewardsUi() {
     joinOverlay.classList.remove('death-rewards-visible');
     if (deathRewardsBodyEl) deathRewardsBodyEl.innerHTML = escapeNewsHtml(tr('ui.death.collecting_rewards'));
@@ -97,7 +106,7 @@
       [trWithFallback('ui.run_rewards.deaths', 'Deaths'), deathsValue],
       [trWithFallback('ui.run_rewards.enemy_kills', 'Enemy kills'), Math.max(0, Number(run.enemyKills) || 0)],
       [trWithFallback('ui.run_rewards.boss_kills', 'Boss kills'), Math.max(0, Number(run.bossKills) || 0)],
-      [trWithFallback('ui.run_rewards.survival', 'Survival'), `${Math.max(1, Number(run.survivalSec) || 1)}s`],
+      [trWithFallback('ui.run_rewards.survival', 'Survival'), formatRunDuration(Math.max(1, Number(run.survivalSec) || 1))],
       [trWithFallback('ui.run_rewards.hero_xp', 'Hero XP'), `Lv${Math.max(1, Number(run.heroLevel) || 1)} | ${Math.max(0, Number(run.heroXp) || 0)}/${Math.max(1, Number(run.heroXpToNext) || 1)}`],
       [trWithFallback('ui.run_rewards.account_xp', 'Account XP'), accountXpLabel],
       [trWithFallback('ui.run_rewards.shards', 'Shards'), shardsLabel],
@@ -249,7 +258,7 @@
       deathResultEl.textContent = tr('ui.death.last_result');
       return;
     }
-    deathResultEl.textContent = `Last result: ${result.kills} kills | ${result.score} pts | ${result.survivalSec}s | room ${result.roomCode}`;
+    deathResultEl.textContent = `Last result: ${result.kills} kills | ${result.score} pts | ${formatRunDuration(result.survivalSec)} | room ${result.roomCode}`;
   }
 
   function setDeathCinematicActive(active) {

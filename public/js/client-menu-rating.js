@@ -20,6 +20,15 @@
     }[ch]));
   }
 
+  function formatRunDuration(value) {
+    if (typeof globalThis.cwFormatDurationSec === 'function') return globalThis.cwFormatDurationSec(value);
+    const totalSec = Math.max(0, Math.floor(Number(value) || 0));
+    const hours = Math.floor(totalSec / 3600);
+    const minutes = Math.floor((totalSec % 3600) / 60);
+    const seconds = totalSec % 60;
+    return `${hours}ч ${String(minutes).padStart(2, '0')}м ${String(seconds).padStart(2, '0')}с`;
+  }
+
   const ratingUi = {
     categories: [],
     currentCategory: 'best_kills_run',
@@ -41,7 +50,7 @@
 
   function formatRatingValue(item, categoryKey) {
     const value = Math.max(0, Number(item?.value) || 0);
-    if (categoryKey === 'best_time_run') return value + 's';
+    if (categoryKey === 'best_time_run') return formatRunDuration(value);
     if (categoryKey === 'best_dps_run') return value.toFixed(2) + ' DPS';
     if (categoryKey === 'profile_level') return 'Lv' + value + ' (XP ' + Math.max(0, Number(item?.accountXp) || 0) + ')';
     if (categoryKey === 'heroes_unlocked') return value + ' ' + trWithFallback('ui.rating.unit.heroes_short', 'heroes');

@@ -40,6 +40,15 @@
     }[ch]));
   }
 
+  function formatRunDuration(value) {
+    if (typeof globalThis.cwFormatDurationSec === 'function') return globalThis.cwFormatDurationSec(value);
+    const totalSec = Math.max(0, Math.floor(Number(value) || 0));
+    const hours = Math.floor(totalSec / 3600);
+    const minutes = Math.floor((totalSec % 3600) / 60);
+    const seconds = totalSec % 60;
+    return `${hours}ч ${String(minutes).padStart(2, '0')}м ${String(seconds).padStart(2, '0')}с`;
+  }
+
   function getGameState() {
     try {
       return game || {};
@@ -173,7 +182,7 @@
       main.className = 'profile-run-main';
       main.innerHTML = '<span>' + Math.max(0, Number(run?.kills) || 0) + ' kills</span>'
         + '<span>' + Math.max(0, Number(run?.score) || 0) + ' pts</span>'
-        + '<span>' + Math.max(1, Number(run?.durationSec) || 1) + 's</span>'
+        + '<span>' + escapeHtml(formatRunDuration(Math.max(1, Number(run?.durationSec) || 1))) + '</span>'
         + '<span class="profile-run-meta">XP ' + heroXp + '</span>';
 
       row.appendChild(headRow);

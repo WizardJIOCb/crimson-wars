@@ -22,6 +22,15 @@
     return fallback;
   }
 
+  function formatRunDuration(value) {
+    if (typeof globalThis.cwFormatDurationSec === 'function') return globalThis.cwFormatDurationSec(value);
+    const totalSec = Math.max(0, Math.floor(Number(value) || 0));
+    const hours = Math.floor(totalSec / 3600);
+    const minutes = Math.floor((totalSec % 3600) / 60);
+    const seconds = totalSec % 60;
+    return `${hours}ч ${String(minutes).padStart(2, '0')}м ${String(seconds).padStart(2, '0')}с`;
+  }
+
   function getSelection() {
     if (typeof window.cwGetRunSelection === 'function') return window.cwGetRunSelection();
     return {
@@ -41,6 +50,12 @@
 
   function getRunMapImagePath(mapId) {
     return RUN_MAP_IMAGES[String(mapId || '').trim()] || '';
+  }
+
+  function getCampaignMapImagePath(campaign) {
+    const levels = Array.isArray(campaign?.levels) ? campaign.levels : [];
+    const level = levels.find((entry) => getRunMapImagePath(entry?.mapId)) || levels[0] || null;
+    return getRunMapImagePath(level?.mapId || campaign?.mapId || '');
   }
 
   function getCampaigns() {
@@ -171,6 +186,7 @@
       const total = Math.max(1, (Array.isArray(campaign?.levels) ? campaign.levels.length : 0));
       const campaignProgress = getCampaignProgress(campaign?.id);
       const cover = campaign?.cover && typeof campaign.cover === 'object' ? campaign.cover : {};
+      const imagePath = getCampaignMapImagePath(campaign);
       const style = [
         `--cover-from:${cover.from || '#1a2432'}`,
         `--cover-to:${cover.to || '#0b1017'}`,
@@ -179,7 +195,7 @@
       ].join(';');
       return ''
         + `<button type="button" class="campaign-card${selected ? ' is-selected' : ''}" data-campaign-id="${escapeHtml(campaign.id)}">`
-        +   `<span class="campaign-card-cover" style="${style}"><b>${escapeHtml(cover.artLabel || campaign.shortName || campaign.name || campaign.id)}</b></span>`
+        +   `<span class="campaign-card-cover${imagePath ? ' has-image' : ''}" style="${style}">${imagePath ? `<img src="${escapeHtml(imagePath)}" alt="" loading="lazy" />` : ''}<b>${escapeHtml(cover.artLabel || campaign.shortName || campaign.name || campaign.id)}</b></span>`
         +   `<span class="campaign-card-head">`
         +     `<strong>${escapeHtml(campaign.shortName || campaign.name || campaign.id)}</strong>`
         +     `<small>${escapeHtml(campaign.tagline || '')}</small>`
@@ -217,7 +233,7 @@
           +   `<div class="campaign-detail-main">`
           +     `<div class="campaign-detail-title">${escapeHtml(selectedCampaign.name || selectedCampaign.id)}</div>`
           +     `<div class="campaign-detail-copy">${escapeHtml(selectedCampaign.description || '')}</div>`
-          +     `<div class="campaign-detail-meta">Пройдено ${getCompletedLevelsCount(selectedCampaign)}/${Math.max(1, selectedCampaign.levels.length)} | Побед ${Math.max(0, Number(selectedCampaignProgress?.victories) || 0)} | Лучшее выживание ${Math.max(0, Number(selectedCampaignProgress?.bestSurvivalSec) || 0)}с</div>`
+          +     `<div class="campaign-detail-meta">Пройдено ${getCompletedLevelsCount(selectedCampaign)}/${Math.max(1, selectedCampaign.levels.length)} | Побед ${Math.max(0, Number(selectedCampaignProgress?.victories) || 0)} | Лучшее выживание ${escapeHtml(formatRunDuration(Math.max(0, Number(selectedCampaignProgress?.bestSurvivalSec) || 0)))}</div>`
           +   `</div>`
           +   `<div class="campaign-level-list">${levelCardsHtml}</div>`
           + `</div>`

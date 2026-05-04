@@ -1,6 +1,20 @@
 ﻿const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
+function cwFormatDurationSec(value, options = {}) {
+  const totalSec = Math.max(0, Math.floor(Number(value) || 0));
+  const hours = Math.floor(totalSec / 3600);
+  const minutes = Math.floor((totalSec % 3600) / 60);
+  const seconds = totalSec % 60;
+  const hh = String(hours).padStart(2, '0');
+  const mm = String(minutes).padStart(2, '0');
+  const ss = String(seconds).padStart(2, '0');
+  if (options && options.clock) return `${hh}:${mm}:${ss}`;
+  return `${hours}ч ${mm}м ${ss}с`;
+}
+
+globalThis.cwFormatDurationSec = cwFormatDurationSec;
+
 const statusEl = document.getElementById('status');
 const instanceMetaEl = document.getElementById('instance-meta');
 const roomMetaEl = document.getElementById('room-meta');
