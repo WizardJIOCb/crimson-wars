@@ -57,6 +57,18 @@
     }
     return msg || fallback;
   }
+  async function beginBattleHubHeroSwap(heroId) {
+    if (typeof globalThis.beginBattleHubPlayerSwapFx !== 'function') return false;
+    try {
+      return Boolean(await globalThis.beginBattleHubPlayerSwapFx(heroId));
+    } catch {
+      return false;
+    }
+  }
+  function endBattleHubHeroSwap(started) {
+    if (!started || typeof globalThis.endBattleHubPlayerSwapFx !== 'function') return;
+    globalThis.endBattleHubPlayerSwapFx();
+  }
   async function selectHeroForAccount(heroId) {
     if (!game.playerAuth?.player) return;
     const data = await apiJson('/api/player/progression/select-hero', {
@@ -313,12 +325,15 @@
       try {
         await unlockHeroForAccount(hero.id);
         setHeroActionFeedback(trWithFallback('ui.hero.unlocked_msg', `${hero.name} unlocked.`, { hero: trHeroName(hero.id, hero.name) }), 'ok');
+        const swapStarted = await beginBattleHubHeroSwap(hero.id);
         selectedPlayerClass = hero.id;
         localStorage.setItem(PLAYER_CLASS_STORAGE_KEY, selectedPlayerClass);
         await selectHeroForAccount(hero.id);
         renderCharacterPicker();
+        endBattleHubHeroSwap(swapStarted);
       } catch (err) {
         setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to unlock hero.'), 'err');
+        globalThis.cancelBattleHubPlayerSwapFx?.();
       }
     });
   }
@@ -1001,6 +1016,8 @@
           renderCharacterPicker();
           return;
         }
+        const changingActiveHero = hero.id !== selectedPlayerClass;
+        const swapStarted = changingActiveHero ? await beginBattleHubHeroSwap(hero.id) : false;
         selectedPlayerClass = hero.id;
         localStorage.setItem(PLAYER_CLASS_STORAGE_KEY, selectedPlayerClass);
         if (game.playerAuth?.player) {
@@ -1012,6 +1029,7 @@
           }
         }
         renderCharacterPicker();
+        endBattleHubHeroSwap(swapStarted);
       });
       const wrap = document.createElement('div');
       wrap.className = 'hero-v2-item';

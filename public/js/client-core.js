@@ -1361,6 +1361,65 @@ function getBattleHubHeroAccent(heroId) {
   return PLAYER_VARIANTS.find((variant) => variant.id === heroId)?.accent || '#39c1d9';
 }
 
+const BATTLE_HUB_HERO_SWAP_COVER_MS = 280;
+const BATTLE_HUB_HERO_SWAP_REVEAL_MS = 720;
+let battleHubHeroSwapTimer = 0;
+let battleHubHeroSwapToken = 0;
+let battleHubHeroSkillModalEl = null;
+let battleHubHeroSkillModalState = null;
+let battleHubHeroSkillFx = null;
+
+function shouldReduceBattleHubFx() {
+  return Boolean(globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
+}
+
+function waitBattleHubFx(ms) {
+  return new Promise((resolve) => {
+    globalThis.setTimeout(resolve, Math.max(0, Number(ms) || 0));
+  });
+}
+
+function clearBattleHubHeroSwapTimer() {
+  if (!battleHubHeroSwapTimer) return;
+  globalThis.clearTimeout(battleHubHeroSwapTimer);
+  battleHubHeroSwapTimer = 0;
+}
+
+async function beginBattleHubPlayerSwapFx(nextHeroId = '') {
+  if (!battleHubPlayerCardEl || shouldReduceBattleHubFx()) return false;
+  const token = ++battleHubHeroSwapToken;
+  clearBattleHubHeroSwapTimer();
+  battleHubPlayerCardEl.dataset.nextHero = String(nextHeroId || '').trim().toLowerCase();
+  battleHubPlayerCardEl.classList.remove('is-hero-swap-covering', 'is-hero-swap-revealing');
+  void battleHubPlayerCardEl.offsetWidth;
+  battleHubPlayerCardEl.classList.add('is-hero-swap-covering');
+  await waitBattleHubFx(BATTLE_HUB_HERO_SWAP_COVER_MS);
+  return token === battleHubHeroSwapToken;
+}
+
+function endBattleHubPlayerSwapFx() {
+  if (!battleHubPlayerCardEl || shouldReduceBattleHubFx()) return;
+  const token = battleHubHeroSwapToken;
+  clearBattleHubHeroSwapTimer();
+  battleHubPlayerCardEl.classList.remove('is-hero-swap-covering');
+  void battleHubPlayerCardEl.offsetWidth;
+  battleHubPlayerCardEl.classList.add('is-hero-swap-revealing');
+  battleHubHeroSwapTimer = globalThis.setTimeout(() => {
+    if (token !== battleHubHeroSwapToken) return;
+    battleHubPlayerCardEl.classList.remove('is-hero-swap-revealing');
+    delete battleHubPlayerCardEl.dataset.nextHero;
+    battleHubHeroSwapTimer = 0;
+  }, BATTLE_HUB_HERO_SWAP_REVEAL_MS);
+}
+
+function cancelBattleHubPlayerSwapFx() {
+  if (!battleHubPlayerCardEl) return;
+  ++battleHubHeroSwapToken;
+  clearBattleHubHeroSwapTimer();
+  battleHubPlayerCardEl.classList.remove('is-hero-swap-covering', 'is-hero-swap-revealing');
+  delete battleHubPlayerCardEl.dataset.nextHero;
+}
+
 function getBattleHubPlayerName() {
   return String(
     game.playerAuth?.player?.nickname
@@ -1439,14 +1498,288 @@ function getBattleHubHeroSkillType(skill) {
   return 'Passive';
 }
 
+function getBattleHubHeroSkillTypeLabel(skill) {
+  if (skill?.kind === 'active') return trCore('ui.hero.skill_type_active', 'Active');
+  if (skill?.globalAura) return trCore('ui.hero.skill_type_aura', 'Aura');
+  return trCore('ui.hero.skill_type_passive', 'Passive');
+}
+
+const BATTLE_HUB_SKILL_STAT_LABEL_KEYS = {
+  damage: 'ui.skill_stat.damage',
+  radius: 'ui.skill_stat.radius',
+  targets: 'ui.skill_stat.targets',
+  knockback: 'ui.skill_stat.knockback',
+  stun: 'ui.skill_stat.stun',
+  cooldown: 'ui.skill_stat.cooldown',
+  'missile speed': 'ui.skill_stat.missile_speed',
+  'explosion radius': 'ui.skill_stat.explosion_radius',
+  'fire rate': 'ui.skill_stat.fire_rate',
+  'reload speed': 'ui.skill_stat.reload_speed',
+  'move speed': 'ui.skill_stat.move_speed',
+  'max hp': 'ui.skill_stat.max_hp',
+  'pickup radius': 'ui.skill_stat.pickup_radius',
+  'hp regen': 'ui.skill_stat.hp_regen',
+  'jump charges': 'ui.skill_stat.jump_charges',
+  'bullet pierce': 'ui.skill_stat.bullet_pierce',
+  'bullet damage': 'ui.skill_stat.bullet_damage',
+  'other heroes damage': 'ui.skill_stat.other_heroes_damage',
+  'other heroes fire rate': 'ui.skill_stat.other_heroes_fire_rate',
+  'other heroes speed': 'ui.skill_stat.other_heroes_speed',
+  'other heroes hp': 'ui.skill_stat.other_heroes_hp',
+  'other heroes pickup': 'ui.skill_stat.other_heroes_pickup',
+  'other heroes regen': 'ui.skill_stat.other_heroes_regen',
+};
+
+function localizeBattleHubSkillStatLine(line) {
+  const raw = String(line || '').trim();
+  const match = raw.match(/^([^:]+):\s*(.*)$/);
+  if (!match) return raw;
+  const label = match[1].trim();
+  const value = match[2].trim().replace(/\bready\b/gi, trCore('ui.skill.ready', 'ready'));
+  const key = BATTLE_HUB_SKILL_STAT_LABEL_KEYS[label.toLowerCase()];
+  return `${key ? trCore(key, label) : label}: ${value}`;
+}
+
+function formatBattleHubShardAmount(count) {
+  const value = Math.max(0, Math.floor(Number(count) || 0));
+  const lang = typeof window.cwI18nGetLanguage === 'function'
+    ? String(window.cwI18nGetLanguage() || '').toLowerCase()
+    : '';
+  if (lang === 'ru') {
+    const mod10 = value % 10;
+    const mod100 = value % 100;
+    const key = mod10 === 1 && mod100 !== 11
+      ? 'ui.skill_modal.shard_one'
+      : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
+        ? 'ui.skill_modal.shard_few'
+        : 'ui.skill_modal.shard_many';
+    return `${value} ${trCore(key, 'осколков')}`;
+  }
+  const shardKey = value === 1 ? 'ui.skill_modal.shard_one' : 'ui.skill_modal.shard_other';
+  return `${value} ${trCore(shardKey, value === 1 ? 'shard' : 'shards')}`;
+}
+
 function getBattleHubHeroSkillStats(skill, level) {
   const lvl = Math.max(1, Number(level) || 1);
   const displaySkill = { ...skill, level: lvl, cooldownMs: 0 };
   const lines = buildSkillCurrentStatLines(displaySkill, skill)
     .filter((line) => !String(line || '').startsWith('Current CD'));
-  if (lines.length > 0) return lines.slice(0, 2);
+  if (lines.length > 0) return lines.slice(0, 2).map(localizeBattleHubSkillStatLine);
   const desc = String(skill?.desc || '').trim();
-  return desc ? [desc] : [getBattleHubHeroSkillType(skill)];
+  return desc ? [desc] : [getBattleHubHeroSkillTypeLabel(skill)];
+}
+
+function getBattleHubHeroSkillCost(skill, level) {
+  const currentLevel = Math.max(0, Number(level) || 0);
+  const maxLevel = Math.max(1, Number(skill?.maxLevel) || 1);
+  if (currentLevel >= maxLevel) return { action: 'maxed', cost: 0, nextLevel: maxLevel, maxLevel };
+  if (currentLevel <= 0) {
+    return {
+      action: 'unlock',
+      cost: Math.max(1, Number(skill?.unlockCostShards) || 1),
+      nextLevel: 1,
+      maxLevel,
+    };
+  }
+  return {
+    action: 'upgrade',
+    cost: Math.max(1, (Number(skill?.upgradeCostShardsBase) || 1) + (Number(skill?.upgradeCostShardsStep) || 0) * Math.max(0, currentLevel - 1)),
+    nextLevel: currentLevel + 1,
+    maxLevel,
+  };
+}
+
+function getBattleHubSkillActionApi(action) {
+  if (action === 'unlock') {
+    return globalThis.CWCharacters?.unlockHeroSkillForAccount || globalThis.unlockHeroSkillForAccount || null;
+  }
+  if (action === 'upgrade') {
+    return globalThis.CWCharacters?.upgradeHeroSkillForAccount || globalThis.upgradeHeroSkillForAccount || null;
+  }
+  return null;
+}
+
+function buildBattleHubSkillStatRows(skill, level) {
+  const rows = buildSkillCurrentStatLines({ ...skill, level: Math.max(1, Number(level) || 1), cooldownMs: 0 }, skill)
+    .filter((line) => !String(line || '').startsWith('Current CD'));
+  if (rows.length > 0) return rows.map(localizeBattleHubSkillStatLine);
+  const desc = String(skill?.desc || '').trim();
+  return desc ? [desc] : [getBattleHubHeroSkillTypeLabel(skill)];
+}
+
+function ensureBattleHubHeroSkillModalElement() {
+  if (battleHubHeroSkillModalEl) return battleHubHeroSkillModalEl;
+  const el = document.createElement('div');
+  el.className = 'battle-hub-skill-modal hidden';
+  el.setAttribute('role', 'dialog');
+  el.setAttribute('aria-modal', 'true');
+  el.innerHTML = '<div class="battle-hub-skill-modal-backdrop" data-skill-modal-close="1"></div>'
+    + '<div class="battle-hub-skill-modal-card" role="document">'
+    + `<button class="battle-hub-skill-modal-close" type="button" data-skill-modal-close="1" aria-label="${escapeHtml(trCore('ui.skill_modal.close_aria', 'Close skill details'))}">x</button>`
+    + '<div class="battle-hub-skill-modal-content"></div>'
+    + '</div>';
+  el.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (target.closest('[data-skill-modal-close]')) closeBattleHubHeroSkillModal();
+  });
+  document.body.appendChild(el);
+  battleHubHeroSkillModalEl = el;
+  return el;
+}
+
+function closeBattleHubHeroSkillModal(options = {}) {
+  if (!battleHubHeroSkillModalEl) return;
+  const purchased = Boolean(options.purchased);
+  battleHubHeroSkillModalEl.classList.toggle('is-purchased', purchased);
+  battleHubHeroSkillModalEl.classList.add('is-closing');
+  globalThis.setTimeout(() => {
+    if (!battleHubHeroSkillModalEl) return;
+    battleHubHeroSkillModalEl.classList.add('hidden');
+    battleHubHeroSkillModalEl.classList.remove('is-open', 'is-closing', 'is-purchased', 'is-busy');
+    battleHubHeroSkillModalState = null;
+  }, purchased ? 520 : 180);
+}
+
+function getBattleHubSkillModalData(heroId, skillId) {
+  const progression = game.playerAuth?.progression || null;
+  const catalog = game.playerAuth?.progressionCatalog || null;
+  const hero = getBattleHubHeroCatalogEntry(heroId, catalog);
+  const skills = Array.isArray(hero?.uniqueSkills) ? hero.uniqueSkills : [];
+  const skill = skills.find((item) => String(item?.id || '').trim() === skillId) || null;
+  if (!skill) return null;
+  const level = getBattleHubHeroSkillLevel(progression, heroId, skillId);
+  return { hero, skill, level, progression, loggedIn: Boolean(game.playerAuth?.player) };
+}
+
+function renderBattleHubHeroSkillModal() {
+  if (!battleHubHeroSkillModalState) return;
+  const data = getBattleHubSkillModalData(battleHubHeroSkillModalState.heroId, battleHubHeroSkillModalState.skillId);
+  const modal = ensureBattleHubHeroSkillModalElement();
+  const content = modal.querySelector('.battle-hub-skill-modal-content');
+  if (!(content instanceof HTMLElement) || !data) {
+    closeBattleHubHeroSkillModal();
+    return;
+  }
+
+  const { hero, skill, level, progression, loggedIn } = data;
+  const skillId = String(skill?.id || '').trim();
+  const skillName = trSkillNameCore(skillId, skill?.name || skillId || 'Skill');
+  const skillTypeLabel = getBattleHubHeroSkillTypeLabel(skill);
+  const rarityRaw = String(skill?.rarity || 'common').trim().toLowerCase();
+  const rarity = ['common', 'uncommon', 'rare', 'epic', 'legendary'].includes(rarityRaw) ? rarityRaw : 'common';
+  const rarityLabel = trCore(`ui.inventory.rarity.${rarity}`, rarity);
+  const color = rarityColor(rarity);
+  modal.style.setProperty('--avatar-accent', getBattleHubHeroAccent(String(hero?.id || '').trim().toLowerCase()));
+  modal.style.setProperty('--skill-color', color);
+  const closeBtn = modal.querySelector('.battle-hub-skill-modal-close');
+  closeBtn?.setAttribute?.('aria-label', trCore('ui.skill_modal.close_aria', 'Close skill details'));
+  const icon = skillBadgeLabel(skill);
+  const maxLevel = Math.max(1, Number(skill?.maxLevel) || 1);
+  const currentLevel = Math.max(0, Number(level) || 0);
+  const cost = getBattleHubHeroSkillCost(skill, currentLevel);
+  const shards = Math.max(0, Number(progression?.shards) || 0);
+  const canPay = loggedIn && cost.action !== 'maxed' && shards >= cost.cost && Boolean(getBattleHubSkillActionApi(cost.action));
+  const currentRows = buildBattleHubSkillStatRows(skill, Math.max(1, currentLevel || 1));
+  const nextRows = cost.action === 'upgrade' || cost.action === 'unlock'
+    ? buildBattleHubSkillStatRows(skill, Math.max(1, cost.nextLevel))
+    : [];
+  const descFallback = String(skill?.desc || '').trim() || skillTypeLabel;
+  const desc = trCore(`skill.${skillId.toLowerCase()}.desc`, descFallback);
+  const currentHtml = currentRows.map((line) => `<span>${escapeHtml(line)}</span>`).join('');
+  const nextHtml = nextRows.map((line) => `<span>${escapeHtml(line)}</span>`).join('');
+  const actionLabel = cost.action === 'unlock'
+    ? trCore('ui.skill_modal.unlock_for', 'Unlock for {cost}', { cost: formatBattleHubShardAmount(cost.cost) })
+    : cost.action === 'upgrade'
+      ? trCore('ui.skill_modal.upgrade_for', 'Upgrade for {cost}', { cost: formatBattleHubShardAmount(cost.cost) })
+      : trCore('ui.skill_modal.max_level', 'Max level reached');
+  const statusLabel = !loggedIn
+    ? trCore('ui.profile.login_required', 'Login required.')
+    : cost.action === 'maxed'
+      ? trCore('ui.skill_modal.maxed', 'Maxed')
+      : shards >= cost.cost
+        ? trCore('ui.skill_modal.ready', 'Ready: {shards}', { shards: formatBattleHubShardAmount(shards) })
+        : trCore('ui.skill_modal.need_more', 'Need {shards} more', { shards: formatBattleHubShardAmount(Math.max(0, cost.cost - shards)) });
+  const levelText = currentLevel > 0
+    ? `Lv ${currentLevel}/${maxLevel}`
+    : `${trCore('ui.hero.locked', 'Locked')} / ${maxLevel}`;
+  const nextTitle = currentLevel > 0
+    ? trCore('ui.skill_modal.next_level', 'Next Lv {level}', { level: cost.nextLevel })
+    : trCore('ui.skill_modal.unlock_preview', 'Unlock preview');
+  const heroName = trHeroNameCore(hero?.id, hero?.name || hero?.id || 'Hero');
+
+  content.innerHTML = '<div class="battle-hub-skill-modal-hero">'
+    + `<div class="battle-hub-skill-modal-art rarity-${rarity}" style="--skill-color:${color}"><span>${escapeHtml(icon)}</span></div>`
+    + '<div class="battle-hub-skill-modal-head">'
+    + `<span class="battle-hub-skill-modal-kicker">${escapeHtml(skillTypeLabel)} | ${escapeHtml(rarityLabel)}</span>`
+    + `<strong>${escapeHtml(skillName)}</strong>`
+    + `<small>${escapeHtml(heroName)} | ${escapeHtml(levelText)}</small>`
+    + '</div>'
+    + '</div>'
+    + `<p class="battle-hub-skill-modal-desc">${escapeHtml(desc)}</p>`
+    + '<div class="battle-hub-skill-modal-stats">'
+    + `<section><b>${escapeHtml(trCore('ui.skill_modal.current', 'Current'))}</b><div>${currentHtml}</div></section>`
+    + (nextHtml ? `<section><b>${escapeHtml(nextTitle)}</b><div>${nextHtml}</div></section>` : '')
+    + '</div>'
+    + '<div class="battle-hub-skill-modal-economy">'
+    + `<span><b>${escapeHtml(trCore('ui.skill_modal.cost', 'Cost'))}</b><strong>${escapeHtml(cost.action === 'maxed' ? trCore('ui.skill_modal.done', 'Done') : formatBattleHubShardAmount(cost.cost))}</strong></span>`
+    + `<span class="${shards > 0 ? 'has-value' : ''}"><b>${escapeHtml(trCore('ui.skill_modal.your_shards', 'Your shards'))}</b><strong>${shards}</strong></span>`
+    + `<span><b>${escapeHtml(trCore('ui.skill_modal.after', 'After'))}</b><strong>${cost.action === 'maxed' ? shards : Math.max(0, shards - cost.cost)}</strong></span>`
+    + '</div>'
+    + `<div class="battle-hub-skill-modal-status ${canPay ? 'ok' : 'warn'}">${escapeHtml(statusLabel)}</div>`
+    + `<button class="battle-hub-skill-modal-action" type="button" data-skill-modal-action="${escapeHtml(cost.action)}"${canPay ? '' : ' disabled'}>${escapeHtml(actionLabel)}</button>`;
+
+  const actionBtn = content.querySelector('.battle-hub-skill-modal-action');
+  actionBtn?.addEventListener('click', () => {
+    void purchaseBattleHubHeroSkill();
+  }, { once: true });
+}
+
+function openBattleHubHeroSkillModal(heroId, skillId) {
+  const nextHeroId = String(heroId || '').trim().toLowerCase();
+  const nextSkillId = String(skillId || '').trim();
+  if (!nextHeroId || !nextSkillId) return;
+  battleHubHeroSkillModalState = { heroId: nextHeroId, skillId: nextSkillId };
+  const modal = ensureBattleHubHeroSkillModalElement();
+  renderBattleHubHeroSkillModal();
+  modal.classList.remove('hidden', 'is-closing', 'is-purchased', 'is-busy');
+  void modal.offsetWidth;
+  modal.classList.add('is-open');
+}
+
+async function purchaseBattleHubHeroSkill() {
+  if (!battleHubHeroSkillModalState || !battleHubHeroSkillModalEl) return;
+  const data = getBattleHubSkillModalData(battleHubHeroSkillModalState.heroId, battleHubHeroSkillModalState.skillId);
+  if (!data) return;
+  const cost = getBattleHubHeroSkillCost(data.skill, data.level);
+  const actionApi = getBattleHubSkillActionApi(cost.action);
+  if (!actionApi || cost.action === 'maxed') return;
+  battleHubHeroSkillModalEl.classList.add('is-busy');
+  try {
+    await actionApi(data.hero.id, data.skill.id);
+    battleHubHeroSkillFx = {
+      heroId: String(data.hero.id || '').trim().toLowerCase(),
+      skillId: String(data.skill.id || '').trim(),
+      at: performance.now(),
+    };
+    renderBattleHubPlayerBadge();
+    globalThis.CWCharacters?.render?.();
+    globalThis.setTimeout(() => {
+      const target = Array.from(battleHubHeroSkillsListEl?.querySelectorAll?.('.battle-hub-hero-skill') || [])
+        .find((node) => node instanceof HTMLElement && String(node.dataset.battleHubSkillId || '') === String(data.skill.id || ''));
+      target?.classList?.remove?.('is-skill-flash');
+    }, 1400);
+    closeBattleHubHeroSkillModal({ purchased: true });
+  } catch (err) {
+    const msg = String(err?.message || trCore('ui.skill_modal.purchase_failed', 'Purchase failed.')).trim();
+    battleHubHeroSkillModalEl.classList.remove('is-busy');
+    renderBattleHubHeroSkillModal();
+    const status = battleHubHeroSkillModalEl.querySelector('.battle-hub-skill-modal-status');
+    if (status instanceof HTMLElement) {
+      status.textContent = msg;
+      status.className = 'battle-hub-skill-modal-status warn';
+    }
+  }
 }
 
 function renderBattleHubHeroSkills(heroId, progression = null, catalog = null, loggedIn = false) {
@@ -1458,12 +1791,12 @@ function renderBattleHubHeroSkills(heroId, progression = null, catalog = null, l
   battleHubHeroSkillsEl.classList.toggle('is-empty', skills.length === 0);
   if (battleHubHeroSkillsCountEl) {
     battleHubHeroSkillsCountEl.textContent = skills.length > 0
-      ? `${unlockedCount}/${skills.length} unlocked`
-      : 'No catalog';
+      ? `${unlockedCount}/${skills.length} ${trCore('ui.hero.unlocked', 'Unlocked').toLowerCase()}`
+      : trCore('ui.hero.no_unique_skills', 'No unique skills.');
   }
 
   if (skills.length === 0) {
-    battleHubHeroSkillsListEl.innerHTML = `<div class="battle-hub-hero-skill-placeholder">${loggedIn ? 'Hero skills unavailable.' : 'Login to load hero skills.'}</div>`;
+    battleHubHeroSkillsListEl.innerHTML = `<div class="battle-hub-hero-skill-placeholder">${loggedIn ? trCore('ui.hero.no_unique_skills', 'No unique skills.') : trCore('ui.auth.login_required_unlock', 'Login to unlock/progress')}</div>`;
     return;
   }
 
@@ -1476,24 +1809,45 @@ function renderBattleHubHeroSkills(heroId, progression = null, catalog = null, l
     const rarity = ['common', 'uncommon', 'rare', 'epic', 'legendary'].includes(rarityRaw) ? rarityRaw : 'common';
     const color = rarityColor(rarity);
     const skillName = trSkillNameCore(skillId, skill?.name || skillId || 'Skill');
-    const skillType = getBattleHubHeroSkillType(skill);
+    const skillType = getBattleHubHeroSkillTypeLabel(skill);
     const icon = skillBadgeLabel(skill);
     const levelLabel = unlocked
       ? `Lv ${level}/${maxLevel}`
-      : `Locked ${Math.max(1, Number(skill?.unlockCostShards) || 1)} shards`;
+      : `${trCore('ui.hero.locked', 'Locked')} ${formatBattleHubShardAmount(Math.max(1, Number(skill?.unlockCostShards) || 1))}`;
     const statLines = getBattleHubHeroSkillStats(skill, level);
     const statHtml = statLines.map((line) => `<span>${escapeHtml(line)}</span>`).join('');
     const title = `${skillName} | ${skillType} | ${levelLabel} | ${statLines.join(' | ')}`;
-    return `<article class="battle-hub-hero-skill ${unlocked ? 'is-unlocked' : 'is-locked'} rarity-${rarity}" style="--skill-color:${color}" title="${escapeHtml(title)}">`
+    const flash = battleHubHeroSkillFx
+      && String(battleHubHeroSkillFx.heroId || '') === String(heroId || '').trim().toLowerCase()
+      && String(battleHubHeroSkillFx.skillId || '') === skillId
+      && performance.now() - Number(battleHubHeroSkillFx.at || 0) < 1600;
+    const cost = getBattleHubHeroSkillCost(skill, level);
+    const shards = Math.max(0, Number(progression?.shards) || 0);
+    const canAfford = loggedIn && cost.action !== 'maxed' && shards >= cost.cost;
+    return `<button type="button" class="battle-hub-hero-skill ${unlocked ? 'is-unlocked' : 'is-locked'} ${canAfford ? 'can-afford' : ''} ${flash ? 'is-skill-flash' : ''} rarity-${rarity}" data-battle-hub-hero-id="${escapeHtml(heroId)}" data-battle-hub-skill-id="${escapeHtml(skillId)}" style="--skill-color:${color}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">`
       + `<span class="battle-hub-hero-skill-icon">${escapeHtml(icon)}</span>`
       + '<span class="battle-hub-hero-skill-copy">'
       + `<span class="battle-hub-hero-skill-name">${escapeHtml(skillName)}</span>`
       + `<span class="battle-hub-hero-skill-meta"><b>${escapeHtml(skillType)}</b><strong>${escapeHtml(levelLabel)}</strong></span>`
       + `<span class="battle-hub-hero-skill-stats">${statHtml}</span>`
       + '</span>'
-      + '</article>';
+      + '</button>';
   }).join('');
 }
+
+battleHubHeroSkillsListEl?.addEventListener('click', (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  const skillBtn = target.closest('.battle-hub-hero-skill');
+  if (!(skillBtn instanceof HTMLElement)) return;
+  openBattleHubHeroSkillModal(skillBtn.dataset.battleHubHeroId || '', skillBtn.dataset.battleHubSkillId || '');
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  if (!battleHubHeroSkillModalEl || battleHubHeroSkillModalEl.classList.contains('hidden')) return;
+  closeBattleHubHeroSkillModal();
+});
 
 function getBattleHubRatingSummary(progression = null, skillProgress = null, storyProgress = null) {
   const playerId = Math.max(0, Number(game.playerAuth?.player?.id) || 0);
@@ -2105,6 +2459,9 @@ window.cwSetSelectedMapId = setSelectedMapId;
 window.cwSetSelectedCampaign = setSelectedCampaign;
 window.cwEnsureSelectedRunSetupValid = ensureSelectedRunSetupValid;
 window.renderBattleHubPlayerBadge = renderBattleHubPlayerBadge;
+window.beginBattleHubPlayerSwapFx = beginBattleHubPlayerSwapFx;
+window.endBattleHubPlayerSwapFx = endBattleHubPlayerSwapFx;
+window.cancelBattleHubPlayerSwapFx = cancelBattleHubPlayerSwapFx;
 window.renderDeploySelectionSummary = renderDeploySelectionSummary;
 window.cwGetMapCatalog = getMapCatalog;
 window.cwGetCampaignCatalog = getCampaignCatalog;
@@ -2457,12 +2814,27 @@ function chooseSkillByIndex(idx) {
   return false;
 }
 
+function getBottomHudPlayer() {
+  const players = Array.isArray(game.state?.players) ? game.state.players : [];
+  if (!players.length) return null;
+  const me = players.find((p) => p && p.id === game.myId);
+  if (me) return me;
+  if (!game.spectating && !game.embedMode) return null;
+  const alivePlayers = players.filter((p) => p && !p.isCompanion && p.alive !== false);
+  const candidates = alivePlayers.length > 0 ? alivePlayers : players.filter((p) => p && !p.isCompanion);
+  if (!candidates.length) return null;
+  return candidates
+    .slice()
+    .sort((a, b) => (Math.max(0, Number(b?.score) || 0) - Math.max(0, Number(a?.score) || 0)))
+    [0] || null;
+}
+
 function updateBottomHud() {
   if (!bottomHudEl) return;
-  const me = game.state?.players?.find((p) => p.id === game.myId);
   const inMenu = !game.state;
-  bottomHudEl.classList.toggle('hidden', inMenu);
-  if (inMenu || !me) {
+  const hudPlayer = inMenu ? null : getBottomHudPlayer();
+  bottomHudEl.classList.toggle('hidden', inMenu || !hudPlayer);
+  if (inMenu || !hudPlayer) {
     if (xpLevelEl) xpLevelEl.textContent = 'Lv1';
     if (xpFillEl) xpFillEl.style.width = '0%';
     if (xpTextEl) xpTextEl.textContent = '0 / 0 XP';
@@ -2475,14 +2847,14 @@ function updateBottomHud() {
     return;
   }
 
-  const lvl = Math.max(1, Number(me.level) || 1);
-  const xp = Math.max(0, Number(me.xp) || 0);
-  const xpToNext = Math.max(1, Number(me.xpToNext) || 1);
+  const lvl = Math.max(1, Number(hudPlayer.level) || 1);
+  const xp = Math.max(0, Number(hudPlayer.xp) || 0);
+  const xpToNext = Math.max(1, Number(hudPlayer.xpToNext) || 1);
   if (xpLevelEl) xpLevelEl.textContent = `Lv${lvl}`;
   if (xpFillEl) xpFillEl.style.width = `${Math.max(0, Math.min(100, (xp / xpToNext) * 100)).toFixed(1)}%`;
   if (xpTextEl) xpTextEl.textContent = `${xp} / ${xpToNext} XP`;
 
-  const skills = Array.isArray(me.skills) ? me.skills : [];
+  const skills = Array.isArray(hudPlayer.skills) ? hudPlayer.skills : [];
   if (skillBarEl) {
     const compactSkills = mobile.enabled;
     const skillChips = skills.map((s) => {
@@ -2499,7 +2871,7 @@ function updateBottomHud() {
       const cdText = s.kind === 'active' ? (cd > 0 ? `${(cd / 1000).toFixed(1)}s` : trCore('ui.skill.ready', 'ready')) : `Lv${s.level}`;
       return `<div class="skill-chip" data-skill-id="${s.id}" style="border-color:${rarityColor(rarity)}66"><div>${localizedSkillName} Lv${s.level}</div><div class="cd">${cdText}</div></div>`;
     });
-    const quickChips = (Array.isArray(me.quickSlots) ? me.quickSlots : []).map((slot, index) => {
+    const quickChips = (Array.isArray(hudPlayer.quickSlots) ? hudPlayer.quickSlots : []).map((slot, index) => {
       const rarity = String(slot?.rarity || 'common').toLowerCase();
       const quantity = Math.max(0, Number(slot?.quantity) || 0);
       const itemId = String(slot?.itemId || '').trim();
@@ -4579,9 +4951,26 @@ dynamicSticksToggleEl?.addEventListener('change', () => {
 });
 setDynamicSticksEnabled(game.dynamicSticksEnabled);
 
+function getSafeCanvasViewportSize() {
+  const rawWidth = Math.floor(Number(window.innerWidth) || Number(document.documentElement?.clientWidth) || 1280);
+  const rawHeight = Math.floor(Number(window.innerHeight) || Number(document.documentElement?.clientHeight) || 720);
+  let isFramed = false;
+  try {
+    isFramed = window.self !== window.top;
+  } catch {
+    isFramed = true;
+  }
+  const maxHeight = isFramed ? 920 : 2160;
+  return {
+    width: Math.max(320, Math.min(4096, rawWidth)),
+    height: Math.max(360, Math.min(maxHeight, rawHeight)),
+  };
+}
+
 function resizeCanvas() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
+  const { width, height } = getSafeCanvasViewportSize();
+  if (canvas.width !== width) canvas.width = width;
+  if (canvas.height !== height) canvas.height = height;
 }
 
 window.addEventListener('resize', resizeCanvas);
@@ -4729,7 +5118,7 @@ function updateHudVisibility(overlayOpen) {
   if (scoreboardEl) scoreboardEl.classList.toggle('hidden', menuOpen || embedMode);
   if (topCenterHudEl) topCenterHudEl.classList.toggle('hidden', menuOpen);
   if (commentatorPanelEl) commentatorPanelEl.classList.toggle('hidden', menuOpen || embedMode || !game.showCommentatorEnabled);
-  if (bottomHudEl) bottomHudEl.classList.toggle('hidden', menuOpen || embedMode);
+  if (bottomHudEl) bottomHudEl.classList.toggle('hidden', menuOpen);
   if (statsToggleBtn) statsToggleBtn.classList.toggle('hidden', menuOpen || embedMode);
   if (chatWrapEl) chatWrapEl.classList.toggle('hidden', menuOpen || embedMode || !game.showChatEnabled);
   if (menuOpen && chatInputEl && document.activeElement === chatInputEl) chatInputEl.blur();

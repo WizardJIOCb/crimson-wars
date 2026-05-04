@@ -396,26 +396,21 @@ function getHubUrl(tabId) {
 }
 
 let battleHubFrameObserver = null;
+const BATTLE_HUB_FRAME_MIN_HEIGHT = 620;
+const BATTLE_HUB_FRAME_MAX_HEIGHT = 840;
+const BATTLE_HUB_FRAME_VIEWPORT_OFFSET = 176;
+
+function getBattleHubFrameHeight() {
+  const viewportHeight = Math.floor(Number(window.visualViewport?.height) || Number(window.innerHeight) || 900);
+  return Math.max(
+    BATTLE_HUB_FRAME_MIN_HEIGHT,
+    Math.min(BATTLE_HUB_FRAME_MAX_HEIGHT, viewportHeight - BATTLE_HUB_FRAME_VIEWPORT_OFFSET),
+  );
+}
 
 function syncBattleHubFrameSize() {
   if (!(hubFrame instanceof HTMLIFrameElement)) return;
-  try {
-    const frameWindow = hubFrame.contentWindow || null;
-    const frameDocument = hubFrame.contentDocument || frameWindow?.document || null;
-    const body = frameDocument?.body || null;
-    const root = frameDocument?.documentElement || null;
-    if (!body || !root) return;
-    const nextHeight = Math.max(
-      1120,
-      Math.ceil(body.scrollHeight || 0),
-      Math.ceil(root.scrollHeight || 0),
-      Math.ceil(body.offsetHeight || 0),
-      Math.ceil(root.offsetHeight || 0),
-    );
-    hubFrame.style.height = `${nextHeight}px`;
-  } catch {
-    // Same-origin best effort only.
-  }
+  hubFrame.style.height = `${getBattleHubFrameHeight()}px`;
 }
 
 function bindBattleHubFrameAutosize() {
@@ -483,6 +478,10 @@ hubFrame?.addEventListener('load', () => {
   bindBattleHubFrameAutosize();
   syncBattleHubFrameSize();
 });
+
+window.addEventListener('resize', syncBattleHubFrameSize);
+window.visualViewport?.addEventListener?.('resize', syncBattleHubFrameSize);
+syncBattleHubFrameSize();
 
 setActiveHubTab('play', { updateFrame: false, scrollIntoView: false });
 composeLandingLiveLayout();
@@ -1857,7 +1856,7 @@ function updateLiveIframe(roomCode) {
     url.searchParams.set('room', normalizedRoomCode);
     url.searchParams.set('mode', 'spectate');
     url.searchParams.set('embed', '1');
-    url.searchParams.set('liveEmbedBuild', '20260429replayaudio1');
+    url.searchParams.set('liveEmbedBuild', '20260504livehud1');
     liveIframe.src = url.toString();
     landingLiveIframeRoomCode = normalizedRoomCode;
     landingLiveSpectatorCommentary = { roomCode: normalizedRoomCode, title: '', text: '', at: 0 };
