@@ -143,6 +143,9 @@ const deathContinueBtn = document.getElementById('death-continue');
 const deathRewardsPanelEl = document.getElementById('death-rewards-panel');
 const deathRewardsBodyEl = document.getElementById('death-rewards-body');
 const deathRewardsMenuBtn = document.getElementById('death-rewards-menu');
+const deploySummaryRunEl = document.getElementById('deploy-summary-run');
+const deploySummaryTargetEl = document.getElementById('deploy-summary-target');
+const deploySummaryModeEl = document.getElementById('deploy-summary-mode');
 const syncSettingsEl = document.getElementById('sync-settings');
 const syncPresetEl = document.getElementById('sync-preset');
 const syncTickrateEl = document.getElementById('sync-tickrate');
@@ -599,6 +602,7 @@ function setSelectedRunType(runType) {
     }
   }
   localStorage.setItem(RUN_TYPE_STORAGE_KEY, selectedRunType);
+  renderDeploySelectionSummary();
 }
 
 function setSelectedMapId(mapId) {
@@ -606,6 +610,7 @@ function setSelectedMapId(mapId) {
   const hasMap = getMapCatalog().some((entry) => String(entry?.id || '') === targetId);
   selectedMapId = hasMap ? targetId : String(getMapCatalog()[0]?.id || 'mall_night');
   localStorage.setItem(MAP_ID_STORAGE_KEY, selectedMapId);
+  renderDeploySelectionSummary();
 }
 
 function setSelectedCampaign(campaignId, levelId = '') {
@@ -615,6 +620,7 @@ function setSelectedCampaign(campaignId, levelId = '') {
   const level = getCampaignLevelDefById(selectedCampaignId, levelId) || getCampaignLevelDefById(selectedCampaignId, selectedCampaignLevelId) || null;
   selectedCampaignLevelId = String(level?.id || getFirstCampaignLevelId(selectedCampaignId) || '').trim();
   localStorage.setItem(CAMPAIGN_LEVEL_ID_STORAGE_KEY, selectedCampaignLevelId);
+  renderDeploySelectionSummary();
 }
 
 function ensureSelectedRunSetupValid() {
@@ -631,6 +637,39 @@ function ensureSelectedRunSetupValid() {
   if (selectedRunType === 'campaign' && campaigns.length <= 0) {
     setSelectedRunType('free');
   }
+  renderDeploySelectionSummary();
+}
+
+function getSelectedMapDef() {
+  return getMapCatalog().find((entry) => String(entry?.id || '') === selectedMapId) || getMapCatalog()[0] || null;
+}
+
+function getSelectedCampaignBundleForSummary() {
+  const campaign = getCampaignDefById(selectedCampaignId) || getCampaignCatalog()[0] || null;
+  const level = campaign
+    ? getCampaignLevelDefById(campaign.id, selectedCampaignLevelId) || getCampaignLevelDefById(campaign.id, getFirstCampaignLevelId(campaign.id))
+    : null;
+  return { campaign, level };
+}
+
+function getDeployGameModeLabel() {
+  if (selectedGameMode === 'hardcore') return 'Hardcore';
+  if (selectedGameMode === 'pvp') return `PvP${selectedPvpDurationMin ? ` ${normalizePvpDurationMin(selectedPvpDurationMin)} min` : ''}`;
+  return 'Normal';
+}
+
+function renderDeploySelectionSummary() {
+  if (!deploySummaryRunEl || !deploySummaryTargetEl || !deploySummaryModeEl) return;
+  if (selectedRunType === 'campaign') {
+    const { campaign, level } = getSelectedCampaignBundleForSummary();
+    deploySummaryRunEl.textContent = 'Story';
+    deploySummaryTargetEl.textContent = `${campaign?.shortName || campaign?.name || 'Campaign'}${level ? ` / ${level.title || level.id}` : ''}`;
+  } else {
+    const map = getSelectedMapDef();
+    deploySummaryRunEl.textContent = 'Free run';
+    deploySummaryTargetEl.textContent = map?.name || selectedMapId || 'Map';
+  }
+  deploySummaryModeEl.textContent = getDeployGameModeLabel();
 }
 
 function queueStoredActiveRunResume() {
@@ -2056,6 +2095,7 @@ setAuthTab('guest');
 applyInitialRoomIntent();
 renderPlayerAuthUi();
 renderInstanceMeta();
+renderDeploySelectionSummary();
 consumeAuthRedirectFeedback();
 window.cwSetStoredActiveRunResume = setStoredActiveRunResume;
 window.cwClearStoredActiveRunResume = clearStoredActiveRunResume;
@@ -2064,6 +2104,7 @@ window.cwSetSelectedMapId = setSelectedMapId;
 window.cwSetSelectedCampaign = setSelectedCampaign;
 window.cwEnsureSelectedRunSetupValid = ensureSelectedRunSetupValid;
 window.renderBattleHubPlayerBadge = renderBattleHubPlayerBadge;
+window.renderDeploySelectionSummary = renderDeploySelectionSummary;
 window.cwGetMapCatalog = getMapCatalog;
 window.cwGetCampaignCatalog = getCampaignCatalog;
 window.cwGetCampaignDefById = getCampaignDefById;

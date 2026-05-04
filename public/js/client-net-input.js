@@ -5725,6 +5725,7 @@ function renderGameModeSelection() {
   }
   if (pvpDurationSelectEl) pvpDurationSelectEl.value = String(normalizePvpDurationMin(selectedPvpDurationMin));
   updatePvpDurationVisibility();
+  globalThis.renderDeploySelectionSummary?.();
 }
 globalThis.renderGameModeSelection = renderGameModeSelection;
 
@@ -5927,6 +5928,12 @@ joinForm.addEventListener('click', (e) => {
 
 updateSyncSettingsVisibility();
 renderGameModeSelection();
+
+pvpDurationSelectEl?.addEventListener('change', () => {
+  selectedPvpDurationMin = normalizePvpDurationMin(pvpDurationSelectEl.value);
+  localStorage.setItem(PVP_DURATION_STORAGE_KEY, String(selectedPvpDurationMin));
+  renderGameModeSelection();
+});
 
 joinForm.addEventListener('submit', (e) => {
   e.preventDefault();

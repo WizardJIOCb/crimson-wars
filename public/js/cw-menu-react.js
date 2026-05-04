@@ -325,8 +325,38 @@
     );
   }
 
+  function DeployCard() {
+    return h(CwPanel, { tag: 'div', id: 'play-deploy-card', className: 'cw-subpanel cw-subpanel-emphasis' },
+      h('div', { className: 'cw-subpanel-head' },
+        h('span', { className: 'cw-kicker', 'data-i18n-key': 'ui.play.deploy' }, tr('ui.play.deploy', 'Deploy')),
+        h('strong', { 'data-i18n-key': 'ui.play.match_entry' }, tr('ui.play.match_entry', '\u0412\u0445\u043e\u0434 \u0432 \u043c\u0430\u0442\u0447'))
+      ),
+      h('div', { id: 'deploy-selection-summary', className: 'deploy-selection-summary', 'aria-live': 'polite' },
+        h('span', { className: 'deploy-selection-chip' }, h('b', null, '\u0417\u0430\u0431\u0435\u0433'), h('strong', { id: 'deploy-summary-run' }, '--')),
+        h('span', { className: 'deploy-selection-chip' }, h('b', null, '\u0426\u0435\u043b\u044c'), h('strong', { id: 'deploy-summary-target' }, '--')),
+        h('span', { className: 'deploy-selection-chip' }, h('b', null, '\u0420\u0435\u0436\u0438\u043c'), h('strong', { id: 'deploy-summary-mode' }, '--'))
+      ),
+      h('label', { id: 'room-code-label', htmlFor: 'room-code' }, '\u041a\u043e\u0434 \u043a\u043e\u043c\u043d\u0430\u0442\u044b'),
+      h('input', { id: 'room-code', maxLength: 10, placeholder: 'AUTO or ABC123' }),
+      h('div', { className: 'actions cw-action-row' },
+        h(CwButton, { type: 'submit', dataMode: 'create', variant: 'primary' }, '\u0421\u043e\u0437\u0434\u0430\u0442\u044c \u043c\u0430\u0442\u0447'),
+        h(CwButton, { type: 'submit', dataMode: 'join', className: 'secondary', variant: 'secondary' }, '\u0412\u043e\u0439\u0442\u0438 \u043f\u043e \u043a\u043e\u0434\u0443')
+      ),
+      h('div', { id: 'join-feedback', className: 'join-feedback hidden', 'aria-live': 'polite' }),
+      h('div', { id: 'death-result', className: 'death-result' }, 'Last result: --')
+    );
+  }
+
   function PlayPanel() {
     return h(CwPanel, { id: 'menu-panel-play', className: 'menu-panel active cw-menu-grid', dataMenuPanel: 'play', active: true },
+      h(DeployCard),
+      h(CwPanel, { tag: 'div', id: 'campaign-browser-card', className: 'cw-subpanel battle-tab-card battle-tab-story hidden' },
+        h('div', { className: 'cw-subpanel-head' },
+          h('span', { className: 'cw-kicker', 'data-i18n-key': 'ui.play.story_kicker' }, tr('ui.play.story_kicker', 'Story')),
+          h('strong', { 'data-i18n-key': 'ui.play.story_campaigns' }, tr('ui.play.story_campaigns', '\u0421\u044e\u0436\u0435\u0442\u043d\u044b\u0435 \u043a\u0430\u043c\u043f\u0430\u043d\u0438\u0438'))
+        ),
+        h('div', { id: 'campaign-browser-host', className: 'campaign-browser-host' }, 'Campaign data loading...')
+      ),
       h('div', { className: 'cw-column cw-column-main' },
         h(CwPanel, { tag: 'div', id: 'run-setup-card', className: 'cw-subpanel battle-tab-card battle-tab-run' },
           h('div', { className: 'cw-subpanel-head' },
@@ -351,30 +381,9 @@
               h('option', { value: '15' }, '15 min')
             )
           )
-        ),
-        h(CwPanel, { tag: 'div', id: 'campaign-browser-card', className: 'cw-subpanel battle-tab-card battle-tab-story hidden' },
-          h('div', { className: 'cw-subpanel-head' },
-            h('span', { className: 'cw-kicker', 'data-i18n-key': 'ui.play.story_kicker' }, tr('ui.play.story_kicker', 'Story')),
-            h('strong', { 'data-i18n-key': 'ui.play.story_campaigns' }, tr('ui.play.story_campaigns', '\u0421\u044e\u0436\u0435\u0442\u043d\u044b\u0435 \u043a\u0430\u043c\u043f\u0430\u043d\u0438\u0438'))
-          ),
-          h('div', { id: 'campaign-browser-host', className: 'campaign-browser-host' }, 'Campaign data loading...')
         )
       ),
       h('div', { className: 'cw-column cw-column-side' },
-        h(CwPanel, { tag: 'div', id: 'play-deploy-card', className: 'cw-subpanel cw-subpanel-emphasis' },
-          h('div', { className: 'cw-subpanel-head' },
-            h('span', { className: 'cw-kicker', 'data-i18n-key': 'ui.play.deploy' }, tr('ui.play.deploy', 'Deploy')),
-            h('strong', { 'data-i18n-key': 'ui.play.match_entry' }, tr('ui.play.match_entry', '\u0412\u0445\u043e\u0434 \u0432 \u043c\u0430\u0442\u0447'))
-          ),
-          h('label', { id: 'room-code-label', htmlFor: 'room-code' }, '\u041a\u043e\u0434 \u043a\u043e\u043c\u043d\u0430\u0442\u044b'),
-          h('input', { id: 'room-code', maxLength: 10, placeholder: 'AUTO or ABC123' }),
-          h('div', { className: 'actions cw-action-row' },
-            h(CwButton, { type: 'submit', dataMode: 'create', variant: 'primary' }, '\u0421\u043e\u0437\u0434\u0430\u0442\u044c \u043c\u0430\u0442\u0447'),
-            h(CwButton, { type: 'submit', dataMode: 'join', className: 'secondary', variant: 'secondary' }, '\u0412\u043e\u0439\u0442\u0438 \u043f\u043e \u043a\u043e\u0434\u0443')
-          ),
-          h('div', { id: 'join-feedback', className: 'join-feedback hidden', 'aria-live': 'polite' }),
-          h('div', { id: 'death-result', className: 'death-result' }, 'Last result: --')
-        ),
         h(ActiveRoomsCard),
         h(CwPanel, { tag: 'div', className: 'cw-subpanel' },
           h('div', { className: 'cw-subpanel-head' },

@@ -6187,6 +6187,18 @@ body.battle-hub-embed #join-form.cw-shell {
   padding: 16px;
 }
 
+.cw-shell .cw-panel.menu-panel {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
+.cw-shell .cw-panel.menu-panel::before {
+  content: none;
+}
+
 .cw-hero-card {
   padding: 14px 16px;
 }
@@ -6366,6 +6378,11 @@ body.battle-hub-embed #join-form.cw-shell {
 .campaign-browser-host {
   display: grid;
   gap: 14px;
+}
+
+.campaign-browser-host {
+  grid-template-columns: minmax(0, 0.95fr) minmax(360px, 1.05fr);
+  align-items: start;
 }
 
 .run-type-tabs {
@@ -6620,7 +6637,8 @@ body.battle-hub-embed #join-form.cw-shell {
 .campaign-detail-shell {
   display: grid;
   gap: 14px;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
 }
 
 .campaign-detail-main {
@@ -7735,9 +7753,81 @@ body.battle-hub-embed #join-form.cw-shell {
   gap: 16px;
 }
 
+#menu-panel-play > #play-deploy-card {
+  grid-column: 1 / -1;
+}
+
+#menu-panel-play > #campaign-browser-card {
+  grid-column: 1 / -1;
+}
+
+.deploy-selection-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 14px;
+}
+
+.deploy-selection-chip {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(135, 143, 156, 0.24);
+  border-radius: 10px;
+  background: rgba(7, 9, 14, 0.7);
+}
+
+.deploy-selection-chip b {
+  color: #9fabb6;
+  font-size: 10px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.deploy-selection-chip strong {
+  overflow: hidden;
+  color: #fff2eb;
+  font-size: 14px;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 #menu-panel-play > .cw-column {
   align-content: start;
   gap: 16px;
+}
+
+#join-form.cw-shell .cw-shell-heading,
+#join-form.cw-shell #main-menu-tabs,
+#join-form.cw-shell .menu-panel {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+#join-form.cw-shell #main-menu-tabs.cw-nav-tabs {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+#join-form.cw-shell #main-menu-tabs .main-menu-tab {
+  width: 100%;
+  min-width: 0;
+  padding-right: clamp(8px, 1.2vw, 16px);
+  padding-left: clamp(8px, 1.2vw, 16px);
+}
+
+#join-form.cw-shell #menu-panel-menu,
+#join-form.cw-shell #menu-panel-play,
+#join-form.cw-shell #menu-panel-characters,
+#join-form.cw-shell #menu-panel-skills,
+#join-form.cw-shell #menu-panel-profile,
+#join-form.cw-shell #menu-panel-rating,
+#join-form.cw-shell #menu-panel-news {
+  padding: 0;
 }
 
 #join-form #play-deploy-card button.secondary[data-mode="join"] {
@@ -7820,6 +7910,18 @@ body.battle-hub-embed #join-form.cw-shell {
 }
 
 @media (max-width: 900px) {
+  #join-form.cw-shell #main-menu-tabs.cw-nav-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .campaign-browser-host {
+    grid-template-columns: 1fr;
+  }
+
+  .deploy-selection-summary {
+    grid-template-columns: 1fr;
+  }
+
   .campaign-detail-shell {
     grid-template-columns: 1fr;
   }
