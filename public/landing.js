@@ -406,7 +406,7 @@ function syncBattleHubFrameSize() {
     const root = frameDocument?.documentElement || null;
     if (!body || !root) return;
     const nextHeight = Math.max(
-      560,
+      1120,
       Math.ceil(body.scrollHeight || 0),
       Math.ceil(root.scrollHeight || 0),
       Math.ceil(body.offsetHeight || 0),

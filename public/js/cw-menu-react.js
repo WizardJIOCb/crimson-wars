@@ -145,11 +145,80 @@
 
   function CwShellHeading() {
     return h('div', { className: 'cw-shell-heading' },
-      h('div', { className: 'cw-shell-heading-copy' },
-        h('span', { className: 'cw-kicker' }, 'Crimson Wars'),
-        h('div', { className: 'cw-shell-title-row' },
-          h('strong', { className: 'cw-shell-title' }, 'Battle Hub'),
-          h('span', { id: 'menu-version-slot', className: 'menu-version-slot' })
+      h('div', { id: 'battle-hub-player-card', className: 'battle-hub-player-card', role: 'status', 'aria-live': 'polite' },
+        h('div', { className: 'battle-hub-player-avatar-wrap' },
+          h('img', { id: 'battle-hub-player-avatar', className: 'battle-hub-player-avatar', src: '/assets/characters/cyber.png', alt: '', loading: 'lazy' }),
+          h('span', { id: 'battle-hub-player-level', className: 'battle-hub-player-level' }, 'Hero Lv 1')
+        ),
+        h('div', { className: 'battle-hub-player-body' },
+          h('div', { className: 'battle-hub-player-top' },
+            h('strong', { id: 'battle-hub-player-name', className: 'battle-hub-player-name' }, 'Fighter'),
+            h('div', { className: 'battle-hub-player-meta' },
+              h('span', { id: 'battle-hub-player-account-level', className: 'battle-hub-player-account-level' }, 'Profile Lv 1'),
+              h('span', { id: 'battle-hub-player-state', className: 'battle-hub-player-state' }, 'Guest')
+            )
+          ),
+          h('div', { className: 'battle-hub-player-xp' },
+            h('span', { className: 'battle-hub-player-xp-track' },
+              h('span', { id: 'battle-hub-player-xp-fill', className: 'battle-hub-player-xp-fill', style: { width: '0%' } })
+            ),
+            h('span', { id: 'battle-hub-player-xp-text', className: 'battle-hub-player-xp-text' }, 'LV 1 · 0 / 1 XP · 0%')
+          ),
+          h('div', { className: 'battle-hub-profile-stats' },
+            h('span', { className: 'battle-hub-profile-stat' },
+              h('b', null, 'Skills'),
+              h('strong', { id: 'battle-hub-player-skills' }, '0/0')
+            ),
+            h('span', { className: 'battle-hub-profile-stat' },
+              h('b', null, 'Story'),
+              h('strong', { id: 'battle-hub-player-story' }, '0/0')
+            ),
+            h('span', { className: 'battle-hub-profile-stat' },
+              h('b', null, 'Heroes'),
+              h('strong', { id: 'battle-hub-player-heroes' }, '1/1')
+            ),
+            h('span', { className: 'battle-hub-profile-stat' },
+              h('b', null, 'Runs'),
+              h('strong', { id: 'battle-hub-player-runs' }, '0')
+            ),
+            h('span', { className: 'battle-hub-profile-stat' },
+              h('b', null, 'Shards'),
+              h('strong', { id: 'battle-hub-player-shards' }, '0')
+            ),
+            h('span', { className: 'battle-hub-profile-stat' },
+              h('b', null, 'SP'),
+              h('strong', { id: 'battle-hub-player-skill-points' }, '0')
+            )
+          ),
+          h('div', { id: 'battle-hub-hero-skills', className: 'battle-hub-hero-skills', 'aria-label': 'Selected hero skills' },
+            h('div', { className: 'battle-hub-hero-skills-head' },
+              h('span', null, 'Hero Skills'),
+              h('strong', { id: 'battle-hub-hero-skills-count' }, '0/0 unlocked')
+            ),
+            h('div', { id: 'battle-hub-hero-skills-list', className: 'battle-hub-hero-skills-list' },
+              h('div', { className: 'battle-hub-hero-skill-placeholder' }, 'Loading skills...')
+            )
+          )
+        ),
+        h('div', { className: 'battle-hub-profile-rating' },
+          h('span', { className: 'battle-hub-profile-rating-label' }, 'Profile Index'),
+          h('strong', { id: 'battle-hub-player-rating-value', className: 'battle-hub-profile-rating-value' }, '0'),
+          h('span', { id: 'battle-hub-player-rating-detail', className: 'battle-hub-profile-rating-detail' }, 'Build profile'),
+          h('div', { className: 'battle-hub-presence-block' },
+            h('div', { className: 'battle-hub-presence-head' },
+              h('span', null, 'Network'),
+              h('button', { id: 'battle-hub-presence-refresh', type: 'button', className: 'battle-hub-presence-refresh' }, 'Refresh')
+            ),
+            h('div', { id: 'battle-hub-presence', className: 'battle-hub-presence' },
+              h('span', null, 'Online --'),
+              h('span', null, 'In game --'),
+              h('span', null, 'In menu --'),
+              h('span', null, 'Registered --')
+            )
+          )
+        ),
+        h('div', { id: 'menu-version-slot', className: 'menu-version-slot battle-hub-version-slot', 'aria-hidden': 'true' },
+          h('span', { className: 'battle-hub-version-placeholder' })
         )
       )
     );
@@ -259,20 +328,6 @@
   function PlayPanel() {
     return h(CwPanel, { id: 'menu-panel-play', className: 'menu-panel active cw-menu-grid', dataMenuPanel: 'play', active: true },
       h('div', { className: 'cw-column cw-column-main' },
-        h(CwPanel, { tag: 'div', id: 'play-deploy-card', className: 'cw-subpanel cw-subpanel-emphasis' },
-          h('div', { className: 'cw-subpanel-head' },
-            h('span', { className: 'cw-kicker', 'data-i18n-key': 'ui.play.deploy' }, tr('ui.play.deploy', 'Deploy')),
-            h('strong', { 'data-i18n-key': 'ui.play.match_entry' }, tr('ui.play.match_entry', '\u0412\u0445\u043e\u0434 \u0432 \u043c\u0430\u0442\u0447'))
-          ),
-          h('label', { id: 'room-code-label', htmlFor: 'room-code' }, '\u041a\u043e\u0434 \u043a\u043e\u043c\u043d\u0430\u0442\u044b'),
-          h('input', { id: 'room-code', maxLength: 10, placeholder: 'AUTO or ABC123' }),
-          h('div', { className: 'actions cw-action-row' },
-            h(CwButton, { type: 'submit', dataMode: 'create', variant: 'primary' }, '\u0421\u043e\u0437\u0434\u0430\u0442\u044c \u043c\u0430\u0442\u0447'),
-            h(CwButton, { type: 'submit', dataMode: 'join', className: 'secondary', variant: 'secondary' }, '\u0412\u043e\u0439\u0442\u0438 \u043f\u043e \u043a\u043e\u0434\u0443')
-          ),
-          h('div', { id: 'join-feedback', className: 'join-feedback hidden', 'aria-live': 'polite' }),
-          h('div', { id: 'death-result', className: 'death-result' }, 'Last result: --')
-        ),
         h(CwPanel, { tag: 'div', id: 'run-setup-card', className: 'cw-subpanel battle-tab-card battle-tab-run' },
           h('div', { className: 'cw-subpanel-head' },
             h('span', { className: 'cw-kicker', 'data-i18n-key': 'ui.play.run_setup' }, tr('ui.play.run_setup', 'Run Setup')),
@@ -303,10 +358,24 @@
             h('strong', { 'data-i18n-key': 'ui.play.story_campaigns' }, tr('ui.play.story_campaigns', '\u0421\u044e\u0436\u0435\u0442\u043d\u044b\u0435 \u043a\u0430\u043c\u043f\u0430\u043d\u0438\u0438'))
           ),
           h('div', { id: 'campaign-browser-host', className: 'campaign-browser-host' }, 'Campaign data loading...')
-        ),
-        h(ActiveRoomsCard)
+        )
       ),
       h('div', { className: 'cw-column cw-column-side' },
+        h(CwPanel, { tag: 'div', id: 'play-deploy-card', className: 'cw-subpanel cw-subpanel-emphasis' },
+          h('div', { className: 'cw-subpanel-head' },
+            h('span', { className: 'cw-kicker', 'data-i18n-key': 'ui.play.deploy' }, tr('ui.play.deploy', 'Deploy')),
+            h('strong', { 'data-i18n-key': 'ui.play.match_entry' }, tr('ui.play.match_entry', '\u0412\u0445\u043e\u0434 \u0432 \u043c\u0430\u0442\u0447'))
+          ),
+          h('label', { id: 'room-code-label', htmlFor: 'room-code' }, '\u041a\u043e\u0434 \u043a\u043e\u043c\u043d\u0430\u0442\u044b'),
+          h('input', { id: 'room-code', maxLength: 10, placeholder: 'AUTO or ABC123' }),
+          h('div', { className: 'actions cw-action-row' },
+            h(CwButton, { type: 'submit', dataMode: 'create', variant: 'primary' }, '\u0421\u043e\u0437\u0434\u0430\u0442\u044c \u043c\u0430\u0442\u0447'),
+            h(CwButton, { type: 'submit', dataMode: 'join', className: 'secondary', variant: 'secondary' }, '\u0412\u043e\u0439\u0442\u0438 \u043f\u043e \u043a\u043e\u0434\u0443')
+          ),
+          h('div', { id: 'join-feedback', className: 'join-feedback hidden', 'aria-live': 'polite' }),
+          h('div', { id: 'death-result', className: 'death-result' }, 'Last result: --')
+        ),
+        h(ActiveRoomsCard),
         h(CwPanel, { tag: 'div', className: 'cw-subpanel' },
           h('div', { className: 'cw-subpanel-head' },
             h('span', { className: 'cw-kicker' }, 'Access'),

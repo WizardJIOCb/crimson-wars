@@ -1,6 +1,12 @@
 (function initClientMenuRuns() {
   const runSetupHostEl = document.getElementById('run-setup-host');
   const campaignBrowserHostEl = document.getElementById('campaign-browser-host');
+  const RUN_MAP_IMAGES = {
+    mall_night: '/assets/maps/night-mall.jpg',
+    ringroad_bbq: '/assets/maps/ringroad-bbq.jpg',
+    clinic_yard: '/assets/maps/clinic-yard.jpg',
+    reactor_sprawl: '/assets/maps/reactor-sprawl.jpg',
+  };
 
   function escapeHtml(value) {
     return String(value ?? '')
@@ -31,6 +37,10 @@
   function getMaps() {
     if (typeof window.cwGetMapCatalog === 'function') return window.cwGetMapCatalog();
     return [];
+  }
+
+  function getRunMapImagePath(mapId) {
+    return RUN_MAP_IMAGES[String(mapId || '').trim()] || '';
   }
 
   function getCampaigns() {
@@ -112,6 +122,7 @@
       const selection = getSelection();
       const selected = String(selection.mapId || '') === String(map?.id || '');
       const cover = map?.cover && typeof map.cover === 'object' ? map.cover : {};
+      const imagePath = getRunMapImagePath(map?.id);
       const style = [
         `--cover-from:${cover.from || '#1a2432'}`,
         `--cover-to:${cover.to || '#0b1017'}`,
@@ -120,7 +131,7 @@
       ].join(';');
       return ''
         + `<button type="button" class="run-map-card${selected ? ' is-selected' : ''}" data-map-id="${escapeHtml(map.id)}">`
-        +   `<span class="run-map-cover" style="${style}"></span>`
+        +   `<span class="run-map-cover${imagePath ? ' has-image' : ''}" style="${style}">${imagePath ? `<img src="${escapeHtml(imagePath)}" alt="" loading="lazy" />` : ''}</span>`
         +   `<span class="run-map-name">${escapeHtml(map.name || map.id)}</span>`
         +   `<span class="run-map-subtitle">${escapeHtml(map.subtitle || '')}</span>`
         +   `<span class="run-map-meta">${Math.max(0, Number(map.worldWidth) || 0)} x ${Math.max(0, Number(map.worldHeight) || 0)}</span>`

@@ -45,6 +45,25 @@ const nameInput = document.getElementById('name');
 const nicknameHintEl = document.getElementById('nickname-hint');
 const playerAuthSummaryEl = document.getElementById('player-auth-summary');
 const playerAuthFeedbackEl = document.getElementById('player-auth-feedback');
+const battleHubPlayerCardEl = document.getElementById('battle-hub-player-card');
+const battleHubPlayerAvatarEl = document.getElementById('battle-hub-player-avatar');
+const battleHubPlayerNameEl = document.getElementById('battle-hub-player-name');
+const battleHubPlayerAccountLevelEl = document.getElementById('battle-hub-player-account-level');
+const battleHubPlayerStateEl = document.getElementById('battle-hub-player-state');
+const battleHubPlayerLevelEl = document.getElementById('battle-hub-player-level');
+const battleHubPlayerXpFillEl = document.getElementById('battle-hub-player-xp-fill');
+const battleHubPlayerXpTextEl = document.getElementById('battle-hub-player-xp-text');
+const battleHubPlayerSkillsEl = document.getElementById('battle-hub-player-skills');
+const battleHubPlayerStoryEl = document.getElementById('battle-hub-player-story');
+const battleHubPlayerHeroesEl = document.getElementById('battle-hub-player-heroes');
+const battleHubPlayerRunsEl = document.getElementById('battle-hub-player-runs');
+const battleHubPlayerShardsEl = document.getElementById('battle-hub-player-shards');
+const battleHubPlayerSkillPointsEl = document.getElementById('battle-hub-player-skill-points');
+const battleHubPlayerRatingValueEl = document.getElementById('battle-hub-player-rating-value');
+const battleHubPlayerRatingDetailEl = document.getElementById('battle-hub-player-rating-detail');
+const battleHubHeroSkillsEl = document.getElementById('battle-hub-hero-skills');
+const battleHubHeroSkillsCountEl = document.getElementById('battle-hub-hero-skills-count');
+const battleHubHeroSkillsListEl = document.getElementById('battle-hub-hero-skills-list');
 const joinFeedbackEl = document.getElementById('join-feedback');
 const playerLogoutBtn = document.getElementById('player-logout');
 const providerGoogleBtn = document.getElementById('provider-google');
@@ -66,10 +85,9 @@ const roomCodeInput = document.getElementById('room-code');
 const refreshRoomsBtn = document.getElementById('refresh-rooms');
 const roomsListEl = document.getElementById('rooms-list');
 const presenceMetaEl = document.getElementById('presence-meta');
-const playRoomsBrowserEl = document.getElementById('rooms-browser');
-const playMainColumnEl = document.querySelector('#menu-panel-play > .cw-column-main');
 const playSideColumnEl = document.querySelector('#menu-panel-play > .cw-column-side');
-const playGameModePanelEl = document.getElementById('game-mode-panel');
+const playDeployCardEl = document.getElementById('play-deploy-card');
+const playRoomsBrowserEl = document.getElementById('rooms-browser');
 const refreshRecordsBtn = document.getElementById('refresh-records');
 const recordsListEl = document.getElementById('records-list');
 const recordsPrevBtn = document.getElementById('records-prev');
@@ -1271,17 +1289,267 @@ function clearJoinFeedback() {
   joinFeedbackEl.className = 'join-feedback hidden';
 }
 
-function updatePlayRoomsPlacement(loggedIn) {
-  if (!playRoomsBrowserEl || !playMainColumnEl || !playSideColumnEl) return;
-  if (loggedIn) {
-    if (playRoomsBrowserEl.parentElement !== playSideColumnEl) {
-      playSideColumnEl.appendChild(playRoomsBrowserEl);
+function getBattleHubPlayerHeroId(progression = null) {
+  const activeHero = String(progression?.activeHero || '').trim().toLowerCase();
+  const storedHero = String(localStorage.getItem(PLAYER_CLASS_STORAGE_KEY) || '').trim().toLowerCase();
+  const candidate = activeHero || storedHero || selectedPlayerClass || 'cyber';
+  return PLAYER_VARIANTS.some((variant) => variant.id === candidate) ? candidate : 'cyber';
+}
+
+function getBattleHubHeroAvatarPath(heroId) {
+  const id = String(heroId || '').trim().toLowerCase();
+  if (id === 'medic') return '/assets/characters/medis.png';
+  if (!PLAYER_VARIANTS.some((variant) => variant.id === id)) return '/assets/characters/cyber.png';
+  return `/assets/characters/${id}.png`;
+}
+
+function getBattleHubHeroAccent(heroId) {
+  return PLAYER_VARIANTS.find((variant) => variant.id === heroId)?.accent || '#39c1d9';
+}
+
+function getBattleHubPlayerName() {
+  return String(
+    game.playerAuth?.player?.nickname
+      || game.playerAuth?.nicknameStatus?.nickname
+      || nameInput?.value
+      || localStorage.getItem(NICKNAME_STORAGE_KEY)
+      || 'Fighter'
+  ).trim().slice(0, 18) || 'Fighter';
+}
+
+function getBattleHubSkillProgress(progression = null, catalog = null) {
+  const skillLevels = progression?.heroSkillLevels && typeof progression.heroSkillLevels === 'object'
+    ? progression.heroSkillLevels
+    : {};
+  let unlocked = 0;
+  let totalLevel = 0;
+  for (const heroSkills of Object.values(skillLevels)) {
+    if (!heroSkills || typeof heroSkills !== 'object') continue;
+    for (const value of Object.values(heroSkills)) {
+      const level = Math.max(0, Number(value) || 0);
+      if (level <= 0) continue;
+      unlocked += 1;
+      totalLevel += level;
+    }
+  }
+  const heroes = Array.isArray(catalog?.heroes) ? catalog.heroes : [];
+  const total = heroes.reduce((sum, hero) => sum + (Array.isArray(hero?.uniqueSkills) ? hero.uniqueSkills.length : 0), 0);
+  return { unlocked, total, totalLevel };
+}
+
+function getBattleHubStoryProgress(progression = null) {
+  const campaigns = getCampaignCatalog();
+  const campaignProgress = progression?.campaignProgress && typeof progression.campaignProgress === 'object'
+    ? progression.campaignProgress
+    : {};
+  let completed = 0;
+  let total = 0;
+  let bestScore = 0;
+  let victories = 0;
+  for (const campaign of campaigns) {
+    const levels = Array.isArray(campaign?.levels) ? campaign.levels : [];
+    total += levels.length;
+    const progress = campaignProgress[String(campaign?.id || '').trim()] || {};
+    bestScore = Math.max(bestScore, Math.max(0, Number(progress?.bestScore) || 0));
+    victories += Math.max(0, Number(progress?.victories) || 0);
+    const levelProgress = progress?.levels && typeof progress.levels === 'object' ? progress.levels : {};
+    for (const level of levels) {
+      const state = levelProgress[String(level?.id || '').trim()] || {};
+      if ((Math.max(0, Number(state?.completedAt) || 0) > 0) || (Math.max(0, Number(state?.victories) || 0) > 0)) {
+        completed += 1;
+      }
+    }
+  }
+  return { completed, total, bestScore, victories };
+}
+
+function getBattleHubHeroCatalogEntry(heroId, catalog = null) {
+  const id = String(heroId || '').trim().toLowerCase();
+  const variant = PLAYER_VARIANTS.find((item) => item.id === id) || PLAYER_VARIANTS[0] || {};
+  const heroes = Array.isArray(catalog?.heroes) ? catalog.heroes : [];
+  const hero = heroes.find((item) => String(item?.id || '').trim().toLowerCase() === id);
+  return hero ? { ...variant, ...hero } : { ...variant, uniqueSkills: [] };
+}
+
+function getBattleHubHeroSkillLevel(progression = null, heroId = '', skillId = '') {
+  const heroSkills = progression?.heroSkillLevels && typeof progression.heroSkillLevels === 'object'
+    ? progression.heroSkillLevels[String(heroId || '').trim().toLowerCase()]
+    : null;
+  if (!heroSkills || typeof heroSkills !== 'object') return 0;
+  return Math.max(0, Number(heroSkills[String(skillId || '').trim()]) || 0);
+}
+
+function getBattleHubHeroSkillType(skill) {
+  if (skill?.kind === 'active') return 'Active';
+  if (skill?.globalAura) return 'Aura';
+  return 'Passive';
+}
+
+function getBattleHubHeroSkillStats(skill, level) {
+  const lvl = Math.max(1, Number(level) || 1);
+  const displaySkill = { ...skill, level: lvl, cooldownMs: 0 };
+  const lines = buildSkillCurrentStatLines(displaySkill, skill)
+    .filter((line) => !String(line || '').startsWith('Current CD'));
+  if (lines.length > 0) return lines.slice(0, 2);
+  const desc = String(skill?.desc || '').trim();
+  return desc ? [desc] : [getBattleHubHeroSkillType(skill)];
+}
+
+function renderBattleHubHeroSkills(heroId, progression = null, catalog = null, loggedIn = false) {
+  if (!battleHubHeroSkillsEl || !battleHubHeroSkillsListEl) return;
+  const hero = getBattleHubHeroCatalogEntry(heroId, catalog);
+  const skills = Array.isArray(hero?.uniqueSkills) ? hero.uniqueSkills : [];
+  const unlockedCount = skills.reduce((sum, skill) => sum + (getBattleHubHeroSkillLevel(progression, heroId, skill?.id) > 0 ? 1 : 0), 0);
+
+  battleHubHeroSkillsEl.classList.toggle('is-empty', skills.length === 0);
+  if (battleHubHeroSkillsCountEl) {
+    battleHubHeroSkillsCountEl.textContent = skills.length > 0
+      ? `${unlockedCount}/${skills.length} unlocked`
+      : 'No catalog';
+  }
+
+  if (skills.length === 0) {
+    battleHubHeroSkillsListEl.innerHTML = `<div class="battle-hub-hero-skill-placeholder">${loggedIn ? 'Hero skills unavailable.' : 'Login to load hero skills.'}</div>`;
+    return;
+  }
+
+  battleHubHeroSkillsListEl.innerHTML = skills.map((skill) => {
+    const skillId = String(skill?.id || '').trim();
+    const level = loggedIn ? getBattleHubHeroSkillLevel(progression, heroId, skillId) : 0;
+    const maxLevel = Math.max(1, Number(skill?.maxLevel) || 1);
+    const unlocked = level > 0;
+    const rarityRaw = String(skill?.rarity || 'common').trim().toLowerCase();
+    const rarity = ['common', 'uncommon', 'rare', 'epic', 'legendary'].includes(rarityRaw) ? rarityRaw : 'common';
+    const color = rarityColor(rarity);
+    const skillName = trSkillNameCore(skillId, skill?.name || skillId || 'Skill');
+    const skillType = getBattleHubHeroSkillType(skill);
+    const icon = skillBadgeLabel(skill);
+    const levelLabel = unlocked
+      ? `Lv ${level}/${maxLevel}`
+      : `Locked ${Math.max(1, Number(skill?.unlockCostShards) || 1)} shards`;
+    const statLines = getBattleHubHeroSkillStats(skill, level);
+    const statHtml = statLines.map((line) => `<span>${escapeHtml(line)}</span>`).join('');
+    const title = `${skillName} | ${skillType} | ${levelLabel} | ${statLines.join(' | ')}`;
+    return `<article class="battle-hub-hero-skill ${unlocked ? 'is-unlocked' : 'is-locked'} rarity-${rarity}" style="--skill-color:${color}" title="${escapeHtml(title)}">`
+      + `<span class="battle-hub-hero-skill-icon">${escapeHtml(icon)}</span>`
+      + '<span class="battle-hub-hero-skill-copy">'
+      + `<span class="battle-hub-hero-skill-name">${escapeHtml(skillName)}</span>`
+      + `<span class="battle-hub-hero-skill-meta"><b>${escapeHtml(skillType)}</b><strong>${escapeHtml(levelLabel)}</strong></span>`
+      + `<span class="battle-hub-hero-skill-stats">${statHtml}</span>`
+      + '</span>'
+      + '</article>';
+  }).join('');
+}
+
+function getBattleHubRatingSummary(progression = null, skillProgress = null, storyProgress = null) {
+  const playerId = Math.max(0, Number(game.playerAuth?.player?.id) || 0);
+  const playerName = getBattleHubPlayerName().toLowerCase();
+  const ratingState = typeof globalThis.CWRating?.getState === 'function' ? globalThis.CWRating.getState() : null;
+  const ratingItems = Array.isArray(ratingState?.items) ? ratingState.items : [];
+  const rankIndex = ratingItems.findIndex((item) => {
+    const itemPlayerId = Math.max(0, Number(item?.playerId) || 0);
+    if (playerId > 0 && itemPlayerId === playerId) return true;
+    return String(item?.nickname || '').trim().toLowerCase() === playerName;
+  });
+  if (rankIndex >= 0) {
+    const rank = ((Math.max(1, Number(ratingState?.page) || 1) - 1) * Math.max(1, Number(ratingState?.pageSize) || 10)) + rankIndex + 1;
+    const category = String(ratingState?.currentCategory || '').replace(/_/g, ' ') || 'loaded rating';
+    return { value: `#${rank}`, detail: category };
+  }
+
+  const level = Math.max(1, Number(progression?.accountLevel) || 1);
+  const runs = Math.max(0, Number(progression?.totalRuns) || 0);
+  const heroesUnlocked = Array.isArray(progression?.unlockedHeroes) ? progression.unlockedHeroes.length : 1;
+  const storyDone = Math.max(0, Number(storyProgress?.completed) || 0);
+  const skillsUnlocked = Math.max(0, Number(skillProgress?.unlocked) || 0);
+  const index = (level * 100) + (storyDone * 45) + (skillsUnlocked * 35) + (heroesUnlocked * 25) + Math.min(250, runs * 5);
+  const storyTotal = Math.max(0, Number(storyProgress?.total) || 0);
+  const storyPct = storyTotal > 0 ? Math.round((storyDone / storyTotal) * 100) : 0;
+  return {
+    value: String(index),
+    detail: `Story ${storyPct}% · Skills ${skillsUnlocked}`,
+  };
+}
+
+function renderBattleHubPlayerBadge() {
+  if (!battleHubPlayerCardEl) return;
+  const player = game.playerAuth?.player || null;
+  const progression = game.playerAuth?.progression || null;
+  const catalog = game.playerAuth?.progressionCatalog || null;
+  const loggedIn = Boolean(player);
+  const heroId = getBattleHubPlayerHeroId(progression);
+  const level = loggedIn ? Math.max(1, Number(progression?.accountLevel) || 1) : 1;
+  const heroLevel = loggedIn ? Math.max(1, Number(progression?.heroLevels?.[heroId]) || 1) : 1;
+  const xp = loggedIn ? Math.max(0, Number(progression?.accountXp) || 0) : 0;
+  const xpToNext = loggedIn ? Math.max(1, Number(progression?.accountXpToNext) || 1) : 1;
+  const xpPercent = Math.max(0, Math.min(100, (xp / xpToNext) * 100));
+  const playerName = getBattleHubPlayerName();
+  const stateLabel = loggedIn
+    ? (game.playerAuth?.needsNicknameSetup ? 'Setup' : 'Online')
+    : 'Guest';
+  const avatarPath = getBattleHubHeroAvatarPath(heroId);
+  const skillProgress = getBattleHubSkillProgress(progression, catalog);
+  const storyProgress = getBattleHubStoryProgress(progression);
+  const heroesUnlocked = loggedIn && Array.isArray(progression?.unlockedHeroes) ? progression.unlockedHeroes.length : 1;
+  const heroesTotal = Math.max(heroesUnlocked, Array.isArray(catalog?.heroes) ? catalog.heroes.length : PLAYER_VARIANTS.length);
+  const totalRuns = loggedIn ? Math.max(0, Number(progression?.totalRuns) || 0) : 0;
+  const shards = loggedIn ? Math.max(0, Number(progression?.shards) || 0) : 0;
+  const skillPoints = loggedIn ? Math.max(0, Number(progression?.accountSkillPoints) || 0) : 0;
+  const ratingSummary = getBattleHubRatingSummary(progression, skillProgress, storyProgress);
+
+  battleHubPlayerCardEl.classList.toggle('is-guest', !loggedIn);
+  battleHubPlayerCardEl.style.setProperty('--avatar-accent', getBattleHubHeroAccent(heroId));
+  battleHubPlayerCardEl.title = `${playerName} | Profile Lv ${level} | Hero Lv ${heroLevel} | XP ${xp}/${xpToNext}`;
+
+  if (battleHubPlayerNameEl) battleHubPlayerNameEl.textContent = playerName;
+  if (battleHubPlayerAccountLevelEl) battleHubPlayerAccountLevelEl.textContent = `Profile Lv ${level}`;
+  if (battleHubPlayerStateEl) battleHubPlayerStateEl.textContent = stateLabel;
+  if (battleHubPlayerLevelEl) battleHubPlayerLevelEl.textContent = `Hero Lv ${heroLevel}`;
+  if (battleHubPlayerXpFillEl) battleHubPlayerXpFillEl.style.width = `${xpPercent.toFixed(1)}%`;
+  if (battleHubPlayerXpTextEl) battleHubPlayerXpTextEl.textContent = `LV ${level} · XP ${xp} / ${xpToNext} · ${Math.round(xpPercent)}%`;
+  if (battleHubPlayerSkillsEl) {
+    battleHubPlayerSkillsEl.textContent = skillProgress.total > 0
+      ? `${skillProgress.unlocked}/${skillProgress.total}`
+      : String(skillProgress.unlocked);
+  }
+  if (battleHubPlayerStoryEl) {
+    battleHubPlayerStoryEl.textContent = storyProgress.total > 0
+      ? `${storyProgress.completed}/${storyProgress.total}`
+      : '0/0';
+  }
+  if (battleHubPlayerHeroesEl) battleHubPlayerHeroesEl.textContent = `${heroesUnlocked}/${heroesTotal}`;
+  if (battleHubPlayerRunsEl) battleHubPlayerRunsEl.textContent = String(totalRuns);
+  if (battleHubPlayerShardsEl) battleHubPlayerShardsEl.textContent = String(shards);
+  if (battleHubPlayerSkillPointsEl) battleHubPlayerSkillPointsEl.textContent = String(skillPoints);
+  if (battleHubPlayerRatingValueEl) battleHubPlayerRatingValueEl.textContent = ratingSummary.value;
+  if (battleHubPlayerRatingDetailEl) battleHubPlayerRatingDetailEl.textContent = ratingSummary.detail;
+  renderBattleHubHeroSkills(heroId, progression, catalog, loggedIn);
+  if (battleHubPlayerAvatarEl) {
+    if (!battleHubPlayerAvatarEl.dataset.fallbackBound) {
+      battleHubPlayerAvatarEl.dataset.fallbackBound = '1';
+      battleHubPlayerAvatarEl.addEventListener('error', () => {
+        if (!String(battleHubPlayerAvatarEl.getAttribute('src') || '').endsWith('/cyber.png')) {
+          battleHubPlayerAvatarEl.src = '/assets/characters/cyber.png';
+        }
+      });
+    }
+    if (battleHubPlayerAvatarEl.getAttribute('src') !== avatarPath) {
+      battleHubPlayerAvatarEl.src = avatarPath;
+    }
+    battleHubPlayerAvatarEl.alt = playerName;
+  }
+}
+
+function updatePlayRoomsPlacement() {
+  if (!playRoomsBrowserEl || !playSideColumnEl) return;
+  if (playDeployCardEl && playDeployCardEl.parentElement === playSideColumnEl) {
+    if (playRoomsBrowserEl.previousElementSibling !== playDeployCardEl) {
+      playSideColumnEl.insertBefore(playRoomsBrowserEl, playDeployCardEl.nextSibling);
     }
     return;
   }
-  if (playRoomsBrowserEl.parentElement !== playMainColumnEl) {
-    const afterGameMode = playGameModePanelEl?.nextSibling || null;
-    playMainColumnEl.insertBefore(playRoomsBrowserEl, afterGameMode);
+  if (playRoomsBrowserEl.parentElement !== playSideColumnEl) {
+    playSideColumnEl.appendChild(playRoomsBrowserEl);
   }
 }
 
@@ -1289,7 +1557,7 @@ function renderPlayerAuthUi() {
   const player = game.playerAuth.player;
   const loggedIn = Boolean(player);
   const needsNicknameSetup = loggedIn && Boolean(game.playerAuth.needsNicknameSetup);
-  updatePlayRoomsPlacement(loggedIn);
+  updatePlayRoomsPlacement();
   if (playerAccessDetailsEl) playerAccessDetailsEl.classList.toggle('is-authenticated', loggedIn);
   if (playerAccessDetailsEl) playerAccessDetailsEl.classList.toggle('needs-nickname-setup', needsNicknameSetup);
   if (playerAuthSummaryEl) {
@@ -1337,6 +1605,7 @@ function renderPlayerAuthUi() {
       nicknameHintEl.className = 'field-hint';
     }
   }
+  renderBattleHubPlayerBadge();
 }
 
 function setPlayerAccessCollapsed(collapsed) {
@@ -1760,6 +2029,7 @@ authRegisterPasswordEl?.addEventListener('keydown', (e) => {
 
 nameInput?.addEventListener('input', () => {
   if (game.playerAuth.player) return;
+  renderBattleHubPlayerBadge();
   scheduleNicknameStatusCheck();
 });
 
@@ -1779,6 +2049,7 @@ window.cwSetSelectedRunType = setSelectedRunType;
 window.cwSetSelectedMapId = setSelectedMapId;
 window.cwSetSelectedCampaign = setSelectedCampaign;
 window.cwEnsureSelectedRunSetupValid = ensureSelectedRunSetupValid;
+window.renderBattleHubPlayerBadge = renderBattleHubPlayerBadge;
 window.cwGetMapCatalog = getMapCatalog;
 window.cwGetCampaignCatalog = getCampaignCatalog;
 window.cwGetCampaignDefById = getCampaignDefById;

@@ -933,6 +933,7 @@
     renderAccountSummary(catalog, progression);
     renderHeroTreePanelV2(catalog, progression, focusedHero, focusedHero ? unlockedHeroes.has(focusedHero.id) : false);
     if (focusedHero) splitHeroPanelsBetweenMenus(focusedHero);
+    globalThis.renderBattleHubPlayerBadge?.();
   }
   function buildHeroUnlockHint(hero, progression) {
     const needLevel = Math.max(1, Number(hero.unlockLevel) || 1);

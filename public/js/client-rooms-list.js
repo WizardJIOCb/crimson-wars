@@ -1,6 +1,8 @@
 (function initClientRoomsList() {
+  const battleHubPresenceEl = document.getElementById('battle-hub-presence');
+  const battleHubPresenceRefreshBtn = document.getElementById('battle-hub-presence-refresh');
+
   function renderPresence(presence) {
-    if (!presenceMetaEl) return;
     const online = Number(presence?.online) || 0;
     const inGame = Number(presence?.inGame) || 0;
     const inMenu = Number(presence?.inMenu) || 0;
@@ -11,7 +13,21 @@
       const cls = value > 0 ? 'presence-count hot' : 'presence-count';
       return `<span class="${cls}">${value}</span>`;
     };
-    presenceMetaEl.innerHTML = `Online: ${renderCount(online)} | In game: ${renderCount(inGame)} | In menu: ${renderCount(inMenu)} | Registered: ${renderCount(registered)}`;
+    if (presenceMetaEl) {
+      presenceMetaEl.innerHTML = `Online: ${renderCount(online)} | In game: ${renderCount(inGame)} | In menu: ${renderCount(inMenu)} | Registered: ${renderCount(registered)}`;
+    }
+    if (battleHubPresenceEl) {
+      const renderPanelCount = (label, value) => {
+        const valueText = value === null ? '--' : String(value);
+        const hotClass = value > 0 ? ' class="hot"' : '';
+        return `<span><b>${label}</b><strong${hotClass}>${valueText}</strong></span>`;
+      };
+      battleHubPresenceEl.innerHTML = ''
+        + renderPanelCount('Online', online)
+        + renderPanelCount('In game', inGame)
+        + renderPanelCount('In menu', inMenu)
+        + renderPanelCount('Registered', registered);
+    }
   }
 
   function renderRoomsList(rooms) {
@@ -72,6 +88,9 @@
       renderRoomsList(Array.isArray(payload.rooms) ? payload.rooms : []);
     } catch {
       if (presenceMetaEl) presenceMetaEl.textContent = 'Online: -- | In game: -- | In menu: -- | Registered: --';
+      if (battleHubPresenceEl) {
+        battleHubPresenceEl.innerHTML = '<span><b>Online</b><strong>--</strong></span><span><b>In game</b><strong>--</strong></span><span><b>In menu</b><strong>--</strong></span><span><b>Registered</b><strong>--</strong></span>';
+      }
       roomsListEl.textContent = 'Failed to load rooms.';
     }
   }
@@ -79,6 +98,13 @@
   refreshRoomsBtn?.addEventListener('click', () => {
     if (typeof window.cwTrackMetrikaGoal === 'function') {
       window.cwTrackMetrikaGoal('room_search_manual', { source: 'refresh_button' });
+    }
+    requestRoomsList();
+  });
+
+  battleHubPresenceRefreshBtn?.addEventListener('click', () => {
+    if (typeof window.cwTrackMetrikaGoal === 'function') {
+      window.cwTrackMetrikaGoal('room_search_manual', { source: 'profile_panel_refresh' });
     }
     requestRoomsList();
   });

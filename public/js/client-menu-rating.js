@@ -225,6 +225,7 @@
       if (ratingUi.fetchToken === token) {
         ratingUi.loading = false;
         renderRatingBoard();
+        globalThis.renderBattleHubPlayerBadge?.();
       }
     }
   }
