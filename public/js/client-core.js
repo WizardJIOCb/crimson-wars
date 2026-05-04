@@ -1363,6 +1363,8 @@ function getBattleHubHeroAccent(heroId) {
 
 const BATTLE_HUB_HERO_SWAP_COVER_MS = 280;
 const BATTLE_HUB_HERO_SWAP_REVEAL_MS = 720;
+const BATTLE_HUB_SKILL_MODAL_CLOSE_MS = 360;
+const BATTLE_HUB_SKILL_MODAL_PURCHASE_CLOSE_MS = 520;
 let battleHubHeroSwapTimer = 0;
 let battleHubHeroSwapToken = 0;
 let battleHubHeroSkillModalEl = null;
@@ -1615,7 +1617,7 @@ function ensureBattleHubHeroSkillModalElement() {
   el.setAttribute('aria-modal', 'true');
   el.innerHTML = '<div class="battle-hub-skill-modal-backdrop" data-skill-modal-close="1"></div>'
     + '<div class="battle-hub-skill-modal-card" role="document">'
-    + `<button class="battle-hub-skill-modal-close" type="button" data-skill-modal-close="1" aria-label="${escapeHtml(trCore('ui.skill_modal.close_aria', 'Close skill details'))}">x</button>`
+    + `<button class="battle-hub-skill-modal-close" type="button" data-skill-modal-close="1" aria-label="${escapeHtml(trCore('ui.skill_modal.close_aria', 'Close skill details'))}"></button>`
     + '<div class="battle-hub-skill-modal-content"></div>'
     + '</div>';
   el.addEventListener('click', (event) => {
@@ -1630,15 +1632,17 @@ function ensureBattleHubHeroSkillModalElement() {
 
 function closeBattleHubHeroSkillModal(options = {}) {
   if (!battleHubHeroSkillModalEl) return;
+  if (battleHubHeroSkillModalEl.classList.contains('hidden') || battleHubHeroSkillModalEl.classList.contains('is-closing')) return;
   const purchased = Boolean(options.purchased);
   battleHubHeroSkillModalEl.classList.toggle('is-purchased', purchased);
+  battleHubHeroSkillModalEl.classList.remove('is-open');
   battleHubHeroSkillModalEl.classList.add('is-closing');
   globalThis.setTimeout(() => {
     if (!battleHubHeroSkillModalEl) return;
     battleHubHeroSkillModalEl.classList.add('hidden');
     battleHubHeroSkillModalEl.classList.remove('is-open', 'is-closing', 'is-purchased', 'is-busy');
     battleHubHeroSkillModalState = null;
-  }, purchased ? 520 : 180);
+  }, purchased ? BATTLE_HUB_SKILL_MODAL_PURCHASE_CLOSE_MS : BATTLE_HUB_SKILL_MODAL_CLOSE_MS);
 }
 
 function getBattleHubSkillModalData(heroId, skillId) {

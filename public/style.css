@@ -6476,7 +6476,13 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
     rgba(2, 4, 8, 0.72);
   backdrop-filter: blur(9px);
   opacity: 0;
-  animation: battleHubSkillModalBackdropIn 180ms ease forwards;
+  transition:
+    opacity 320ms ease,
+    backdrop-filter 320ms ease;
+}
+
+.battle-hub-skill-modal.is-open .battle-hub-skill-modal-backdrop {
+  opacity: 1;
 }
 
 .battle-hub-skill-modal-card {
@@ -6495,7 +6501,17 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
     0 0 42px color-mix(in srgb, var(--avatar-accent, #39c1d9) 18%, transparent);
   transform: translateY(12px) scale(0.97);
   opacity: 0;
-  animation: battleHubSkillModalIn 220ms cubic-bezier(.16, .9, .22, 1) forwards;
+  filter: blur(2px) brightness(0.94);
+  transition:
+    opacity 260ms ease,
+    transform 300ms cubic-bezier(.16, .9, .22, 1),
+    filter 300ms ease;
+}
+
+.battle-hub-skill-modal.is-open .battle-hub-skill-modal-card {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  filter: blur(0) brightness(1);
 }
 
 .battle-hub-skill-modal-card::before,
@@ -6530,16 +6546,75 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
   top: 12px;
   right: 12px;
   z-index: 4;
-  width: 34px;
-  height: 34px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 8px;
-  background: rgba(7, 9, 12, 0.72);
+  background:
+    radial-gradient(circle at 34% 18%, rgba(255, 255, 255, 0.14), transparent 36%),
+    linear-gradient(180deg, rgba(18, 22, 30, 0.92), rgba(7, 9, 12, 0.84));
   color: #fff2eb;
   cursor: pointer;
-  font: inherit;
-  font-size: 18px;
-  font-weight: 900;
+  font-size: 0;
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  transition:
+    border-color 170ms ease,
+    background 170ms ease,
+    box-shadow 170ms ease,
+    filter 170ms ease,
+    transform 170ms ease;
+}
+
+.battle-hub-skill-modal-close::before,
+.battle-hub-skill-modal-close::after {
+  content: "";
+  position: absolute;
+  width: 15px;
+  height: 2px;
+  border-radius: 999px;
+  background: #fff2eb;
+  box-shadow: 0 0 12px color-mix(in srgb, var(--skill-color, #d1d5db) 42%, transparent);
+  transition:
+    background 170ms ease,
+    box-shadow 170ms ease,
+    transform 170ms ease;
+}
+
+.battle-hub-skill-modal-close::before {
+  transform: rotate(45deg);
+}
+
+.battle-hub-skill-modal-close::after {
+  transform: rotate(-45deg);
+}
+
+.battle-hub-skill-modal-close:hover,
+.battle-hub-skill-modal-close:focus-visible {
+  border-color: color-mix(in srgb, var(--skill-color, #d1d5db) 58%, rgba(255, 255, 255, 0.22));
+  background:
+    radial-gradient(circle at 34% 18%, rgba(255, 255, 255, 0.18), transparent 36%),
+    linear-gradient(180deg, rgba(42, 16, 20, 0.94), rgba(13, 9, 13, 0.9));
+  filter: brightness(1.12);
+  transform: translateY(-1px) rotate(4deg);
+  box-shadow:
+    0 0 22px color-mix(in srgb, var(--skill-color, #d1d5db) 22%, transparent),
+    0 12px 24px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.battle-hub-skill-modal-close:hover::before,
+.battle-hub-skill-modal-close:focus-visible::before {
+  transform: rotate(45deg) scaleX(1.12);
+}
+
+.battle-hub-skill-modal-close:hover::after,
+.battle-hub-skill-modal-close:focus-visible::after {
+  transform: rotate(-45deg) scaleX(1.12);
 }
 
 .battle-hub-skill-modal-content {
@@ -6779,11 +6854,19 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
 }
 
 .battle-hub-skill-modal.is-closing .battle-hub-skill-modal-backdrop {
-  animation: battleHubSkillModalBackdropOut 180ms ease forwards;
+  opacity: 0;
+  backdrop-filter: blur(2px);
+  transition-duration: 360ms;
 }
 
 .battle-hub-skill-modal.is-closing .battle-hub-skill-modal-card {
-  animation: battleHubSkillModalOut 180ms ease forwards;
+  opacity: 0;
+  transform: translateY(14px) scale(0.955);
+  filter: blur(3px) brightness(0.86);
+  transition:
+    opacity 320ms ease,
+    transform 360ms cubic-bezier(.4, 0, .22, 1),
+    filter 360ms ease;
 }
 
 .battle-hub-skill-modal.is-purchased .battle-hub-skill-modal-card {
@@ -6792,28 +6875,6 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
 
 .battle-hub-skill-modal.is-busy .battle-hub-skill-modal-card {
   filter: brightness(1.15);
-}
-
-@keyframes battleHubSkillModalBackdropIn {
-  to { opacity: 1; }
-}
-
-@keyframes battleHubSkillModalBackdropOut {
-  to { opacity: 0; }
-}
-
-@keyframes battleHubSkillModalIn {
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes battleHubSkillModalOut {
-  to {
-    opacity: 0;
-    transform: translateY(10px) scale(0.98);
-  }
 }
 
 @keyframes battleHubSkillModalPurchase {
@@ -7924,9 +7985,42 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
   }
 
   .battle-hub-player-card {
-    grid-template-columns: 82px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
     width: 100%;
     min-width: 0;
+    padding: 10px;
+  }
+
+  .battle-hub-player-avatar-wrap {
+    grid-column: 1 / -1;
+    min-height: 0;
+    height: clamp(176px, 46vw, 260px);
+    border-radius: 10px;
+  }
+
+  .battle-hub-player-avatar-wrap::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(180deg, transparent 42%, rgba(4, 7, 12, 0.18) 68%, rgba(4, 7, 12, 0.72) 100%),
+      radial-gradient(circle at 18% 12%, color-mix(in srgb, var(--avatar-accent) 20%, transparent), transparent 38%);
+  }
+
+  .battle-hub-player-avatar {
+    object-position: center 22%;
+  }
+
+  .battle-hub-player-level {
+    z-index: 2;
+    right: 8px;
+    bottom: 8px;
+  }
+
+  .battle-hub-player-body {
+    grid-column: 1 / -1;
   }
 
   .battle-hub-profile-rating {
@@ -7969,13 +8063,17 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
 
 @media (max-width: 460px) {
   .battle-hub-player-card {
-    grid-template-columns: 64px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     gap: 10px;
-    padding-right: 9px;
+    padding: 9px;
+  }
+
+  .battle-hub-player-avatar-wrap {
+    height: clamp(158px, 58vw, 224px);
   }
 
   .battle-hub-player-name {
-    font-size: 22px;
+    font-size: 24px;
   }
 
   .battle-hub-player-top {
