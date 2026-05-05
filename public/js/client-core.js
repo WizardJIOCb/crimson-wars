@@ -409,6 +409,7 @@ const visuals = {
   bossBlast: [],
   bloodMist: [],
   skillBursts: [],
+  xpCharge: [],
   skillArcs: [],
   skillLinks: [],
   skillLabels: [],

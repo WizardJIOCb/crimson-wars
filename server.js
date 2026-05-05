@@ -231,6 +231,13 @@ const WS_STATE_BACKPRESSURE_BYTES = Math.max(64 * 1024, Number(process.env.WS_ST
 const XP_SURGE_DURATION_MS = 3200;
 const XP_SURGE_PULL_MIN_MUL = 0.22;
 const XP_SURGE_PULL_MAX_MUL = 3.9;
+const XP_ORB_COLLECT_RADIUS = Math.max(12, Math.round(PLAYER_RADIUS * 0.9));
+const XP_ORB_COLLECT_FINISH_MARGIN = Math.max(2, Math.round(PLAYER_RADIUS * 0.18));
+const XP_ORB_PULL_SPEED_MUL = 1.16;
+const XP_ORB_TARGET_SPEED_GRACE = Math.max(80, PLAYER_SPEED * PLAYER_MOVE_SPEED_GLOBAL_MUL * 0.45);
+const XP_ORB_TARGET_SPEED_BONUS_MUL = 0.9;
+const XP_ORB_TARGET_SPEED_MAX_BONUS = Math.max(260, XP_ORB_PULL_SPEED * 2.1);
+const XP_ORB_TARGET_SPEED_CAP = Math.max(900, XP_ORB_PULL_SPEED * 3.4);
 const partnerRunSessions = new Map();
 const GOOGLE_OAUTH_STATE_COOKIE = 'cw_google_oauth_state';
 const VK_OAUTH_STATE_COOKIE = 'cw_vk_oauth_state';
@@ -5558,6 +5565,8 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
     level: Math.max(1, Math.floor(Number(p.level) || 1)),
     xp: Math.max(0, Math.floor(Number(p.xp) || 0)),
     xpToNext: Math.max(1, Math.floor(Number(p.xpToNext) || getXpToNextLevel(p.level || 1))),
+    xpChargeSeq: Math.max(0, Math.floor(Number(p.xpChargeSeq) || 0)),
+    xpChargeXp: Math.max(0, Math.floor(Number(p.xpChargeXp) || 0)),
     pendingSkillChoices: [],
     enemyKills: Math.max(0, Math.floor(Number(p.enemyKills) || 0)),
     bossKills: Math.max(0, Math.floor(Number(p.bossKills) || 0)),
@@ -5628,6 +5637,8 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
     level: 1,
     xp: 0,
     xpToNext: 1,
+    xpChargeSeq: 0,
+    xpChargeXp: 0,
     pendingSkillChoices: [],
     skills: [],
     isCompanion: true,
@@ -7106,12 +7117,24 @@ function ensureSkillOffer(room, player, now = Date.now()) {
   return true;
 }
 
-function gainPlayerXp(room, player, amount, now) {
+function registerPlayerXpCharge(player, amount, now) {
+  if (!player || !player.alive) return;
+  const xp = Math.max(1, Math.round(Number(amount) || 0));
+  player.xpChargeSeq = Math.max(0, Math.floor(Number(player.xpChargeSeq) || 0)) + 1;
+  player.xpChargeXp = Math.max(0, Math.floor(Number(player.xpChargeXp) || 0)) + xp;
+  player.xpChargeLastAt = now;
+}
+
+function gainPlayerXp(room, player, amount, now, options = {}) {
   if (!player || !player.alive) return;
   let xp = Math.max(0, Math.round(Number(amount) || 0));
   if (xp <= 0) return;
   if (!Number.isFinite(player.xp)) player.xp = 0;
   if (!Number.isFinite(player.xpToNext) || player.xpToNext <= 0) player.xpToNext = getXpToNextLevel(player.level || 1);
+
+  if (options?.source === 'xp_orb' || options?.fromXpOrb === true) {
+    registerPlayerXpCharge(player, xp, now);
+  }
 
   player.xp += xp;
   while (player.xp >= player.xpToNext) {
@@ -8366,6 +8389,10 @@ function joinRoom(ws, join) {
     level: 1,
     xp: 0,
     xpToNext: getXpToNextLevel(1),
+    xpChargeSeq: 0,
+    xpChargeXp: 0,
+    xpChargeLastAt: 0,
+    xpPullTargetSpeed: 0,
     unspentLevelUps: 0,
     pendingSkillChoices: [],
     skills: {},
@@ -8782,6 +8809,7 @@ function tickRoom(room, dtSec, now) {
       Math.max(0, Number(p.lastReceivedInputSeq) || 0),
     );
     if (!p.alive) {
+      p.xpPullTargetSpeed = 0;
       if (!p.isOut && p.canRespawn && now >= p.respawnAt) {
         const spawn = randomPlayerSpawn(room, room.gameMode);
         p.x = spawn.x;
@@ -8804,6 +8832,8 @@ function tickRoom(room, dtSec, now) {
       continue;
     }
 
+    const previousX = Number(p.x) || 0;
+    const previousY = Number(p.y) || 0;
     updatePlayerReload(p, dtMs);
     updatePlayerDodgeRecharge(p, dtMs);
     if (p.jumpQueued) {
@@ -8833,6 +8863,10 @@ function tickRoom(room, dtSec, now) {
     );
     p.x = movedPlayer.x;
     p.y = movedPlayer.y;
+    p.xpPullTargetSpeed = Math.min(
+      XP_ORB_TARGET_SPEED_CAP,
+      Math.max(0, Math.hypot((Number(p.x) || 0) - previousX, (Number(p.y) || 0) - previousY) / Math.max(0.001, dtSec)),
+    );
 
     p.fireCooldownLeft = Math.max(0, p.fireCooldownLeft - dtMs);
 
@@ -9239,11 +9273,11 @@ function tickRoom(room, dtSec, now) {
     if (!target) continue;
 
     const pickupR = Math.max(30, Number(target.pickupRadius) || PLAYER_PICKUP_RADIUS_BASE);
-    const collectR = Math.max(2, PLAYER_RADIUS * 0.1);
+    const collectR = XP_ORB_COLLECT_RADIUS;
     const collectR2 = collectR * collectR;
     const dist = Math.sqrt(bestD2);
     if (dist <= collectR) {
-      gainPlayerXp(room, target, orb.xp, now);
+      gainPlayerXp(room, target, orb.xp, now, { source: 'xp_orb' });
       room.xpOrbs.splice(i, 1);
       xpOrbsChanged = true;
       continue;
@@ -9254,7 +9288,12 @@ function tickRoom(room, dtSec, now) {
       const nx = dist > 0.001 ? (target.x - orb.x) / dist : 0;
       const ny = dist > 0.001 ? (target.y - orb.y) / dist : 0;
       const speedMul = pullAll ? magnetPullMul : 1;
-      const desiredSpeed = XP_ORB_PULL_SPEED * speedMul;
+      const targetSpeed = Math.max(0, Math.min(XP_ORB_TARGET_SPEED_CAP, Number(target.xpPullTargetSpeed) || 0));
+      const fastTargetBonus = Math.min(
+        XP_ORB_TARGET_SPEED_MAX_BONUS,
+        Math.max(0, targetSpeed - XP_ORB_TARGET_SPEED_GRACE) * XP_ORB_TARGET_SPEED_BONUS_MUL,
+      );
+      const desiredSpeed = ((XP_ORB_PULL_SPEED * XP_ORB_PULL_SPEED_MUL) + fastTargetBonus) * speedMul;
 
       const prevPullSpeed = Math.max(0, Number(orb.pullSpeed) || 0);
       const startSpeed = Math.min(desiredSpeed * 0.32, desiredSpeed);
@@ -9265,7 +9304,15 @@ function tickRoom(room, dtSec, now) {
       orb.pullSpeed = nextPullSpeed;
 
       const moveStep = nextPullSpeed * dtSec;
-      const maxNoOvershoot = Math.max(0, dist - collectR);
+      const distanceToCollect = Math.max(0, dist - collectR);
+      if (moveStep + XP_ORB_COLLECT_FINISH_MARGIN >= distanceToCollect) {
+        gainPlayerXp(room, target, orb.xp, now, { source: 'xp_orb' });
+        room.xpOrbs.splice(i, 1);
+        xpOrbsChanged = true;
+        continue;
+      }
+
+      const maxNoOvershoot = distanceToCollect;
       const step = Math.min(moveStep, maxNoOvershoot);
       if (step > 0) {
         orb.x += nx * step;
@@ -9276,7 +9323,7 @@ function tickRoom(room, dtSec, now) {
       const dxAfter = target.x - orb.x;
       const dyAfter = target.y - orb.y;
       if (dxAfter * dxAfter + dyAfter * dyAfter <= collectR2) {
-        gainPlayerXp(room, target, orb.xp, now);
+        gainPlayerXp(room, target, orb.xp, now, { source: 'xp_orb' });
         room.xpOrbs.splice(i, 1);
         xpOrbsChanged = true;
         continue;

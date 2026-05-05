@@ -405,6 +405,68 @@ function spawnSkillBurstFx(x, y, color = '#7dd3fc', radius = 100, options = {}) 
   if (visuals.skillBursts.length > 36) visuals.skillBursts.splice(0, visuals.skillBursts.length - 36);
 }
 
+function spawnXpChargeFx(player, options = {}) {
+  if (!player || player.alive === false) return;
+  if (!Array.isArray(visuals.xpCharge)) visuals.xpCharge = [];
+  const q = getQ();
+  const isMe = player.id === game.myId;
+  const count = Math.max(1, Math.min(80, Math.round(Number(options.count) || 1)));
+  const xp = Math.max(0, Math.min(240, Math.round(Number(options.xp) || 0)));
+  const intensity = Math.max(0.75, Math.min(4.8, 0.72 + Math.sqrt(count) * 0.42 + Math.min(2.1, xp * 0.018)));
+  const renderPos = typeof getPlayerRenderPos === 'function' ? getPlayerRenderPos(player) : null;
+  const x = Number(renderPos?.x) || Number(player.x) || 0;
+  const y = Number(renderPos?.y) || Number(player.y) || 0;
+  const now = performance.now();
+
+  let fx = visuals.xpCharge.find((item) => item.playerId === player.id && item.life > 0);
+  if (!fx) {
+    fx = {
+      playerId: player.id,
+      x,
+      y,
+      energy: 0,
+      spin: Math.random() * Math.PI * 2,
+      pulseAt: 0,
+      life: 0.42,
+      ttl: 0.42,
+      isMe,
+      particles: [],
+    };
+    visuals.xpCharge.push(fx);
+  }
+
+  fx.x = x;
+  fx.y = y;
+  fx.isMe = isMe;
+  fx.energy = Math.min(7, Math.max(Number(fx.energy) || 0, intensity) + intensity * 0.52);
+  fx.life = Math.min(0.74, Math.max(Number(fx.life) || 0, 0.32 + intensity * 0.075));
+  fx.ttl = Math.max(Number(fx.ttl) || 0.42, fx.life);
+  fx.pulseAt = now;
+
+  const qualityMul = q.overlays === false ? 0.58 : 1;
+  const particleCount = Math.max(4, Math.min(isMe ? 34 : 22, Math.round((4 + Math.sqrt(count) * 5.2 + intensity * 2.5) * qualityMul)));
+  for (let i = 0; i < particleCount; i += 1) {
+    const angle = Math.random() * Math.PI * 2;
+    const startR = 20 + Math.random() * 34 + intensity * 5;
+    const inward = 62 + Math.random() * 118 + intensity * 20;
+    const ttl = 0.22 + Math.random() * 0.22 + Math.min(0.12, intensity * 0.025);
+    fx.particles.push({
+      angle,
+      r: startR,
+      vr: -inward,
+      orbit: (Math.random() - 0.5) * (5.2 + intensity * 0.5),
+      size: 2.2 + Math.random() * 3.8 + intensity * 0.35,
+      life: ttl,
+      ttl,
+      color: Math.random() > 0.32 ? '#67e8f9' : '#fef08a',
+    });
+  }
+
+  const maxParticles = isMe ? 96 : 58;
+  if (fx.particles.length > maxParticles) fx.particles.splice(0, fx.particles.length - maxParticles);
+  if (visuals.xpCharge.length > 12) visuals.xpCharge.splice(0, visuals.xpCharge.length - 12);
+}
+
 function psiBlastFxRadius(skill) {
   const def = game.skillCatalog?.psi_blast || {};
   const lvl = Math.max(1, Number(skill?.level) || 1);
@@ -931,12 +993,22 @@ function processStateFx(nextState) {
       shieldHp: Math.max(0, Number(p.shieldHp) || 0),
       shieldMax: Math.max(0, Number(p.shieldMax) || 0),
       shieldHitSeq: Math.max(0, Number(p.shieldHitSeq) || 0),
+      xpChargeSeq: Math.max(0, Number(p.xpChargeSeq) || 0),
+      xpChargeXp: Math.max(0, Number(p.xpChargeXp) || 0),
       isCompanion: Boolean(p.isCompanion),
       ownerId: p.ownerId || '',
     });
     const prev = prevPlayerMap.get(p.id);
     if (prev && Math.max(0, Number(p.shieldHitSeq) || 0) > Math.max(0, Number(prev.shieldHitSeq) || 0)) {
       spawnForceShieldFx(p, prev);
+    }
+    const nextXpChargeSeq = Math.max(0, Number(p.xpChargeSeq) || 0);
+    const prevXpChargeSeq = Math.max(0, Number(prev?.xpChargeSeq) || 0);
+    if (prev && p.alive !== false && !p.isCompanion && nextXpChargeSeq > prevXpChargeSeq) {
+      spawnXpChargeFx(p, {
+        count: nextXpChargeSeq - prevXpChargeSeq,
+        xp: Math.max(0, (Number(p.xpChargeXp) || 0) - (Number(prev.xpChargeXp) || 0)),
+      });
     }
     if (prev && p.hp < prev.hp) {
       const hitDamage = Math.max(1, prev.hp - p.hp);
@@ -1422,6 +1494,34 @@ function updateFx(dt) {
     const growSpeed = Math.max(120, Number(s.growSpeed) || 420);
     s.r += Math.min(grow, growSpeed * dt);
     if (s.life <= 0 || s.r >= s.maxR - 1) visuals.skillBursts.splice(i, 1);
+  }
+
+  if (Array.isArray(visuals.xpCharge)) {
+    const playersById = new Map((game.state?.players || []).map((p) => [p.id, p]));
+    for (let i = visuals.xpCharge.length - 1; i >= 0; i -= 1) {
+      const c = visuals.xpCharge[i];
+      c.life -= dt;
+      c.spin += dt * (3.2 + Math.min(4, Number(c.energy) || 0));
+      c.energy = Math.max(0, (Number(c.energy) || 0) * Math.pow(0.12, dt));
+
+      const player = playersById.get(c.playerId);
+      if (player && player.alive !== false) {
+        const renderPos = typeof getPlayerRenderPos === 'function' ? getPlayerRenderPos(player) : null;
+        c.x = Number(renderPos?.x) || Number(player.x) || c.x;
+        c.y = Number(renderPos?.y) || Number(player.y) || c.y;
+      }
+
+      const particles = Array.isArray(c.particles) ? c.particles : [];
+      for (let j = particles.length - 1; j >= 0; j -= 1) {
+        const p = particles[j];
+        p.life -= dt;
+        p.angle += (Number(p.orbit) || 0) * dt;
+        p.r = Math.max(1, (Number(p.r) || 0) + (Number(p.vr) || 0) * dt);
+        p.size = Math.max(0.5, (Number(p.size) || 2) * Math.pow(0.28, dt));
+        if (p.life <= 0 || p.r <= 1.2) particles.splice(j, 1);
+      }
+      if (c.life <= 0 && particles.length <= 0) visuals.xpCharge.splice(i, 1);
+    }
   }
 
   for (let i = visuals.skillArcs.length - 1; i >= 0; i -= 1) {

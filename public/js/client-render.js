@@ -1605,6 +1605,80 @@ function drawFx() {
     ctx.restore();
   }
 
+  if (Array.isArray(visuals.xpCharge)) {
+    for (const c of visuals.xpCharge) {
+      const energy = Math.max(0, Math.min(7, Number(c.energy) || 0));
+      const particles = Array.isArray(c.particles) ? c.particles : [];
+      if (energy <= 0.02 && particles.length <= 0) continue;
+      const radius = 30 + Math.min(54, energy * 8.4);
+      if (!isVisibleWorld(c.x, c.y, radius + 34)) continue;
+      const a = Math.max(0, Math.min(1, (Number(c.life) || 0) / Math.max(0.001, Number(c.ttl) || 1)));
+      const pulseAge = Math.max(0, performance.now() - Math.max(0, Number(c.pulseAt) || 0));
+      const pulse = Math.max(0, 1 - pulseAge / 260);
+      const sx = c.x - camera.x;
+      const sy = c.y - camera.y;
+      const coreR = 16 + energy * 3.2 + pulse * 7;
+      const ringR = radius + pulse * 18;
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, Math.max(1, ringR));
+      glow.addColorStop(0, `rgba(236, 254, 255, ${(0.24 + energy * 0.025).toFixed(3)})`);
+      glow.addColorStop(0.38, `rgba(34, 211, 238, ${(a * 0.22).toFixed(3)})`);
+      glow.addColorStop(1, 'rgba(14, 165, 233, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(sx, sy, ringR, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.globalAlpha = Math.min(1, 0.58 * a + pulse * 0.24);
+      ctx.strokeStyle = 'rgba(103, 232, 249, 0.96)';
+      ctx.lineWidth = 2.2 + energy * 0.42 + pulse * 2.2;
+      ctx.beginPath();
+      ctx.arc(sx, sy, ringR * 0.72, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.globalAlpha = Math.min(1, 0.46 * a + pulse * 0.2);
+      ctx.strokeStyle = 'rgba(254, 240, 138, 0.92)';
+      ctx.lineWidth = 1.4 + pulse * 1.2;
+      ctx.setLineDash([7 + energy, 9]);
+      ctx.lineDashOffset = -(Number(c.spin) || 0) * 12;
+      ctx.beginPath();
+      ctx.arc(sx, sy, ringR * 0.98, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.globalAlpha = Math.min(1, 0.72 * a + pulse * 0.18);
+      ctx.fillStyle = 'rgba(236, 254, 255, 0.85)';
+      ctx.beginPath();
+      ctx.arc(sx, sy, Math.max(4, coreR * 0.34), 0, Math.PI * 2);
+      ctx.fill();
+
+      for (const p of particles) {
+        const lifeRatio = Math.max(0, Math.min(1, (Number(p.life) || 0) / Math.max(0.001, Number(p.ttl) || 1)));
+        if (lifeRatio <= 0.01) continue;
+        const px = sx + Math.cos(p.angle) * p.r;
+        const py = sy + Math.sin(p.angle) * p.r;
+        const tailR = Math.max(0, Number(p.r) || 0) + 8 + energy * 0.8;
+        const tx = sx + Math.cos(p.angle) * tailR;
+        const ty = sy + Math.sin(p.angle) * tailR;
+        ctx.globalAlpha = Math.min(1, lifeRatio * 0.86);
+        ctx.strokeStyle = hexToRgba(p.color || '#67e8f9', 0.82);
+        ctx.lineWidth = Math.max(1, Number(p.size) || 2);
+        ctx.beginPath();
+        ctx.moveTo(tx, ty);
+        ctx.lineTo(px, py);
+        ctx.stroke();
+
+        ctx.fillStyle = p.color || '#67e8f9';
+        ctx.beginPath();
+        ctx.arc(px, py, Math.max(1, (Number(p.size) || 2) * 0.58), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
   for (const a of visuals.skillArcs) {
     if (!isVisibleWorld(a.x, a.y, a.radius + 24)) continue;
     const t = Math.max(0, a.life / a.ttl);
