@@ -13,6 +13,10 @@
       title: 'Кампании',
       copy: 'Сюжетные цепочки, уровни, цели миссий и привязка карт. Меняем структуру кампании без ручной правки world-content.js.',
     },
+    mobs: {
+      title: 'Mobs',
+      copy: 'Enemy catalog: archetypes, stats, visuals, quick-run weights, and campaign-level spawn mixes.',
+    },
     news: {
       title: 'Новости',
       copy: 'Старый news-editor встроен прямо в Admin Hub и использует ту же админ-сессию.',
@@ -106,13 +110,16 @@
     worldDirtyPill: $('world-dirty-pill'),
     mapsNavCount: $('maps-nav-count'),
     campaignsNavCount: $('campaigns-nav-count'),
+    mobsNavCount: $('mobs-nav-count'),
     metricMaps: $('metric-maps'),
     metricCampaigns: $('metric-campaigns'),
     metricLevels: $('metric-levels'),
+    metricMobs: $('metric-mobs'),
     sections: {
       overview: $('section-overview'),
       maps: $('section-maps'),
       campaigns: $('section-campaigns'),
+      mobs: $('section-mobs'),
       news: $('section-news'),
       skills: $('section-skills'),
     },
@@ -216,6 +223,43 @@
     modifierEnemySpawn: $('modifier-enemy-spawn'),
     modifierEnemyHp: $('modifier-enemy-hp'),
     modifierBossInterval: $('modifier-boss-interval'),
+    modifierBossMob: $('modifier-boss-mob'),
+    levelMobWeightsBody: $('level-mob-weights-body'),
+    mobList: $('mob-list'),
+    mobId: $('mob-id'),
+    mobName: $('mob-name'),
+    mobBehavior: $('mob-behavior'),
+    mobRarity: $('mob-rarity'),
+    mobColor: $('mob-color'),
+    mobImage: $('mob-image'),
+    mobEnabled: $('mob-enabled'),
+    mobDefaultWeight: $('mob-default-weight'),
+    mobMinDifficulty: $('mob-min-difficulty'),
+    mobHpMul: $('mob-hp-mul'),
+    mobSpeedMul: $('mob-speed-mul'),
+    mobDamageMul: $('mob-damage-mul'),
+    mobDamageTakenMul: $('mob-damage-taken-mul'),
+    mobRadius: $('mob-radius'),
+    mobSpriteScale: $('mob-sprite-scale'),
+    mobXpValue: $('mob-xp-value'),
+    mobScoreValue: $('mob-score-value'),
+    mobKnockbackResist: $('mob-knockback-resist'),
+    mobFireCooldown: $('mob-fire-cooldown'),
+    mobRangeMin: $('mob-range-min'),
+    mobRangeMax: $('mob-range-max'),
+    mobProjectileColor: $('mob-projectile-color'),
+    mobHealAmount: $('mob-heal-amount'),
+    mobHealRadius: $('mob-heal-radius'),
+    mobHealCooldown: $('mob-heal-cooldown'),
+    mobExplosionRadius: $('mob-explosion-radius'),
+    mobExplosionDamage: $('mob-explosion-damage'),
+    mobSplitMob: $('mob-split-mob'),
+    mobSplitCount: $('mob-split-count'),
+    mobDescription: $('mob-description'),
+    mobUsage: $('mob-usage'),
+    mobAddBtn: $('mob-add-btn'),
+    mobCloneBtn: $('mob-clone-btn'),
+    mobDeleteBtn: $('mob-delete-btn'),
     jumpButtons: Array.from(document.querySelectorAll('[data-jump]')),
   };
 
@@ -227,6 +271,7 @@
     selectedMapId: '',
     selectedCampaignId: '',
     selectedLevelId: '',
+    selectedMobId: '',
     framesLoaded: {
       news: false,
       skills: false,
@@ -305,6 +350,15 @@
     return slug || fallback || 'entry';
   }
 
+  function normalizeOptionalId(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_]+/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_+|_+$/g, '');
+  }
+
   function uniqueId(existingIds, base) {
     const used = new Set(existingIds);
     const stem = slugify(base, 'entry');
@@ -318,7 +372,7 @@
   }
 
   function getWorld() {
-    return state.world || { maps: [], campaigns: [], enums: null, summary: null };
+    return state.world || { maps: [], campaigns: [], mobs: [], enums: null, summary: null };
   }
 
   function getSelectedMap() {
@@ -334,12 +388,89 @@
     return campaign?.levels?.find((level) => level.id === state.selectedLevelId) || null;
   }
 
+  function getSelectedMob() {
+    return getWorld().mobs.find((mob) => mob.id === state.selectedMobId) || null;
+  }
+
+  function ensureLevelModifiers(level) {
+    if (!level) return null;
+    level.modifiers = level.modifiers && typeof level.modifiers === 'object' ? level.modifiers : {};
+    level.modifiers.mobWeights = level.modifiers.mobWeights && typeof level.modifiers.mobWeights === 'object'
+      ? level.modifiers.mobWeights
+      : {};
+    return level.modifiers;
+  }
+
+  function getDefaultMobWeights() {
+    const weights = {};
+    for (const mob of getWorld().mobs || []) {
+      if (!mob?.id || mob.id === 'boss' || mob.behavior === 'boss') continue;
+      const weight = Number(mob.defaultWeight) || 0;
+      if (weight > 0) weights[mob.id] = weight;
+    }
+    return weights;
+  }
+
+  function getBossMobs() {
+    return (getWorld().mobs || []).filter((mob) => mob?.id && mob.behavior === 'boss');
+  }
+
+  function getDefaultBossMobId(mapId = '') {
+    const mapped = {
+      mall_night: 'boss_hellmart',
+      clinic_yard: 'boss_chief_surgeon',
+      ringroad_bbq: 'boss_road_titan',
+      reactor_sprawl: 'boss_reactor_apostle',
+    }[String(mapId || '')];
+    const bossMobs = getBossMobs();
+    if (mapped && bossMobs.some((mob) => mob.id === mapped)) return mapped;
+    if (bossMobs.some((mob) => mob.id === 'boss')) return 'boss';
+    return bossMobs[0]?.id || '';
+  }
+
   function getMapLevelUsage(mapId) {
     const usage = [];
     for (const campaign of getWorld().campaigns) {
       for (const level of campaign.levels || []) {
         if (level.mapId === mapId) {
           usage.push({
+            campaignId: campaign.id,
+            campaignName: campaign.name,
+            levelId: level.id,
+            levelTitle: level.title,
+          });
+        }
+      }
+    }
+    return usage;
+  }
+
+  function getMobLevelUsage(mobId) {
+    const usage = [];
+    const mob = (getWorld().mobs || []).find((entry) => entry.id === mobId);
+    if (mob && Number(mob.defaultWeight) > 0) {
+      usage.push({
+        kind: 'quick',
+        label: 'Quick runs',
+        weight: Number(mob.defaultWeight) || 0,
+      });
+    }
+    for (const campaign of getWorld().campaigns) {
+      for (const level of campaign.levels || []) {
+        const weight = Number(level.modifiers?.mobWeights?.[mobId]) || 0;
+        if (weight > 0) {
+          usage.push({
+            kind: 'campaign',
+            campaignId: campaign.id,
+            campaignName: campaign.name,
+            levelId: level.id,
+            levelTitle: level.title,
+            weight,
+          });
+        }
+        if (level.modifiers?.bossMobId === mobId) {
+          usage.push({
+            kind: 'boss',
             campaignId: campaign.id,
             campaignName: campaign.name,
             levelId: level.id,
@@ -363,6 +494,9 @@
     const levels = Array.isArray(campaign?.levels) ? campaign.levels : [];
     if (!levels.some((level) => level.id === state.selectedLevelId)) {
       state.selectedLevelId = levels[0]?.id || '';
+    }
+    if (!(world.mobs || []).some((mob) => mob.id === state.selectedMobId)) {
+      state.selectedMobId = (world.mobs || [])[0]?.id || '';
     }
   }
 
@@ -555,6 +689,7 @@
     state.world = {
       maps: Array.isArray(payload?.maps) ? clone(payload.maps) : [],
       campaigns: Array.isArray(payload?.campaigns) ? clone(payload.campaigns) : [],
+      mobs: Array.isArray(payload?.mobs) ? clone(payload.mobs) : [],
       enums: payload?.enums || getWorld().enums || null,
       summary: payload?.summary || null,
     };
@@ -574,8 +709,10 @@
     dom.metricMaps.textContent = String(world.maps.length || 0);
     dom.metricCampaigns.textContent = String(world.campaigns.length || 0);
     dom.metricLevels.textContent = String(levels);
+    dom.metricMobs.textContent = String((world.mobs || []).length || 0);
     dom.mapsNavCount.textContent = String(world.maps.length || 0);
     dom.campaignsNavCount.textContent = String(world.campaigns.length || 0);
+    dom.mobsNavCount.textContent = String((world.mobs || []).length || 0);
   }
 
   function renderMapList() {
@@ -1242,6 +1379,120 @@
     renderMapUsage();
   }
 
+  function renderMobList() {
+    const mobs = getWorld().mobs || [];
+    if (!dom.mobList) return;
+    if (mobs.length <= 0) {
+      dom.mobList.innerHTML = '<div class="list-item-meta">No mobs in catalog yet.</div>';
+      return;
+    }
+    dom.mobList.innerHTML = mobs.map((mob) => {
+      const usage = getMobLevelUsage(mob.id);
+      return `
+        <button class="list-item mob-list-item ${mob.id === state.selectedMobId ? 'active' : ''}" data-mob-id="${escapeHtml(mob.id)}">
+          <div class="mob-list-title">
+            <i class="mob-swatch" style="background:${escapeHtml(mob.color || '#ef4444')}"></i>
+            <span>
+              <span class="list-item-title">${escapeHtml(mob.name || mob.id)}</span>
+              <span class="list-item-meta mono">${escapeHtml(mob.id)}</span>
+            </span>
+          </div>
+          <div class="list-item-meta">${escapeHtml(mob.behavior || 'melee')} / ${escapeHtml(mob.rarity || 'common')} • ${usage.length} use(s)</div>
+        </button>
+      `;
+    }).join('');
+  }
+
+  function setInputValue(input, value) {
+    if (!input) return;
+    if (input.type === 'checkbox') {
+      input.checked = value === true;
+      return;
+    }
+    input.value = value ?? '';
+  }
+
+  function renderMobUsage() {
+    if (!dom.mobUsage) return;
+    const mob = getSelectedMob();
+    if (!mob) {
+      dom.mobUsage.innerHTML = '<div>No mob selected.</div>';
+      return;
+    }
+    const usage = getMobLevelUsage(mob.id);
+    if (usage.length <= 0) {
+      dom.mobUsage.innerHTML = '<div>Not used yet. Give it a quick-run weight or add it to campaign level weights.</div>';
+      return;
+    }
+    dom.mobUsage.innerHTML = usage.map((item) => {
+      if (item.kind === 'quick') {
+        return `<div><strong>Quick runs</strong> • weight ${escapeHtml(item.weight)}</div>`;
+      }
+      if (item.kind === 'boss') {
+        return `<div><strong>${escapeHtml(item.campaignName || item.campaignId)}</strong> • boss in ${escapeHtml(item.levelTitle || item.levelId)} <span class="mono">(${escapeHtml(item.levelId)})</span></div>`;
+      }
+      return `<div><strong>${escapeHtml(item.campaignName || item.campaignId)}</strong> • ${escapeHtml(item.levelTitle || item.levelId)} <span class="mono">(${escapeHtml(item.levelId)})</span> • weight ${escapeHtml(item.weight)}</div>`;
+    }).join('');
+  }
+
+  function renderMobEditor() {
+    const mob = getSelectedMob();
+    const behaviors = getWorld().enums?.mobBehaviors || ['melee', 'flanker', 'charger', 'ranged', 'brute', 'splitter', 'healer', 'sniper', 'exploder', 'shield', 'boss'];
+    const rarities = getWorld().enums?.mobRarities || ['common', 'uncommon', 'rare', 'epic', 'legendary', 'boss'];
+    if (dom.mobBehavior) dom.mobBehavior.innerHTML = optionTags(behaviors, mob?.behavior || 'melee');
+    if (dom.mobRarity) dom.mobRarity.innerHTML = optionTags(rarities, mob?.rarity || 'common');
+    if (!mob) {
+      [
+        dom.mobId, dom.mobName, dom.mobColor, dom.mobImage, dom.mobDefaultWeight, dom.mobMinDifficulty,
+        dom.mobHpMul, dom.mobSpeedMul, dom.mobDamageMul, dom.mobDamageTakenMul, dom.mobRadius,
+        dom.mobSpriteScale, dom.mobXpValue, dom.mobScoreValue, dom.mobKnockbackResist,
+        dom.mobFireCooldown, dom.mobRangeMin, dom.mobRangeMax, dom.mobProjectileColor,
+        dom.mobHealAmount, dom.mobHealRadius, dom.mobHealCooldown, dom.mobExplosionRadius,
+        dom.mobExplosionDamage, dom.mobSplitMob, dom.mobSplitCount, dom.mobDescription,
+      ].forEach((input) => setInputValue(input, ''));
+      if (dom.mobEnabled) dom.mobEnabled.checked = false;
+      if (dom.mobDeleteBtn) dom.mobDeleteBtn.disabled = true;
+      return;
+    }
+    setInputValue(dom.mobId, mob.id || '');
+    setInputValue(dom.mobName, mob.name || '');
+    setInputValue(dom.mobBehavior, mob.behavior || 'melee');
+    setInputValue(dom.mobRarity, mob.rarity || 'common');
+    setInputValue(dom.mobColor, mob.color || '');
+    setInputValue(dom.mobImage, mob.image || '');
+    setInputValue(dom.mobEnabled, mob.enabled !== false);
+    setInputValue(dom.mobDefaultWeight, mob.defaultWeight ?? 0);
+    setInputValue(dom.mobMinDifficulty, mob.minDifficultyLevel ?? 1);
+    setInputValue(dom.mobHpMul, mob.hpMul ?? 1);
+    setInputValue(dom.mobSpeedMul, mob.speedMul ?? 1);
+    setInputValue(dom.mobDamageMul, mob.damageMul ?? 1);
+    setInputValue(dom.mobDamageTakenMul, mob.damageTakenMul ?? 1);
+    setInputValue(dom.mobRadius, mob.radius ?? 18);
+    setInputValue(dom.mobSpriteScale, mob.spriteScale ?? 1);
+    setInputValue(dom.mobXpValue, mob.xpValue ?? 8);
+    setInputValue(dom.mobScoreValue, mob.scoreValue ?? 10);
+    setInputValue(dom.mobKnockbackResist, mob.knockbackResist ?? 1);
+    setInputValue(dom.mobFireCooldown, mob.fireCooldownMs ?? 900);
+    setInputValue(dom.mobRangeMin, mob.rangeMin ?? 170);
+    setInputValue(dom.mobRangeMax, mob.rangeMax ?? 280);
+    setInputValue(dom.mobProjectileColor, mob.projectileColor || mob.color || '');
+    setInputValue(dom.mobHealAmount, mob.healAmount ?? 0);
+    setInputValue(dom.mobHealRadius, mob.healRadius ?? 0);
+    setInputValue(dom.mobHealCooldown, mob.healCooldownMs ?? 0);
+    setInputValue(dom.mobExplosionRadius, mob.explosionRadius ?? 0);
+    setInputValue(dom.mobExplosionDamage, mob.explosionDamage ?? 0);
+    setInputValue(dom.mobSplitMob, mob.splitMobId || '');
+    setInputValue(dom.mobSplitCount, mob.splitCount ?? 0);
+    setInputValue(dom.mobDescription, mob.description || '');
+    if (dom.mobDeleteBtn) dom.mobDeleteBtn.disabled = mob.id === 'boss' || (getWorld().mobs || []).length <= 1;
+  }
+
+  function renderMobSection() {
+    renderMobList();
+    renderMobEditor();
+    renderMobUsage();
+  }
+
   function renderCampaignList() {
     const campaigns = getWorld().campaigns;
     dom.campaignList.innerHTML = campaigns.map((campaign) => `
@@ -1296,17 +1547,51 @@
     `).join('');
   }
 
+  function renderLevelMobWeights() {
+    if (!dom.levelMobWeightsBody) return;
+    const level = getSelectedLevel();
+    if (!level) {
+      dom.levelMobWeightsBody.innerHTML = '';
+      return;
+    }
+    const modifiers = ensureLevelModifiers(level);
+    const mobs = (getWorld().mobs || []).filter((mob) => mob?.id && mob.id !== 'boss' && mob.behavior !== 'boss');
+    if (mobs.length <= 0) {
+      dom.levelMobWeightsBody.innerHTML = '<tr><td colspan="3">No regular mobs available.</td></tr>';
+      return;
+    }
+    dom.levelMobWeightsBody.innerHTML = mobs.map((mob) => {
+      const weight = Number(modifiers.mobWeights?.[mob.id]) || 0;
+      return `
+        <tr data-mob-weight-id="${escapeHtml(mob.id)}">
+          <td>
+            <span class="mob-weight-name">
+              <i class="mob-swatch mob-swatch--small" style="background:${escapeHtml(mob.color || '#ef4444')}"></i>
+              <span>${escapeHtml(mob.name || mob.id)} <span class="mono">(${escapeHtml(mob.id)})</span></span>
+            </span>
+          </td>
+          <td>${escapeHtml(mob.behavior || 'melee')}</td>
+          <td><input data-field="weight" type="number" min="0" step="0.1" value="${escapeHtml(weight)}" /></td>
+        </tr>
+      `;
+    }).join('');
+  }
+
   function renderLevelEditor() {
     const level = getSelectedLevel();
     const mapOptions = getWorld().maps.map((map) => ({ value: map.id, label: `${map.name} (${map.id})` }));
+    const bossOptions = getBossMobs().map((mob) => ({ value: mob.id, label: `${mob.name || mob.id} (${mob.id})` }));
     dom.levelMapId.innerHTML = optionTags(mapOptions, level?.mapId || '');
+    dom.modifierBossMob.innerHTML = optionTags(bossOptions, level?.modifiers?.bossMobId || getDefaultBossMobId(level?.mapId));
     if (!level) {
-      [dom.levelId, dom.levelTitle, dom.levelBrief, dom.levelScenario, dom.modifierEnemySpawn, dom.modifierEnemyHp, dom.modifierBossInterval].forEach((input) => {
+      [dom.levelId, dom.levelTitle, dom.levelBrief, dom.levelScenario, dom.modifierEnemySpawn, dom.modifierEnemyHp, dom.modifierBossInterval, dom.modifierBossMob].forEach((input) => {
         if (input) input.value = '';
       });
       dom.levelGoalsBody.innerHTML = '';
+      renderLevelMobWeights();
       return;
     }
+    ensureLevelModifiers(level);
     dom.levelId.value = level.id || '';
     dom.levelMapId.value = level.mapId || '';
     dom.levelTitle.value = level.title || '';
@@ -1315,6 +1600,7 @@
     dom.modifierEnemySpawn.value = String(level.modifiers?.enemySpawnMul ?? 1);
     dom.modifierEnemyHp.value = String(level.modifiers?.enemyHpMul ?? 1);
     dom.modifierBossInterval.value = String(level.modifiers?.bossKillInterval ?? 40);
+    dom.modifierBossMob.value = level.modifiers?.bossMobId || getDefaultBossMobId(level.mapId);
     const goalTypes = getWorld().enums?.goalTypes || [];
     dom.levelGoalsBody.innerHTML = (level.goals || []).map((goal, index) => `
       <tr data-goal-index="${index}">
@@ -1324,6 +1610,7 @@
         <td><button class="btn btn-danger" data-action="delete-goal">✕</button></td>
       </tr>
     `).join('');
+    renderLevelMobWeights();
   }
 
   function renderCampaignSection() {
@@ -1338,6 +1625,7 @@
     renderOverview();
     renderMapSection();
     renderCampaignSection();
+    renderMobSection();
   }
 
   function updateSelectedMap(mutator) {
@@ -1370,12 +1658,28 @@
   function updateSelectedLevel(mutator) {
     const level = getSelectedLevel();
     if (!level) return;
+    ensureLevelModifiers(level);
     mutator(level);
     ensureSelections();
     setDirty(true);
     renderOverview();
     renderCampaignList();
     renderLevelList();
+    renderMobList();
+    renderMobUsage();
+  }
+
+  function updateSelectedMob(mutator, options = {}) {
+    const mob = getSelectedMob();
+    if (!mob) return;
+    mutator(mob);
+    ensureSelections();
+    setDirty(true);
+    renderOverview();
+    renderMobList();
+    renderMobUsage();
+    renderLevelMobWeights();
+    if (options.renderEditor) renderMobEditor();
   }
 
   function setSection(section) {
@@ -1435,10 +1739,11 @@
   async function saveWorldContent() {
     if (!state.world) return;
     try {
-      setStatus(dom.globalStatus, 'Сохраняем карты и кампании...', 'warn');
+      setStatus(dom.globalStatus, 'Saving maps, campaigns, and mobs...', 'warn');
       const payload = {
         maps: clone(getWorld().maps),
         campaigns: clone(getWorld().campaigns),
+        mobs: clone(getWorld().mobs || []),
       };
       const data = await fetchJson('/api/admin/world-content', {
         method: 'PUT',
@@ -1446,19 +1751,19 @@
       });
       applyWorldPayload(data);
       setDirty(false);
-      setStatus(dom.globalStatus, 'Карты и кампании сохранены. Новые комнаты уже будут использовать свежую версию.', 'ok');
+      setStatus(dom.globalStatus, 'Maps, campaigns, and mobs saved. New rooms will use the fresh version.', 'ok');
     } catch (err) {
       setStatus(dom.globalStatus, err.message, 'err');
     }
   }
 
   async function resetWorldContent() {
-    if (!confirm('Сбросить карты и кампании к дефолтному состоянию? Это перетрёт текущие несохранённые правки.')) return;
+    if (!confirm('Reset maps, campaigns, and mobs to defaults? This will discard current unsaved edits.')) return;
     try {
       const data = await fetchJson('/api/admin/world-content/reset', { method: 'POST' });
       applyWorldPayload(data);
       setDirty(false);
-      setStatus(dom.globalStatus, 'Каталог карт и кампаний сброшен к дефолту.', 'ok');
+      setStatus(dom.globalStatus, 'Maps, campaigns, and mobs reset to defaults.', 'ok');
     } catch (err) {
       setStatus(dom.globalStatus, err.message, 'err');
     }
@@ -1580,7 +1885,7 @@
           scenario: '',
           mapId: firstMapId,
           goals: [{ id: 'goal_1', type: 'survive', target: 90, label: 'Выжить 90 секунд' }],
-          modifiers: { enemySpawnMul: 1, enemyHpMul: 1, bossKillInterval: 40 },
+          modifiers: { enemySpawnMul: 1, enemyHpMul: 1, bossKillInterval: 40, bossMobId: getDefaultBossMobId(firstMapId), mobWeights: getDefaultMobWeights() },
         },
       ],
     };
@@ -1635,7 +1940,7 @@
       scenario: '',
       mapId,
       goals: [{ id: 'goal_1', type: 'survive', target: 90, label: 'Выжить 90 секунд' }],
-      modifiers: { enemySpawnMul: 1, enemyHpMul: 1, bossKillInterval: 40 },
+      modifiers: { enemySpawnMul: 1, enemyHpMul: 1, bossKillInterval: 40, bossMobId: getDefaultBossMobId(mapId), mobWeights: getDefaultMobWeights() },
     };
     campaign.levels = Array.isArray(campaign.levels) ? campaign.levels : [];
     campaign.levels.push(level);
@@ -1670,6 +1975,98 @@
     setDirty(true);
     renderCampaignSection();
     renderOverview();
+  }
+
+  function buildMobTemplate(id) {
+    return {
+      id,
+      name: 'New Mob',
+      behavior: 'melee',
+      rarity: 'common',
+      color: '#ef4444',
+      image: '/assets/sprites/enemy_mummy.png',
+      enabled: true,
+      defaultWeight: 2,
+      minDifficultyLevel: 1,
+      hpMul: 1,
+      speedMul: 1,
+      damageMul: 1,
+      damageTakenMul: 1,
+      radius: 18,
+      spriteScale: 1,
+      xpValue: 8,
+      scoreValue: 10,
+      attackCooldownMul: 1,
+      knockbackResist: 1,
+      rangeMin: 170,
+      rangeMax: 280,
+      fireCooldownMs: 900,
+      projectileDamageMul: 1,
+      projectileSpeedMul: 1,
+      projectileLifeMs: 1300,
+      projectileColor: '#ef4444',
+      healAmount: 0,
+      healRadius: 0,
+      healCooldownMs: 0,
+      explosionRadius: 0,
+      explosionDamage: 0,
+      splitMobId: '',
+      splitCount: 0,
+      description: '',
+    };
+  }
+
+  function addMob() {
+    const world = getWorld();
+    world.mobs = Array.isArray(world.mobs) ? world.mobs : [];
+    const id = uniqueId(world.mobs.map((mob) => mob.id), 'new_mob');
+    const mob = buildMobTemplate(id);
+    world.mobs.push(mob);
+    state.selectedMobId = id;
+    setDirty(true);
+    renderAllWorldSections();
+  }
+
+  function cloneMob() {
+    const mob = getSelectedMob();
+    if (!mob) return;
+    const world = getWorld();
+    const copy = clone(mob);
+    copy.id = uniqueId((world.mobs || []).map((entry) => entry.id), `${mob.id}_copy`);
+    copy.name = `${mob.name || mob.id} Copy`;
+    world.mobs.push(copy);
+    state.selectedMobId = copy.id;
+    setDirty(true);
+    renderAllWorldSections();
+  }
+
+  function deleteMob() {
+    const world = getWorld();
+    const mob = getSelectedMob();
+    if (!mob) return;
+    if (mob.id === 'boss') {
+      setStatus(dom.globalStatus, 'Boss mob is used by portal spawns and cannot be deleted.', 'err');
+      return;
+    }
+    if ((world.mobs || []).length <= 1) {
+      setStatus(dom.globalStatus, 'Cannot delete the last mob.', 'err');
+      return;
+    }
+    if (!confirm(`Delete mob ${mob.name || mob.id}? Campaign weights and split references will be cleaned up.`)) return;
+    const index = world.mobs.findIndex((entry) => entry.id === mob.id);
+    if (index >= 0) world.mobs.splice(index, 1);
+    for (const entry of world.mobs || []) {
+      if (entry.splitMobId === mob.id) entry.splitMobId = '';
+    }
+    for (const campaign of world.campaigns || []) {
+      for (const level of campaign.levels || []) {
+        if (level.modifiers?.mobWeights) delete level.modifiers.mobWeights[mob.id];
+        if (level.modifiers?.bossMobId === mob.id) level.modifiers.bossMobId = getDefaultBossMobId(level.mapId);
+      }
+    }
+    state.selectedMobId = world.mobs[Math.max(0, index - 1)]?.id || world.mobs[0]?.id || '';
+    setDirty(true);
+    renderAllWorldSections();
   }
 
   function moveLevel(direction) {
@@ -1766,13 +2163,71 @@
       renderCampaignSection();
       renderOverview();
     });
-    dom.levelMapId.addEventListener('change', () => updateSelectedLevel((level) => { level.mapId = dom.levelMapId.value; }));
+    dom.levelMapId.addEventListener('change', () => updateSelectedLevel((level) => {
+      level.mapId = dom.levelMapId.value;
+      level.modifiers.bossMobId = level.modifiers.bossMobId || getDefaultBossMobId(level.mapId);
+    }));
     dom.levelTitle.addEventListener('input', () => updateSelectedLevel((level) => { level.title = dom.levelTitle.value; }));
     dom.levelBrief.addEventListener('input', () => updateSelectedLevel((level) => { level.brief = dom.levelBrief.value; }));
     dom.levelScenario.addEventListener('input', () => updateSelectedLevel((level) => { level.scenario = dom.levelScenario.value; }));
     dom.modifierEnemySpawn.addEventListener('input', () => updateSelectedLevel((level) => { level.modifiers.enemySpawnMul = Number(dom.modifierEnemySpawn.value) || 1; }));
     dom.modifierEnemyHp.addEventListener('input', () => updateSelectedLevel((level) => { level.modifiers.enemyHpMul = Number(dom.modifierEnemyHp.value) || 1; }));
     dom.modifierBossInterval.addEventListener('input', () => updateSelectedLevel((level) => { level.modifiers.bossKillInterval = Number(dom.modifierBossInterval.value) || 40; }));
+    dom.modifierBossMob?.addEventListener('change', () => updateSelectedLevel((level) => { level.modifiers.bossMobId = dom.modifierBossMob.value || getDefaultBossMobId(level.mapId); }));
+
+    dom.mobId?.addEventListener('input', () => {
+      const mob = getSelectedMob();
+      if (!mob) return;
+      const oldId = mob.id;
+      const nextId = slugify(dom.mobId.value, oldId);
+      mob.id = nextId;
+      state.selectedMobId = nextId;
+      if (oldId !== nextId) {
+        for (const entry of getWorld().mobs || []) {
+          if (entry.splitMobId === oldId) entry.splitMobId = nextId;
+        }
+        for (const campaign of getWorld().campaigns || []) {
+          for (const level of campaign.levels || []) {
+            const weights = level.modifiers?.mobWeights;
+            if (weights && Object.prototype.hasOwnProperty.call(weights, oldId)) {
+              weights[nextId] = weights[oldId];
+              delete weights[oldId];
+            }
+          }
+        }
+      }
+      setDirty(true);
+      renderAllWorldSections();
+    });
+    dom.mobName?.addEventListener('input', () => updateSelectedMob((mob) => { mob.name = dom.mobName.value; }));
+    dom.mobBehavior?.addEventListener('change', () => updateSelectedMob((mob) => { mob.behavior = dom.mobBehavior.value || 'melee'; }, { renderEditor: true }));
+    dom.mobRarity?.addEventListener('change', () => updateSelectedMob((mob) => { mob.rarity = dom.mobRarity.value || 'common'; }, { renderEditor: true }));
+    dom.mobColor?.addEventListener('input', () => updateSelectedMob((mob) => { mob.color = dom.mobColor.value; }));
+    dom.mobImage?.addEventListener('input', () => updateSelectedMob((mob) => { mob.image = dom.mobImage.value; }));
+    dom.mobEnabled?.addEventListener('change', () => updateSelectedMob((mob) => { mob.enabled = !!dom.mobEnabled.checked; }));
+    dom.mobDefaultWeight?.addEventListener('input', () => updateSelectedMob((mob) => { mob.defaultWeight = Number(dom.mobDefaultWeight.value) || 0; }));
+    dom.mobMinDifficulty?.addEventListener('input', () => updateSelectedMob((mob) => { mob.minDifficultyLevel = Number(dom.mobMinDifficulty.value) || 1; }));
+    dom.mobHpMul?.addEventListener('input', () => updateSelectedMob((mob) => { mob.hpMul = Number(dom.mobHpMul.value) || 1; }));
+    dom.mobSpeedMul?.addEventListener('input', () => updateSelectedMob((mob) => { mob.speedMul = Number(dom.mobSpeedMul.value) || 1; }));
+    dom.mobDamageMul?.addEventListener('input', () => updateSelectedMob((mob) => { mob.damageMul = Number(dom.mobDamageMul.value) || 1; }));
+    dom.mobDamageTakenMul?.addEventListener('input', () => updateSelectedMob((mob) => { mob.damageTakenMul = Number(dom.mobDamageTakenMul.value) || 1; }));
+    dom.mobRadius?.addEventListener('input', () => updateSelectedMob((mob) => { mob.radius = Number(dom.mobRadius.value) || 18; }));
+    dom.mobSpriteScale?.addEventListener('input', () => updateSelectedMob((mob) => { mob.spriteScale = Number(dom.mobSpriteScale.value) || 1; }));
+    dom.mobXpValue?.addEventListener('input', () => updateSelectedMob((mob) => { mob.xpValue = Number(dom.mobXpValue.value) || 0; }));
+    dom.mobScoreValue?.addEventListener('input', () => updateSelectedMob((mob) => { mob.scoreValue = Number(dom.mobScoreValue.value) || 0; }));
+    dom.mobKnockbackResist?.addEventListener('input', () => updateSelectedMob((mob) => { mob.knockbackResist = Number(dom.mobKnockbackResist.value) || 1; }));
+    dom.mobFireCooldown?.addEventListener('input', () => updateSelectedMob((mob) => { mob.fireCooldownMs = Number(dom.mobFireCooldown.value) || 900; }));
+    dom.mobRangeMin?.addEventListener('input', () => updateSelectedMob((mob) => { mob.rangeMin = Number(dom.mobRangeMin.value) || 0; }));
+    dom.mobRangeMax?.addEventListener('input', () => updateSelectedMob((mob) => { mob.rangeMax = Number(dom.mobRangeMax.value) || 0; }));
+    dom.mobProjectileColor?.addEventListener('input', () => updateSelectedMob((mob) => { mob.projectileColor = dom.mobProjectileColor.value; }));
+    dom.mobHealAmount?.addEventListener('input', () => updateSelectedMob((mob) => { mob.healAmount = Number(dom.mobHealAmount.value) || 0; }));
+    dom.mobHealRadius?.addEventListener('input', () => updateSelectedMob((mob) => { mob.healRadius = Number(dom.mobHealRadius.value) || 0; }));
+    dom.mobHealCooldown?.addEventListener('input', () => updateSelectedMob((mob) => { mob.healCooldownMs = Number(dom.mobHealCooldown.value) || 0; }));
+    dom.mobExplosionRadius?.addEventListener('input', () => updateSelectedMob((mob) => { mob.explosionRadius = Number(dom.mobExplosionRadius.value) || 0; }));
+    dom.mobExplosionDamage?.addEventListener('input', () => updateSelectedMob((mob) => { mob.explosionDamage = Number(dom.mobExplosionDamage.value) || 0; }));
+    dom.mobSplitMob?.addEventListener('input', () => updateSelectedMob((mob) => { mob.splitMobId = normalizeOptionalId(dom.mobSplitMob.value); }));
+    dom.mobSplitCount?.addEventListener('input', () => updateSelectedMob((mob) => { mob.splitCount = Number(dom.mobSplitCount.value) || 0; }));
+    dom.mobDescription?.addEventListener('input', () => updateSelectedMob((mob) => { mob.description = dom.mobDescription.value; }));
   }
 
   function bindDynamicHandlers() {
@@ -2155,6 +2610,30 @@
       renderLevelEditor();
     });
 
+    dom.mobList?.addEventListener('click', (event) => {
+      const btn = event.target.closest('[data-mob-id]');
+      if (!btn) return;
+      state.selectedMobId = btn.dataset.mobId || '';
+      renderMobSection();
+    });
+
+    const updateLevelMobWeight = (event) => {
+      const row = event.target.closest('tr[data-mob-weight-id]');
+      if (!row) return;
+      const level = getSelectedLevel();
+      if (!level) return;
+      const mobId = row.dataset.mobWeightId || '';
+      const modifiers = ensureLevelModifiers(level);
+      const weight = Number(event.target.value) || 0;
+      if (weight > 0) modifiers.mobWeights[mobId] = weight;
+      else delete modifiers.mobWeights[mobId];
+      setDirty(true);
+      renderMobList();
+      renderMobUsage();
+    };
+    dom.levelMobWeightsBody?.addEventListener('input', updateLevelMobWeight);
+    dom.levelMobWeightsBody?.addEventListener('change', updateLevelMobWeight);
+
     dom.levelGoalsBody.addEventListener('input', (event) => {
       const row = event.target.closest('tr[data-goal-index]');
       if (!row) return;
@@ -2225,6 +2704,10 @@
     dom.propAddBtn.addEventListener('click', () => {
       addMapPropAtCamera(state.mapEditor.selectedKind);
     });
+
+    dom.mobAddBtn?.addEventListener('click', addMob);
+    dom.mobCloneBtn?.addEventListener('click', cloneMob);
+    dom.mobDeleteBtn?.addEventListener('click', deleteMob);
 
     dom.campaignAddBtn.addEventListener('click', addCampaign);
     dom.campaignCloneBtn.addEventListener('click', cloneCampaign);

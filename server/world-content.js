@@ -23,6 +23,278 @@ function prop(kind, x, y, extra = {}) {
   };
 }
 
+function mob(id, name, behavior, rarity, color, extra = {}) {
+  return {
+    id,
+    name,
+    behavior,
+    rarity,
+    color,
+    image: '/assets/sprites/enemy_mummy.png',
+    enabled: true,
+    defaultWeight: 0,
+    minDifficultyLevel: 1,
+    hpMul: 1,
+    speedMul: 1,
+    damageMul: 1,
+    damageTakenMul: 1,
+    radius: 18,
+    spriteScale: 1,
+    xpValue: 8,
+    scoreValue: 10,
+    attackCooldownMul: 1,
+    knockbackResist: 1,
+    rangeMin: 170,
+    rangeMax: 280,
+    fireCooldownMs: 900,
+    projectileDamageMul: 1,
+    projectileSpeedMul: 1,
+    projectileLifeMs: 1300,
+    projectileColor: color,
+    healAmount: 0,
+    healRadius: 0,
+    healCooldownMs: 0,
+    explosionRadius: 0,
+    explosionDamage: 0,
+    splitMobId: '',
+    splitCount: 0,
+    description: '',
+    ...extra,
+  };
+}
+
+const DEFAULT_MOB_DEFS = [
+  mob('normal', 'Ash Walker', 'melee', 'common', '#9ca3af', {
+    defaultWeight: 30,
+    description: 'Baseline melee infected. Slow pressure, cheap, readable.',
+  }),
+  mob('runner', 'Red Sprinter', 'flanker', 'uncommon', '#ef4444', {
+    defaultWeight: 12,
+    hpMul: 0.72,
+    speedMul: 1.42,
+    damageMul: 0.82,
+    radius: 16,
+    spriteScale: 0.92,
+    xpValue: 9,
+    description: 'Fast flanker that tries to hit from the side instead of walking in a straight line.',
+  }),
+  mob('charger', 'Amber Charger', 'charger', 'uncommon', '#f97316', {
+    defaultWeight: 13,
+    hpMul: 1.18,
+    speedMul: 1.18,
+    damageMul: 1.1,
+    radius: 20,
+    spriteScale: 1.12,
+    xpValue: 12,
+    knockbackResist: 0.72,
+    description: 'Melee attacker with a short dash during the strike.',
+  }),
+  mob('ranged', 'Rose Spitter', 'ranged', 'uncommon', '#fb7185', {
+    defaultWeight: 10,
+    hpMul: 0.86,
+    speedMul: 0.9,
+    damageMul: 0.9,
+    radius: 17,
+    spriteScale: 0.98,
+    xpValue: 10,
+    rangeMin: 170,
+    rangeMax: 300,
+    fireCooldownMs: 940,
+    projectileColor: '#fb7185',
+    description: 'Keeps distance and fires short-range projectiles.',
+  }),
+  mob('brute', 'Iron Brute', 'brute', 'rare', '#64748b', {
+    defaultWeight: 7,
+    minDifficultyLevel: 2,
+    hpMul: 2.35,
+    speedMul: 0.68,
+    damageMul: 1.35,
+    damageTakenMul: 0.88,
+    radius: 27,
+    spriteScale: 1.48,
+    xpValue: 18,
+    scoreValue: 18,
+    knockbackResist: 0.58,
+    description: 'Large tank that soaks fire and breaks through clutter.',
+  }),
+  mob('splitter', 'Violet Splitter', 'splitter', 'rare', '#a855f7', {
+    defaultWeight: 5,
+    minDifficultyLevel: 2,
+    hpMul: 1.28,
+    speedMul: 0.96,
+    damageMul: 0.92,
+    radius: 20,
+    spriteScale: 1.12,
+    xpValue: 14,
+    scoreValue: 14,
+    splitMobId: 'runner',
+    splitCount: 2,
+    description: 'Splits into fast runners on death.',
+  }),
+  mob('medic', 'Green Stitcher', 'healer', 'rare', '#22c55e', {
+    defaultWeight: 4,
+    minDifficultyLevel: 3,
+    hpMul: 1.12,
+    speedMul: 0.84,
+    damageMul: 0.72,
+    radius: 18,
+    spriteScale: 1.02,
+    xpValue: 16,
+    scoreValue: 16,
+    healAmount: 8,
+    healRadius: 170,
+    healCooldownMs: 1400,
+    description: 'Heals nearby mobs and makes clumps more dangerous.',
+  }),
+  mob('sniper', 'Blue Needle', 'sniper', 'epic', '#38bdf8', {
+    defaultWeight: 3,
+    minDifficultyLevel: 3,
+    hpMul: 0.95,
+    speedMul: 0.78,
+    damageMul: 1.25,
+    radius: 17,
+    spriteScale: 1,
+    xpValue: 18,
+    scoreValue: 18,
+    rangeMin: 280,
+    rangeMax: 540,
+    fireCooldownMs: 1450,
+    projectileDamageMul: 1.35,
+    projectileSpeedMul: 1.35,
+    projectileLifeMs: 1800,
+    projectileColor: '#38bdf8',
+    description: 'Long-range shooter that punishes standing still.',
+  }),
+  mob('exploder', 'Gold Burster', 'exploder', 'epic', '#facc15', {
+    defaultWeight: 3,
+    minDifficultyLevel: 3,
+    hpMul: 0.78,
+    speedMul: 1.18,
+    damageMul: 0.65,
+    radius: 18,
+    spriteScale: 1.04,
+    xpValue: 18,
+    scoreValue: 18,
+    explosionRadius: 112,
+    explosionDamage: 28,
+    description: 'Rushes close, then detonates. Also pops on death.',
+  }),
+  mob('shield', 'Bone Bulwark', 'shield', 'legendary', '#e5e7eb', {
+    defaultWeight: 2,
+    minDifficultyLevel: 4,
+    hpMul: 1.85,
+    speedMul: 0.82,
+    damageMul: 1.08,
+    damageTakenMul: 0.68,
+    radius: 24,
+    spriteScale: 1.32,
+    xpValue: 22,
+    scoreValue: 22,
+    knockbackResist: 0.46,
+    description: 'Armored guard with strong knockback resistance.',
+  }),
+  mob('boss', 'Crimson Behemoth', 'boss', 'boss', '#dc2626', {
+    enabled: true,
+    defaultWeight: 0,
+    hpMul: 1,
+    speedMul: 1,
+    damageMul: 1,
+    damageTakenMul: 1,
+    radius: 42,
+    spriteScale: 2.6,
+    rangeMax: 0,
+    xpValue: 220,
+    scoreValue: 100,
+    knockbackResist: 0.42,
+    description: 'Portal boss. It is not part of regular spawn weights.',
+  }),
+  mob('boss_hellmart', 'Hellmart Butcher', 'boss', 'boss', '#f97316', {
+    enabled: true,
+    defaultWeight: 0,
+    hpMul: 1.16,
+    speedMul: 0.92,
+    damageMul: 1.36,
+    damageTakenMul: 0.92,
+    radius: 46,
+    spriteScale: 2.82,
+    rangeMax: 0,
+    xpValue: 260,
+    scoreValue: 130,
+    knockbackResist: 0.34,
+    explosionRadius: 92,
+    explosionDamage: 18,
+    description: 'Mall boss. A butcher-sized infected that hits hard and bursts shelves apart on death.',
+  }),
+  mob('boss_chief_surgeon', 'Chief Surgeon', 'boss', 'boss', '#22c55e', {
+    enabled: true,
+    defaultWeight: 0,
+    hpMul: 1.02,
+    speedMul: 0.86,
+    damageMul: 0.96,
+    damageTakenMul: 0.9,
+    radius: 43,
+    spriteScale: 2.66,
+    rangeMax: 0,
+    xpValue: 280,
+    scoreValue: 140,
+    knockbackResist: 0.38,
+    healAmount: 18,
+    healRadius: 260,
+    healCooldownMs: 1150,
+    description: 'Clinic boss. Keeps the horde stitched together with a pulsing heal aura.',
+  }),
+  mob('boss_road_titan', 'Road Rage Titan', 'boss', 'boss', '#ef4444', {
+    enabled: true,
+    defaultWeight: 0,
+    hpMul: 0.96,
+    speedMul: 1.34,
+    damageMul: 1.18,
+    damageTakenMul: 1,
+    radius: 40,
+    spriteScale: 2.48,
+    rangeMax: 0,
+    attackCooldownMul: 0.78,
+    xpValue: 270,
+    scoreValue: 135,
+    knockbackResist: 0.46,
+    description: 'Ringroad boss. A fast bruiser that turns the portal fight into a moving chase.',
+  }),
+  mob('boss_reactor_apostle', 'Reactor Apostle', 'boss', 'boss', '#84cc16', {
+    enabled: true,
+    defaultWeight: 0,
+    hpMul: 1.08,
+    speedMul: 0.82,
+    damageMul: 1.12,
+    damageTakenMul: 0.86,
+    radius: 44,
+    spriteScale: 2.72,
+    rangeMin: 230,
+    rangeMax: 620,
+    fireCooldownMs: 1180,
+    projectileDamageMul: 1.55,
+    projectileSpeedMul: 1.42,
+    projectileLifeMs: 2200,
+    projectileColor: '#bef264',
+    xpValue: 310,
+    scoreValue: 155,
+    knockbackResist: 0.36,
+    explosionRadius: 150,
+    explosionDamage: 34,
+    description: 'Reactor boss. Fires toxic bolts and leaves a dirty reactor pop when it dies.',
+  }),
+];
+
+const DEFAULT_BOSS_BY_MAP_ID = {
+  mall_night: 'boss_hellmart',
+  clinic_yard: 'boss_chief_surgeon',
+  ringroad_bbq: 'boss_road_titan',
+  reactor_sprawl: 'boss_reactor_apostle',
+};
+
+function getDefaultBossMobIdForMap(mapId) {
+  return DEFAULT_BOSS_BY_MAP_ID[String(mapId || '').trim()] || 'boss';
+}
+
 const DEFAULT_MAP_DEFS = [
   {
     id: 'mall_night',
@@ -533,8 +805,10 @@ const DEFAULT_CAMPAIGN_DEFS = [
 
 const MAP_DEFS = [];
 const CAMPAIGN_DEFS = [];
+const MOB_DEFS = [];
 const MAP_BY_ID = {};
 const CAMPAIGN_BY_ID = {};
+const MOB_BY_ID = {};
 
 function clearObject(target) {
   for (const key of Object.keys(target || {})) delete target[key];
@@ -545,6 +819,10 @@ function normalizeCampaignList(campaigns) {
     ...campaign,
     levels: (Array.isArray(campaign?.levels) ? campaign.levels : []).map((level, index) => ({
       ...level,
+      modifiers: {
+        ...(level?.modifiers && typeof level.modifiers === 'object' ? level.modifiers : {}),
+        bossMobId: level?.modifiers?.bossMobId || getDefaultBossMobIdForMap(level?.mapId),
+      },
       index,
       campaignId: campaign.id,
     })),
@@ -554,11 +832,15 @@ function normalizeCampaignList(campaigns) {
 function rebuildWorldContentIndexes() {
   clearObject(MAP_BY_ID);
   clearObject(CAMPAIGN_BY_ID);
+  clearObject(MOB_BY_ID);
   for (const mapDef of MAP_DEFS) {
     if (mapDef?.id) MAP_BY_ID[mapDef.id] = mapDef;
   }
   for (const campaign of CAMPAIGN_DEFS) {
     if (campaign?.id) CAMPAIGN_BY_ID[campaign.id] = campaign;
+  }
+  for (const mobDef of MOB_DEFS) {
+    if (mobDef?.id) MOB_BY_ID[mobDef.id] = mobDef;
   }
 }
 
@@ -569,10 +851,15 @@ function replaceWorldContent(nextState = {}) {
   const nextCampaigns = Array.isArray(nextState?.campaigns)
     ? cloneJson(nextState.campaigns)
     : cloneJson(DEFAULT_CAMPAIGN_DEFS);
+  const nextMobs = Array.isArray(nextState?.mobs) && nextState.mobs.length > 0
+    ? cloneJson(nextState.mobs)
+    : cloneJson(DEFAULT_MOB_DEFS);
   MAP_DEFS.length = 0;
   MAP_DEFS.push(...nextMaps);
   CAMPAIGN_DEFS.length = 0;
   CAMPAIGN_DEFS.push(...normalizeCampaignList(nextCampaigns));
+  MOB_DEFS.length = 0;
+  MOB_DEFS.push(...nextMobs);
   rebuildWorldContentIndexes();
   return getWorldContentSnapshot();
 }
@@ -581,6 +868,7 @@ function getWorldContentSnapshot() {
   return {
     maps: cloneJson(MAP_DEFS),
     campaigns: cloneJson(CAMPAIGN_DEFS),
+    mobs: cloneJson(MOB_DEFS),
   };
 }
 
@@ -588,12 +876,14 @@ function getDefaultWorldContentSnapshot() {
   return {
     maps: cloneJson(DEFAULT_MAP_DEFS),
     campaigns: cloneJson(normalizeCampaignList(DEFAULT_CAMPAIGN_DEFS)),
+    mobs: cloneJson(DEFAULT_MOB_DEFS),
   };
 }
 
 replaceWorldContent({
   maps: DEFAULT_MAP_DEFS,
   campaigns: DEFAULT_CAMPAIGN_DEFS,
+  mobs: DEFAULT_MOB_DEFS,
 });
 
 function getMapDef(mapId) {
@@ -611,6 +901,15 @@ function getCampaignLevelDef(campaignId, levelId) {
   if (!campaign) return null;
   const id = String(levelId || '').trim();
   return campaign.levels.find((level) => level.id === id) || null;
+}
+
+function getMobDef(mobId) {
+  const id = String(mobId || '').trim();
+  return MOB_BY_ID[id] || MOB_BY_ID.normal || MOB_DEFS[0] || null;
+}
+
+function getMobDefs() {
+  return cloneJson(MOB_DEFS);
 }
 
 function toPublicMapDef(mapDef) {
@@ -650,13 +949,20 @@ function toPublicCampaignDef(campaignDef) {
 module.exports = {
   DEFAULT_MAP_DEFS,
   DEFAULT_CAMPAIGN_DEFS,
+  DEFAULT_MOB_DEFS,
+  DEFAULT_BOSS_BY_MAP_ID,
   MAP_DEFS,
+  MOB_DEFS,
   MAP_BY_ID,
   CAMPAIGN_DEFS,
   CAMPAIGN_BY_ID,
+  MOB_BY_ID,
   getMapDef,
   getCampaignDef,
   getCampaignLevelDef,
+  getMobDef,
+  getMobDefs,
+  getDefaultBossMobIdForMap,
   replaceWorldContent,
   getWorldContentSnapshot,
   getDefaultWorldContentSnapshot,

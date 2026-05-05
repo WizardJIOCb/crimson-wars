@@ -4,11 +4,14 @@ const {
   replaceWorldContent,
   getWorldContentSnapshot,
   getDefaultWorldContentSnapshot,
+  getDefaultBossMobIdForMap,
 } = require('./world-content');
 
 const DOC_KEY = 'world_content';
 const TERRAIN_MATERIALS = ['asphalt_wet', 'asphalt', 'concrete', 'concrete_tiles', 'dirt', 'grass', 'toxic'];
 const ZONE_SHAPES = ['rect', 'ellipse', 'band'];
+const MOB_BEHAVIORS = ['melee', 'flanker', 'charger', 'ranged', 'brute', 'splitter', 'healer', 'sniper', 'exploder', 'shield', 'boss'];
+const MOB_RARITIES = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'boss'];
 const PROP_KINDS = [
   'red_hatchback',
   'burnt_sedan',
@@ -64,6 +67,13 @@ function normalizeColor(value, fallback = '') {
   return normalizeText(value, 64, fallback);
 }
 
+function normalizeAssetPath(value, fallback = '/assets/sprites/enemy_mummy.png') {
+  const text = String(value ?? '').trim();
+  if (!text) return fallback;
+  if (text.startsWith('/assets/') || text.startsWith('/api/') || /^https?:\/\//i.test(text)) return text.slice(0, 240);
+  return fallback;
+}
+
 function safeArray(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -110,6 +120,73 @@ function normalizePlannedProp(raw, index = 0) {
     styleTag: String(raw?.styleTag || '').trim().slice(0, 80),
     id: normalizeId(raw?.id, `prop_${index + 1}`),
   };
+}
+
+function normalizeMobDef(raw, index = 0) {
+  const id = normalizeId(raw?.id, `mob_${index + 1}`);
+  const behavior = MOB_BEHAVIORS.includes(String(raw?.behavior || '').trim())
+    ? String(raw.behavior).trim()
+    : 'melee';
+  const rarity = MOB_RARITIES.includes(String(raw?.rarity || '').trim())
+    ? String(raw.rarity).trim()
+    : 'common';
+  const color = normalizeColor(raw?.color, '#ef4444');
+  return {
+    id,
+    name: normalizeText(raw?.name, 100, id),
+    behavior,
+    rarity,
+    color,
+    image: normalizeAssetPath(raw?.image),
+    enabled: raw?.enabled !== false,
+    defaultWeight: clampNum(raw?.defaultWeight, 0, 200, 0),
+    minDifficultyLevel: clampInt(raw?.minDifficultyLevel, 1, 50, 1),
+    hpMul: clampNum(raw?.hpMul, 0.05, 50, 1),
+    speedMul: clampNum(raw?.speedMul, 0.05, 5, 1),
+    damageMul: clampNum(raw?.damageMul, 0.05, 20, 1),
+    damageTakenMul: clampNum(raw?.damageTakenMul, 0.05, 5, 1),
+    radius: clampNum(raw?.radius, 8, 120, behavior === 'boss' ? 42 : 18),
+    spriteScale: clampNum(raw?.spriteScale, 0.4, 5, behavior === 'boss' ? 2.6 : 1),
+    xpValue: clampInt(raw?.xpValue, 0, 10000, behavior === 'boss' ? 220 : 8),
+    scoreValue: clampInt(raw?.scoreValue, 0, 10000, behavior === 'boss' ? 100 : 10),
+    attackCooldownMul: clampNum(raw?.attackCooldownMul, 0.1, 10, 1),
+    knockbackResist: clampNum(raw?.knockbackResist, 0.05, 5, behavior === 'boss' ? 0.42 : 1),
+    rangeMin: clampInt(raw?.rangeMin, 0, 3000, 170),
+    rangeMax: clampInt(raw?.rangeMax, 0, 4000, 280),
+    fireCooldownMs: clampInt(raw?.fireCooldownMs, 80, 10000, 900),
+    projectileDamageMul: clampNum(raw?.projectileDamageMul, 0.05, 20, 1),
+    projectileSpeedMul: clampNum(raw?.projectileSpeedMul, 0.1, 8, 1),
+    projectileLifeMs: clampInt(raw?.projectileLifeMs, 100, 10000, 1300),
+    projectileColor: normalizeColor(raw?.projectileColor, color),
+    healAmount: clampNum(raw?.healAmount, 0, 1000, 0),
+    healRadius: clampNum(raw?.healRadius, 0, 2000, 0),
+    healCooldownMs: clampInt(raw?.healCooldownMs, 0, 30000, 0),
+    explosionRadius: clampNum(raw?.explosionRadius, 0, 2000, 0),
+    explosionDamage: clampNum(raw?.explosionDamage, 0, 2000, 0),
+    splitMobId: normalizeId(raw?.splitMobId, ''),
+    splitCount: clampInt(raw?.splitCount, 0, 12, 0),
+    description: normalizeText(raw?.description, 500, ''),
+  };
+}
+
+function normalizeMobWeights(raw, mobIds = new Set()) {
+  const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const weights = {};
+  for (const mobId of mobIds) {
+    if (String(mobId || '') === 'boss') continue;
+    const weight = clampNum(source[mobId], 0, 200, 0);
+    if (weight > 0) weights[mobId] = Number(weight.toFixed(3));
+  }
+  return weights;
+}
+
+function normalizeBossMobId(raw, mapId, bossMobIds = new Set()) {
+  const requested = normalizeId(raw, '');
+  if (requested && bossMobIds.has(requested)) return requested;
+  const mapped = getDefaultBossMobIdForMap(mapId);
+  if (mapped && bossMobIds.has(mapped)) return mapped;
+  if (bossMobIds.has('boss')) return 'boss';
+  return Array.from(bossMobIds)[0] || '';
 }
 
 function ensureUniqueIds(entries, label) {
@@ -177,12 +254,14 @@ function normalizeGoal(raw, index = 0) {
   };
 }
 
-function normalizeCampaignLevel(raw, index = 0, mapIds = new Set()) {
+function normalizeCampaignLevel(raw, index = 0, mapIds = new Set(), mobIds = new Set(), bossMobIds = new Set()) {
   const id = normalizeId(raw?.id, `level_${index + 1}`);
   const mapId = normalizeId(raw?.mapId, '');
   if (!mapIds.has(mapId)) {
     return buildError(`Campaign level ${id} references unknown map: ${mapId || '(empty)'}`);
   }
+  const mobWeights = normalizeMobWeights(raw?.modifiers?.mobWeights, mobIds);
+  const bossMobId = normalizeBossMobId(raw?.modifiers?.bossMobId, mapId, bossMobIds);
   return {
     id,
     title: normalizeText(raw?.title, 100, id),
@@ -194,15 +273,17 @@ function normalizeCampaignLevel(raw, index = 0, mapIds = new Set()) {
       enemySpawnMul: clampNum(raw?.modifiers?.enemySpawnMul, 0.25, 6, 1),
       enemyHpMul: clampNum(raw?.modifiers?.enemyHpMul, 0.25, 6, 1),
       bossKillInterval: clampInt(raw?.modifiers?.bossKillInterval, 4, 400, 40),
+      bossMobId,
+      mobWeights,
     },
   };
 }
 
-function normalizeCampaignDef(raw, index = 0, mapIds = new Set()) {
+function normalizeCampaignDef(raw, index = 0, mapIds = new Set(), mobIds = new Set(), bossMobIds = new Set()) {
   const id = normalizeId(raw?.id, `campaign_${index + 1}`);
   const levels = [];
   for (const [levelIndex, levelRaw] of safeArray(raw?.levels).entries()) {
-    const normalizedLevel = normalizeCampaignLevel(levelRaw, levelIndex, mapIds);
+    const normalizedLevel = normalizeCampaignLevel(levelRaw, levelIndex, mapIds, mobIds, bossMobIds);
     if (!normalizedLevel?.ok && normalizedLevel?.message) return normalizedLevel;
     levels.push(normalizedLevel);
   }
@@ -230,16 +311,29 @@ function normalizeWorldContentPayload(raw) {
   if (maps.length <= 0) return buildError('At least one map is required.');
   const uniqueMaps = ensureUniqueIds(maps, 'map');
   if (!uniqueMaps.ok) return uniqueMaps;
+  const rawMobs = safeArray(raw?.mobs);
+  const fallbackMobs = rawMobs.length > 0 ? rawMobs : safeArray(getDefaultWorldContentSnapshot()?.mobs);
+  const mobs = fallbackMobs.map((mobDef, mobIndex) => normalizeMobDef(mobDef, mobIndex));
+  if (mobs.length <= 0) return buildError('At least one mob is required.');
+  const uniqueMobs = ensureUniqueIds(mobs, 'mob');
+  if (!uniqueMobs.ok) return uniqueMobs;
+  const mobIds = new Set(mobs.map((mobDef) => mobDef.id));
+  const bossMobIds = new Set(mobs.filter((mobDef) => mobDef.behavior === 'boss').map((mobDef) => mobDef.id));
+  for (const mob of mobs) {
+    if (mob.splitMobId && !mobIds.has(mob.splitMobId)) {
+      return buildError(`Mob ${mob.id} references unknown split mob: ${mob.splitMobId}`);
+    }
+  }
   const mapIds = new Set(maps.map((mapDef) => mapDef.id));
   const campaigns = [];
   for (const [campaignIndex, campaignRaw] of safeArray(raw?.campaigns).entries()) {
-    const normalizedCampaign = normalizeCampaignDef(campaignRaw, campaignIndex, mapIds);
+    const normalizedCampaign = normalizeCampaignDef(campaignRaw, campaignIndex, mapIds, mobIds, bossMobIds);
     if (!normalizedCampaign?.ok && normalizedCampaign?.message) return normalizedCampaign;
     campaigns.push(normalizedCampaign);
   }
   const uniqueCampaigns = ensureUniqueIds(campaigns, 'campaign');
   if (!uniqueCampaigns.ok) return uniqueCampaigns;
-  return { ok: true, maps, campaigns };
+  return { ok: true, maps, campaigns, mobs };
 }
 
 function createWorldContentStore({ dataDir, filePath, mysql, onAfterSave } = {}) {
@@ -251,6 +345,7 @@ function createWorldContentStore({ dataDir, filePath, mysql, onAfterSave } = {})
     state = {
       maps: cloneJson(nextState?.maps || []),
       campaigns: cloneJson(nextState?.campaigns || []),
+      mobs: cloneJson(nextState?.mobs || []),
     };
     replaceWorldContent(state);
     if (typeof onAfterSave === 'function') {
@@ -262,6 +357,7 @@ function createWorldContentStore({ dataDir, filePath, mysql, onAfterSave } = {})
     return {
       maps: cloneJson(state?.maps || []),
       campaigns: cloneJson(state?.campaigns || []),
+      mobs: cloneJson(state?.mobs || []),
     };
   }
 
@@ -322,11 +418,14 @@ function createWorldContentStore({ dataDir, filePath, mysql, onAfterSave } = {})
         zoneShapes: ZONE_SHAPES.slice(),
         propKinds: PROP_KINDS.slice(),
         goalTypes: GOAL_TYPES.slice(),
+        mobBehaviors: MOB_BEHAVIORS.slice(),
+        mobRarities: MOB_RARITIES.slice(),
       },
       summary: {
         mapCount: state.maps.length,
         campaignCount: state.campaigns.length,
         levelCount: state.campaigns.reduce((sum, campaign) => sum + safeArray(campaign?.levels).length, 0),
+        mobCount: state.mobs.length,
       },
     };
   }

@@ -10,7 +10,7 @@ const WebSocket = require('ws');
 const { WebSocketServer } = WebSocket;
 
 const config = require('./server/config');
-const { getMapDef, getCampaignDef, getCampaignLevelDef } = require('./server/world-content');
+const { getMapDef, getCampaignDef, getCampaignLevelDef, getMobDef, getMobDefs, getDefaultBossMobIdForMap } = require('./server/world-content');
 const { createWorldContentStore } = require('./server/world-content-store');
 const { createAdminAuthStore } = require('./server/admin-auth-store');
 const { createPlayerAuthStore, normalizeNickname } = require('./server/player-auth-store');
@@ -3859,8 +3859,80 @@ function createCampaignMission(campaignDef, levelDef) {
   };
 }
 
+function cloneMobCatalog(mobs) {
+  return JSON.parse(JSON.stringify(Array.isArray(mobs) ? mobs : []));
+}
+
+function buildMobCatalog(mobs = getMobDefs()) {
+  const source = Array.isArray(mobs) && mobs.length > 0 ? mobs : getMobDefs();
+  const list = cloneMobCatalog(source).filter((mob) => mob && mob.id);
+  const byId = new Map(list.map((mob) => [String(mob.id || ''), mob]));
+  return { list, byId };
+}
+
+function getRoomMobDef(room, mobId) {
+  const id = String(mobId || '').trim();
+  if (room?.mobCatalogById instanceof Map && room.mobCatalogById.has(id)) return room.mobCatalogById.get(id);
+  return getMobDef(id);
+}
+
+function getMobBehaviorFromDef(mobDef, fallback = 'melee') {
+  return String(mobDef?.behavior || fallback || 'melee').trim().toLowerCase() || 'melee';
+}
+
+function getEnemyBehavior(enemy) {
+  const behavior = String(enemy?.behavior || '').trim().toLowerCase();
+  if (behavior) return behavior;
+  const type = String(enemy?.type || '').trim().toLowerCase();
+  if (type === 'boss') return 'boss';
+  if (type === 'ranged') return 'ranged';
+  if (type === 'charger') return 'charger';
+  return 'melee';
+}
+
+function getMobSpawnWeightsFromLevel(levelDef, mobCatalog) {
+  const weights = levelDef?.modifiers?.mobWeights;
+  if (!weights || typeof weights !== 'object' || Array.isArray(weights)) return null;
+  const out = {};
+  for (const mob of mobCatalog.list || []) {
+    const id = String(mob?.id || '');
+    if (!id || getMobBehaviorFromDef(mob) === 'boss') continue;
+    const weight = Math.max(0, Number(weights[id]) || 0);
+    if (weight > 0) out[id] = weight;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+function getDefaultMobSpawnWeights(mobCatalog) {
+  const out = {};
+  for (const mob of mobCatalog.list || []) {
+    const id = String(mob?.id || '');
+    if (!id || getMobBehaviorFromDef(mob) === 'boss') continue;
+    const weight = Math.max(0, Number(mob?.defaultWeight) || 0);
+    if (weight > 0) out[id] = weight;
+  }
+  if (Object.keys(out).length <= 0) {
+    out.normal = 62;
+    out.ranged = 16;
+    out.charger = 22;
+  }
+  return out;
+}
+
+function getBossMobIdFromLevel(levelDef, mapId, mobCatalog) {
+  const bossIds = new Set((mobCatalog?.list || [])
+    .filter((mob) => getMobBehaviorFromDef(mob) === 'boss')
+    .map((mob) => String(mob.id || '')));
+  const requested = String(levelDef?.modifiers?.bossMobId || '').trim();
+  if (requested && bossIds.has(requested)) return requested;
+  const mapped = getDefaultBossMobIdForMap(mapId);
+  if (mapped && bossIds.has(mapped)) return mapped;
+  return bossIds.has('boss') ? 'boss' : (Array.from(bossIds)[0] || 'boss');
+}
+
 function resolveNewRoomContent(options = {}) {
   reloadWorldContentRuntime();
+  const mobCatalog = buildMobCatalog(getMobDefs());
   const requestedRunType = String(options.runType || 'free').trim().toLowerCase() === 'campaign' ? 'campaign' : 'free';
   if (requestedRunType === 'campaign') {
     const campaignId = String(options.campaignId || '').trim();
@@ -3876,6 +3948,8 @@ function resolveNewRoomContent(options = {}) {
     }
     const mapDef = getMapDef(levelDef.mapId);
     const levelModifiers = levelDef.modifiers && typeof levelDef.modifiers === 'object' ? levelDef.modifiers : {};
+    const mobSpawnWeights = getMobSpawnWeightsFromLevel(levelDef, mobCatalog) || getDefaultMobSpawnWeights(mobCatalog);
+    const bossMobId = getBossMobIdFromLevel(levelDef, mapDef.id, mobCatalog);
     return {
       ok: true,
       runType: 'campaign',
@@ -3891,11 +3965,16 @@ function resolveNewRoomContent(options = {}) {
       enemySpawnMul: Math.max(0.25, Number(levelModifiers.enemySpawnMul) || 1),
       enemyHpMul: Math.max(0.25, Number(levelModifiers.enemyHpMul) || 1),
       bossKillInterval: Math.max(4, Math.round(Number(levelModifiers.bossKillInterval) || BOSS_KILL_INTERVAL)),
+      bossMobId,
       treeDensityMul: Math.max(0.15, Number(mapDef.treeDensityMul) || 1),
+      mobCatalog,
+      mobSpawnWeights,
     };
   }
 
   const mapDef = getMapDef(options.mapId);
+  const mobSpawnWeights = getDefaultMobSpawnWeights(mobCatalog);
+  const bossMobId = getBossMobIdFromLevel(null, mapDef.id, mobCatalog);
   return {
     ok: true,
     runType: 'free',
@@ -3911,7 +3990,10 @@ function resolveNewRoomContent(options = {}) {
     enemySpawnMul: 1,
     enemyHpMul: 1,
     bossKillInterval: BOSS_KILL_INTERVAL,
+    bossMobId,
     treeDensityMul: Math.max(0.15, Number(mapDef.treeDensityMul) || 1),
+    mobCatalog,
+    mobSpawnWeights,
   };
 }
 
@@ -4075,6 +4157,9 @@ function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode, reques
       pvpMatchEnded: false,
       enemySpawnMul,
       enemyHpMul,
+      mobCatalog: cloneMobCatalog(content.mobCatalog?.list || []),
+      mobCatalogById: content.mobCatalog?.byId instanceof Map ? content.mobCatalog.byId : buildMobCatalog(content.mobCatalog?.list || []).byId,
+      mobSpawnWeights: content.mobSpawnWeights || {},
       tickMs: 1000 / sync.tickRate,
       stateIntervalMs: 1000 / sync.stateSendHz,
       stateAccumulatorMs: 0,
@@ -4112,6 +4197,7 @@ function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode, reques
       totalBossKills: 0,
       nextBossAtKills: Math.max(4, Number(content.bossKillInterval) || BOSS_KILL_INTERVAL),
       bossKillInterval: Math.max(4, Number(content.bossKillInterval) || BOSS_KILL_INTERVAL),
+      bossMobId: String(content.bossMobId || 'boss'),
       lastEnemySpawnAt: 0,
       lastCompanionSyncAt: 0,
       startedAt,
@@ -4583,14 +4669,16 @@ function isEnemyInMapObjectAttackRange(enemy, obj, radius) {
   const closest = getClosestPointOnMapObject(enemy.x, enemy.y, obj);
   const dx = (Number(enemy.x) || 0) - closest.x;
   const dy = (Number(enemy.y) || 0) - closest.y;
-  const bonus = enemy.type === 'boss' ? 44 : (enemy.type === 'charger' ? 26 : 20);
+  const behavior = getEnemyBehavior(enemy);
+  const bonus = enemy.type === 'boss' ? 44 : (behavior === 'charger' ? 26 : 20);
   const reach = Math.max(12, radius + bonus);
   return dx * dx + dy * dy <= reach * reach;
 }
 
 function getEnemyMapObjectAttackDamage(enemy) {
   const base = enemy?.type === 'boss' ? BOSS_ATTACK_DAMAGE : ENEMY_ATTACK_DAMAGE;
-  const typeMul = enemy?.type === 'charger' ? 1.15 : (enemy?.type === 'boss' ? 1.35 : 1);
+  const behavior = getEnemyBehavior(enemy);
+  const typeMul = behavior === 'charger' ? 1.15 : (enemy?.type === 'boss' ? 1.35 : (behavior === 'brute' ? 1.25 : 1));
   return Math.max(1, Math.round(base * typeMul * Math.max(1, Number(enemy?.damageMul) || 1)));
 }
 
@@ -5666,6 +5754,7 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
     totalEnemyKills: room.totalEnemyKills || 0,
     nextBossAtKills: room.nextBossAtKills || BOSS_KILL_INTERVAL,
     bossAlive: hasAliveBoss(room),
+    bossMobId: room.bossMobId || 'boss',
     nextBossSpawnAt: nextPortal ? nextPortal.spawnAt : 0,
     roomDifficulty: {
       level: difficulty.level,
@@ -5676,6 +5765,7 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
       spawnIntervalMs: Math.round(difficulty.spawnIntervalMs),
     },
     mission,
+    mobCatalog: includeDecor ? cloneMobCatalog(room.mobCatalog || []) : undefined,
     world,
     sync: room.sync,
     players: serializedPlayers.concat(serializedCompanions),
@@ -5765,11 +5855,22 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
           e.maxHp,
           radius,
           Boolean(e.faceLeft) ? 1 : 0,
+          e.mobId || enemyType,
+          e.behavior || getEnemyBehavior(e),
+          e.color || '',
+          Number(e.spriteScale) || 1,
+          e.name || '',
         ];
       }
       return {
         id: e.id,
         type: enemyType,
+        mobId: e.mobId || enemyType,
+        name: e.name || '',
+        behavior: e.behavior || getEnemyBehavior(e),
+        rarity: e.rarity || '',
+        color: e.color || '',
+        image: e.image || '',
         x: e.x,
         y: e.y,
         faceLeft: Boolean(e.faceLeft),
@@ -5956,11 +6057,30 @@ function nearestAlivePlayer(room, x, y) {
   return target;
 }
 
-function chooseEnemyType() {
-  const roll = Math.random();
-  if (roll < 0.16) return 'ranged';
-  if (roll < 0.38) return 'charger';
-  return 'normal';
+function chooseEnemyMob(room, difficulty = null) {
+  const diffLevel = Math.max(1, Math.floor(Number(difficulty?.level) || 1));
+  const catalog = room?.mobCatalogById instanceof Map ? room.mobCatalogById : buildMobCatalog(room?.mobCatalog || []).byId;
+  const weights = room?.mobSpawnWeights && typeof room.mobSpawnWeights === 'object' ? room.mobSpawnWeights : {};
+  const candidates = [];
+  for (const [mobId, rawWeight] of Object.entries(weights)) {
+    const mobDef = catalog.get(String(mobId || '')) || getMobDef(mobId);
+    if (!mobDef || mobDef.enabled === false) continue;
+    if (getMobBehaviorFromDef(mobDef) === 'boss') continue;
+    if (diffLevel < Math.max(1, Math.floor(Number(mobDef.minDifficultyLevel) || 1))) continue;
+    const weight = Math.max(0, Number(rawWeight) || 0);
+    if (weight > 0) candidates.push({ mobDef, weight });
+  }
+  if (candidates.length <= 0) {
+    const roll = Math.random();
+    return getRoomMobDef(room, roll < 0.16 ? 'ranged' : (roll < 0.38 ? 'charger' : 'normal')) || { id: 'normal', behavior: 'melee' };
+  }
+  const total = candidates.reduce((sum, entry) => sum + entry.weight, 0);
+  let roll = Math.random() * Math.max(1, total);
+  for (const entry of candidates) {
+    roll -= entry.weight;
+    if (roll <= 0) return entry.mobDef;
+  }
+  return candidates[candidates.length - 1].mobDef;
 }
 
 function hasAliveBoss(room) {
@@ -5981,28 +6101,37 @@ function scheduleBossPortal(room, now, spawnPos) {
   return true;
 }
 
-function spawnEnemy(room, now, difficulty = null) {
-  const pos = randomSpawnEdge(room);
+function createEnemyFromMob(room, mobDef, pos, now, difficulty = null, overrides = {}) {
   const diff = difficulty || getRoomDifficulty(room, now || Date.now());
   const hpBase = ENEMY_HP_BASE + Math.floor(((now || Date.now()) - room.startedAt) / 25000) * 2;
   const hpMul = Math.max(1, Number(room.enemyHpMul) || 1);
-  const hp = Math.max(10, Math.round(hpBase * diff.hpMul * hpMul));
-  const enemyType = chooseEnemyType();
-  const speedMul = enemyType === 'charger' ? 1.22 : (enemyType === 'ranged' ? 0.9 : 1);
-  room.enemies.push({
+  const def = mobDef || getRoomMobDef(room, 'normal') || {};
+  const behavior = getMobBehaviorFromDef(def);
+  const type = String(def.id || 'normal');
+  const baseRadius = Math.max(8, Number(def.radius) || ENEMY_RADIUS);
+  const hp = Math.max(4, Math.round(hpBase * diff.hpMul * hpMul * Math.max(0.05, Number(def.hpMul) || 1) * Math.max(0.05, Number(overrides.hpMul) || 1)));
+  const speedMul = Math.max(0.05, Number(def.speedMul) || 1) * Math.max(0.05, Number(overrides.speedMul) || 1);
+  return {
     id: room.nextEnemyId++,
-    type: enemyType,
+    type,
+    mobId: type,
+    behavior,
+    rarity: String(def.rarity || 'common'),
+    color: String(def.color || '#ef4444'),
+    image: String(def.image || '/assets/sprites/enemy_mummy.png'),
     x: pos.x,
     y: pos.y,
     vx: 0,
     vy: 0,
     hp,
     maxHp: hp,
-    radius: ENEMY_RADIUS,
-    spriteScale: 1,
+    radius: Math.max(8, baseRadius * Math.max(0.05, Number(overrides.radiusMul) || 1)),
+    spriteScale: Math.max(0.4, Number(def.spriteScale) || 1) * Math.max(0.05, Number(overrides.spriteScaleMul) || 1),
     speed: (ENEMY_SPEED_MIN + Math.random() * (ENEMY_SPEED_MAX - ENEMY_SPEED_MIN)) * speedMul * diff.speedMul,
-    damageMul: diff.damageMul,
+    damageMul: diff.damageMul * Math.max(0.05, Number(def.damageMul) || 1) * Math.max(0.05, Number(overrides.damageMul) || 1),
+    damageTakenMul: Math.max(0.05, Number(def.damageTakenMul) || 1),
     attackRateMul: diff.attackRateMul,
+    attackCooldownMul: Math.max(0.1, Number(def.attackCooldownMul) || 1),
     attackWindupMs: 0,
     attackCooldownMs: 0,
     attackTargetId: null,
@@ -6010,27 +6139,63 @@ function spawnEnemy(room, now, difficulty = null) {
     knockbackVx: 0,
     knockbackVy: 0,
     faceLeft: false,
-  });
+    xpValue: Math.max(0, Math.round(Number(def.xpValue) || 0)),
+    scoreValue: Math.max(0, Math.round(Number(def.scoreValue) || 0)),
+    knockbackResist: Math.max(0.05, Number(def.knockbackResist) || 1),
+    rangeMin: Math.max(0, Number(def.rangeMin) || ENEMY_RANGED_MIN_RANGE),
+    rangeMax: Math.max(0, Number(def.rangeMax) || ENEMY_RANGED_MAX_RANGE),
+    fireCooldownMs: Math.max(80, Math.round(Number(def.fireCooldownMs) || ENEMY_RANGED_FIRE_COOLDOWN_MS)),
+    projectileDamage: Math.max(1, Math.round(ENEMY_RANGED_DAMAGE * Math.max(0.05, Number(def.projectileDamageMul) || 1))),
+    projectileSpeed: Math.max(80, Math.round(ENEMY_RANGED_BULLET_SPEED * Math.max(0.1, Number(def.projectileSpeedMul) || 1))),
+    projectileLifeMs: Math.max(100, Math.round(Number(def.projectileLifeMs) || ENEMY_RANGED_BULLET_LIFE_MS)),
+    projectileColor: String(def.projectileColor || def.color || '#f87171'),
+    healAmount: Math.max(0, Number(def.healAmount) || 0),
+    healRadius: Math.max(0, Number(def.healRadius) || 0),
+    healCooldownMs: Math.max(0, Math.round(Number(def.healCooldownMs) || 0)),
+    healCooldownLeftMs: Math.max(250, Math.round(Number(def.healCooldownMs) || 0)),
+    explosionRadius: Math.max(0, Number(def.explosionRadius) || 0),
+    explosionDamage: Math.max(0, Number(def.explosionDamage) || 0),
+    splitMobId: String(def.splitMobId || ''),
+    splitCount: Math.max(0, Math.floor(Number(def.splitCount) || 0)),
+  };
 }
-function spawnBossEnemy(room, x, y, now, difficulty = null) {
+
+function spawnEnemy(room, now, difficulty = null, forcedMobId = '') {
+  const pos = randomSpawnEdge(room);
+  const mobDef = forcedMobId ? getRoomMobDef(room, forcedMobId) : chooseEnemyMob(room, difficulty);
+  room.enemies.push(createEnemyFromMob(room, mobDef, pos, now || Date.now(), difficulty));
+}
+function spawnBossEnemy(room, x, y, now, difficulty = null, forcedBossMobId = '') {
   const diff = difficulty || getRoomDifficulty(room, now);
   const elapsedMul = 1 + Math.floor((now - room.startedAt) / 60000) * 0.18;
   const hpMul = Math.max(1, Number(room.enemyHpMul) || 1);
-  const hp = Math.round(BOSS_HP_BASE * elapsedMul * (0.95 + diff.hpMul * 0.7) * hpMul);
+  const bossMobId = String(forcedBossMobId || room?.bossMobId || 'boss').trim() || 'boss';
+  let bossDef = getRoomMobDef(room, bossMobId) || getRoomMobDef(room, 'boss') || {};
+  if (getMobBehaviorFromDef(bossDef) !== 'boss') bossDef = getRoomMobDef(room, 'boss') || {};
+  const bossId = String(bossDef.id || 'boss');
+  const hp = Math.round(BOSS_HP_BASE * elapsedMul * (0.95 + diff.hpMul * 0.7) * hpMul * Math.max(0.05, Number(bossDef.hpMul) || 1));
   room.enemies.push({
     id: room.nextEnemyId++,
     type: 'boss',
+    mobId: bossId,
+    name: String(bossDef.name || 'BOSS'),
+    behavior: 'boss',
+    rarity: String(bossDef.rarity || 'boss'),
+    color: String(bossDef.color || '#dc2626'),
+    image: String(bossDef.image || '/assets/sprites/enemy_mummy.png'),
     x,
     y,
     vx: 0,
     vy: 0,
     hp,
     maxHp: hp,
-    radius: BOSS_RADIUS,
-    spriteScale: BOSS_SPRITE_SCALE,
-    speed: BOSS_SPEED * Math.max(1, diff.speedMul * 0.85),
-    damageMul: Math.max(1, diff.damageMul * 1.1),
+    radius: Math.max(12, Number(bossDef.radius) || BOSS_RADIUS),
+    spriteScale: Math.max(0.5, Number(bossDef.spriteScale) || BOSS_SPRITE_SCALE),
+    speed: BOSS_SPEED * Math.max(1, diff.speedMul * 0.85) * Math.max(0.05, Number(bossDef.speedMul) || 1),
+    damageMul: Math.max(1, diff.damageMul * 1.1) * Math.max(0.05, Number(bossDef.damageMul) || 1),
+    damageTakenMul: Math.max(0.05, Number(bossDef.damageTakenMul) || 1),
     attackRateMul: Math.max(1, diff.attackRateMul * 1.05),
+    attackCooldownMul: Math.max(0.1, Number(bossDef.attackCooldownMul) || 1),
     attackWindupMs: 0,
     attackCooldownMs: 500,
     attackTargetId: null,
@@ -6038,8 +6203,26 @@ function spawnBossEnemy(room, x, y, now, difficulty = null) {
     knockbackVx: 0,
     knockbackVy: 0,
     faceLeft: false,
+    xpValue: Math.max(1, Math.round(Number(bossDef.xpValue) || 220)),
+    scoreValue: Math.max(1, Math.round(Number(bossDef.scoreValue) || 100)),
+    knockbackResist: Math.max(0.05, Number(bossDef.knockbackResist) || ENEMY_KNOCKBACK_BOSS_RESIST),
+    rangeMin: Math.max(0, Number(bossDef.rangeMin) || 0),
+    rangeMax: Math.max(0, Number(bossDef.rangeMax) || 0),
+    fireCooldownMs: Math.max(80, Math.round(Number(bossDef.fireCooldownMs) || ENEMY_RANGED_FIRE_COOLDOWN_MS)),
+    projectileDamage: Math.max(1, Math.round(ENEMY_RANGED_DAMAGE * Math.max(0.05, Number(bossDef.projectileDamageMul) || 1))),
+    projectileSpeed: Math.max(80, Math.round(ENEMY_RANGED_BULLET_SPEED * Math.max(0.1, Number(bossDef.projectileSpeedMul) || 1))),
+    projectileLifeMs: Math.max(100, Math.round(Number(bossDef.projectileLifeMs) || ENEMY_RANGED_BULLET_LIFE_MS)),
+    projectileColor: String(bossDef.projectileColor || bossDef.color || '#f87171'),
+    healAmount: Math.max(0, Number(bossDef.healAmount) || 0),
+    healRadius: Math.max(0, Number(bossDef.healRadius) || 0),
+    healCooldownMs: Math.max(0, Math.round(Number(bossDef.healCooldownMs) || 0)),
+    healCooldownLeftMs: Math.max(250, Math.round(Number(bossDef.healCooldownMs) || 0)),
+    explosionRadius: Math.max(0, Number(bossDef.explosionRadius) || 0),
+    explosionDamage: Math.max(0, Number(bossDef.explosionDamage) || 0),
+    splitMobId: String(bossDef.splitMobId || ''),
+    splitCount: Math.max(0, Math.floor(Number(bossDef.splitCount) || 0)),
   });
-  broadcastRoom(room, { type: 'system', message: 'BOSS arrived. Keep moving.' });
+  broadcastRoom(room, { type: 'system', message: `${String(bossDef.name || 'BOSS')} arrived. Keep moving.` });
 }
 
 
@@ -6054,9 +6237,10 @@ function maybeScheduleBossSpawn(room, now) {
 
 function getEnemyAttackCooldownMs(enemy) {
   const rateMul = Math.max(0.35, Number(enemy?.attackRateMul) || 1);
-  if (enemy?.type === 'boss') return Math.max(220, Math.round(BOSS_ATTACK_COOLDOWN_MS / rateMul));
+  const cooldownMul = Math.max(0.1, Number(enemy?.attackCooldownMul) || 1);
+  if (enemy?.type === 'boss') return Math.max(220, Math.round((BOSS_ATTACK_COOLDOWN_MS * cooldownMul) / rateMul));
   const castFrequency = Math.max(0, Number(ENEMY_ATTACK_CAST_FREQUENCY) || 0);
-  const effective = ENEMY_ATTACK_BASE_COOLDOWN_MS / (1 + castFrequency);
+  const effective = (ENEMY_ATTACK_BASE_COOLDOWN_MS * cooldownMul) / (1 + castFrequency);
   return Math.max(ENEMY_ATTACK_MIN_COOLDOWN_MS, Math.round(effective / rateMul));
 }
 
@@ -6266,17 +6450,18 @@ function fireEnemyProjectile(room, enemy, target) {
   const dy = target.y - enemy.y;
   const d = Math.hypot(dx, dy) || 1;
   const damageMul = Math.max(1, Number(enemy?.damageMul) || 1);
+  const speed = Math.max(80, Number(enemy?.projectileSpeed) || ENEMY_RANGED_BULLET_SPEED);
   room.bullets.push({
     id: room.nextBulletId++,
     ownerId: null,
     fromEnemy: true,
     x: enemy.x,
     y: enemy.y,
-    vx: (dx / d) * ENEMY_RANGED_BULLET_SPEED,
-    vy: (dy / d) * ENEMY_RANGED_BULLET_SPEED,
-    lifeMs: ENEMY_RANGED_BULLET_LIFE_MS,
-    damage: Math.max(1, Math.round(ENEMY_RANGED_DAMAGE * damageMul)),
-    color: '#f87171',
+    vx: (dx / d) * speed,
+    vy: (dy / d) * speed,
+    lifeMs: Math.max(100, Number(enemy?.projectileLifeMs) || ENEMY_RANGED_BULLET_LIFE_MS),
+    damage: Math.max(1, Math.round(Math.max(1, Number(enemy?.projectileDamage) || ENEMY_RANGED_DAMAGE) * damageMul)),
+    color: enemy?.projectileColor || enemy?.color || '#f87171',
     shooterType: 'enemy',
   });
 }
@@ -6689,6 +6874,7 @@ function createRunReplay(room, player, now) {
     campaignId: String(room.campaignId || ''),
     campaignLevelId: String(room.campaignLevelId || ''),
     mission: buildRoomMissionState(room, now),
+    mobCatalog: cloneMobCatalog(room.mobCatalog || []),
     world: getRoomWorld(room),
     decor: {
       trees: (room.trees || []).map((tree) => ({
@@ -7029,6 +7215,7 @@ function finalizeRunReplay(room, replay, now) {
     campaignId: replay.campaignId || '',
     campaignLevelId: replay.campaignLevelId || '',
     mission: replay.mission || null,
+    mobCatalog: Array.isArray(replay.mobCatalog) ? replay.mobCatalog.slice() : [],
     world: replay.world,
     decor: replay.decor,
     meta: replay.meta,
@@ -7182,6 +7369,7 @@ function spawnXpOrbs(room, x, y, amount) {
 
 function getEnemyXpValue(enemy) {
   if (!enemy) return 6;
+  if (Number(enemy.xpValue) > 0) return Math.max(1, Math.round(Number(enemy.xpValue) || 0));
   if (enemy.type === 'boss') return 220;
   if (enemy.type === 'charger') return 12;
   if (enemy.type === 'ranged') return 10;
@@ -7190,12 +7378,14 @@ function getEnemyXpValue(enemy) {
 
 function getEnemyScoreValue(enemy) {
   if (!enemy) return 10;
+  if (Number(enemy.scoreValue) > 0) return Math.max(1, Math.round(Number(enemy.scoreValue) || 0));
   if (enemy.type === 'boss') return 100;
   return 10;
 }
 
 function getEnemyKnockbackResist(enemy) {
   if (!enemy) return 1;
+  if (Number(enemy.knockbackResist) > 0) return Math.max(0.05, Number(enemy.knockbackResist) || 1);
   if (enemy.type === 'boss') return ENEMY_KNOCKBACK_BOSS_RESIST;
   if (enemy.type === 'charger') return ENEMY_KNOCKBACK_CHARGER_RESIST;
   return 1;
@@ -7255,9 +7445,62 @@ function applyEnemyHitReaction(room, enemy, ownerId, options = {}) {
   }
 }
 
+function explodeEnemyMob(room, enemy, now, options = {}) {
+  if (!room || !enemy || Number(enemy.explodedAt) > 0) return false;
+  const radius = Math.max(0, Number(enemy.explosionRadius) || 0);
+  const damage = Math.max(0, Number(enemy.explosionDamage) || 0);
+  if (radius <= 0 || damage <= 0) return false;
+  enemy.explodedAt = now;
+  for (const player of room.players.values()) {
+    if (!player || !player.alive) continue;
+    const reach = radius + PLAYER_RADIUS;
+    const dist = Math.hypot((Number(player.x) || 0) - enemy.x, (Number(player.y) || 0) - enemy.y);
+    if (dist > reach) continue;
+    const falloff = 1 - Math.min(0.5, (dist / Math.max(1, reach)) * 0.5);
+    applyEnemyHitToPlayer(room, player, Math.max(1, Math.round(damage * falloff)), now, {
+      applySlow: true,
+      sourceX: enemy.x,
+      sourceY: enemy.y,
+    });
+  }
+  damageSceneObjectsInRadius(room, enemy.x, enemy.y, radius * 0.82, damage * 0.72, String(options.ownerId || enemy.id || 'enemy'), now, {
+    cause: 'enemy_explosion',
+  });
+  return true;
+}
+
+function spawnEnemySplitChildren(room, enemy, now) {
+  const splitMobId = String(enemy?.splitMobId || '').trim();
+  const splitCount = Math.max(0, Math.min(12, Math.floor(Number(enemy?.splitCount) || 0)));
+  if (!room || !enemy || !splitMobId || splitCount <= 0) return 0;
+  const mobDef = getRoomMobDef(room, splitMobId);
+  if (!mobDef || mobDef.enabled === false) return 0;
+  const difficulty = getRoomDifficulty(room, now);
+  const world = getRoomWorld(room);
+  let spawned = 0;
+  for (let i = 0; i < splitCount; i += 1) {
+    const angle = (Math.PI * 2 * i) / splitCount + Math.random() * 0.5;
+    const dist = Math.max(22, Number(enemy.radius) || ENEMY_RADIUS);
+    const child = createEnemyFromMob(room, mobDef, {
+      x: clamp(enemy.x + Math.cos(angle) * dist, ENEMY_RADIUS, world.width - ENEMY_RADIUS),
+      y: clamp(enemy.y + Math.sin(angle) * dist, ENEMY_RADIUS, world.height - ENEMY_RADIUS),
+    }, now, difficulty, {
+      hpMul: 0.55,
+      damageMul: 0.82,
+      radiusMul: 0.78,
+      spriteScaleMul: 0.78,
+      speedMul: 1.12,
+    });
+    child.attackCooldownMs = 260 + Math.random() * 220;
+    room.enemies.push(child);
+    spawned += 1;
+  }
+  return spawned;
+}
+
 function enemyTakeDamage(room, enemy, damage, ownerId, now, options = {}) {
   if (!enemy) return false;
-  const amount = Math.max(1, Math.round(Number(damage) || 1));
+  const amount = Math.max(1, Math.round((Number(damage) || 1) * Math.max(0.05, Number(enemy.damageTakenMul) || 1)));
   enemy.hp -= amount;
   const damageSource = String(options?.damageSource || '').toLowerCase();
   const skipControlFromBulletOnBoss = enemy.type === 'boss' && damageSource === 'bullet';
@@ -7286,6 +7529,8 @@ function enemyTakeDamage(room, enemy, damage, ownerId, now, options = {}) {
 
   room.totalEnemyKills = (room.totalEnemyKills || 0) + 1;
   if (enemy.type === 'boss') room.totalBossKills = (room.totalBossKills || 0) + 1;
+  explodeEnemyMob(room, enemy, now, { ownerId });
+  spawnEnemySplitChildren(room, enemy, now);
   maybeScheduleBossSpawn(room, now);
   spawnXpOrbs(room, enemy.x, enemy.y, getEnemyXpValue(enemy));
   maybeSpawnDrop(room, enemy.x, enemy.y);
@@ -7308,6 +7553,47 @@ function applyConsumableAreaDamage(room, player, centerX, centerY, damage, radiu
   return hitCount;
 }
 
+function getConsumableAimPoint(room, player) {
+  const world = getRoomWorld(room);
+  const rawX = Number(player?.aimX);
+  const rawY = Number(player?.aimY);
+  return {
+    x: clamp(Number.isFinite(rawX) ? rawX : Number(player?.x) || 0, 0, world.width),
+    y: clamp(Number.isFinite(rawY) ? rawY : Number(player?.y) || 0, 0, world.height),
+  };
+}
+
+function createQuickItemFxEvent(player, slotKey, usedItem, itemName, combatUse, now, extra = {}) {
+  const useType = String(combatUse?.type || '').trim().toLowerCase();
+  return {
+    id: `${player.id || 'player'}:${slotKey}:${usedItem.itemId}:${now}:${Math.random().toString(36).slice(2, 7)}`,
+    at: now,
+    playerId: player.id || '',
+    playerName: player.name || '',
+    slotKey,
+    itemId: usedItem.itemId || '',
+    itemName,
+    level: Math.max(1, Math.floor(Number(usedItem.level) || 1)),
+    useType,
+    x: Math.round(Number(player.x) || 0),
+    y: Math.round(Number(player.y) || 0),
+    targetX: Math.round(Number(extra.targetX) || Number(player.x) || 0),
+    targetY: Math.round(Number(extra.targetY) || Number(player.y) || 0),
+    radius: Math.max(0, Math.round(Number(extra.radius) || 0)),
+    damage: Math.max(0, Math.round(Number(extra.damage) || 0)),
+    heal: Math.max(0, Math.round(Number(extra.heal) || 0)),
+    durationMs: Math.max(0, Math.round(Number(extra.durationMs) || 0)),
+    stunMs: Math.max(0, Math.round(Number(extra.stunMs) || 0)),
+    hitCount: Math.max(0, Math.round(Number(extra.hitCount) || 0)),
+    waves: Array.isArray(extra.waves) ? extra.waves.map((wave, index) => ({
+      x: Math.round(Number(wave?.x) || Number(extra.targetX) || Number(player.x) || 0),
+      y: Math.round(Number(wave?.y) || Number(extra.targetY) || Number(player.y) || 0),
+      delayMs: Math.max(0, Math.round(Number(wave?.delayMs) || index * 130)),
+      hitCount: Math.max(0, Math.round(Number(wave?.hitCount) || 0)),
+    })) : [],
+  };
+}
+
 function usePlayerQuickConsumable(room, player, slotKey, now = Date.now()) {
   if (!room || !player || !player.alive || !player.playerAccountId) {
     return { ok: false, code: 403, message: 'Consumable is unavailable right now' };
@@ -7322,42 +7608,78 @@ function usePlayerQuickConsumable(room, player, slotKey, now = Date.now()) {
   const level = Math.max(1, Number(usedItem.level) || 1);
   const itemName = String(itemDef?.name || usedItem.itemId || slotKey);
   let resultMessage = `${itemName} used.`;
+  let fxEvent = createQuickItemFxEvent(player, slotKey, usedItem, itemName, combatUse, now);
 
   switch (String(combatUse.type || '').trim().toLowerCase()) {
     case 'heal': {
       const healAmount = Math.max(1, Math.round(scaleConsumableMagnitude(combatUse.healFlat, level, 0.3)));
       player.hp = clamp((Number(player.hp) || 0) + healAmount, 0, player.maxHp || PLAYER_HP_MAX);
       resultMessage = `${itemName}: +${healAmount} HP.`;
+      fxEvent = createQuickItemFxEvent(player, slotKey, usedItem, itemName, combatUse, now, {
+        heal: healAmount,
+        radius: 92,
+      });
       break;
     }
     case 'grenade': {
+      const target = getConsumableAimPoint(room, player);
       const damage = Math.max(1, Math.round(scaleConsumableMagnitude(combatUse.damage, level, 0.26)));
       const radius = Math.max(40, Math.round(scaleConsumableMagnitude(combatUse.radius, level, 0.08)));
       const stunMs = Math.max(0, Math.round(scaleConsumableMagnitude(combatUse.stunMs, level, 0.14)));
-      const hitCount = applyConsumableAreaDamage(room, player, player.aimX || player.x, player.aimY || player.y, damage, radius, now, { stunMs });
+      const hitCount = applyConsumableAreaDamage(room, player, target.x, target.y, damage, radius, now, { stunMs });
       resultMessage = `${itemName}: ${hitCount} target(s) hit.`;
+      fxEvent = createQuickItemFxEvent(player, slotKey, usedItem, itemName, combatUse, now, {
+        targetX: target.x,
+        targetY: target.y,
+        damage,
+        radius,
+        stunMs,
+        hitCount,
+      });
       break;
     }
     case 'artillery': {
+      const target = getConsumableAimPoint(room, player);
       const waves = Math.max(1, Math.round(Number(combatUse.waves) || 1));
       const damage = Math.max(1, Math.round(scaleConsumableMagnitude(combatUse.damage, level, 0.24)));
       const radius = Math.max(70, Math.round(scaleConsumableMagnitude(combatUse.radius, level, 0.09)));
       const world = getRoomWorld(room);
       let totalHits = 0;
+      const fxWaves = [];
       for (let i = 0; i < waves; i += 1) {
-        const waveX = clamp((Number(player.aimX) || player.x) + (Math.random() - 0.5) * 56, 0, world.width);
-        const waveY = clamp((Number(player.aimY) || player.y) + (Math.random() - 0.5) * 56, 0, world.height);
-        totalHits += applyConsumableAreaDamage(room, player, waveX, waveY, damage, radius, now, { stunMs: 220 });
+        const waveX = clamp(target.x + (Math.random() - 0.5) * 56, 0, world.width);
+        const waveY = clamp(target.y + (Math.random() - 0.5) * 56, 0, world.height);
+        const hitCount = applyConsumableAreaDamage(room, player, waveX, waveY, damage, radius, now, { stunMs: 220 });
+        totalHits += hitCount;
+        fxWaves.push({ x: waveX, y: waveY, delayMs: i * 145, hitCount });
       }
       resultMessage = `${itemName}: artillery barrage hit ${totalHits} target(s).`;
+      fxEvent = createQuickItemFxEvent(player, slotKey, usedItem, itemName, combatUse, now, {
+        targetX: target.x,
+        targetY: target.y,
+        damage,
+        radius,
+        stunMs: 220,
+        hitCount: totalHits,
+        waves: fxWaves,
+      });
       break;
     }
     case 'satellite': {
+      const target = getConsumableAimPoint(room, player);
       const damage = Math.max(1, Math.round(scaleConsumableMagnitude(combatUse.damage, level, 0.28)));
       const radius = Math.max(90, Math.round(scaleConsumableMagnitude(combatUse.radius, level, 0.08)));
       const stunMs = Math.max(240, Math.round(scaleConsumableMagnitude(combatUse.stunMs || 900, level, 0.12)));
-      const hitCount = applyConsumableAreaDamage(room, player, player.aimX || player.x, player.aimY || player.y, damage, radius, now, { stunMs, knockback: ENEMY_HIT_KNOCKBACK_SPEED * 2.1 });
+      const hitCount = applyConsumableAreaDamage(room, player, target.x, target.y, damage, radius, now, { stunMs, knockback: ENEMY_HIT_KNOCKBACK_SPEED * 2.1 });
       resultMessage = `${itemName}: orbital strike hit ${hitCount} target(s).`;
+      fxEvent = createQuickItemFxEvent(player, slotKey, usedItem, itemName, combatUse, now, {
+        targetX: target.x,
+        targetY: target.y,
+        damage,
+        radius,
+        stunMs,
+        hitCount,
+      });
       break;
     }
     case 'buff':
@@ -7375,6 +7697,10 @@ function usePlayerQuickConsumable(room, player, slotKey, now = Date.now()) {
       });
       rebuildPlayerDerivedStats(player);
       resultMessage = `${itemName}: buff active for ${Math.max(1, Math.round(durationMs / 1000))}s.`;
+      fxEvent = createQuickItemFxEvent(player, slotKey, usedItem, itemName, combatUse, now, {
+        durationMs,
+        radius: String(combatUse.type || '').trim().toLowerCase() === 'regen' ? 110 : 98,
+      });
       break;
     }
     default:
@@ -7382,6 +7708,9 @@ function usePlayerQuickConsumable(room, player, slotKey, now = Date.now()) {
       break;
   }
 
+  if (fxEvent) {
+    broadcastRoom(room, { type: 'quickItemFx', event: fxEvent });
+  }
   sendTo(player.ws, {
     type: 'accountProgression',
     progression: player.accountProgression,
@@ -7517,6 +7846,11 @@ function completeCampaignRoom(room, now) {
     room.mission.completedAt = now;
     room.mission.success = true;
   }
+  const missionState = buildRoomMissionState(room, now);
+  const roomPlayers = Array.from(room.players.values()).filter(Boolean);
+  const squadSize = Math.max(1, roomPlayers.length);
+  const survivors = Math.max(0, roomPlayers.filter((player) => !player.isOut).length);
+  const teamScore = Array.from(room.scores.values()).reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0);
 
   for (const target of room.players.values()) {
     if (!target) continue;
@@ -7582,14 +7916,41 @@ function completeCampaignRoom(room, now) {
       message: room.mission?.brief || 'Campaign mission complete.',
       result: {
         victory: true,
+        headline: 'ВЫЖИЛИ. НАГЛЕЕМ.',
         runType: String(room.runType || 'campaign'),
         campaignId: String(room.campaignId || ''),
         campaignLevelId: String(room.campaignLevelId || ''),
+        campaignName: String(missionState?.campaignName || room.mission?.campaignName || ''),
+        campaignShortName: String(missionState?.campaignShortName || room.mission?.campaignShortName || ''),
+        levelTitle: String(missionState?.title || room.mission?.title || ''),
+        mission: missionState ? {
+          runType: 'campaign',
+          campaignId: String(missionState.campaignId || ''),
+          campaignName: String(missionState.campaignName || ''),
+          campaignShortName: String(missionState.campaignShortName || ''),
+          levelId: String(missionState.levelId || ''),
+          levelIndex: Math.max(0, Number(missionState.levelIndex) || 0),
+          title: String(missionState.title || ''),
+          brief: String(missionState.brief || ''),
+          scenario: String(missionState.scenario || ''),
+          goals: Array.isArray(missionState.goals) ? missionState.goals.map((goal) => ({ ...goal })) : [],
+          completedGoals: Math.max(0, Number(missionState.completedGoals) || 0),
+          totalGoals: Math.max(0, Number(missionState.totalGoals) || 0),
+          completedAt: Math.max(0, Number(missionState.completedAt) || 0),
+          success: true,
+        } : null,
+        completedGoals: Math.max(0, Number(missionState?.completedGoals) || 0),
+        totalGoals: Math.max(0, Number(missionState?.totalGoals) || 0),
         gameMode: normalizeGameMode(room.gameMode || 'normal'),
         kills: Math.max(0, Number(kills) || 0),
         score: Math.max(0, Number(score) || 0),
         enemyKills: Math.max(0, Number(target.enemyKills) || Number(kills) || 0),
         bossKills: Math.max(0, Number(target.bossKills) || 0),
+        teamEnemyKills: Math.max(0, Number(room.totalEnemyKills) || 0),
+        teamBossKills: Math.max(0, Number(room.totalBossKills) || 0),
+        teamScore: Math.max(0, Number(teamScore) || 0),
+        survivors,
+        squadSize,
         pvpKills: Math.max(0, Number(target.pvpKills) || 0),
         pvpDeaths: Math.max(0, Number(target.pvpDeaths) || 0),
         deaths: 0,
@@ -7920,7 +8281,7 @@ function applyDevCheatCommand(room, player, rawCommand, now = Date.now()) {
     sendDevConsole(player, 'skill <id> [levels]. Example: skill weapon_mastery 2');
     sendDevConsole(player, 'bots | buddies [levels]. Example: bots 2');
     sendDevConsole(player, 'nobots | clearbots. Example: clearbots');
-    sendDevConsole(player, 'spawn <normal|charger|ranged|boss> [count]. Example: spawn ranged 6');
+    sendDevConsole(player, 'spawn <mob-id|boss> [count]. Example: spawn sniper 3');
     sendDevConsole(player, 'killall - kill all enemies. Example: killall');
     sendDevConsole(player, 'playerpass <nickname> <newpassword> (admin only). Example: playerpass Fighter123 NewPass');
     return;
@@ -8111,9 +8472,18 @@ function applyDevCheatCommand(room, player, rawCommand, now = Date.now()) {
 
   if (cmd === 'spawn') {
     const typeRaw = String(args[0] || 'normal').toLowerCase();
-    const type = typeRaw === 'boss' ? 'boss' : (typeRaw === 'charger' ? 'charger' : (typeRaw === 'ranged' ? 'ranged' : 'normal'));
-    const count = Math.max(1, Math.min(type === 'boss' ? 2 : 40, Math.floor(Number(args[1]) || 1)));
-    for (let i = 0; i < count; i += 1) spawnEnemy(room, type, now);
+    const mobDef = getRoomMobDef(room, typeRaw);
+    const type = mobDef?.id || 'normal';
+    const isBossMob = getMobBehaviorFromDef(mobDef) === 'boss';
+    const count = Math.max(1, Math.min(isBossMob ? 2 : 40, Math.floor(Number(args[1]) || 1)));
+    for (let i = 0; i < count; i += 1) {
+      if (isBossMob) {
+        const pos = randomSpawnEdge(room);
+        spawnBossEnemy(room, pos.x, pos.y, now, getRoomDifficulty(room, now), type);
+      } else {
+        spawnEnemy(room, now, getRoomDifficulty(room, now), type);
+      }
+    }
     sendDevConsole(player, `Spawned ${count} ${type}.`);
     return;
   }
@@ -8235,9 +8605,13 @@ function joinRoom(ws, join) {
     });
     return spectator;
   }
-  const resumable = sessionAccountId
+  let resumable = sessionAccountId
     ? (findRoomPlayerByAccount(sessionAccountId, requestedCode) || findRoomPlayerByAccount(sessionAccountId))
     : null;
+  if (resumable?.room?.completedAt) {
+    removeRoomClient(resumable.player, { force: true });
+    resumable = null;
+  }
   if (resumable?.room && resumable?.player) {
     const currentPlayer = resumable.player;
     const currentRoom = resumable.room;
@@ -8650,6 +9024,11 @@ wss.on('connection', (ws, req) => {
       return;
     }
 
+    if (msg.type === 'join' && client) {
+      removeRoomClient(client, { force: true });
+      client = null;
+    }
+
     if (msg.type === 'join' && !client) {
       client = joinRoom(ws, msg);
       return;
@@ -8728,7 +9107,8 @@ wss.on('connection', (ws, req) => {
     publishRuntimeRegistry();
     if (!client) return;
     if (client.ws !== ws) return;
-    removeRoomClient(client);
+    const clientRoom = rooms.get(client.roomCode);
+    removeRoomClient(client, { force: Boolean(clientRoom?.completedAt) });
   });
 });
 
@@ -9111,16 +9491,58 @@ function tickRoom(room, dtSec, now) {
     const targetBlocked = steerTarget.targetBlocked === true;
     const breakObject = steerTarget.breakObjectId ? findRoomMapObjectById(room, steerTarget.breakObjectId) : null;
     const canBreakObject = canEnemyBreakMapObject(breakObject);
+    const behavior = getEnemyBehavior(e);
 
-    if (e.type === 'ranged') {
+    if (behavior === 'healer' || (e.type === 'boss' && Number(e.healAmount) > 0 && Number(e.healRadius) > 0)) {
+      e.healCooldownLeftMs = Math.max(0, Number(e.healCooldownLeftMs) || 0) - dtSec * 1000;
+      if (e.healCooldownLeftMs <= 0 && Number(e.healAmount) > 0 && Number(e.healRadius) > 0) {
+        const healRadius = Math.max(1, Number(e.healRadius) || 0);
+        const healAmount = Math.max(1, Math.round(Number(e.healAmount) || 0));
+        let healed = 0;
+        for (const ally of room.enemies) {
+          if (!ally || ally.id === e.id || Number(ally.hp) <= 0) continue;
+          if (Number(ally.hp) >= Number(ally.maxHp)) continue;
+          const reach = healRadius + Math.max(ENEMY_RADIUS, Number(ally.radius) || ENEMY_RADIUS);
+          const dist = Math.hypot((Number(ally.x) || 0) - e.x, (Number(ally.y) || 0) - e.y);
+          if (dist > reach) continue;
+          ally.hp = Math.min(Number(ally.maxHp) || ally.hp, (Number(ally.hp) || 0) + healAmount);
+          healed += 1;
+          if (healed >= 4) break;
+        }
+        e.healCooldownLeftMs = Math.max(450, Number(e.healCooldownMs) || 1400);
+      }
+    }
+
+    if (e.type === 'boss' && Number(e.rangeMax) > 0 && Number(e.fireCooldownMs) > 0) {
+      const rangeMin = Math.max(0, Number(e.rangeMin) || 0);
+      const rangeMax = Math.max(rangeMin + 40, Number(e.rangeMax) || 0);
+      if (e.attackCooldownMs <= 0 && target.alive && !targetBlocked && d >= rangeMin && d <= rangeMax) {
+        fireEnemyProjectile(room, e, target);
+        e.attackCooldownMs = Math.max(160, Number(e.fireCooldownMs) || ENEMY_RANGED_FIRE_COOLDOWN_MS);
+      }
+    }
+
+    if (behavior === 'exploder' && Number(e.explosionRadius) > 0 && !targetBlocked && d <= Math.max(rr + 8, Number(e.explosionRadius) * 0.46)) {
+      explodeEnemyMob(room, e, now);
+      enemyTakeDamage(room, e, (Number(e.hp) || 0) + 99999, null, now, {
+        damageSource: 'self_destruct',
+        stunMs: 0,
+        knockback: 0,
+      });
+      continue;
+    }
+
+    if (behavior === 'ranged' || behavior === 'sniper') {
       const targetDist = d;
+      const rangeMin = Math.max(0, Number(e.rangeMin) || ENEMY_RANGED_MIN_RANGE);
+      const rangeMax = Math.max(rangeMin + 20, Number(e.rangeMax) || ENEMY_RANGED_MAX_RANGE);
       if (targetBlocked) {
         e.vx = (steerDx / steerDist) * speed;
         e.vy = (steerDy / steerDist) * speed;
-      } else if (targetDist < ENEMY_RANGED_MIN_RANGE) {
+      } else if (targetDist < rangeMin) {
         e.vx = -(dx / d) * speed;
         e.vy = -(dy / d) * speed;
-      } else if (targetDist > ENEMY_RANGED_MAX_RANGE) {
+      } else if (targetDist > rangeMax) {
         e.vx = (dx / d) * speed;
         e.vy = (dy / d) * speed;
       } else {
@@ -9134,14 +9556,9 @@ function tickRoom(room, dtSec, now) {
       e.x = moved.x;
       e.y = moved.y;
 
-      if (e.attackCooldownMs <= 0 && canBreakObject) {
-        if (target.alive && targetDist <= ENEMY_RANGED_MAX_RANGE * 1.1) {
-          fireEnemyProjectile(room, e, target);
-          e.attackCooldownMs = ENEMY_RANGED_FIRE_COOLDOWN_MS;
-        }
-      } else if (e.attackCooldownMs <= 0 && target.alive && !targetBlocked && targetDist <= ENEMY_RANGED_MAX_RANGE * 1.1) {
+      if (e.attackCooldownMs <= 0 && target.alive && !targetBlocked && targetDist <= rangeMax * 1.1) {
         fireEnemyProjectile(room, e, target);
-        e.attackCooldownMs = ENEMY_RANGED_FIRE_COOLDOWN_MS;
+        e.attackCooldownMs = Math.max(80, Number(e.fireCooldownMs) || ENEMY_RANGED_FIRE_COOLDOWN_MS);
       }
       continue;
     }
@@ -9162,7 +9579,7 @@ function tickRoom(room, dtSec, now) {
           const lockedTarget = room.players.get(e.attackTargetId);
           if (lockedTarget && lockedTarget.alive) {
             e.faceLeft = (lockedTarget.x - e.x) < 0;
-            if (e.type === 'charger' || e.type === 'boss') {
+            if (behavior === 'charger' || e.type === 'boss') {
               const cdx = lockedTarget.x - e.x;
               const cdy = lockedTarget.y - e.y;
               const cd = Math.hypot(cdx, cdy) || 1;
@@ -9183,7 +9600,7 @@ function tickRoom(room, dtSec, now) {
 
             const adx = e.x - lockedTarget.x;
             const ady = e.y - lockedTarget.y;
-            const bonusRange = e.type === 'boss' ? 20 : (e.type === 'charger' ? 8 : 0);
+            const bonusRange = e.type === 'boss' ? 20 : (behavior === 'charger' ? 8 : (behavior === 'brute' || behavior === 'shield' ? 5 : 0));
             const hitRange = rr + bonusRange;
             const baseDamage = e.type === 'boss' ? BOSS_ATTACK_DAMAGE : ENEMY_ATTACK_DAMAGE;
             const damage = Math.max(1, Math.round(baseDamage * Math.max(1, Number(e.damageMul) || 1)));
@@ -9223,8 +9640,23 @@ function tickRoom(room, dtSec, now) {
       continue;
     }
 
-    e.vx = (steerDx / steerDist) * speed;
-    e.vy = (steerDy / steerDist) * speed;
+    if (behavior === 'flanker' && !targetBlocked && d > rr * 1.2) {
+      if (!e.flankSign) e.flankSign = Math.random() < 0.5 ? -1 : 1;
+      if (!e.flankSwapAt || now > e.flankSwapAt) {
+        if (Math.random() < 0.35) e.flankSign *= -1;
+        e.flankSwapAt = now + 1800 + Math.random() * 1800;
+      }
+      const sideX = -dy / d;
+      const sideY = dx / d;
+      const flankX = (dx / d) * 0.78 + sideX * e.flankSign * 0.52;
+      const flankY = (dy / d) * 0.78 + sideY * e.flankSign * 0.52;
+      const flankLen = Math.hypot(flankX, flankY) || 1;
+      e.vx = (flankX / flankLen) * speed;
+      e.vy = (flankY / flankLen) * speed;
+    } else {
+      e.vx = (steerDx / steerDist) * speed;
+      e.vy = (steerDy / steerDist) * speed;
+    }
     if (Math.abs(Number(e.vx) || 0) > 0.15) e.faceLeft = (Number(e.vx) || 0) < 0;
     const moved = moveActorWithSceneCollision(room, e.x, e.y, e.vx * dtSec, e.vy * dtSec, er, enemyWorldBounds);
     e.x = moved.x;

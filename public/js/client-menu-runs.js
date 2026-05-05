@@ -184,6 +184,7 @@
       const selected = String(selection.campaignId || '') === String(campaign?.id || '');
       const completed = getCompletedLevelsCount(campaign);
       const total = Math.max(1, (Array.isArray(campaign?.levels) ? campaign.levels.length : 0));
+      const campaignComplete = completed >= total;
       const campaignProgress = getCampaignProgress(campaign?.id);
       const cover = campaign?.cover && typeof campaign.cover === 'object' ? campaign.cover : {};
       const imagePath = getCampaignMapImagePath(campaign);
@@ -201,7 +202,7 @@
         +     `<small>${escapeHtml(campaign.tagline || '')}</small>`
         +   `</span>`
         +   `<span class="campaign-card-desc">${escapeHtml(campaign.description || '')}</span>`
-        +   `<span class="campaign-card-stats">Прогресс ${completed}/${total} | Попыток ${Math.max(0, Number(campaignProgress?.attempts) || 0)} | Лучший счёт ${Math.max(0, Number(campaignProgress?.bestScore) || 0)}</span>`
+        +   `<span class="campaign-card-stats${campaignComplete ? ' is-complete' : ''}">Прогресс ${completed}/${total} | Попыток ${Math.max(0, Number(campaignProgress?.attempts) || 0)} | Лучший счёт ${Math.max(0, Number(campaignProgress?.bestScore) || 0)}</span>`
         + `</button>`;
     }).join('');
 

@@ -47,6 +47,7 @@
         <button class="nav-btn active" data-section="overview"><span>Обзор</span><span>hub</span></button>
         <button class="nav-btn" data-section="maps"><span>Карты</span><span id="maps-nav-count">0</span></button>
         <button class="nav-btn" data-section="campaigns"><span>Кампании</span><span id="campaigns-nav-count">0</span></button>
+        <button class="nav-btn" data-section="mobs"><span>Mobs</span><span id="mobs-nav-count">0</span></button>
         <button class="nav-btn" data-section="news"><span>Новости</span><span>legacy</span></button>
         <button class="nav-btn" data-section="skills"><span>Навыки</span><span>legacy</span></button>
       </nav>
@@ -73,7 +74,7 @@
             <div id="runtime-pill" class="pill">Новые сохранения уходят в новые комнаты</div>
           </div>
           <div class="btn-row">
-            <button id="save-world-btn" class="btn btn-primary" disabled>Сохранить карты/кампании</button>
+            <button id="save-world-btn" class="btn btn-primary" disabled>Сохранить карты/кампании/мобов</button>
             <button id="reset-world-btn" class="btn btn-ghost">Сбросить к дефолту</button>
             <button id="open-play-btn" class="btn btn-ghost">Открыть игру</button>
           </div>
@@ -94,6 +95,10 @@
           <div class="card metric-card">
             <strong id="metric-levels">0</strong>
             <span>Уровней в кампаниях</span>
+          </div>
+          <div class="card metric-card">
+            <strong id="metric-mobs">0</strong>
+            <span>Mobs in catalog</span>
           </div>
           <div class="card metric-card">
             <strong id="metric-legacy">2</strong>
@@ -124,6 +129,16 @@
 
           <div class="card shortcut-card">
             <div>
+              <h3>Mobs</h3>
+              <p>Enemy catalog, rarity color, behavior, stats, image path, quick-run weight, and campaign usage.</p>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-primary" data-jump="mobs">Open mob editor</button>
+            </div>
+          </div>
+
+          <div class="card shortcut-card">
+            <div>
               <h3>Новости</h3>
               <p>Существующий редактор новостей встроен прямо в хаб и использует тот же admin-session.</p>
             </div>
@@ -145,6 +160,76 @@
           </div>
         </div>
       </section>
+
+      <section id="section-mobs" class="admin-section hidden">
+        <div class="editor-layout editor-layout--mobs">
+          <div class="card list-panel">
+            <div class="panel-head">
+              <div>
+                <h3>Mobs</h3>
+                <div class="panel-note">All enemy archetypes that can be used by quick runs, campaigns, and boss portals.</div>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="section-toolbar">
+                <button id="mob-add-btn" class="btn btn-primary">New mob</button>
+                <button id="mob-clone-btn" class="btn btn-ghost">Clone</button>
+                <button id="mob-delete-btn" class="btn btn-danger">Delete</button>
+              </div>
+              <div id="mob-list" class="list-stack"></div>
+            </div>
+          </div>
+
+          <div class="card editor-panel">
+            <div class="panel-head">
+              <div>
+                <h3>Mob editor</h3>
+                <div class="panel-note">Stats are multipliers over the current room difficulty. Image can be any /assets path.</div>
+              </div>
+            </div>
+            <div class="panel-body stack">
+              <div class="field-grid field-grid--two">
+                <div class="field"><label for="mob-id">ID</label><input id="mob-id" class="mono" /></div>
+                <div class="field"><label for="mob-name">Name</label><input id="mob-name" /></div>
+                <div class="field"><label for="mob-behavior">Behavior</label><select id="mob-behavior"></select></div>
+                <div class="field"><label for="mob-rarity">Rarity</label><select id="mob-rarity"></select></div>
+                <div class="field"><label for="mob-color">Color</label><input id="mob-color" class="mono" /></div>
+                <div class="field"><label for="mob-image">Image</label><input id="mob-image" class="mono" /></div>
+                <div class="field"><label for="mob-enabled">Enabled</label><input id="mob-enabled" type="checkbox" /></div>
+                <div class="field"><label for="mob-default-weight">Quick-run weight</label><input id="mob-default-weight" type="number" step="0.1" /></div>
+                <div class="field"><label for="mob-min-difficulty">Min difficulty level</label><input id="mob-min-difficulty" type="number" /></div>
+                <div class="field"><label for="mob-hp-mul">HP mul</label><input id="mob-hp-mul" type="number" step="0.05" /></div>
+                <div class="field"><label for="mob-speed-mul">Speed mul</label><input id="mob-speed-mul" type="number" step="0.05" /></div>
+                <div class="field"><label for="mob-damage-mul">Damage mul</label><input id="mob-damage-mul" type="number" step="0.05" /></div>
+                <div class="field"><label for="mob-damage-taken-mul">Damage taken mul</label><input id="mob-damage-taken-mul" type="number" step="0.05" /></div>
+                <div class="field"><label for="mob-radius">Radius</label><input id="mob-radius" type="number" step="0.5" /></div>
+                <div class="field"><label for="mob-sprite-scale">Sprite scale</label><input id="mob-sprite-scale" type="number" step="0.05" /></div>
+                <div class="field"><label for="mob-xp-value">XP value</label><input id="mob-xp-value" type="number" /></div>
+                <div class="field"><label for="mob-score-value">Score value</label><input id="mob-score-value" type="number" /></div>
+                <div class="field"><label for="mob-knockback-resist">Knockback resist</label><input id="mob-knockback-resist" type="number" step="0.05" /></div>
+                <div class="field"><label for="mob-fire-cooldown">Fire cooldown ms</label><input id="mob-fire-cooldown" type="number" /></div>
+                <div class="field"><label for="mob-range-min">Range min</label><input id="mob-range-min" type="number" /></div>
+                <div class="field"><label for="mob-range-max">Range max</label><input id="mob-range-max" type="number" /></div>
+                <div class="field"><label for="mob-projectile-color">Projectile color</label><input id="mob-projectile-color" class="mono" /></div>
+                <div class="field"><label for="mob-heal-amount">Heal amount</label><input id="mob-heal-amount" type="number" step="0.5" /></div>
+                <div class="field"><label for="mob-heal-radius">Heal radius</label><input id="mob-heal-radius" type="number" /></div>
+                <div class="field"><label for="mob-heal-cooldown">Heal cooldown ms</label><input id="mob-heal-cooldown" type="number" /></div>
+                <div class="field"><label for="mob-explosion-radius">Explosion radius</label><input id="mob-explosion-radius" type="number" /></div>
+                <div class="field"><label for="mob-explosion-damage">Explosion damage</label><input id="mob-explosion-damage" type="number" /></div>
+                <div class="field"><label for="mob-split-mob">Split mob ID</label><input id="mob-split-mob" class="mono" /></div>
+                <div class="field"><label for="mob-split-count">Split count</label><input id="mob-split-count" type="number" /></div>
+              </div>
+              <div class="field"><label for="mob-description">Description</label><textarea id="mob-description"></textarea></div>
+
+              <div class="usage-box stack">
+                <h4>Usage</h4>
+                <div id="mob-usage" class="usage-list"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
 
       <section id="section-maps" class="admin-section hidden">
         <div class="maps-shell">
@@ -503,6 +588,25 @@
                             <div class="field"><label for="modifier-enemy-spawn">Enemy spawn mul</label><input id="modifier-enemy-spawn" type="number" step="0.01" /></div>
                             <div class="field"><label for="modifier-enemy-hp">Enemy HP mul</label><input id="modifier-enemy-hp" type="number" step="0.01" /></div>
                             <div class="field"><label for="modifier-boss-interval">Boss kill interval</label><input id="modifier-boss-interval" type="number" /></div>
+                            <div class="field"><label for="modifier-boss-mob">Boss mob</label><select id="modifier-boss-mob"></select></div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="card">
+                        <div class="card-pad stack">
+                          <h4>Mob spawn weights</h4>
+                          <div class="table-wrap">
+                            <table>
+                              <thead>
+                                <tr>
+                                  <th>Mob</th>
+                                  <th>Behavior</th>
+                                  <th>Weight</th>
+                                </tr>
+                              </thead>
+                              <tbody id="level-mob-weights-body"></tbody>
+                            </table>
                           </div>
                         </div>
                       </div>

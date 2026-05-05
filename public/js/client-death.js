@@ -1,4 +1,19 @@
 (function initClientDeath() {
+  const missionVictoryOverlayEl = document.getElementById('mission-victory-overlay');
+  const missionVictoryCardEl = missionVictoryOverlayEl?.querySelector('.mission-victory-card') || null;
+  const missionVictoryBurstsEl = document.getElementById('mission-victory-bursts');
+  const missionVictoryKickerEl = document.getElementById('mission-victory-kicker');
+  const missionVictoryTitleEl = document.getElementById('mission-victory-title');
+  const missionVictoryLineEl = document.getElementById('mission-victory-line');
+  const missionVictoryStatsEl = document.getElementById('mission-victory-stats');
+  const missionVictoryObjectivesEl = document.getElementById('mission-victory-objectives');
+  const missionVictoryRewardsEl = document.getElementById('mission-victory-rewards');
+  const missionVictoryContinueBtn = document.getElementById('mission-victory-continue');
+  const missionVictoryMenuBtn = document.getElementById('mission-victory-menu');
+  let latestMissionVictoryPayload = null;
+  let pendingMissionVictorySparkTimer = null;
+  let pendingMissionVictoryLayoutFrame = 0;
+
   function formatRunDuration(value) {
     if (typeof globalThis.cwFormatDurationSec === 'function') return globalThis.cwFormatDurationSec(value);
     const totalSec = Math.max(0, Math.floor(Number(value) || 0));
@@ -6,6 +21,255 @@
     const minutes = Math.floor((totalSec % 3600) / 60);
     const seconds = totalSec % 60;
     return `${hours}ч ${String(minutes).padStart(2, '0')}м ${String(seconds).padStart(2, '0')}с`;
+  }
+
+  function clampMissionNumber(value, fallback = 0) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return fallback;
+    return Math.max(0, Math.round(num));
+  }
+
+  function getMissionPayloadMission(result, options = {}) {
+    const resultMission = result?.mission && typeof result.mission === 'object' ? result.mission : null;
+    const optionMission = options?.mission && typeof options.mission === 'object' ? options.mission : null;
+    return resultMission || optionMission || game.mission || null;
+  }
+
+  function formatMissionGoalValue(goal) {
+    const current = clampMissionNumber(goal?.current);
+    const target = Math.max(1, clampMissionNumber(goal?.target, 1));
+    const type = String(goal?.type || '').trim();
+    if (type === 'survive') return `${formatRunDuration(current)} / ${formatRunDuration(target)}`;
+    return `${Math.min(current, target)} / ${target}`;
+  }
+
+  function buildMissionVictoryLine(result, options = {}) {
+    const mission = getMissionPayloadMission(result, options);
+    const campaign = String(mission?.campaignShortName || mission?.campaignName || result?.campaignName || '').trim();
+    const missionTitle = String(options?.title || mission?.title || result?.levelTitle || '').trim();
+    const enemyKills = clampMissionNumber(result?.enemyKills ?? result?.kills);
+    const bossKills = clampMissionNumber(result?.bossKills);
+    const survival = formatRunDuration(Math.max(1, Number(result?.survivalSec) || 1));
+    const survived = clampMissionNumber(result?.survivors ?? result?.squadSurvivors, 1);
+    const squad = Math.max(1, clampMissionNumber(result?.squadSize ?? result?.roomAlivePlayers, survived));
+    const intro = [campaign, missionTitle].filter(Boolean).join(' / ');
+    const prefix = intro ? `${intro}: ` : '';
+    if (bossKills > 0) {
+      return `${prefix}полевой отчет подписан кровью, боссов сложили ${bossKills}, рядовых списали ${enemyKills}, живыми вышли ${survived}/${squad}. Карточка вырвана за ${survival}.`;
+    }
+    return `${prefix}цель выполнена, всем раздали пиздов по ведомости, живыми вышли ${survived}/${squad}. Забег закрыт за ${survival}, морально-волевые в бодром плюсе.`;
+  }
+
+  function buildMissionVictoryStatsHtml(result, options = {}) {
+    const mission = getMissionPayloadMission(result, options);
+    const goals = Array.isArray(mission?.goals) ? mission.goals : [];
+    const completedGoals = clampMissionNumber(mission?.completedGoals ?? result?.completedGoals, goals.filter((goal) => goal?.completed).length);
+    const totalGoals = Math.max(goals.length, clampMissionNumber(mission?.totalGoals ?? result?.totalGoals, goals.length));
+    const survived = clampMissionNumber(result?.survivors ?? result?.squadSurvivors, 1);
+    const squad = Math.max(1, clampMissionNumber(result?.squadSize ?? result?.roomAlivePlayers, survived));
+    const rows = [
+      ['Счет', clampMissionNumber(result?.score)],
+      ['Фрагов', clampMissionNumber(result?.kills)],
+      ['Мобов списано', clampMissionNumber(result?.enemyKills ?? result?.kills)],
+      ['Боссов уложено', clampMissionNumber(result?.bossKills)],
+      ['Выживание', formatRunDuration(Math.max(1, Number(result?.survivalSec) || 1))],
+      ['Уровень героя', `Lv ${Math.max(1, clampMissionNumber(result?.heroLevel, 1))}`],
+      ['Смертей', clampMissionNumber(result?.deaths ?? result?.pvpDeaths)],
+      ['Отряд жив', `${survived}/${squad}`],
+      ['Цели', totalGoals > 0 ? `${completedGoals}/${totalGoals}` : 'готово'],
+      ['Комната', String(result?.roomCode || game.roomCode || '-')],
+      ['Режим', String(result?.gameMode || game.gameMode || 'normal')],
+      ['Карточка', result?.victory ? 'вырвана' : 'жива'],
+    ];
+    return rows.map(([label, value]) => (
+      `<div class="mission-victory-stat"><span>${escapeHtml(String(label))}</span><b>${escapeHtml(String(value))}</b></div>`
+    )).join('');
+  }
+
+  function buildMissionVictoryObjectivesHtml(result, options = {}) {
+    const mission = getMissionPayloadMission(result, options);
+    const goals = Array.isArray(mission?.goals) ? mission.goals : [];
+    const title = '<div class="mission-victory-section-title">Цели забега</div>';
+    if (!goals.length) {
+      return title
+        + '<div class="mission-victory-objective-list">'
+        + '<div class="mission-victory-objective"><strong>Главная задача</strong><span>закрыта с пафосом</span></div>'
+        + '</div>';
+    }
+    const items = goals.map((goal) => {
+      const target = Math.max(1, clampMissionNumber(goal?.target, 1));
+      const current = clampMissionNumber(goal?.current, target);
+      const progress = Math.max(0, Math.min(100, Math.round(((Number(goal?.progress) || (current / target)) * 100))));
+      const label = String(goal?.label || goal?.type || 'Objective').trim();
+      return ''
+        + '<div class="mission-victory-objective">'
+        +   `<strong>${escapeHtml(label)}</strong>`
+        +   `<span>${escapeHtml(formatMissionGoalValue({ ...goal, current, target }))}</span>`
+        +   `<div class="mission-victory-progress"><i style="--goal-progress: ${progress}%"></i></div>`
+        + '</div>';
+    }).join('');
+    return title + `<div class="mission-victory-objective-list">${items}</div>`;
+  }
+
+  function buildMissionVictoryRewardsHtml() {
+    const title = '<div class="mission-victory-section-title">Добыча и бухгалтерия триумфа</div>';
+    const rewards = latestRunRewards;
+    if (!rewards) {
+      const loggedIn = Boolean(game.playerAuth?.player);
+      return title
+        + '<div class="mission-victory-reward-list">'
+        + `<div class="mission-victory-reward"><strong>${loggedIn ? 'Награды синхронизируются' : 'Аккаунт не подключен'}</strong><span>${loggedIn ? 'секунду, казна считает' : 'честь есть, лута нет'}</span></div>`
+        + '</div>';
+    }
+    const rows = [
+      ['Опыт аккаунта', `+${clampMissionNumber(rewards.gainedXp)}`],
+      ['Осколки', `+${clampMissionNumber(rewards.gainedShards)}`],
+    ];
+    if (clampMissionNumber(rewards.levelsGained) > 0) rows.push(['Уровни аккаунта', `+${clampMissionNumber(rewards.levelsGained)}`]);
+    const cards = Array.isArray(rewards.cards) ? rewards.cards : [];
+    const items = Array.isArray(rewards.items) ? rewards.items : [];
+    if (cards.length > 0) {
+      rows.push(['Карты героев', cards.map((card) => `+${card.count} ${card.name}`).join(', ')]);
+    } else {
+      rows.push(['Карты героев', 'не выпали, но мы сделали вид, что тактика']);
+    }
+    if (items.length > 0) {
+      rows.push(['Предметы', items.map((item) => `+${item.quantity} ${item.name}${item.level > 1 ? ` Lv${item.level}` : ''}`).join(', ')]);
+    } else {
+      rows.push(['Предметы', 'без трофейной тележки']);
+    }
+    const itemsHtml = rows.map(([label, value]) => (
+      `<div class="mission-victory-reward"><strong>${escapeHtml(String(label))}</strong><span>${escapeHtml(String(value))}</span></div>`
+    )).join('');
+    return title + `<div class="mission-victory-reward-list">${itemsHtml}</div>`;
+  }
+
+  function renderMissionVictoryOverlay() {
+    if (!latestMissionVictoryPayload) return;
+    const result = latestMissionVictoryPayload.result || {};
+    const options = latestMissionVictoryPayload.options || {};
+    const mission = getMissionPayloadMission(result, options);
+    const hasHeadline = Object.prototype.hasOwnProperty.call(result || {}, 'headline');
+    const title = String(hasHeadline ? result.headline : '').trim();
+    const missionTitle = String(options.title || mission?.title || result?.levelTitle || 'миссия закрыта').trim();
+    if (missionVictoryKickerEl) missionVictoryKickerEl.textContent = missionTitle;
+    if (missionVictoryTitleEl) {
+      missionVictoryTitleEl.textContent = title;
+      missionVictoryTitleEl.classList.toggle('hidden', !title);
+    }
+    if (missionVictoryLineEl) missionVictoryLineEl.textContent = buildMissionVictoryLine(result, options);
+    if (missionVictoryStatsEl) missionVictoryStatsEl.innerHTML = buildMissionVictoryStatsHtml(result, options);
+    if (missionVictoryObjectivesEl) missionVictoryObjectivesEl.innerHTML = buildMissionVictoryObjectivesHtml(result, options);
+    if (missionVictoryRewardsEl) missionVictoryRewardsEl.innerHTML = buildMissionVictoryRewardsHtml();
+    if (missionVictoryContinueBtn) {
+      missionVictoryContinueBtn.textContent = 'Дальше в сюжет';
+      missionVictoryContinueBtn.title = 'Закрыть победный экран и открыть вкладку сюжетных кампаний.';
+      missionVictoryContinueBtn.setAttribute('aria-label', 'Дальше в сюжет: открыть вкладку сюжетных кампаний');
+    }
+    if (missionVictoryMenuBtn) {
+      missionVictoryMenuBtn.textContent = 'В штаб';
+      missionVictoryMenuBtn.title = 'Закрыть победный экран и вернуться на вкладку обычного забега.';
+      missionVictoryMenuBtn.setAttribute('aria-label', 'В штаб: вернуться на вкладку обычного забега');
+    }
+    scheduleMissionVictoryLayoutSync();
+  }
+
+  function syncMissionVictoryLayoutMode() {
+    if (!missionVictoryCardEl || !missionVictoryOverlayEl || missionVictoryOverlayEl.classList.contains('hidden')) return;
+    missionVictoryCardEl.classList.remove('is-fit', 'is-scrollable');
+    const limit = Math.max(240, Math.floor((window.innerHeight || document.documentElement.clientHeight || 720) * 0.8));
+    const naturalHeight = Math.ceil(missionVictoryCardEl.scrollHeight || missionVictoryCardEl.getBoundingClientRect().height || 0);
+    missionVictoryCardEl.classList.add(naturalHeight <= limit + 1 ? 'is-fit' : 'is-scrollable');
+  }
+
+  function scheduleMissionVictoryLayoutSync() {
+    if (pendingMissionVictoryLayoutFrame) cancelAnimationFrame(pendingMissionVictoryLayoutFrame);
+    pendingMissionVictoryLayoutFrame = requestAnimationFrame(() => {
+      pendingMissionVictoryLayoutFrame = 0;
+      syncMissionVictoryLayoutMode();
+    });
+  }
+
+  function spawnMissionVictoryDomFx() {
+    if (!missionVictoryBurstsEl) return;
+    missionVictoryBurstsEl.innerHTML = '';
+    const colors = ['#b4534a', '#8f1d2c', '#d6b46f', '#9ca3af', '#c08457'];
+    const count = Math.max(24, Math.min(58, Math.round((window.innerWidth || 900) / 26)));
+    for (let i = 0; i < count; i += 1) {
+      const spark = document.createElement('div');
+      spark.className = 'mission-victory-spark';
+      const angle = Math.random() * Math.PI * 2;
+      const distance = 130 + Math.random() * Math.min(520, Math.max(window.innerWidth || 900, window.innerHeight || 700) * 0.42);
+      spark.style.setProperty('--spark-x', `${Math.cos(angle) * distance}px`);
+      spark.style.setProperty('--spark-y', `${Math.sin(angle) * distance}px`);
+      spark.style.setProperty('--spark-rot', `${Math.round(angle * 180 / Math.PI)}deg`);
+      spark.style.setProperty('--spark-w', `${6 + Math.random() * 24}px`);
+      spark.style.setProperty('--spark-h', `${2 + Math.random() * 4}px`);
+      spark.style.setProperty('--spark-delay', `${Math.round(Math.random() * 420)}ms`);
+      spark.style.setProperty('--spark-life', `${850 + Math.round(Math.random() * 780)}ms`);
+      spark.style.setProperty('--spark-color', colors[i % colors.length]);
+      missionVictoryBurstsEl.appendChild(spark);
+    }
+    if (pendingMissionVictorySparkTimer) clearTimeout(pendingMissionVictorySparkTimer);
+    pendingMissionVictorySparkTimer = setTimeout(() => {
+      pendingMissionVictorySparkTimer = null;
+      if (missionVictoryBurstsEl) missionVictoryBurstsEl.innerHTML = '';
+    }, 2400);
+  }
+
+  function spawnMissionVictoryWorldFx(result) {
+    const players = Array.isArray(game.state?.players) ? game.state.players : [];
+    const me = players.find((player) => player?.id === game.myId) || players.find((player) => !player?.isCompanion) || null;
+    if (!me) return;
+    const x = Number(me.x) || 0;
+    const y = Number(me.y) || 0;
+    if (typeof spawnSkillBurstFx === 'function') {
+      spawnSkillBurstFx(x, y, '#b4534a', 260, { style: 'shockwave', trailRings: 6, spikeCount: 18, accentColor: '#d6b46f', innerColor: '#7f1d1d', life: 0.95, growSpeed: 520 });
+      spawnSkillBurstFx(x, y, '#7f1d1d', 170, { style: 'shockwave', trailRings: 4, spikeCount: 14, accentColor: '#c08457', innerColor: '#b91c1c', life: 0.72, growSpeed: 460 });
+    }
+    if (typeof spawnRadialHitFx === 'function') spawnRadialHitFx(x, y, 220, { color: '#b4534a', count: 34 });
+    if (typeof spawnSkillLabel === 'function') {
+      const score = clampMissionNumber(result?.score);
+      spawnSkillLabel(score > 0 ? `CLEAR +${score}` : 'MISSION CLEAR', x, y - 24);
+    }
+  }
+
+  function hideMissionVictoryOverlay() {
+    if (pendingMissionVictoryLayoutFrame) {
+      cancelAnimationFrame(pendingMissionVictoryLayoutFrame);
+      pendingMissionVictoryLayoutFrame = 0;
+    }
+    if (pendingMissionVictorySparkTimer) {
+      clearTimeout(pendingMissionVictorySparkTimer);
+      pendingMissionVictorySparkTimer = null;
+    }
+    if (missionVictoryBurstsEl) missionVictoryBurstsEl.innerHTML = '';
+    missionVictoryCardEl?.classList.remove('is-fit', 'is-scrollable');
+    missionVictoryOverlayEl?.classList.add('hidden');
+    missionVictoryOverlayEl?.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('mission-victory-active');
+  }
+
+  function openMissionVictoryMenu(tabId = 'story') {
+    hideMissionVictoryOverlay();
+    latestMissionVictoryPayload = null;
+    leaveActiveRoom();
+    joinOverlay.style.display = 'grid';
+    joinOverlay.classList.remove('death-mode', 'death-cinematic-active', 'death-rewards-visible');
+    setDeathCinematicActive(false);
+    clearDeathRewardsUi();
+    statusEl.textContent = tabId === 'story' ? 'Mission complete. Story tab updated.' : 'Mission complete. Back at hub.';
+    updateMobileControlsVisibility();
+    requestRoomsList();
+    requestRecordsList(recordsUi.page);
+    if (typeof window.cwSetMainMenuTab === 'function') {
+      window.cwSetMainMenuTab(tabId);
+    } else {
+      document.querySelector(`#main-menu-tabs [data-menu-tab="${tabId}"]`)?.click();
+    }
+    if (typeof globalThis.renderRunSetupMenu === 'function') {
+      globalThis.renderRunSetupMenu();
+    }
   }
 
   function clearDeathRewardsUi() {
@@ -326,22 +590,24 @@
   function openVictoryOverlay(result, options = {}) {
     latestDeathSnapshot = result || null;
     cancelPendingDeathOverlay();
-    leaveActiveRoom();
     clearDeathScreenBloodFx();
     clearHitScreenOverlayFx();
     clearDeathRewardsUi();
-    joinOverlay.style.display = 'grid';
-    joinOverlay.classList.add('death-mode');
-    renderDeathResult(result);
-    renderDeathRewardsPanel();
-    joinOverlay.classList.add('death-rewards-visible');
+    latestMissionVictoryPayload = { result: result || {}, options: options || {} };
+    joinOverlay.style.display = 'none';
+    joinOverlay.classList.remove('death-mode', 'death-cinematic-active', 'death-rewards-visible');
+    missionVictoryOverlayEl?.classList.remove('hidden');
+    missionVictoryOverlayEl?.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('mission-victory-active');
+    renderMissionVictoryOverlay();
+    spawnMissionVictoryDomFx();
+    spawnMissionVictoryWorldFx(result || {});
+    window.cwPlayVictoryFanfare?.({ key: `missionVictory:${result?.roomCode || game.roomCode || Date.now()}` });
     setDeathCinematicActive(false);
     statusEl.textContent = String(options.title || 'Mission complete');
     if (commentatorTitleEl && options.title) commentatorTitleEl.textContent = String(options.title);
     if (commentatorTextEl) commentatorTextEl.textContent = String(options.message || 'Цель выполнена. Теперь можно хвастаться, будто всё так и планировалось.');
     updateMobileControlsVisibility();
-    requestRoomsList();
-    requestRecordsList(recordsUi.page);
   }
 
   deathContinueBtn?.addEventListener('click', () => {
@@ -357,6 +623,25 @@
     }
     openDeathMenuAfterCinematic();
   });
+
+  missionVictoryContinueBtn?.addEventListener('click', () => {
+    if (typeof window.cwTrackMetrikaGoal === 'function') {
+      window.cwTrackMetrikaGoal('campaign_victory_continue', { target: 'story' });
+    }
+    openMissionVictoryMenu('story');
+  });
+
+  missionVictoryMenuBtn?.addEventListener('click', () => {
+    if (typeof window.cwTrackMetrikaGoal === 'function') {
+      window.cwTrackMetrikaGoal('campaign_victory_continue', { target: 'run' });
+    }
+    openMissionVictoryMenu('run');
+  });
+
+  window.addEventListener('resize', () => {
+    if (!missionVictoryOverlayEl || missionVictoryOverlayEl.classList.contains('hidden')) return;
+    scheduleMissionVictoryLayoutSync();
+  }, { passive: true });
 
   Object.assign(globalThis, {
     clearDeathRewardsUi,
@@ -377,6 +662,8 @@
     openDeathMenuAfterCinematic,
     openDeathOverlay,
     openVictoryOverlay,
+    renderMissionVictoryOverlay,
+    hideMissionVictoryOverlay,
   });
 
   globalThis.CWDeath = {

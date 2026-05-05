@@ -385,12 +385,14 @@
       ),
       h('div', { className: 'cw-column cw-column-side' },
         h(ActiveRoomsCard),
-        h(CwPanel, { tag: 'div', id: 'player-access-card', className: 'cw-subpanel player-access-card' },
-          h('div', { className: 'cw-subpanel-head' },
-            h('span', { className: 'cw-kicker' }, 'Access'),
-            h('strong', null, '\u0414\u043e\u0441\u0442\u0443\u043f \u0438\u0433\u0440\u043e\u043a\u0430')
-          ),
-          h(AuthShell)
+        h('div', { id: 'player-access-play-slot', className: 'player-access-host' },
+          h(CwPanel, { tag: 'div', id: 'player-access-card', className: 'cw-subpanel player-access-card' },
+            h('div', { className: 'cw-subpanel-head' },
+              h('span', { className: 'cw-kicker' }, 'Access'),
+              h('strong', null, '\u0414\u043e\u0441\u0442\u0443\u043f \u0438\u0433\u0440\u043e\u043a\u0430')
+            ),
+            h(AuthShell)
+          )
         )
       )
     );
@@ -445,7 +447,8 @@
       ),
       h('div', { className: 'cw-profile-side' },
         h('div', { id: 'profile-run-history', className: 'profile-card cw-subpanel' }, 'Run history: loading...')
-      )
+      ),
+      h('div', { id: 'profile-auth-slot', className: 'cw-profile-auth-slot player-access-host' })
     );
   }
 

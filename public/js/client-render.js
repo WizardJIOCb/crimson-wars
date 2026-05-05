@@ -1093,6 +1093,67 @@ function drawBossPortals(portals, nowMs) {
   }
 }
 
+const FALLBACK_MOB_RENDER = {
+  normal: { color: '#9ca3af', spriteScale: 1, behavior: 'melee' },
+  runner: { color: '#ef4444', spriteScale: 0.92, behavior: 'flanker' },
+  charger: { color: '#f97316', spriteScale: 1.12, behavior: 'charger' },
+  ranged: { color: '#fb7185', spriteScale: 0.98, behavior: 'ranged' },
+  brute: { color: '#64748b', spriteScale: 1.48, behavior: 'brute' },
+  splitter: { color: '#a855f7', spriteScale: 1.12, behavior: 'splitter' },
+  medic: { color: '#22c55e', spriteScale: 1.02, behavior: 'healer' },
+  sniper: { color: '#38bdf8', spriteScale: 1, behavior: 'sniper' },
+  exploder: { color: '#facc15', spriteScale: 1.04, behavior: 'exploder' },
+  shield: { color: '#e5e7eb', spriteScale: 1.32, behavior: 'shield' },
+  boss: { color: '#dc2626', spriteScale: 2.6, behavior: 'boss' },
+  boss_hellmart: { color: '#f97316', spriteScale: 2.82, behavior: 'boss' },
+  boss_chief_surgeon: { color: '#22c55e', spriteScale: 2.66, behavior: 'boss' },
+  boss_road_titan: { color: '#ef4444', spriteScale: 2.48, behavior: 'boss' },
+  boss_reactor_apostle: { color: '#84cc16', spriteScale: 2.72, behavior: 'boss' },
+};
+
+function getMobRenderDef(type) {
+  const id = String(type || 'normal').trim();
+  const catalog = Array.isArray(game.mobCatalog) ? game.mobCatalog : [];
+  return catalog.find((mob) => String(mob?.id || '') === id) || FALLBACK_MOB_RENDER[id] || FALLBACK_MOB_RENDER.normal;
+}
+
+function getEnemyRenderColor(enemy) {
+  return enemy?.color || getMobRenderDef(enemy?.mobId || enemy?.type)?.color || '#ef4444';
+}
+
+function getEnemyRenderBehavior(enemy) {
+  return enemy?.behavior || getMobRenderDef(enemy?.mobId || enemy?.type)?.behavior || 'melee';
+}
+
+const enemyTintFrameCache = new Map();
+
+function getTintedEnemyFrame(frame, tint, isBoss, fw, fh) {
+  if (!sprites.enemy.complete || sprites.enemy.naturalWidth < fw * 2) return null;
+  const color = String(tint || '').trim().toLowerCase() || '#ef4444';
+  const alpha = isBoss ? 0.18 : 0.42;
+  const key = `${sprites.enemy.src || 'enemy'}:${sprites.enemy.naturalWidth}x${sprites.enemy.naturalHeight}:${frame}:${color}:${alpha}`;
+  const cached = enemyTintFrameCache.get(key);
+  if (cached) return cached;
+
+  const canvasEl = document.createElement('canvas');
+  canvasEl.width = fw;
+  canvasEl.height = fh;
+  const spriteCtx = canvasEl.getContext('2d');
+  if (!spriteCtx) return null;
+  spriteCtx.imageSmoothingEnabled = false;
+  spriteCtx.drawImage(sprites.enemy, frame * fw, 0, fw, fh, 0, 0, fw, fh);
+  spriteCtx.globalCompositeOperation = 'source-atop';
+  spriteCtx.fillStyle = hexToRgba(color, alpha);
+  spriteCtx.fillRect(0, 0, fw, fh);
+  spriteCtx.globalCompositeOperation = 'source-over';
+
+  enemyTintFrameCache.set(key, canvasEl);
+  if (enemyTintFrameCache.size > 96) {
+    enemyTintFrameCache.delete(enemyTintFrameCache.keys().next().value);
+  }
+  return canvasEl;
+}
+
 function drawEnemies(enemies, t) {
   const fw = 37;
   const fh = 45;
@@ -1105,7 +1166,11 @@ function drawEnemies(enemies, t) {
     const x = re.x - camera.x;
     const y = re.y - camera.y;
     const isBoss = e.type === 'boss';
-    const scale = isBoss ? Math.max(2.2, Number(e.spriteScale) || 2.6) : Math.max(0.9, Number(e.spriteScale) || 1);
+    const mobRender = getMobRenderDef(e.mobId || e.type);
+    const behavior = getEnemyRenderBehavior(e);
+    const tint = getEnemyRenderColor(e);
+    const scaleBase = Number(e.spriteScale) || Number(mobRender?.spriteScale) || (isBoss ? 2.6 : 1);
+    const scale = isBoss ? Math.max(2.2, scaleBase) : Math.max(0.65, scaleBase);
     const sw = 42 * scale;
     const sh = 50 * scale;
 
@@ -1122,17 +1187,29 @@ function drawEnemies(enemies, t) {
       ctx.translate(x, y + (isBoss ? 6 : 2));
       if (faceLeft) ctx.scale(-1, 1);
       if (isBoss) ctx.filter = 'contrast(1.12) saturate(0.82)';
-      ctx.drawImage(sprites.enemy, frame * fw, 0, fw, fh, -sw * 0.5, -sh * 0.52, sw, sh);
+      const tintedFrame = getTintedEnemyFrame(frame, tint, isBoss, fw, fh);
+      if (tintedFrame) ctx.drawImage(tintedFrame, -sw * 0.5, -sh * 0.52, sw, sh);
+      else ctx.drawImage(sprites.enemy, frame * fw, 0, fw, fh, -sw * 0.5, -sh * 0.52, sw, sh);
       ctx.restore();
 
       if (isBoss) {
         ctx.fillStyle = '#fca5a5';
         ctx.font = 'bold 13px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('BOSS', x, y - sh * 0.62 - 10);
+        ctx.fillText(String(e.name || 'BOSS').slice(0, 22).toUpperCase(), x, y - sh * 0.62 - 10);
+      }
+      if (behavior === 'healer' || behavior === 'shield' || behavior === 'exploder') {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = hexToRgba(tint, behavior === 'exploder' ? 0.5 : 0.34);
+        ctx.lineWidth = behavior === 'shield' ? 3 : 2;
+        ctx.beginPath();
+        ctx.arc(x, y + 7, Math.max(16, er * (behavior === 'exploder' ? 1.25 : 1.05)), 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
       }
     } else {
-      drawCircle(re.x, re.y, isBoss ? 34 : 18, isBoss ? '#b91c1c' : '#ef4444');
+      drawCircle(re.x, re.y, isBoss ? 34 : 18, tint);
     }
 
     if (game.enemyHpBarsEnabled) {
@@ -1402,6 +1479,182 @@ function drawBloodPuddles() {
   }
 }
 
+function drawConsumableProjectilesFx() {
+  if (!Array.isArray(visuals.consumableProjectiles)) return;
+  for (const p of visuals.consumableProjectiles) {
+    if ((Number(p.delay) || 0) > 0) continue;
+    const ttl = Math.max(0.001, Number(p.ttl) || 0.3);
+    const lifeRatio = Math.max(0, Math.min(1, (Number(p.life) || 0) / ttl));
+    if (lifeRatio <= 0.01) continue;
+    const progress = Math.max(0, Math.min(1, 1 - lifeRatio));
+    const fromX = Number(p.fromX) || 0;
+    const fromY = Number(p.fromY) || 0;
+    const toX = Number(p.toX) || 0;
+    const toY = Number(p.toY) || 0;
+    const color = p.color || '#fca5a5';
+    const radius = Math.max(42, Math.min(260, Number(p.radius) || 86));
+
+    if (p.kind === 'beam') {
+      if (!isVisibleWorld(toX, toY, radius + 96) && !isVisibleWorld((fromX + toX) * 0.5, (fromY + toY) * 0.5, 180)) continue;
+      const sx1 = fromX - camera.x;
+      const sy1 = fromY - camera.y;
+      const sx2 = toX - camera.x;
+      const sy2 = toY - camera.y;
+      const alpha = Math.min(1, lifeRatio * 1.35);
+      const pulse = 0.84 + Math.sin(performance.now() / 34) * 0.16;
+      const beamWidth = Math.max(9, Math.min(32, radius * 0.15)) * pulse;
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = hexToRgba(color, alpha * 0.22);
+      ctx.lineWidth = beamWidth * 2.4;
+      ctx.beginPath();
+      ctx.moveTo(sx1, sy1);
+      ctx.lineTo(sx2, sy2);
+      ctx.stroke();
+
+      ctx.strokeStyle = hexToRgba(color, alpha * 0.82);
+      ctx.lineWidth = beamWidth;
+      ctx.beginPath();
+      ctx.moveTo(sx1, sy1);
+      ctx.lineTo(sx2, sy2);
+      ctx.stroke();
+
+      ctx.strokeStyle = `rgba(255,255,255,${(alpha * 0.9).toFixed(3)})`;
+      ctx.lineWidth = Math.max(1.5, beamWidth * 0.22);
+      ctx.beginPath();
+      ctx.moveTo(sx1, sy1);
+      ctx.lineTo(sx2, sy2);
+      ctx.stroke();
+
+      const ringR = Math.max(18, radius * (0.28 + progress * 0.18));
+      ctx.strokeStyle = hexToRgba(color, alpha * 0.85);
+      ctx.lineWidth = 2.2 + progress * 2;
+      ctx.setLineDash([10, 8]);
+      ctx.lineDashOffset = -performance.now() / 28;
+      ctx.beginPath();
+      ctx.arc(sx2, sy2, ringR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      const glow = ctx.createRadialGradient(sx2, sy2, 0, sx2, sy2, Math.max(1, radius * 0.55));
+      glow.addColorStop(0, `rgba(255,255,255,${(alpha * 0.32).toFixed(3)})`);
+      glow.addColorStop(0.34, hexToRgba(color, alpha * 0.28));
+      glow.addColorStop(1, hexToRgba(color, 0));
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(sx2, sy2, radius * 0.55, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      continue;
+    }
+
+    const eased = 1 - Math.pow(1 - progress, 2.4);
+    const x = fromX + (toX - fromX) * eased;
+    const y = fromY + (toY - fromY) * eased;
+    const lift = Math.sin(Math.PI * eased) * (Number(p.arc) || 68);
+    if (!isVisibleWorld(x, y, radius * 0.4 + lift + 34)) continue;
+    const prevT = Math.max(0, eased - 0.16);
+    const tx = fromX + (toX - fromX) * prevT;
+    const ty = fromY + (toY - fromY) * prevT - Math.sin(Math.PI * prevT) * (Number(p.arc) || 68);
+    const sx = x - camera.x;
+    const sy = y - camera.y - lift;
+
+    if (game.shadowsEnabled) {
+      drawShadowAtScreen(x - camera.x, y - camera.y + 3, 10 + radius * 0.04, 4 + radius * 0.018, 0.22 * lifeRatio);
+    }
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = hexToRgba(color, lifeRatio * 0.5);
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(tx - camera.x, ty - camera.y);
+    ctx.lineTo(sx, sy);
+    ctx.stroke();
+
+    const orbR = Math.max(5, Math.min(13, radius * 0.085));
+    const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, orbR * 3.8);
+    glow.addColorStop(0, `rgba(255,255,255,${(lifeRatio * 0.82).toFixed(3)})`);
+    glow.addColorStop(0.25, hexToRgba(color, lifeRatio * 0.72));
+    glow.addColorStop(1, hexToRgba(color, 0));
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(sx, sy, orbR * 3.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(sx, sy, orbR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = `rgba(255,255,255,${(lifeRatio * 0.85).toFixed(3)})`;
+    ctx.beginPath();
+    ctx.arc(sx - orbR * 0.28, sy - orbR * 0.34, Math.max(1.5, orbR * 0.32), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawConsumableAuraFx() {
+  if (!Array.isArray(visuals.consumableAuras)) return;
+  for (const aura of visuals.consumableAuras) {
+    const ttl = Math.max(0.001, Number(aura.ttl) || 1);
+    const alpha = Math.max(0, Math.min(1, (Number(aura.life) || 0) / ttl));
+    if (alpha <= 0.01) continue;
+    const x = Number(aura.x) || 0;
+    const y = Number(aura.y) || 0;
+    const radius = Math.max(34, Math.min(140, Number(aura.radius) || 82));
+    if (!isVisibleWorld(x, y, radius + 24)) continue;
+    const sx = x - camera.x;
+    const sy = y - camera.y;
+    const color = aura.color || '#86efac';
+    const spin = Number(aura.spin) || 0;
+    const pulse = 0.86 + Math.sin(performance.now() / 110 + spin) * 0.14;
+    const outerR = radius * pulse;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, outerR);
+    glow.addColorStop(0, `rgba(255,255,255,${(alpha * 0.12).toFixed(3)})`);
+    glow.addColorStop(0.34, hexToRgba(color, alpha * 0.2));
+    glow.addColorStop(1, hexToRgba(color, 0));
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(sx, sy, outerR, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = hexToRgba(color, alpha * 0.82);
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.arc(sx, sy, radius * 0.62, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.setLineDash([11, 9]);
+    ctx.lineDashOffset = -spin * 16;
+    ctx.strokeStyle = `rgba(255,255,255,${(alpha * 0.48).toFixed(3)})`;
+    ctx.lineWidth = 1.7;
+    ctx.beginPath();
+    ctx.arc(sx, sy, radius * 0.86, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.strokeStyle = hexToRgba(color, alpha * 0.68);
+    ctx.lineWidth = 2.6;
+    for (let i = 0; i < 6; i += 1) {
+      const angle = spin + (Math.PI * 2 * i) / 6;
+      const innerR = radius * 0.28;
+      const outerSegR = radius * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(sx + Math.cos(angle) * innerR, sy + Math.sin(angle) * innerR);
+      ctx.lineTo(sx + Math.cos(angle) * outerSegR, sy + Math.sin(angle) * outerSegR);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
 function drawFx() {
   for (const b of visuals.bossBlast) {
     if (!isVisibleWorld(b.x, b.y, b.maxR + 12)) continue;
@@ -1476,6 +1729,9 @@ function drawFx() {
     ctx.fill();
     ctx.restore();
   }
+
+  drawConsumableProjectilesFx();
+  drawConsumableAuraFx();
 
   for (const s of visuals.skillBursts) {
     if (!isVisibleWorld(s.x, s.y, s.maxR + 12)) continue;
@@ -2185,7 +2441,7 @@ function drawMinimap() {
   for (const enemy of game.state.enemies || []) {
     if (!isVisibleInMini(enemy.x, enemy.y, 70)) continue;
     const isBoss = enemy.type === 'boss';
-    dot(enemy.x, enemy.y, isBoss ? Math.max(4.2 * dpr, 3.8) : Math.max(2.2 * dpr, 2), isBoss ? '#fb7185' : '#ef4444');
+    dot(enemy.x, enemy.y, isBoss ? Math.max(4.2 * dpr, 3.8) : Math.max(2.2 * dpr, 2), getEnemyRenderColor(enemy));
     if (isBoss) {
       minimapCtx.strokeStyle = 'rgba(254, 202, 202, 0.92)';
       minimapCtx.lineWidth = Math.max(1, dpr);
@@ -2285,6 +2541,9 @@ function render(ts) {
 
   updateTopCenterHud(Number(game.state.now) || Date.now());
   updateBottomHud();
+
+  if (!Number.isFinite(Number(camera.x))) camera.x = 0;
+  if (!Number.isFinite(Number(camera.y))) camera.y = 0;
 
   const deathCamLock = game.deathCameraLock;
   if (deathCamLock?.active) {

@@ -371,6 +371,7 @@ const game = {
   spectatorCount: 0,
   roomDifficulty: { level: 1, hpMul: 1, speedMul: 1, damageMul: 1, attackRateMul: 1, spawnIntervalMs: 760 },
   mission: null,
+  mobCatalog: [],
   skillCatalog: {},
   mySkillChoices: [],
   runtimeInstance: {
@@ -404,6 +405,8 @@ const visuals = {
   rocketSmoke: [],
   rocketFire: [],
   rocketBlast: [],
+  consumableProjectiles: [],
+  consumableAuras: [],
   hitFx: [],
   objectImpactFx: [],
   bossBlast: [],
@@ -4865,6 +4868,32 @@ function playProceduralSfx(name, options, volume) {
   }
 }
 
+function playVictoryFanfare(options = {}) {
+  if (!game.sfxEnabled || (game.embedMode && !game.liveAudioEnabled && !options.replay)) return;
+  unlockGameAudio();
+  const ctxAudio = getGameAudioContext();
+  if (!ctxAudio || !gameAudio.unlocked || ctxAudio.state === 'suspended') return;
+  const key = String(options.key || 'victory:fanfare');
+  const nowMs = performance.now();
+  const lastAt = Math.max(0, Number(gameAudio.lastPlayedAt.get(key)) || 0);
+  if (nowMs - lastAt < 1200) return;
+  gameAudio.lastPlayedAt.set(key, nowMs);
+
+  const volume = Math.max(0, Math.min(1, (Number(options.volume) || 1) * getGameSfxVolume()));
+  const notes = [392, 523.25, 659.25, 783.99, 1046.5];
+  notes.forEach((freq, index) => {
+    playTone(freq, 0.18 + index * 0.025, {
+      type: index >= 3 ? 'triangle' : 'square',
+      volume: volume * (index >= 3 ? 0.16 : 0.12),
+      pitchTo: freq * (index === notes.length - 1 ? 1.08 : 1.015),
+      delay: index * 0.085,
+    });
+  });
+  playTone(196, 0.46, { type: 'sawtooth', volume: volume * 0.13, pitchTo: 98, delay: 0.04 });
+  playTone(1318.5, 0.32, { type: 'sine', volume: volume * 0.08, pitchTo: 1760, delay: 0.34 });
+  playNoise(0.32, { volume: volume * 0.18, filter: 3200, filterType: 'highpass', delay: 0.18 });
+}
+
 function playGameSfx(name, options = {}) {
   const replayAudio = Boolean(replayGame.active || options.replay);
   if (!game.sfxEnabled || (game.embedMode && !game.liveAudioEnabled && !replayAudio)) return;
@@ -4904,6 +4933,7 @@ function playGameSfx(name, options = {}) {
 }
 
 window.cwPlaySfx = playGameSfx;
+window.cwPlayVictoryFanfare = playVictoryFanfare;
 window.addEventListener('pointerdown', unlockGameAudio, { passive: true });
 window.addEventListener('keydown', unlockGameAudio);
 gameSfxToggleEl?.addEventListener('change', () => {

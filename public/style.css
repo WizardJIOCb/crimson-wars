@@ -168,6 +168,421 @@ body.live-embed #xp-text {
   }
 }
 
+.mission-victory-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 86;
+  display: grid;
+  place-items: center;
+  padding: max(16px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  overflow: hidden;
+  pointer-events: auto;
+  background:
+    linear-gradient(180deg, rgba(2, 6, 12, 0.32), rgba(3, 7, 13, 0.82)),
+    repeating-linear-gradient(112deg, rgba(128, 32, 42, 0.055) 0 2px, transparent 2px 18px);
+}
+
+.mission-victory-overlay::before,
+.mission-victory-overlay::after {
+  content: "";
+  position: absolute;
+  inset: -18%;
+  pointer-events: none;
+}
+
+.mission-victory-overlay::before {
+  background: repeating-conic-gradient(from -18deg at 50% 50%, rgba(122, 34, 38, 0.13) 0 7deg, transparent 7deg 18deg);
+  mix-blend-mode: screen;
+  opacity: 0;
+  animation: missionVictoryRays 1300ms cubic-bezier(.15,.78,.22,1) forwards;
+}
+
+.mission-victory-overlay::after {
+  background: linear-gradient(90deg, transparent 0 34%, rgba(255, 255, 255, 0.18) 48%, transparent 62% 100%);
+  transform: translateX(-64%) skewX(-18deg);
+  animation: missionVictorySweep 1600ms ease-out 220ms forwards;
+}
+
+.mission-victory-fanfare {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, transparent 0 8%, rgba(120, 25, 35, 0.14) 12%, transparent 20% 80%, rgba(154, 52, 18, 0.1) 88%, transparent 96%),
+    linear-gradient(0deg, rgba(143, 29, 44, 0.16) 0 2px, transparent 2px 100%);
+  background-size: 100% 100%, 100% 18px;
+  opacity: 0;
+  animation: missionVictoryFanfare 900ms ease-out 80ms forwards;
+}
+
+.mission-victory-bursts {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.mission-victory-spark {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--spark-w, 8px);
+  height: var(--spark-h, 3px);
+  border-radius: 999px;
+  background: var(--spark-color, #b4534a);
+  box-shadow: 0 0 12px rgba(127, 29, 29, 0.42);
+  opacity: 0;
+  transform: translate(-50%, -50%) rotate(var(--spark-rot, 0deg));
+  animation: missionVictorySpark var(--spark-life, 1100ms) cubic-bezier(.16,.82,.24,1) var(--spark-delay, 0ms) forwards;
+}
+
+.mission-victory-card {
+  position: relative;
+  z-index: 2;
+  width: min(920px, calc(100vw - 24px));
+  max-height: min(80vh, 820px);
+  display: grid;
+  gap: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(136, 32, 42, 0.48);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(14, 19, 28, 0.97), rgba(6, 10, 18, 0.96)),
+    linear-gradient(135deg, rgba(120, 25, 35, 0.18), transparent 42%, rgba(180, 83, 74, 0.08));
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.58),
+    0 0 0 1px rgba(255, 255, 255, 0.07) inset,
+    0 0 34px rgba(127, 29, 29, 0.22);
+  padding: clamp(14px, 2.2vw, 22px);
+  transform: translateY(28px) scale(0.9) rotate(-0.6deg);
+  opacity: 0;
+  animation: missionVictoryCardIn 650ms cubic-bezier(.12,.86,.18,1.12) 150ms forwards;
+}
+
+.mission-victory-card.is-fit {
+  overflow: visible;
+}
+
+.mission-victory-card.is-scrollable {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.mission-victory-head {
+  display: grid;
+  gap: 6px;
+}
+
+.mission-victory-kicker {
+  width: fit-content;
+  padding: 5px 9px;
+  border: 1px solid rgba(184, 117, 82, 0.48);
+  border-radius: 6px;
+  background: rgba(69, 16, 24, 0.58);
+  color: #e9c89b;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.mission-victory-head h2 {
+  margin: 0;
+  width: fit-content;
+  color: #ead29b;
+  font-family: "Bahnschrift SemiCondensed", "Arial Narrow", "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  font-size: clamp(38px, 6.4vw, 78px);
+  font-weight: 900;
+  line-height: 0.96;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+  text-shadow:
+    0 1px 0 rgba(68, 18, 22, 0.96),
+    0 3px 0 rgba(35, 10, 14, 0.76),
+    0 14px 32px rgba(116, 52, 26, 0.36),
+    0 0 22px rgba(214, 180, 111, 0.22);
+}
+
+.mission-victory-head h2::after {
+  content: "";
+  display: block;
+  width: 78%;
+  height: 3px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(143, 29, 44, 0.88), rgba(214, 180, 111, 0.78), transparent);
+  box-shadow: 0 0 14px rgba(214, 180, 111, 0.2);
+}
+
+.mission-victory-head p {
+  margin: 0;
+  max-width: 820px;
+  color: #cbd5e1;
+  font-size: clamp(14px, 1.8vw, 17px);
+  line-height: 1.38;
+}
+
+.mission-victory-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.mission-victory-stat {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  background: rgba(12, 17, 27, 0.74);
+}
+
+.mission-victory-stat span {
+  color: #a9b8ca;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.mission-victory-stat b {
+  color: #ead8b5;
+  font-size: clamp(17px, 2.5vw, 25px);
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.mission-victory-objectives,
+.mission-victory-rewards {
+  display: grid;
+  gap: 6px;
+  color: #e5e7eb;
+}
+
+.mission-victory-section-title {
+  color: #d8a1a1;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.mission-victory-objective-list,
+.mission-victory-reward-list {
+  display: grid;
+  gap: 5px;
+}
+
+.mission-victory-objective,
+.mission-victory-reward {
+  display: grid;
+  grid-template-columns: minmax(170px, 0.42fr) minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(7, 12, 22, 0.68);
+}
+
+.mission-victory-objective strong,
+.mission-victory-reward strong {
+  color: #f8fafc;
+  overflow-wrap: anywhere;
+}
+
+.mission-victory-objective span,
+.mission-victory-reward span {
+  color: #d8c07a;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.mission-victory-reward span {
+  text-align: right;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.mission-victory-progress {
+  grid-column: 1 / -1;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(30, 41, 59, 0.95);
+}
+
+.mission-victory-progress i {
+  display: block;
+  height: 100%;
+  width: var(--goal-progress, 100%);
+  border-radius: inherit;
+  background: linear-gradient(90deg, #8f1d2c, #b4534a 58%, #d6b46f);
+  box-shadow: 0 0 14px rgba(127, 29, 29, 0.34);
+}
+
+.mission-victory-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.mission-victory-actions button {
+  position: relative;
+  overflow: hidden;
+  min-height: 40px;
+  border-radius: 8px;
+  border: 1px solid rgba(184, 117, 82, 0.34);
+  padding: 10px 16px;
+  color: #f7ead8;
+  font: inherit;
+  font-weight: 900;
+  letter-spacing: 0.055em;
+  cursor: pointer;
+  text-transform: uppercase;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.65);
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+}
+
+.mission-victory-actions button::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: 7px;
+  background:
+    linear-gradient(180deg, rgba(255, 245, 220, 0.16), transparent 42%),
+    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.13), transparent);
+  opacity: 0.58;
+  pointer-events: none;
+}
+
+.mission-victory-actions button::after {
+  content: "";
+  position: absolute;
+  left: -42%;
+  top: 0;
+  width: 34%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 240, 210, 0.28), transparent);
+  transform: skewX(-18deg);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mission-victory-primary {
+  background:
+    radial-gradient(circle at 24% 0%, rgba(239, 68, 68, 0.24), transparent 42%),
+    linear-gradient(135deg, rgba(95, 12, 24, 0.98), rgba(147, 26, 36, 0.96) 54%, rgba(78, 16, 24, 0.98));
+  box-shadow: 0 11px 28px rgba(95, 12, 24, 0.34), 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+}
+
+.mission-victory-secondary {
+  background:
+    radial-gradient(circle at 26% 0%, rgba(184, 117, 82, 0.13), transparent 40%),
+    linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(47, 18, 24, 0.94));
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.045) inset;
+}
+
+.mission-victory-actions button:hover,
+.mission-victory-actions button:focus-visible {
+  transform: translateY(-2px);
+  border-color: rgba(216, 160, 114, 0.68);
+  filter: brightness(1.07) saturate(1.04);
+}
+
+.mission-victory-actions button:hover::after,
+.mission-victory-actions button:focus-visible::after {
+  opacity: 1;
+  animation: missionVictoryButtonSweep 680ms ease-out forwards;
+}
+
+.mission-victory-primary:hover,
+.mission-victory-primary:focus-visible {
+  box-shadow: 0 14px 34px rgba(127, 29, 29, 0.42), 0 0 22px rgba(185, 28, 28, 0.2);
+}
+
+.mission-victory-secondary:hover,
+.mission-victory-secondary:focus-visible {
+  box-shadow: 0 13px 30px rgba(0, 0, 0, 0.36), 0 0 18px rgba(184, 117, 82, 0.16);
+}
+
+@keyframes missionVictoryCardIn {
+  0% { opacity: 0; transform: translateY(30px) scale(0.88) rotate(-0.8deg); }
+  68% { opacity: 1; transform: translateY(-5px) scale(1.025) rotate(0.35deg); }
+  100% { opacity: 1; transform: translateY(0) scale(1) rotate(0deg); }
+}
+
+@keyframes missionVictoryRays {
+  0% { opacity: 0; transform: scale(0.72) rotate(-10deg); }
+  38% { opacity: 0.92; }
+  100% { opacity: 0.28; transform: scale(1.12) rotate(6deg); }
+}
+
+@keyframes missionVictorySweep {
+  0% { opacity: 0; transform: translateX(-64%) skewX(-18deg); }
+  18% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(76%) skewX(-18deg); }
+}
+
+@keyframes missionVictoryFanfare {
+  0% { opacity: 0; transform: scaleY(0.6); }
+  28% { opacity: 1; }
+  100% { opacity: 0.46; transform: scaleY(1); }
+}
+
+@keyframes missionVictorySpark {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(var(--spark-rot, 0deg)) scaleX(0.4);
+  }
+  12% { opacity: 1; }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--spark-x, 0px)), calc(-50% + var(--spark-y, 0px))) rotate(var(--spark-rot, 0deg)) scaleX(1);
+  }
+}
+
+@keyframes missionVictoryButtonSweep {
+  0% { left: -42%; }
+  100% { left: 112%; }
+}
+
+@media (max-width: 760px) {
+  .mission-victory-card {
+    max-height: 88vh;
+    padding: 14px;
+  }
+
+  .mission-victory-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mission-victory-objective,
+  .mission-victory-reward {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 5px;
+  }
+
+  .mission-victory-objective span,
+  .mission-victory-reward span {
+    white-space: normal;
+  }
+
+  .mission-victory-actions {
+    justify-content: stretch;
+  }
+
+  .mission-victory-actions button {
+    flex: 1 1 100%;
+  }
+}
+
 #hud {
   position: fixed;
   top: 12px;
@@ -8894,6 +9309,12 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
   letter-spacing: 0.02em;
 }
 
+.campaign-card-stats.is-complete {
+  color: #9fd7aa;
+  font-weight: 800;
+  text-shadow: 0 0 14px rgba(74, 222, 128, 0.18);
+}
+
 .campaign-card-head {
   display: grid;
   width: 100%;
@@ -9052,6 +9473,23 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
 
 .cw-profile-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.player-access-host {
+  display: grid;
+  min-width: 0;
+}
+
+.cw-profile-auth-slot {
+  grid-column: 1 / -1;
+}
+
+.player-access-card.is-profile-access-card {
+  min-width: 0;
+}
+
+.player-access-card.is-profile-access-card #player-access-details {
+  max-width: none;
 }
 
 .cw-profile-main,

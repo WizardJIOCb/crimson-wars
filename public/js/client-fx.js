@@ -467,6 +467,221 @@ function spawnXpChargeFx(player, options = {}) {
   if (visuals.xpCharge.length > 12) visuals.xpCharge.splice(0, visuals.xpCharge.length - 12);
 }
 
+function getConsumableFxColor(event = {}) {
+  const itemId = String(event.itemId || '').trim().toLowerCase();
+  const useType = String(event.useType || '').trim().toLowerCase();
+  if (useType === 'heal') return '#86efac';
+  if (useType === 'regen') return '#34d399';
+  if (useType === 'buff') return itemId.includes('adrenaline') ? '#fb7185' : '#facc15';
+  if (useType === 'satellite') return itemId.includes('orbital') ? '#67e8f9' : '#a78bfa';
+  if (useType === 'artillery') return itemId.includes('drone') ? '#93c5fd' : '#f97316';
+  if (itemId.includes('shock')) return '#60a5fa';
+  if (itemId.includes('incendiary')) return '#fb923c';
+  if (itemId.includes('cluster')) return '#fde047';
+  return '#fca5a5';
+}
+
+function getConsumableFxLabel(event = {}) {
+  const itemId = String(event.itemId || '').trim().toLowerCase();
+  const fallback = String(event.itemName || itemId || 'Item');
+  if (itemId && typeof window.cwI18nT === 'function') {
+    const translated = window.cwI18nT(`item.${itemId}.name`);
+    if (translated && translated !== `item.${itemId}.name`) return translated;
+  }
+  return fallback;
+}
+
+function pushConsumableProjectile(projectile) {
+  if (!Array.isArray(visuals.consumableProjectiles)) visuals.consumableProjectiles = [];
+  visuals.consumableProjectiles.push(projectile);
+  if (visuals.consumableProjectiles.length > 72) {
+    visuals.consumableProjectiles.splice(0, visuals.consumableProjectiles.length - 72);
+  }
+}
+
+function spawnConsumableAura(event, color) {
+  if (!Array.isArray(visuals.consumableAuras)) visuals.consumableAuras = [];
+  const durationSec = Math.max(0.8, Math.min(16, (Number(event.durationMs) || 1800) / 1000));
+  const playerId = String(event.playerId || '');
+  visuals.consumableAuras.push({
+    playerId,
+    x: Number(event.x) || 0,
+    y: Number(event.y) || 0,
+    color,
+    kind: String(event.useType || '').trim().toLowerCase(),
+    spin: Math.random() * Math.PI * 2,
+    radius: Math.max(42, Math.min(130, Number(event.radius) || 92)),
+    life: durationSec,
+    ttl: durationSec,
+  });
+  if (visuals.consumableAuras.length > 16) visuals.consumableAuras.splice(0, visuals.consumableAuras.length - 16);
+}
+
+function spawnConsumableImpactFx(event, x, y, radius, color, options = {}) {
+  const useType = String(event.useType || '').trim().toLowerCase();
+  const itemId = String(event.itemId || '').trim().toLowerCase();
+  const r = Math.max(54, Math.min(280, Number(radius) || Number(event.radius) || 90));
+  const isShock = itemId.includes('shock');
+  const isSatellite = useType === 'satellite';
+  const style = isSatellite ? 'psi_blast' : (isShock ? 'shockwave' : 'default');
+  const burstColor = color || getConsumableFxColor(event);
+
+  spawnSkillBurstFx(x, y, burstColor, r, {
+    style,
+    startRadius: isSatellite ? 22 : 12,
+    growSpeed: isSatellite ? Math.max(980, r * 6.4) : Math.max(520, r * 4.4),
+    trailRings: isSatellite || isShock ? 5 : 2,
+    spikeCount: isShock ? Math.max(10, Math.min(18, Math.round(r / 16))) : 0,
+    life: isSatellite ? 0.58 : 0.42,
+    accentColor: isShock ? '#bfdbfe' : burstColor,
+    innerColor: isShock ? '#dbeafe' : burstColor,
+  });
+  spawnRadialHitFx(x, y, r * 0.78, {
+    count: Math.max(8, Math.min(22, Math.round(r / 13))),
+    severity: isSatellite ? 8 : 5,
+    color: burstColor,
+  });
+  registerImpactSource({
+    x,
+    y,
+    radius: r,
+    strength: isSatellite ? 2.35 : (useType === 'artillery' ? 1.9 : 1.55),
+    ttlMs: isSatellite ? 620 : 430,
+    radial: true,
+    target: 'enemy',
+  });
+
+  if (itemId.includes('cluster')) {
+    for (let i = 0; i < 4; i += 1) {
+      const angle = (Math.PI * 2 * i) / 4 + Math.random() * 0.42;
+      const dist = r * (0.32 + Math.random() * 0.24);
+      spawnSkillBurstFx(x + Math.cos(angle) * dist, y + Math.sin(angle) * dist, '#fde047', r * 0.32, {
+        startRadius: 8,
+        growSpeed: 460,
+        life: 0.32,
+      });
+    }
+  }
+
+  if (options.label !== false) {
+    spawnSkillLabel(getConsumableFxLabel(event), x, y - 8);
+  }
+}
+
+function detonateConsumableProjectile(projectile) {
+  if (!projectile || projectile.detonated) return;
+  projectile.detonated = true;
+  const event = projectile.event || {};
+  const x = Number(projectile.toX) || Number(event.targetX) || 0;
+  const y = Number(projectile.toY) || Number(event.targetY) || 0;
+  const radius = Math.max(50, Number(projectile.radius) || Number(event.radius) || 90);
+  const color = projectile.color || getConsumableFxColor(event);
+  spawnConsumableImpactFx(event, x, y, radius, color, { label: projectile.label !== false });
+}
+
+function spawnQuickItemFx(event = {}) {
+  const useType = String(event.useType || '').trim().toLowerCase();
+  const color = getConsumableFxColor(event);
+  const x = Number(event.x) || 0;
+  const y = Number(event.y) || 0;
+  const targetX = Number(event.targetX) || x;
+  const targetY = Number(event.targetY) || y;
+  const radius = Math.max(48, Number(event.radius) || 86);
+  const label = getConsumableFxLabel(event);
+
+  if (useType === 'heal' || useType === 'buff' || useType === 'regen') {
+    spawnSkillBurstFx(x, y, color, radius, {
+      startRadius: 14,
+      growSpeed: 520,
+      trailRings: useType === 'heal' ? 3 : 5,
+      life: 0.5,
+      accentColor: color,
+      innerColor: '#f8fafc',
+    });
+    spawnRadialHitFx(x, y, radius * 0.55, {
+      count: useType === 'heal' ? 10 : 14,
+      severity: 3,
+      color,
+    });
+    spawnConsumableAura(event, color);
+    spawnSkillLabel(label, x, y - 10);
+    return;
+  }
+
+  if (useType === 'satellite') {
+    if (!Array.isArray(visuals.skillLinks)) visuals.skillLinks = [];
+    visuals.skillLinks.push({
+      x1: targetX,
+      y1: targetY - 720,
+      x2: targetX,
+      y2: targetY,
+      life: 0.24,
+      ttl: 0.24,
+      color,
+      phase: Math.random() * Math.PI * 2,
+    });
+    pushConsumableProjectile({
+      kind: 'beam',
+      event,
+      fromX: targetX,
+      fromY: targetY - 720,
+      toX: targetX,
+      toY: targetY,
+      radius,
+      color,
+      delay: 0.05,
+      life: 0.18,
+      ttl: 0.18,
+    });
+    return;
+  }
+
+  if (useType === 'artillery') {
+    const waves = Array.isArray(event.waves) && event.waves.length
+      ? event.waves
+      : [{ x: targetX, y: targetY, delayMs: 0 }];
+    waves.slice(0, 7).forEach((wave, index) => {
+      const wx = Number(wave?.x) || targetX;
+      const wy = Number(wave?.y) || targetY;
+      const delay = Math.max(0, Number(wave?.delayMs) || index * 140) / 1000;
+      pushConsumableProjectile({
+        kind: 'beam',
+        event,
+        fromX: wx + (Math.random() - 0.5) * 26,
+        fromY: wy - 620 - Math.random() * 80,
+        toX: wx,
+        toY: wy,
+        radius,
+        color,
+        delay,
+        life: 0.16,
+        ttl: 0.16,
+        label: index === 0,
+      });
+    });
+    spawnSkillLabel(label, x, y - 10);
+    return;
+  }
+
+  pushConsumableProjectile({
+    kind: 'lob',
+    event,
+    fromX: x,
+    fromY: y,
+    toX: targetX,
+    toY: targetY,
+    radius,
+    color,
+    delay: 0,
+    life: 0.34,
+    ttl: 0.34,
+    arc: 72,
+  });
+  spawnSkillLabel(label, x, y - 10);
+}
+
+window.spawnQuickItemFx = spawnQuickItemFx;
+
 function psiBlastFxRadius(skill) {
   const def = game.skillCatalog?.psi_blast || {};
   const lvl = Math.max(1, Number(skill?.level) || 1);
@@ -1482,6 +1697,19 @@ function updateFx(dt) {
     if (p.life <= 0 || p.r <= 0.45) visuals.rocketBlast.splice(i, 1);
   }
 
+  if (Array.isArray(visuals.consumableProjectiles)) {
+    for (let i = visuals.consumableProjectiles.length - 1; i >= 0; i -= 1) {
+      const p = visuals.consumableProjectiles[i];
+      p.delay = Math.max(0, (Number(p.delay) || 0) - dt);
+      if (p.delay > 0) continue;
+      p.life -= dt;
+      if (p.life <= 0) {
+        detonateConsumableProjectile(p);
+        visuals.consumableProjectiles.splice(i, 1);
+      }
+    }
+  }
+
   for (let i = visuals.bossBlast.length - 1; i >= 0; i -= 1) {
     const b = visuals.bossBlast[i];
     b.life -= dt;
@@ -1524,6 +1752,22 @@ function updateFx(dt) {
         if (p.life <= 0 || p.r <= 1.2) particles.splice(j, 1);
       }
       if (c.life <= 0 && particles.length <= 0) visuals.xpCharge.splice(i, 1);
+    }
+  }
+
+  if (Array.isArray(visuals.consumableAuras)) {
+    const playersById = new Map((game.state?.players || []).map((p) => [p.id, p]));
+    for (let i = visuals.consumableAuras.length - 1; i >= 0; i -= 1) {
+      const aura = visuals.consumableAuras[i];
+      aura.life -= dt;
+      aura.spin += dt * (aura.kind === 'regen' ? 2.8 : 4.6);
+      const player = playersById.get(aura.playerId);
+      if (player && player.alive !== false) {
+        const renderPos = typeof getPlayerRenderPos === 'function' ? getPlayerRenderPos(player) : null;
+        aura.x = Number(renderPos?.x) || Number(player.x) || aura.x;
+        aura.y = Number(renderPos?.y) || Number(player.y) || aura.y;
+      }
+      if (aura.life <= 0) visuals.consumableAuras.splice(i, 1);
     }
   }
 

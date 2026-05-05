@@ -304,6 +304,9 @@ const mainMenuPanels = Array.from(document.querySelectorAll('#join-form [data-me
 const battleMenuPanelEl = document.getElementById('menu-panel-play');
 const battleRunSetupCardEl = document.getElementById('run-setup-card');
 const battleStoryCardEl = document.getElementById('campaign-browser-card');
+const playerAccessPlaySlotEl = document.getElementById('player-access-play-slot');
+const profileAuthSlotEl = document.getElementById('profile-auth-slot');
+const playerAccessCardEl = document.getElementById('player-access-card');
 let heroFocusId = selectedPlayerClass;
 let selectedInventoryFilterKey = 'all';
 let currentMainMenuTab = 'run';
@@ -319,6 +322,8 @@ const infoPanelParagraphEls = infoPanelEl
   : [];
 const infoPanelQualityRowEl = qualitySelect?.closest('p') || null;
 const infoPanelTogglesEl = infoPanelEl?.querySelector('.settings-toggles') || null;
+let forceFreshSocketOnNextJoin = false;
+let awaitingJoinWelcome = false;
 
 function localizeSettingsMenuControls() {
   const currentLang = typeof window.cwI18nGetLanguage === 'function' ? window.cwI18nGetLanguage() : 'ru';
@@ -1969,6 +1974,11 @@ function setMainMenuTab(tabId) {
       globalThis.renderGameModeSelection?.();
     }
   }
+  const playerAccessTarget = nextTab === 'profile' ? profileAuthSlotEl : playerAccessPlaySlotEl;
+  if (playerAccessCardEl && playerAccessTarget && playerAccessCardEl.parentElement !== playerAccessTarget) {
+    playerAccessTarget.appendChild(playerAccessCardEl);
+  }
+  playerAccessCardEl?.classList.toggle('is-profile-access-card', nextTab === 'profile');
   syncInfoPanelHost();
   if (infoPanelEl) {
     const overlayOpen = getComputedStyle(joinOverlay).display !== 'none';
@@ -1994,6 +2004,8 @@ function setMainMenuTab(tabId) {
     globalThis.CWNews?.updateMenuUrlState?.('news', '');
   }
 }
+
+window.cwSetMainMenuTab = setMainMenuTab;
 
 for (const btn of mainMenuTabButtons) {
   btn.addEventListener('click', () => {
@@ -2088,7 +2100,8 @@ async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
         return;
       }
       const workerOrigin = normalizeOrigin(route?.target?.publicBaseUrl || APP_ORIGIN);
-      await connectGameSocket(workerOrigin);
+      await connectGameSocket(workerOrigin, { forceReconnect: forceFreshSocketOnNextJoin });
+      forceFreshSocketOnNextJoin = false;
     } catch (err) {
       statusEl.textContent = err.message || 'Failed to resolve room route.';
       setJoinFeedback(err.message || 'Failed to resolve room route.');
@@ -2097,7 +2110,8 @@ async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
     }
   } else {
     try {
-      await connectGameSocket(currentWorkerOrigin || APP_ORIGIN);
+      await connectGameSocket(currentWorkerOrigin || APP_ORIGIN, { forceReconnect: forceFreshSocketOnNextJoin });
+      forceFreshSocketOnNextJoin = false;
     } catch (err) {
       statusEl.textContent = err.message || 'Failed to connect to game server.';
       setJoinFeedback(err.message || 'Failed to connect to game server.');
@@ -2115,6 +2129,7 @@ async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
   if (authLoginNicknameEl && !authLoginNicknameEl.value) authLoginNicknameEl.value = name;
   if (authRegisterNicknameEl && !authRegisterNicknameEl.value) authRegisterNicknameEl.value = name;
   waitingForFirstState = true;
+  awaitingJoinWelcome = true;
   resetNetStats();
   waitingForFirstStateSince = performance.now();
   sendJson({
@@ -2153,7 +2168,8 @@ async function sendSpectateRequest(roomCode, options = {}) {
     try {
       const route = await resolveRoomRoute('join', normalizedRoomCode, { gameMode: selectedGameMode, pvpDurationMin: selectedPvpDurationMin });
       const workerOrigin = normalizeOrigin(route?.target?.publicBaseUrl || APP_ORIGIN);
-      await connectGameSocket(workerOrigin);
+      await connectGameSocket(workerOrigin, { forceReconnect: forceFreshSocketOnNextJoin });
+      forceFreshSocketOnNextJoin = false;
     } catch (err) {
       statusEl.textContent = err.message || 'Failed to resolve live room route.';
       setJoinFeedback(err.message || 'Failed to resolve live room route.');
@@ -2161,7 +2177,8 @@ async function sendSpectateRequest(roomCode, options = {}) {
     }
   } else {
     try {
-      await connectGameSocket(currentWorkerOrigin || APP_ORIGIN);
+      await connectGameSocket(currentWorkerOrigin || APP_ORIGIN, { forceReconnect: forceFreshSocketOnNextJoin });
+      forceFreshSocketOnNextJoin = false;
     } catch (err) {
       statusEl.textContent = err.message || 'Failed to connect to live room.';
       setJoinFeedback(err.message || 'Failed to connect to live room.');
@@ -2171,6 +2188,7 @@ async function sendSpectateRequest(roomCode, options = {}) {
   if (ws.readyState !== WebSocket.OPEN) return;
   game.connected = true;
   waitingForFirstState = true;
+  awaitingJoinWelcome = true;
   resetNetStats();
   waitingForFirstStateSince = performance.now();
   sendJson({
@@ -2557,6 +2575,8 @@ function seekReplayGame(elapsedMs, { keepPaused = null } = {}) {
   visuals.rocketSmoke = [];
   visuals.rocketFire = [];
   visuals.rocketBlast = [];
+  visuals.consumableProjectiles = [];
+  visuals.consumableAuras = [];
   visuals.skillBursts = [];
   visuals.xpCharge = [];
   visuals.skillArcs = [];
@@ -3790,6 +3810,7 @@ function buildReplayState(payload, elapsedMs) {
     campaignId: payload?.campaignId || '',
     campaignLevelId: payload?.campaignLevelId || '',
     mission: payload?.mission || null,
+    mobCatalog: Array.isArray(payload?.mobCatalog) ? payload.mobCatalog : [],
     roomStartedAt: Number(payload?.roomStartedAt || payload?.startedAt || nowMs),
     totalEnemyKills: Math.max(0, Number(current.te) || 0),
     nextBossAtKills: Math.max(50, Math.max(0, Number(current.te) || 0) + 25),
@@ -3881,6 +3902,7 @@ function tickReplayGame(ts) {
     game.campaignId = String(nextState.campaignId || game.campaignId || '');
     game.campaignLevelId = String(nextState.campaignLevelId || game.campaignLevelId || '');
     game.mission = nextState.mission || null;
+    if (Array.isArray(nextState.mobCatalog)) game.mobCatalog = nextState.mobCatalog;
     game.roomStartedAt = nextState.roomStartedAt;
     game.totalEnemyKills = nextState.totalEnemyKills;
     game.nextBossAtKills = nextState.nextBossAtKills;
@@ -3946,6 +3968,8 @@ function startReplayGame(payload, record) {
   visuals.rocketSmoke = [];
   visuals.rocketFire = [];
   visuals.rocketBlast = [];
+  visuals.consumableProjectiles = [];
+  visuals.consumableAuras = [];
   visuals.skillBursts = [];
   visuals.xpCharge = [];
   visuals.skillArcs = [];
@@ -4117,7 +4141,17 @@ function drawRecordReplay() {
     const sx = toScreenX(lerp(enemy[2], nextEnemy[2], alpha));
     const sy = toScreenY(lerp(enemy[3], nextEnemy[3], alpha));
     const radius = Math.max(5, (Number(enemy[6]) || 18) * scale * 0.55);
-    replayCtx.fillStyle = enemy[1] === 'boss' ? '#dc2626' : (enemy[1] === 'ranged' ? '#fb7185' : (enemy[1] === 'charger' ? '#f97316' : '#ef4444'));
+    replayCtx.fillStyle = enemy[1] === 'boss' ? '#dc2626'
+      : enemy[1] === 'ranged' ? '#fb7185'
+        : enemy[1] === 'charger' ? '#f97316'
+          : enemy[1] === 'runner' ? '#ef4444'
+            : enemy[1] === 'brute' ? '#64748b'
+              : enemy[1] === 'splitter' ? '#a855f7'
+                : enemy[1] === 'medic' ? '#22c55e'
+                  : enemy[1] === 'sniper' ? '#38bdf8'
+                    : enemy[1] === 'exploder' ? '#facc15'
+                      : enemy[1] === 'shield' ? '#e5e7eb'
+                        : '#9ca3af';
     replayCtx.beginPath();
     replayCtx.arc(sx, sy, radius, 0, Math.PI * 2);
     replayCtx.fill();
@@ -4906,7 +4940,10 @@ function updateEnemyInterpolation(dt) {
     const maxSpeed = (() => {
       const type = String(e?.type || '').toLowerCase();
       if (type === 'boss') return 900;
+      if (type === 'runner') return 820;
       if (type === 'charger') return 720;
+      if (type === 'brute' || type === 'shield') return 420;
+      if (type === 'sniper' || type === 'medic') return 460;
       return 520;
     })();
     const predictedTarget = usingBufferedTargets
@@ -5391,7 +5428,10 @@ function sampleLiveEntityTargets() {
         resolveMaxSpeed: (item) => {
           const type = String(item?.type || '').toLowerCase();
           if (type === 'boss') return 900;
+          if (type === 'runner') return 820;
           if (type === 'charger') return 720;
+          if (type === 'brute' || type === 'shield') return 420;
+          if (type === 'sniper' || type === 'medic') return 460;
           return 520;
         },
       }),
@@ -5447,7 +5487,10 @@ function sampleBufferedState() {
         resolveMaxSpeed: (item) => {
           const type = String(item?.type || '').toLowerCase();
           if (type === 'boss') return 900;
+          if (type === 'runner') return 820;
           if (type === 'charger') return 720;
+          if (type === 'brute' || type === 'shield') return 420;
+          if (type === 'sniper' || type === 'medic') return 460;
           return 520;
         },
       }),
@@ -5551,6 +5594,14 @@ function carryForwardSceneDecor(state, previousState = null) {
   return state;
 }
 
+function carryForwardMobCatalog(state, previousState = null) {
+  if (!state || typeof state !== 'object') return state;
+  if (!Array.isArray(state.mobCatalog) && Array.isArray(previousState?.mobCatalog)) {
+    state.mobCatalog = previousState.mobCatalog;
+  }
+  return state;
+}
+
 function normalizeLiveStatePayload(state) {
   if (!state || typeof state !== 'object') return state;
 
@@ -5587,6 +5638,11 @@ function normalizeLiveStatePayload(state) {
         maxHp: Math.max(1, Number(enemy[5]) || 1),
         radius: Math.max(18, Number(enemy[6]) || 18),
         faceLeft: Boolean(enemy[7]),
+        mobId: enemy[8] || enemy[1] || 'normal',
+        behavior: enemy[9] || '',
+        color: enemy[10] || '',
+        spriteScale: Number(enemy[11]) || 1,
+        name: enemy[12] || '',
       };
     });
   }
@@ -6032,6 +6088,43 @@ function requestRecordsList(...args) {
   return globalThis.CWRecordsList?.request?.(...args);
 }
 
+function resetRunCameraView() {
+  camera.x = 0;
+  camera.y = 0;
+  game.sortedTreesRoomCode = '';
+  game.sortedTreesSourceCount = -1;
+}
+
+function clampRunCameraCenter(center, viewport, world) {
+  const safeCenter = Number.isFinite(Number(center)) ? Number(center) : 0;
+  const safeViewport = Math.max(1, Number(viewport) || 1);
+  const safeWorld = Math.max(safeViewport, Number(world) || safeViewport);
+  if (safeViewport >= safeWorld) return -((safeViewport - safeWorld) * 0.5);
+  return Math.max(0, Math.min(safeCenter - safeViewport * 0.5, safeWorld - safeViewport));
+}
+
+function snapRunCameraToState(state) {
+  const players = Array.isArray(state?.players) ? state.players : [];
+  const focus = players.find((player) => player?.id === game.myId)
+    || players.find((player) => player && !player.isCompanion)
+    || players[0]
+    || null;
+  if (!focus) {
+    resetRunCameraView();
+    return;
+  }
+  const focusX = Number.isFinite(Number(focus.x)) ? Number(focus.x) : 0;
+  const focusY = Number.isFinite(Number(focus.y)) ? Number(focus.y) : 0;
+  const viewportScale = typeof getRunStartViewportScale === 'function' ? getRunStartViewportScale() : 1;
+  const safeScale = Math.max(0.12, Math.min(1, Number(viewportScale) || 1));
+  const viewportW = canvas.width / safeScale;
+  const viewportH = canvas.height / safeScale;
+  const worldW = Math.max(canvas.width, Number(state?.world?.width) || Number(game.world?.width) || canvas.width);
+  const worldH = Math.max(canvas.height, Number(state?.world?.height) || Number(game.world?.height) || canvas.height);
+  camera.x = clampRunCameraCenter(focusX, viewportW, worldW);
+  camera.y = clampRunCameraCenter(focusY, viewportH, worldH);
+}
+
 function cancelPendingDeathOverlay() {
   return globalThis.CWDeath?.cancelPending?.();
 }
@@ -6162,6 +6255,8 @@ function clearLocalSessionState() {
   sessionStartedAt = 0;
   waitingForFirstState = false;
   waitingForFirstStateSince = 0;
+  awaitingJoinWelcome = false;
+  resetRunCameraView();
   netStats.pendingPings.clear();
   netStats.rttSamples = [];
   netStats.rttMs = 0;
@@ -6183,6 +6278,8 @@ function clearLocalSessionState() {
   visuals.rocketSmoke = [];
   visuals.rocketFire = [];
   visuals.rocketBlast = [];
+  visuals.consumableProjectiles = [];
+  visuals.consumableAuras = [];
   visuals.skillBursts = [];
   visuals.xpCharge = [];
   visuals.skillArcs = [];
@@ -6211,6 +6308,8 @@ function leaveActiveRoom() {
   if (ws.readyState === WebSocket.OPEN && (game.myId || game.spectating)) {
     sendJson({ type: 'leave' });
   }
+  forceFreshSocketOnNextJoin = true;
+  awaitingJoinWelcome = false;
   if (typeof window.cwClearStoredActiveRunResume === 'function') {
     window.cwClearStoredActiveRunResume();
   }
@@ -6273,6 +6372,7 @@ open: () => {
 },
 close: () => {
   game.connected = false;
+  awaitingJoinWelcome = false;
   netStats.pendingPings.clear();
   window.cwCancelRunStartLoading?.();
   if (!restartReloadTimer) {
@@ -6306,6 +6406,11 @@ message: (ev) => {
     return;
   }
 
+  if (msg.type === 'quickItemFx') {
+    window.spawnQuickItemFx?.(msg.event || {});
+    return;
+  }
+
   if (msg.type === 'accountProgression') {
     if (msg.progression) game.playerAuth.progression = msg.progression;
     if (msg.rewards) {
@@ -6316,6 +6421,9 @@ message: (ev) => {
         + (cardPieces.length > 0 ? (', ' + cardPieces.join(', ')) : '');
       if (joinOverlay.classList.contains('death-cinematic-active')) {
         renderDeathRewardsPanel();
+      }
+      if (typeof globalThis.renderMissionVictoryOverlay === 'function') {
+        globalThis.renderMissionVictoryOverlay();
       }
     }
     renderCharacterPicker();
@@ -6328,6 +6436,7 @@ message: (ev) => {
   if (msg.type === 'welcome') {
     clearJoinFeedback();
     game.connected = true;
+    awaitingJoinWelcome = false;
     game.spectating = Boolean(msg.spectator);
     game.myId = msg.id || null;
     game.spectatorCount = Math.max(0, Number(msg.spectators ?? msg.spectatorCount) || 0);
@@ -6339,6 +6448,7 @@ message: (ev) => {
     localDeathStateLocked = false;
     pendingManualExitRequested = false;
     clearDeathCameraLock();
+    resetRunCameraView();
     latestRunRewards = null;
     latestDeathSnapshot = null;
     sessionStartedAt = Date.now();
@@ -6376,6 +6486,8 @@ message: (ev) => {
     visuals.rocketSmoke = [];
     visuals.rocketFire = [];
     visuals.rocketBlast = [];
+    visuals.consumableProjectiles = [];
+    visuals.consumableAuras = [];
     visuals.skillBursts = [];
     visuals.xpCharge = [];
     visuals.skillArcs = [];
@@ -6490,6 +6602,7 @@ message: (ev) => {
   if (msg.type === 'joinError') {
     waitingForFirstState = false;
     waitingForFirstStateSince = 0;
+    awaitingJoinWelcome = false;
     statusEl.textContent = msg.message;
     setJoinFeedback(msg.message);
     if (game.embedMode) {
@@ -6551,6 +6664,7 @@ message: (ev) => {
   }
 
   if (msg.type === 'runComplete') {
+    if (awaitingJoinWelcome) return;
     latestDeathSnapshot = msg.result || null;
     if (typeof openVictoryOverlay === 'function') {
       openVictoryOverlay(msg.result || null, {
@@ -6565,12 +6679,17 @@ message: (ev) => {
   if (msg.type === 'system') maybeCommentateSystemMessage(msg.message);
 
   if (msg.type === 'state') {
+    if (awaitingJoinWelcome) return;
+    const firstStateForRoom = waitingForFirstState
+      || !game.state
+      || String(game.state?.roomCode || '') !== String(msg.payload?.roomCode || game.roomCode || '');
     waitingForFirstState = false;
     waitingForFirstStateSince = 0;
     const previousState = game.state;
     const s = normalizeLiveStatePayload(msg.payload);
     carryForwardOmittedRealtimeCollections(s, previousState);
     carryForwardSceneDecor(s, previousState);
+    carryForwardMobCatalog(s, previousState);
     if (game.embedMode && game.spectating) {
       window.parent?.postMessage({
         type: 'cw-live-spectator',
@@ -6584,6 +6703,7 @@ message: (ev) => {
     onStateNetSample(s.now);
     game.state = s;
     game.world = s.world;
+    if (firstStateForRoom) snapRunCameraToState(s);
     window.cwMarkRunStartFirstStateReady?.();
     game.roomCode = s.roomCode;
     game.runType = String(s.runType || game.runType || 'free');
@@ -6591,6 +6711,7 @@ message: (ev) => {
     game.campaignId = String(s.campaignId || game.campaignId || '');
     game.campaignLevelId = String(s.campaignLevelId || game.campaignLevelId || '');
     game.mission = s.mission || null;
+    if (Array.isArray(s.mobCatalog)) game.mobCatalog = s.mobCatalog;
     game.gameMode = normalizeGameMode(s.gameMode || game.gameMode || 'normal');
     game.roomStartedAt = Number(s.roomStartedAt) || game.roomStartedAt || Date.now();
     game.totalEnemyKills = Number(s.totalEnemyKills) || 0;

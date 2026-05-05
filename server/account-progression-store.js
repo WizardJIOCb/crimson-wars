@@ -1260,8 +1260,11 @@ function createAccountProgressionStore({
       xpToNext = xpToNextLevel(progression.accountLevel);
     }
 
+    const publicProgression = toPublicProgression(progression);
+    progressionCache.set(clampInt(playerId, 1), cloneProgressionState(progression, playerId));
+
     return {
-      progression: toPublicProgression(progression),
+      progression: publicProgression,
       rewards: {
         gainedXp,
         gainedShards,
