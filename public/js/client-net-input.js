@@ -4667,34 +4667,44 @@ function getPlayerRenderPos(player) {
   return game.renderPlayers.get(player.id) || player;
 }
 
-function getSpectatorBulletSpawnAnchor(bullet) {
-  if (!isSpectatorSmoothingView() || replayGame.active) return null;
+function getBulletVisualOwnerState(bullet) {
   const ownerId = String(bullet?.ownerId || bullet?.ownerPlayerId || '');
   if (!ownerId) return null;
   const owner = (game.state?.players || []).find((p) => String(p?.id || '') === ownerId);
   if (!owner) return null;
-  const ownerRender = getPlayerRenderPos(owner);
+  const ownerTarget = game.sampledNet?.players?.get(ownerId) || owner;
+  const ownerRender = getPlayerRenderPos(ownerTarget);
+  return { owner, ownerTarget, ownerRender };
+}
+
+function getBulletDirection(bullet) {
   const vx = Number(bullet?.vx) || 0;
   const vy = Number(bullet?.vy) || 0;
   const speed = Math.hypot(vx, vy);
   const dirX = speed > 0.001 ? vx / speed : 1;
   const dirY = speed > 0.001 ? vy / speed : 0;
+  return { dirX, dirY, angle: Math.atan2(dirY, dirX || 1) };
+}
+
+function getBulletSpawnAnchor(bullet) {
+  if (replayGame.active) return null;
+  const visualOwner = getBulletVisualOwnerState(bullet);
+  if (!visualOwner) return null;
+  const { dirX, dirY, angle } = getBulletDirection(bullet);
   return {
-    x: (Number(ownerRender.x) || Number(owner.x) || 0) + dirX * 20,
-    y: (Number(ownerRender.y) || Number(owner.y) || 0) + dirY * 20,
-    a: Math.atan2(dirY, dirX || 1),
-    owner,
+    x: (Number(visualOwner.ownerRender?.x) || Number(visualOwner.owner?.x) || 0) + dirX * 20,
+    y: (Number(visualOwner.ownerRender?.y) || Number(visualOwner.owner?.y) || 0) + dirY * 20,
+    a: angle,
+    owner: visualOwner.owner,
   };
 }
 
-function getSpectatorBulletVisualTarget(bullet) {
-  if (!isSpectatorSmoothingView() || replayGame.active) return null;
-  const ownerId = String(bullet?.ownerId || bullet?.ownerPlayerId || '');
-  if (!ownerId) return null;
-  const ownerLive = (game.state?.players || []).find((p) => String(p?.id || '') === ownerId);
-  const ownerTarget = game.sampledNet?.players?.get(ownerId) || ownerLive;
-  if (!ownerTarget) return null;
-  const ownerRender = getPlayerRenderPos(ownerTarget);
+function getBulletVisualTarget(bullet) {
+  if (replayGame.active) return null;
+  const visualOwner = getBulletVisualOwnerState(bullet);
+  if (!visualOwner) return null;
+  const ownerTarget = visualOwner.ownerTarget;
+  const ownerRender = visualOwner.ownerRender;
   const ownerTargetX = Number(ownerTarget.x) || 0;
   const ownerTargetY = Number(ownerTarget.y) || 0;
   const dxFromOwner = (Number(bullet?.x) || 0) - ownerTargetX;
@@ -4708,6 +4718,16 @@ function getSpectatorBulletVisualTarget(bullet) {
     x: (Number(bullet?.x) || 0) + offsetX,
     y: (Number(bullet?.y) || 0) + offsetY,
   };
+}
+
+function getSpectatorBulletSpawnAnchor(bullet) {
+  if (!isSpectatorSmoothingView() || replayGame.active) return null;
+  return getBulletSpawnAnchor(bullet);
+}
+
+function getSpectatorBulletVisualTarget(bullet) {
+  if (!isSpectatorSmoothingView() || replayGame.active) return null;
+  return getBulletVisualTarget(bullet);
 }
 
 function spawnSpectatorBulletMuzzleFx(bullet, anchor) {
@@ -4916,12 +4936,14 @@ function syncBulletsFromState(nextState) {
     let r = game.renderBullets.get(id);
     if (!r) {
       if (isSpectatorSmoothingView() && !replayGame.active) continue;
+      const spawnAnchor = getBulletSpawnAnchor(b);
+      const visualTarget = getBulletVisualTarget(b);
       r = {
         id,
-        x: b.x,
-        y: b.y,
-        serverX: b.x,
-        serverY: b.y,
+        x: spawnAnchor?.x ?? b.x,
+        y: spawnAnchor?.y ?? b.y,
+        serverX: visualTarget?.x ?? b.x,
+        serverY: visualTarget?.y ?? b.y,
         ownerId: b.ownerId || '',
         ownerPlayerId: b.ownerPlayerId || '',
         vx: b.vx || 0,
@@ -4937,8 +4959,9 @@ function syncBulletsFromState(nextState) {
     }
 
     r.id = id;
-    r.serverX = b.x;
-    r.serverY = b.y;
+    const visualTarget = getBulletVisualTarget(b);
+    r.serverX = visualTarget?.x ?? b.x;
+    r.serverY = visualTarget?.y ?? b.y;
     r.ownerId = b.ownerId || '';
     r.ownerPlayerId = b.ownerPlayerId || '';
     r.vx = (r.vx * 0.3) + ((b.vx || 0) * 0.7);
@@ -4965,8 +4988,8 @@ function updateBulletInterpolation(dt) {
 
     let r = game.renderBullets.get(id);
     if (!r) {
-      const spawnAnchor = getSpectatorBulletSpawnAnchor(tb);
-      const visualTarget = getSpectatorBulletVisualTarget(tb);
+      const spawnAnchor = getBulletSpawnAnchor(tb);
+      const visualTarget = getBulletVisualTarget(tb);
       r = {
         id,
         x: spawnAnchor?.x ?? tb.x,
@@ -4988,7 +5011,7 @@ function updateBulletInterpolation(dt) {
     }
 
     r.id = id;
-    const visualTarget = getSpectatorBulletVisualTarget(tb);
+    const visualTarget = getBulletVisualTarget(tb);
     r.serverX = visualTarget?.x ?? tb.x;
     r.serverY = visualTarget?.y ?? tb.y;
     r.ownerId = tb.ownerId || '';

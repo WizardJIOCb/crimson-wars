@@ -1272,14 +1272,17 @@ function processStateFx(nextState) {
         const dx = Math.abs(bvx) + Math.abs(bvy) > 0.001 ? bvx : ((Number(b.x) || owner.x) - owner.x);
         const dy = Math.abs(bvx) + Math.abs(bvy) > 0.001 ? bvy : ((Number(b.y) || owner.y) - owner.y);
         const a = Math.atan2(dy, dx || 1);
+        const ownerFx = (typeof getPlayerRenderPos === 'function') ? getPlayerRenderPos(owner) : owner;
+        const ownerFxX = Number(ownerFx?.x) || Number(owner.x) || 0;
+        const ownerFxY = Number(ownerFx?.y) || Number(owner.y) || 0;
         const isCompanionShot = Boolean(owner.isCompanion) || bulletShooterType === 'companion';
         const weaponKey = String(b.weaponKey || owner.weaponKey || '').toLowerCase();
         const spectatorSmoothing = typeof isSpectatorSmoothingView === 'function' && isSpectatorSmoothingView();
         if (game.bulletTracersEnabled && !spectatorSmoothing) {
-          visuals.muzzle.push({ x: owner.x + Math.cos(a) * 20, y: owner.y + Math.sin(a) * 20, a, c: b.color || '#ffd166', life: 0.05, ttl: 0.05 });
+          visuals.muzzle.push({ x: ownerFxX + Math.cos(a) * 20, y: ownerFxY + Math.sin(a) * 20, a, c: b.color || '#ffd166', life: 0.05, ttl: 0.05 });
           visuals.muzzleGroundFlashes.push({
-            x: owner.x + Math.cos(a) * 23,
-            y: owner.y + Math.sin(a) * 23 + 8,
+            x: ownerFxX + Math.cos(a) * 23,
+            y: ownerFxY + Math.sin(a) * 23 + 8,
             a,
             c1: (isCompanionShot || owner.id === game.myId) ? '#facc15' : '#60a5fa',
             c2: (isCompanionShot || owner.id === game.myId) ? '#fb923c' : '#93c5fd',
@@ -1296,8 +1299,8 @@ function processStateFx(nextState) {
           shotgunBurstKeys.add(burstKey);
         }
         window.cwPlaySfx?.('shot', {
-          x: owner.x,
-          y: owner.y,
+          x: ownerFxX,
+          y: ownerFxY,
           weaponKey,
           key: `shot:${isCompanionShot ? 'companion' : 'player'}:${owner.id}:${weaponKey || 'weapon'}:${b.id}`,
           minGapMs: 0,

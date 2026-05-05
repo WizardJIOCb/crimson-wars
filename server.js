@@ -4879,6 +4879,8 @@ function fireCompanionWeapon(room, companion, owner, now) {
   const bulletSkill = getPlayerBulletSkillStats(owner);
   const firstBulletId = room.nextBulletId;
   const eventSpeed = Math.max(120, Number(weapon.bulletSpeed) || 920);
+  const bulletRadius = Math.max(2, Number(weapon.radius) || BULLET_RADIUS);
+  const muzzle = getWeaponMuzzleOrigin(companion, baseAngle, bulletRadius);
   pushRoomShotEvent(room, {
     bulletId: firstBulletId,
     ownerId: companion.id,
@@ -4886,12 +4888,12 @@ function fireCompanionWeapon(room, companion, owner, now) {
     shooterType: 'companion',
     weaponKey: String(companion.weaponKey || 'pistol').toLowerCase(),
     kind: 'bullet',
-    x: companion.x,
-    y: companion.y,
+    x: muzzle.x,
+    y: muzzle.y,
     vx: Math.cos(baseAngle) * eventSpeed,
     vy: Math.sin(baseAngle) * eventSpeed,
     color: weapon.color || '#f59e0b',
-    radius: Math.max(2, Number(weapon.radius) || BULLET_RADIUS),
+    radius: bulletRadius,
   });
 
   for (let i = 0; i < weapon.pellets; i += 1) {
@@ -4905,8 +4907,8 @@ function fireCompanionWeapon(room, companion, owner, now) {
       ownerId: companion.id,
       ownerPlayerId: owner?.id || companion.ownerId,
       fromEnemy: false,
-      x: companion.x,
-      y: companion.y,
+      x: muzzle.x,
+      y: muzzle.y,
       vx: Math.cos(angle) * bulletSpeed,
       vy: Math.sin(angle) * bulletSpeed,
       lifeMs: weapon.bulletLifeMs,
@@ -6180,6 +6182,14 @@ function updatePlayerReload(player, dtMs) {
   fallbackToPistolIfOut(player);
 }
 
+function getWeaponMuzzleOrigin(shooter, angle, radius = BULLET_RADIUS) {
+  const forward = Math.max(18, PLAYER_RADIUS + Math.max(0, Number(radius) || BULLET_RADIUS) * 0.5);
+  return {
+    x: (Number(shooter?.x) || 0) + Math.cos(angle) * forward,
+    y: (Number(shooter?.y) || 0) + Math.sin(angle) * forward,
+  };
+}
+
 function fireFromPlayer(room, player, now = Date.now()) {
   const weapon = WEAPONS[player.weaponKey] || WEAPONS.pistol;
   if (Number(player.weaponReloadLeftMs) > 0) return;
@@ -6198,6 +6208,8 @@ function fireFromPlayer(room, player, now = Date.now()) {
   const bulletSkill = getPlayerBulletSkillStats(player);
   const firstBulletId = room.nextBulletId;
   const eventSpeed = Math.max(120, Number(activeWeapon.bulletSpeed) || 920);
+  const bulletRadius = Math.max(2, Number(activeWeapon.radius) || BULLET_RADIUS);
+  const muzzle = getWeaponMuzzleOrigin(player, baseAngle, bulletRadius);
   pushRoomShotEvent(room, {
     bulletId: firstBulletId,
     ownerId: player.id,
@@ -6205,12 +6217,12 @@ function fireFromPlayer(room, player, now = Date.now()) {
     shooterType: player.isCompanion ? 'companion' : 'player',
     weaponKey: String(player.weaponKey || 'pistol').toLowerCase(),
     kind: 'bullet',
-    x: player.x,
-    y: player.y,
+    x: muzzle.x,
+    y: muzzle.y,
     vx: Math.cos(baseAngle) * eventSpeed,
     vy: Math.sin(baseAngle) * eventSpeed,
     color: activeWeapon.color || '#f59e0b',
-    radius: Math.max(2, Number(activeWeapon.radius) || BULLET_RADIUS),
+    radius: bulletRadius,
     at: now,
   });
 
@@ -6224,8 +6236,8 @@ function fireFromPlayer(room, player, now = Date.now()) {
       id: room.nextBulletId++,
       ownerId: player.id,
       fromEnemy: false,
-      x: player.x,
-      y: player.y,
+      x: muzzle.x,
+      y: muzzle.y,
       vx: Math.cos(angle) * bulletSpeed,
       vy: Math.sin(angle) * bulletSpeed,
       lifeMs: activeWeapon.bulletLifeMs,
