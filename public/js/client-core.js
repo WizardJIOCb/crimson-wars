@@ -1384,6 +1384,7 @@ let battleHubHeroSwapToken = 0;
 let battleHubHeroSkillModalEl = null;
 let battleHubHeroSkillModalState = null;
 let battleHubHeroSkillFx = null;
+const battleHubHeroSkillImagePreload = new Map();
 
 function shouldReduceBattleHubFx() {
   return Boolean(globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
@@ -1405,6 +1406,7 @@ async function beginBattleHubPlayerSwapFx(nextHeroId = '') {
   if (!battleHubPlayerCardEl || shouldReduceBattleHubFx()) return false;
   const token = ++battleHubHeroSwapToken;
   const nextHero = String(nextHeroId || '').trim().toLowerCase();
+  preloadBattleHubHeroSkillImages(nextHero, game.playerAuth?.progressionCatalog || null);
   clearBattleHubHeroSwapTimer();
   battleHubPlayerCardEl.dataset.nextHero = nextHero;
   battleHubPlayerCardEl.style.setProperty('--avatar-accent', getBattleHubHeroAccent(nextHero));
@@ -1807,6 +1809,7 @@ function renderBattleHubHeroSkills(heroId, progression = null, catalog = null, l
   const hero = getBattleHubHeroCatalogEntry(heroId, catalog);
   const skills = Array.isArray(hero?.uniqueSkills) ? hero.uniqueSkills : [];
   const unlockedCount = skills.reduce((sum, skill) => sum + (getBattleHubHeroSkillLevel(progression, heroId, skill?.id) > 0 ? 1 : 0), 0);
+  preloadBattleHubHeroSkillImages(heroId, catalog);
 
   battleHubHeroSkillsEl.classList.toggle('is-empty', skills.length === 0);
   if (battleHubHeroSkillsCountEl) {
@@ -2627,9 +2630,27 @@ function renderBattleHubHeroSkillIcon(skill, fallbackIcon, extraClass = '') {
   const imagePath = getBattleHubHeroSkillIconPath(skill);
   const className = ['battle-hub-hero-skill-icon', imagePath ? 'has-image' : '', extraClass].filter(Boolean).join(' ');
   if (imagePath) {
-    return `<span class="${escapeHtml(className)}"><img src="${escapeHtml(imagePath)}" alt="" loading="lazy" decoding="async"></span>`;
+    return `<span class="${escapeHtml(className)}"><img src="${escapeHtml(imagePath)}" alt="" loading="eager" decoding="async" fetchpriority="high"></span>`;
   }
   return `<span class="${escapeHtml(className)}">${escapeHtml(fallbackIcon)}</span>`;
+}
+
+function preloadBattleHubHeroSkillImage(path) {
+  const imagePath = String(path || '').trim();
+  if (!imagePath || imagePath.startsWith('data:') || battleHubHeroSkillImagePreload.has(imagePath)) return;
+  const img = new Image();
+  img.decoding = 'async';
+  img.src = imagePath;
+  battleHubHeroSkillImagePreload.set(imagePath, img);
+  img.decode?.().catch(() => {});
+}
+
+function preloadBattleHubHeroSkillImages(heroId, catalog = null) {
+  const hero = getBattleHubHeroCatalogEntry(heroId, catalog);
+  const skills = Array.isArray(hero?.uniqueSkills) ? hero.uniqueSkills : [];
+  for (const skill of skills) {
+    preloadBattleHubHeroSkillImage(getBattleHubHeroSkillIconPath(skill));
+  }
 }
 
 function renderBattleHubHeroSkillModalArt(skill, fallbackIcon, rarity, color) {
@@ -2637,7 +2658,7 @@ function renderBattleHubHeroSkillModalArt(skill, fallbackIcon, rarity, color) {
   const className = `battle-hub-skill-modal-art rarity-${rarity}${imagePath ? ' has-image' : ''}`;
   const style = `--skill-color:${color}`;
   if (imagePath) {
-    return `<div class="${escapeHtml(className)}" style="${escapeHtml(style)}"><img src="${escapeHtml(imagePath)}" alt="" loading="lazy" decoding="async"></div>`;
+    return `<div class="${escapeHtml(className)}" style="${escapeHtml(style)}"><img src="${escapeHtml(imagePath)}" alt="" loading="eager" decoding="async" fetchpriority="high"></div>`;
   }
   return `<div class="${escapeHtml(className)}" style="${escapeHtml(style)}"><span>${escapeHtml(fallbackIcon)}</span></div>`;
 }

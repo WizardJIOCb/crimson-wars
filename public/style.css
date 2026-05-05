@@ -8730,6 +8730,10 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
   text-shadow: 0 0 22px rgba(225, 22, 30, 0.24);
 }
 
+#battle-hub-player-rating-value {
+  text-shadow: none !important;
+}
+
 .battle-hub-presence-block {
   display: grid;
   gap: 6px;
