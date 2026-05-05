@@ -7,6 +7,23 @@ const renderDiag = {
   frames: 0,
   totals: { frame: 0, fx: 0, indicators: 0, minimap: 0 },
 };
+const renderScratch = {
+  playersByDepth: [],
+  playersByDepthPool: [],
+  actorOcclusionMarkers: [],
+  actorOcclusionPool: [],
+  projectile: {},
+  occlusionOverlay: [],
+  occlusionSeen: new Set(),
+  occlusionGrid: new Map(),
+  hudLastAt: 0,
+};
+const GROUND_CHUNK_SIZE = 512;
+const GROUND_CHUNK_CACHE_LIMIT = 220;
+const OCCLUSION_GRID_SIZE = 260;
+const MINIMAP_RENDER_INTERVAL_MS = 120;
+const mapObjectGeometryCache = new WeakMap();
+const renderImageCache = new Map();
 
 function isRenderDiagEnabled() {
   return Boolean(game?.showFpsEnabled && fpsCornerEl);
@@ -149,6 +166,269 @@ function drawMaterialMacroField(material, startX, startY, endX, endY, options = 
   }
 }
 
+function drawMaterialTileFieldToContext(g, material, startX, startY, endX, endY, options = {}) {
+  const tileSet = getGroundTileSetForMaterial(material);
+  const variants = Array.isArray(tileSet?.variants) ? tileSet.variants.filter(Boolean) : [];
+  if (!g || variants.length <= 0) return;
+  const t = visuals.groundTileSize || variants[0].width || 128;
+  const organic = material === 'grass' || material === 'dirt' || material === 'toxic';
+  const overlapPx = organic ? Math.max(10, Math.min(26, Math.round(t * 0.16))) : 0;
+  const tileStartX = Math.floor((startX - overlapPx) / t) * t;
+  const tileStartY = Math.floor((startY - overlapPx) / t) * t;
+  const offsetX = Number.isFinite(Number(options.offsetX)) ? Number(options.offsetX) : camera.x;
+  const offsetY = Number.isFinite(Number(options.offsetY)) ? Number(options.offsetY) : camera.y;
+  const salt = Number(tileSet?.salt) || 0;
+  for (let y = tileStartY; y < endY + overlapPx; y += t) {
+    const cellY = Math.floor(y / t);
+    for (let x = tileStartX; x < endX + overlapPx; x += t) {
+      const hash = hashGroundCell(Math.floor(x / t), cellY, salt);
+      const tileCanvas = variants[hash % variants.length] || variants[0];
+      g.drawImage(
+        tileCanvas,
+        x - offsetX - overlapPx * 0.5,
+        y - offsetY - overlapPx * 0.5,
+        t + overlapPx,
+        t + overlapPx,
+      );
+    }
+  }
+}
+
+function drawMaterialMacroFieldToContext(g, material, startX, startY, endX, endY, options = {}) {
+  const tileSet = getGroundTileSetForMaterial(material);
+  const stamps = Array.isArray(tileSet?.macroStamps) ? tileSet.macroStamps.filter(Boolean) : [];
+  if (!g || stamps.length <= 0) return;
+  const offsetX = Number.isFinite(Number(options.offsetX)) ? Number(options.offsetX) : camera.x;
+  const offsetY = Number.isFinite(Number(options.offsetY)) ? Number(options.offsetY) : camera.y;
+  const salt = (Number(tileSet?.salt) || 0) ^ 0x9e3779b9;
+  const cellSize = Math.max(220, Math.round((visuals.groundTileSize || stamps[0].width || 128) * 3.35));
+  const cellStartX = Math.floor(startX / cellSize) - 1;
+  const cellEndX = Math.ceil(endX / cellSize) + 1;
+  const cellStartY = Math.floor(startY / cellSize) - 1;
+  const cellEndY = Math.ceil(endY / cellSize) + 1;
+  for (let gy = cellStartY; gy <= cellEndY; gy += 1) {
+    for (let gx = cellStartX; gx <= cellEndX; gx += 1) {
+      const hash = hashGroundCell(gx, gy, salt);
+      if ((hash & 7) < 3) continue;
+      const stamp = stamps[(hash >>> 3) % stamps.length] || stamps[0];
+      const centerX = (gx + 0.5) * cellSize + ((((hash >>> 11) & 255) / 255) - 0.5) * cellSize * 0.5;
+      const centerY = (gy + 0.5) * cellSize + ((((hash >>> 19) & 255) / 255) - 0.5) * cellSize * 0.5;
+      const scale = 0.9 + ((((hash >>> 7) & 255) / 255) * 0.9);
+      const alpha = 0.045 + ((((hash >>> 15) & 255) / 255) * 0.08);
+      const rotation = ((hash >>> 23) / 511) * Math.PI * 2;
+      const drawW = stamp.width * scale;
+      const drawH = stamp.height * scale;
+      g.save();
+      g.globalAlpha *= alpha;
+      g.translate(centerX - offsetX, centerY - offsetY);
+      g.rotate(rotation);
+      g.drawImage(stamp, -drawW * 0.5, -drawH * 0.5, drawW, drawH);
+      g.restore();
+    }
+  }
+}
+
+function buildTerrainZonePathOnContext(g, zone, scaleMul = 1) {
+  const halfW = Math.max(10, (Number(zone?.w) || 0) * 0.5 * scaleMul);
+  const halfH = Math.max(10, (Number(zone?.h) || 0) * 0.5 * scaleMul);
+  const shape = String(zone?.shape || 'ellipse');
+  g.beginPath();
+  if (shape === 'rect' || shape === 'band') {
+    g.rect(-halfW, -halfH, halfW * 2, halfH * 2);
+    return;
+  }
+  g.ellipse(0, 0, halfW, halfH, 0, 0, Math.PI * 2);
+}
+
+function drawTerrainZoneToContext(g, zone, chunkX, chunkY, chunkSize) {
+  if (!g || !zone) return;
+  const worldX = Number(zone.x) || 0;
+  const worldY = Number(zone.y) || 0;
+  const halfW = Math.max(18, (Number(zone.w) || 0) * 0.5);
+  const halfH = Math.max(18, (Number(zone.h) || 0) * 0.5);
+  const radius = Math.max(halfW, halfH) + 64;
+  if (
+    worldX + radius < chunkX
+    || worldX - radius > chunkX + chunkSize
+    || worldY + radius < chunkY
+    || worldY - radius > chunkY + chunkSize
+  ) {
+    return;
+  }
+
+  const tileSet = getGroundTileSetForMaterial(zone.material);
+  const blurPx = Math.max(10, Math.min(42, Math.min(Number(zone.w) || 0, Number(zone.h) || 0) * Math.max(0.04, Number(zone.feather) || 0.18) * 0.12));
+  const alpha = Math.max(0.08, Math.min(1, Number(zone.alpha) || 0.65));
+  const startX = worldX - halfW - blurPx;
+  const startY = worldY - halfH - blurPx;
+  const endX = worldX + halfW + blurPx;
+  const endY = worldY + halfH + blurPx;
+
+  g.save();
+  g.translate(worldX - chunkX, worldY - chunkY);
+  g.rotate(Number(zone.angle) || 0);
+  buildTerrainZonePathOnContext(g, zone, 1);
+  g.clip();
+  g.globalAlpha = alpha;
+  if (tileSet) {
+    drawMaterialTileFieldToContext(g, zone.material, startX, startY, endX, endY, { offsetX: worldX, offsetY: worldY });
+    drawMaterialMacroFieldToContext(g, zone.material, startX, startY, endX, endY, { offsetX: worldX, offsetY: worldY });
+  } else {
+    g.fillStyle = getGroundFallbackColor(zone.material);
+    g.fillRect(-halfW - blurPx, -halfH - blurPx, (halfW + blurPx) * 2, (halfH + blurPx) * 2);
+  }
+  g.restore();
+
+  g.save();
+  g.translate(worldX - chunkX, worldY - chunkY);
+  g.rotate(Number(zone.angle) || 0);
+  g.filter = `blur(${blurPx}px)`;
+  g.globalAlpha = alpha * 0.22;
+  g.fillStyle = getGroundFallbackColor(zone.material);
+  buildTerrainZonePathOnContext(g, zone, 1.1 + Math.max(0.04, Number(zone.feather) || 0.18));
+  g.fill();
+  g.restore();
+
+  if (zone.centerStripe === true && (zone.material === 'asphalt' || zone.material === 'asphalt_wet') && zone.shape === 'band') {
+    const stripeWidth = Math.max(2, Math.min(6, halfH * 0.08));
+    const dash = Math.max(16, Math.round(Math.min(42, halfW * 0.12)));
+    const gap = Math.max(10, Math.round(dash * 0.72));
+    g.save();
+    g.translate(worldX - chunkX, worldY - chunkY);
+    g.rotate(Number(zone.angle) || 0);
+    buildTerrainZonePathOnContext(g, zone, 1);
+    g.clip();
+    g.strokeStyle = zone.material === 'asphalt_wet' ? 'rgba(237, 229, 190, 0.34)' : 'rgba(237, 229, 190, 0.42)';
+    g.lineWidth = stripeWidth;
+    g.lineCap = 'round';
+    g.setLineDash([dash, gap]);
+    g.beginPath();
+    g.moveTo(-halfW * 0.9, 0);
+    g.lineTo(halfW * 0.9, 0);
+    g.stroke();
+    g.setLineDash([]);
+    g.restore();
+  }
+}
+
+function buildGroundChunkSignature() {
+  const theme = getSceneTheme();
+  const terrainZones = Array.isArray(game.state?.decor?.terrainZones) ? game.state.decor.terrainZones : [];
+  const zoneSig = terrainZones.map((zone) => [
+    zone.material,
+    zone.shape,
+    Number(zone.x) || 0,
+    Number(zone.y) || 0,
+    Number(zone.w) || 0,
+    Number(zone.h) || 0,
+    Number(zone.angle) || 0,
+    Number(zone.alpha) || 0,
+    zone.centerStripe === true ? 1 : 0,
+  ].join(':')).join('|');
+  return [
+    game.roomCode || '',
+    game.mapId || '',
+    Number(game.world?.width) || 0,
+    Number(game.world?.height) || 0,
+    game.qualityKey || '',
+    getQ().groundTexture ? 1 : 0,
+    visuals.groundTileSize || 0,
+    String(theme.baseMaterial || 'asphalt_wet'),
+    zoneSig,
+  ].join('~');
+}
+
+function getGroundChunk(chunkX, chunkY, signature) {
+  if (!(visuals.groundChunkCache instanceof Map)) visuals.groundChunkCache = new Map();
+  const key = `${signature}:${chunkX}:${chunkY}`;
+  const cached = visuals.groundChunkCache.get(key);
+  if (cached) {
+    cached.usedAt = performance.now();
+    return cached;
+  }
+
+  const theme = getSceneTheme();
+  const baseMaterial = String(theme.baseMaterial || 'asphalt_wet');
+  const c = document.createElement('canvas');
+  c.width = GROUND_CHUNK_SIZE;
+  c.height = GROUND_CHUNK_SIZE;
+  c.__cwWebglVersion = 1;
+  const g = c.getContext('2d');
+  if (g) {
+    g.imageSmoothingEnabled = false;
+    g.fillStyle = getGroundFallbackColor(baseMaterial);
+    g.fillRect(0, 0, c.width, c.height);
+    if (getQ().groundTexture && getGroundTileSetForMaterial(baseMaterial)) {
+      drawMaterialTileFieldToContext(g, baseMaterial, chunkX, chunkY, chunkX + GROUND_CHUNK_SIZE, chunkY + GROUND_CHUNK_SIZE, { offsetX: chunkX, offsetY: chunkY });
+      drawMaterialMacroFieldToContext(g, baseMaterial, chunkX, chunkY, chunkX + GROUND_CHUNK_SIZE, chunkY + GROUND_CHUNK_SIZE, { offsetX: chunkX, offsetY: chunkY });
+    }
+    const terrainZones = Array.isArray(game.state?.decor?.terrainZones) ? game.state.decor.terrainZones : [];
+    for (const zone of terrainZones) drawTerrainZoneToContext(g, zone, chunkX, chunkY, GROUND_CHUNK_SIZE);
+  }
+
+  const entry = { x: chunkX, y: chunkY, canvas: c, usedAt: performance.now() };
+  visuals.groundChunkCache.set(key, entry);
+  if (visuals.groundChunkCache.size > GROUND_CHUNK_CACHE_LIMIT) {
+    let oldestKey = '';
+    let oldestAt = Infinity;
+    for (const [cacheKey, item] of visuals.groundChunkCache.entries()) {
+      const usedAt = Number(item?.usedAt) || 0;
+      if (usedAt < oldestAt) {
+        oldestAt = usedAt;
+        oldestKey = cacheKey;
+      }
+    }
+    if (oldestKey) visuals.groundChunkCache.delete(oldestKey);
+  }
+  return entry;
+}
+
+function getGroundChunksForRender() {
+  const viewportScale = typeof getRunStartViewportScale === 'function' ? getRunStartViewportScale() : 1;
+  const safeScale = Math.max(0.12, Math.min(1, viewportScale || 1));
+  const viewportW = canvas.width / safeScale;
+  const viewportH = canvas.height / safeScale;
+  const introPad = typeof getRunStartViewportWorldPad === 'function' ? getRunStartViewportWorldPad() : 0;
+  const pad = GROUND_CHUNK_SIZE + introPad;
+  const signature = buildGroundChunkSignature();
+  if (visuals.groundChunkCacheSignature !== signature) {
+    if (visuals.groundChunkCache instanceof Map) visuals.groundChunkCache.clear();
+    visuals.groundChunkCacheSignature = signature;
+    globalThis.CWWebGLWorld?.clearTextureCache?.();
+  }
+  const startX = Math.floor((camera.x - pad) / GROUND_CHUNK_SIZE) * GROUND_CHUNK_SIZE;
+  const startY = Math.floor((camera.y - pad) / GROUND_CHUNK_SIZE) * GROUND_CHUNK_SIZE;
+  const endX = Math.ceil((camera.x + viewportW + pad) / GROUND_CHUNK_SIZE) * GROUND_CHUNK_SIZE;
+  const endY = Math.ceil((camera.y + viewportH + pad) / GROUND_CHUNK_SIZE) * GROUND_CHUNK_SIZE;
+  const chunks = [];
+  for (let y = startY; y <= endY; y += GROUND_CHUNK_SIZE) {
+    for (let x = startX; x <= endX; x += GROUND_CHUNK_SIZE) {
+      chunks.push(getGroundChunk(x, y, signature));
+    }
+  }
+  return chunks;
+}
+
+function drawGroundOverlay() {
+  if (!getQ().overlays) return;
+  const theme = getSceneTheme();
+  const g = ctx.createRadialGradient(canvas.width * 0.5, canvas.height * 0.55, 70, canvas.width * 0.5, canvas.height * 0.55, Math.max(canvas.width, canvas.height) * 0.8);
+  g.addColorStop(0, hexToRgba(theme.accent || '#f97316', 0.13));
+  g.addColorStop(1, 'rgba(16,8,8,0.02)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+function drawChunkedGround() {
+  const chunks = getGroundChunksForRender();
+  for (const chunk of chunks) {
+    ctx.drawImage(chunk.canvas, chunk.x - camera.x, chunk.y - camera.y);
+  }
+  drawGroundOverlay();
+}
+
+globalThis.CWGetGroundChunksForRender = getGroundChunksForRender;
+
 function buildTerrainZonePath(zone, scaleMul = 1) {
   const halfW = Math.max(10, (Number(zone?.w) || 0) * 0.5 * scaleMul);
   const halfH = Math.max(10, (Number(zone?.h) || 0) * 0.5 * scaleMul);
@@ -229,6 +509,9 @@ function drawTerrainZone(zone) {
 }
 
 function drawGround() {
+  drawChunkedGround();
+  return;
+
   const q = getQ();
   const theme = getSceneTheme();
   const baseMaterial = String(theme.baseMaterial || 'asphalt_wet');
@@ -755,47 +1038,19 @@ function drawMapObjectHpBar(obj, screenX, screenY) {
 }
 
 function getMapObjectBaseY(obj) {
-  const anchorY = Math.max(0.45, Math.min(0.72, Number(obj?.anchorY) || 0.56));
-  return (Number(obj?.y) || 0) + Math.max(22, Number(obj?.h) || 22) * (1 - anchorY);
+  return getMapObjectGeometry(obj).baseY;
 }
 
 function getMapObjectCollisionPolygon(obj) {
-  const points = Array.isArray(obj?.collisionPoints) ? obj.collisionPoints : [];
-  if (points.length < 3) return null;
-  const centerX = Number(obj?.x) || 0;
-  const centerY = (Number(obj?.y) || 0) + (Number(obj?.collisionOffsetY) || 0);
-  const width = Math.max(16, Number(obj?.collisionW) || Number(obj?.w) || 0);
-  const height = Math.max(16, Number(obj?.collisionH) || Number(obj?.h) || 0);
-  const polygon = [];
-  for (const point of points) {
-    const px = Array.isArray(point) ? Number(point[0]) : Number(point?.x);
-    const py = Array.isArray(point) ? Number(point[1]) : Number(point?.y);
-    if (!Number.isFinite(px) || !Number.isFinite(py)) continue;
-    polygon.push({ x: centerX + px * width, y: centerY + py * height });
-  }
-  return polygon.length >= 3 ? polygon : null;
+  return getMapObjectGeometry(obj).polygon;
 }
 
 function getMapObjectCollisionBounds(obj) {
-  const polygon = getMapObjectCollisionPolygon(obj);
-  if (!polygon) return null;
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const point of polygon) {
-    minX = Math.min(minX, point.x);
-    minY = Math.min(minY, point.y);
-    maxX = Math.max(maxX, point.x);
-    maxY = Math.max(maxY, point.y);
-  }
-  if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) return null;
-  return { minX, minY, maxX, maxY };
+  return getMapObjectGeometry(obj).bounds;
 }
 
 function getMapObjectOcclusionBaseY(obj) {
-  const collisionBounds = getMapObjectCollisionBounds(obj);
-  return collisionBounds ? collisionBounds.maxY : getMapObjectBaseY(obj);
+  return getMapObjectGeometry(obj).occlusionBaseY;
 }
 
 function getMapObjectFrontYAtX(obj, actorX) {
@@ -819,8 +1074,7 @@ function getMapObjectFrontYAtX(obj, actorX) {
 }
 
 function getMapObjectTopY(obj) {
-  const anchorY = Math.max(0.45, Math.min(0.72, Number(obj?.anchorY) || 0.56));
-  return (Number(obj?.y) || 0) - Math.max(22, Number(obj?.h) || 22) * anchorY;
+  return getMapObjectGeometry(obj).topY;
 }
 
 function drawSingleMapObject(obj, nowMs = Date.now(), options = {}) {
@@ -894,6 +1148,86 @@ function drawMapObjects(nowMs = Date.now()) {
   for (const obj of objects) drawSingleMapObject(obj, nowMs, { drawShadow: true, drawHp: true });
 }
 
+function drawMapObjectHpBars(nowMs = Date.now()) {
+  void nowMs;
+  const objects = Array.isArray(game.sortedMapObjects) ? game.sortedMapObjects : [];
+  for (const obj of objects) {
+    if (!obj || (obj.destroyed && obj.hideAfterDestroyed)) continue;
+    const radius = Math.max(Number(obj.w) || 0, Number(obj.h) || 0) * 0.55;
+    if (!isVisibleWorld(Number(obj.x) || 0, Number(obj.y) || 0, radius + 40)) continue;
+    drawMapObjectHpBar(obj, (Number(obj.x) || 0) - camera.x, (Number(obj.y) || 0) - camera.y);
+  }
+}
+
+function getMapObjectGeometrySignature(obj) {
+  const points = Array.isArray(obj?.collisionPoints) ? obj.collisionPoints : [];
+  return [
+    Number(obj?.x) || 0,
+    Number(obj?.y) || 0,
+    Number(obj?.w) || 0,
+    Number(obj?.h) || 0,
+    Number(obj?.collisionW) || 0,
+    Number(obj?.collisionH) || 0,
+    Number(obj?.collisionOffsetY) || 0,
+    Number(obj?.anchorY) || 0,
+    points.length,
+  ].join(':');
+}
+
+function buildMapObjectGeometry(obj) {
+  const centerX = Number(obj?.x) || 0;
+  const centerY = (Number(obj?.y) || 0) + (Number(obj?.collisionOffsetY) || 0);
+  const width = Math.max(16, Number(obj?.collisionW) || Number(obj?.w) || 0);
+  const height = Math.max(16, Number(obj?.collisionH) || Number(obj?.h) || 0);
+  const anchorY = Math.max(0.45, Math.min(0.72, Number(obj?.anchorY) || 0.56));
+  const baseY = (Number(obj?.y) || 0) + Math.max(22, Number(obj?.h) || 22) * (1 - anchorY);
+  const topY = (Number(obj?.y) || 0) - Math.max(22, Number(obj?.h) || 22) * anchorY;
+  const points = Array.isArray(obj?.collisionPoints) ? obj.collisionPoints : [];
+  const polygon = [];
+  if (points.length >= 3) {
+    for (const point of points) {
+      const px = Array.isArray(point) ? Number(point[0]) : Number(point?.x);
+      const py = Array.isArray(point) ? Number(point[1]) : Number(point?.y);
+      if (!Number.isFinite(px) || !Number.isFinite(py)) continue;
+      polygon.push({ x: centerX + px * width, y: centerY + py * height });
+    }
+  }
+  let bounds = null;
+  if (polygon.length >= 3) {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const point of polygon) {
+      minX = Math.min(minX, point.x);
+      minY = Math.min(minY, point.y);
+      maxX = Math.max(maxX, point.x);
+      maxY = Math.max(maxY, point.y);
+    }
+    if (Number.isFinite(minX) && Number.isFinite(minY) && Number.isFinite(maxX) && Number.isFinite(maxY)) {
+      bounds = { minX, minY, maxX, maxY };
+    }
+  }
+  return {
+    signature: getMapObjectGeometrySignature(obj),
+    polygon: polygon.length >= 3 ? polygon : null,
+    bounds,
+    baseY,
+    topY,
+    occlusionBaseY: bounds ? bounds.maxY : baseY,
+  };
+}
+
+function getMapObjectGeometry(obj) {
+  if (!obj) return buildMapObjectGeometry(obj);
+  const signature = getMapObjectGeometrySignature(obj);
+  const cached = mapObjectGeometryCache.get(obj);
+  if (cached?.signature === signature) return cached;
+  const geometry = buildMapObjectGeometry(obj);
+  mapObjectGeometryCache.set(obj, geometry);
+  return geometry;
+}
+
 function shouldObjectOccludeActor(obj, actor) {
   if (!obj || obj.destroyed || !actor) return false;
   const actorX = Number(actor.x) || 0;
@@ -914,14 +1248,69 @@ function shouldObjectOccludeActor(obj, actor) {
 function drawMapObjectOcclusionOverlay(actors, nowMs = Date.now()) {
   const objects = Array.isArray(game.sortedMapObjects) ? game.sortedMapObjects : [];
   if (objects.length <= 0 || !Array.isArray(actors) || actors.length <= 0) return;
-  const overlay = [];
+  const overlay = renderScratch.occlusionOverlay;
+  const seen = renderScratch.occlusionSeen;
+  const grid = renderScratch.occlusionGrid;
+  overlay.length = 0;
+  seen.clear();
+  grid.clear();
+
+  const addToGrid = (obj) => {
+    const geometry = getMapObjectGeometry(obj);
+    const bounds = geometry.bounds || {
+      minX: (Number(obj.x) || 0) - Math.max(20, (Number(obj.w) || 40) * 0.5),
+      maxX: (Number(obj.x) || 0) + Math.max(20, (Number(obj.w) || 40) * 0.5),
+      minY: getMapObjectTopY(obj) - 8,
+      maxY: getMapObjectOcclusionBaseY(obj) + 8,
+    };
+    const minCellX = Math.floor((bounds.minX - 12) / OCCLUSION_GRID_SIZE);
+    const maxCellX = Math.floor((bounds.maxX + 12) / OCCLUSION_GRID_SIZE);
+    const minCellY = Math.floor((bounds.minY - 12) / OCCLUSION_GRID_SIZE);
+    const maxCellY = Math.floor((bounds.maxY + 12) / OCCLUSION_GRID_SIZE);
+    for (let cy = minCellY; cy <= maxCellY; cy += 1) {
+      for (let cx = minCellX; cx <= maxCellX; cx += 1) {
+        const key = `${cx}:${cy}`;
+        let bucket = grid.get(key);
+        if (!bucket) {
+          bucket = [];
+          grid.set(key, bucket);
+        }
+        bucket.push(obj);
+      }
+    }
+  };
+
   for (const obj of objects) {
     if (!obj || obj.destroyed) continue;
-    const shouldOverlay = actors.some((actor) => shouldObjectOccludeActor(obj, actor));
-    if (shouldOverlay) overlay.push(obj);
+    const radius = Math.max(Number(obj.w) || 0, Number(obj.h) || 0) * 0.55;
+    if (!isVisibleWorld(Number(obj.x) || 0, Number(obj.y) || 0, radius + 72)) continue;
+    addToGrid(obj);
   }
+
+  for (const actor of actors) {
+    if (!actor) continue;
+    if (!isVisibleWorld(Number(actor.x) || 0, Number(actor.y) || 0, 80)) continue;
+    const cellX = Math.floor((Number(actor.x) || 0) / OCCLUSION_GRID_SIZE);
+    const cellY = Math.floor((Number(actor.y) || 0) / OCCLUSION_GRID_SIZE);
+    for (let cy = cellY - 1; cy <= cellY + 1; cy += 1) {
+      for (let cx = cellX - 1; cx <= cellX + 1; cx += 1) {
+        const bucket = grid.get(`${cx}:${cy}`);
+        if (!bucket) continue;
+        for (const obj of bucket) {
+          if (seen.has(obj)) continue;
+          if (!shouldObjectOccludeActor(obj, actor)) continue;
+          seen.add(obj);
+          overlay.push(obj);
+        }
+      }
+    }
+  }
+
   overlay.sort((a, b) => getMapObjectOcclusionBaseY(a) - getMapObjectOcclusionBaseY(b));
   for (const obj of overlay) drawSingleMapObject(obj, nowMs, { drawShadow: false, drawHp: false });
+  overlay.length = 0;
+  seen.clear();
+  grid.clear();
 }
 
 function drawWeaponIcon(sx, sy, weaponKey) {
@@ -946,6 +1335,270 @@ function drawWeaponIcon(sx, sy, weaponKey) {
     ctx.fillRect(1, -3, 2, 5);
   }
   ctx.restore();
+}
+
+function weaponPickupColor(weaponKey) {
+  if (weaponKey === 'sniper') return '#e5e7eb';
+  if (weaponKey === 'shotgun') return '#fb923c';
+  if (weaponKey === 'smg') return '#38bdf8';
+  return '#22c55e';
+}
+
+function normalizeWeaponPickupKey(weaponKey) {
+  const key = String(weaponKey || '').toLowerCase();
+  if (key.includes('sniper')) return 'sniper';
+  if (key.includes('shotgun')) return 'shotgun';
+  if (key.includes('smg')) return 'smg';
+  return 'pistol';
+}
+
+function getWeaponPickupImage(weaponKey) {
+  const key = normalizeWeaponPickupKey(weaponKey);
+  return getRenderCachedImage(`/assets/weapon-pickups/${key}.png`);
+}
+
+function getWeaponPickupDrawWidth(weaponKey) {
+  const key = normalizeWeaponPickupKey(weaponKey);
+  if (key === 'sniper') return 76;
+  if (key === 'shotgun') return 70;
+  if (key === 'smg') return 62;
+  return 50;
+}
+
+function drawPickupLabel(x, y, label, blink, ttlMs, color) {
+  const warnSec = blink ? Math.max(0, Math.ceil(ttlMs / 1000)) : 0;
+  const text = blink ? `${label} ${warnSec}s` : label;
+  ctx.save();
+  ctx.font = 'bold 10px sans-serif';
+  ctx.textAlign = 'center';
+  const w = Math.max(44, Math.min(86, ctx.measureText(text).width + 14));
+  ctx.fillStyle = blink ? 'rgba(48, 12, 18, 0.88)' : 'rgba(7, 12, 20, 0.82)';
+  ctx.fillRect(x - w * 0.5, y - 33, w, 14);
+  ctx.strokeStyle = blink ? 'rgba(248, 113, 113, 0.92)' : hexToRgba(color, 0.58);
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x - w * 0.5, y - 33, w, 14);
+  ctx.fillStyle = blink ? '#fecaca' : '#e2e8f0';
+  ctx.fillText(text, x, y - 23);
+  ctx.restore();
+}
+
+function drawWeaponPickupImage(x, y, weaponKey, color, nowMs) {
+  const img = getWeaponPickupImage(weaponKey);
+  if (!isRenderImageReady(img)) return false;
+  const bob = Math.sin(nowMs / 360) * 1.5;
+  const dw = getWeaponPickupDrawWidth(weaponKey);
+  const dh = dw * (img.naturalHeight / Math.max(1, img.naturalWidth));
+  ctx.save();
+  ctx.translate(x, y - 2 + bob);
+  ctx.rotate(Math.sin(nowMs / 520) * 0.025);
+  ctx.imageSmoothingEnabled = true;
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.drawImage(img, -dw * 0.5, -dh * 0.5, dw, dh);
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.strokeStyle = hexToRgba(color, 0.55);
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(dw * 0.18, -dh * 0.12);
+  ctx.lineTo(dw * 0.32, -dh * 0.18);
+  ctx.stroke();
+  ctx.restore();
+  return true;
+}
+
+function drawWeaponPickupSilhouette(x, y, weaponKey, color, nowMs) {
+  const wobble = Math.sin(nowMs / 420) * 0.06;
+  ctx.save();
+  ctx.translate(x, y - 2);
+  ctx.rotate(-0.16 + wobble);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  ctx.strokeStyle = 'rgba(2, 6, 12, 0.92)';
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  if (weaponKey === 'sniper') {
+    ctx.moveTo(-24, 0);
+    ctx.lineTo(24, 0);
+    ctx.moveTo(-11, -5);
+    ctx.lineTo(3, -5);
+    ctx.moveTo(0, 3);
+    ctx.lineTo(6, 13);
+    ctx.moveTo(-21, 0);
+    ctx.lineTo(-29, 8);
+  } else if (weaponKey === 'shotgun') {
+    ctx.moveTo(-22, -2);
+    ctx.lineTo(18, -2);
+    ctx.moveTo(-20, 2);
+    ctx.lineTo(18, 2);
+    ctx.moveTo(-3, 4);
+    ctx.lineTo(3, 14);
+    ctx.moveTo(-18, 0);
+    ctx.lineTo(-27, 8);
+  } else if (weaponKey === 'smg') {
+    ctx.moveTo(-16, -1);
+    ctx.lineTo(18, -1);
+    ctx.moveTo(7, -6);
+    ctx.lineTo(12, 7);
+    ctx.moveTo(-4, 3);
+    ctx.lineTo(-1, 14);
+    ctx.moveTo(-13, 0);
+    ctx.lineTo(-20, 7);
+  } else {
+    ctx.moveTo(-15, -1);
+    ctx.lineTo(13, -1);
+    ctx.moveTo(7, -6);
+    ctx.lineTo(11, 7);
+    ctx.moveTo(-2, 3);
+    ctx.lineTo(2, 13);
+  }
+  ctx.stroke();
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = weaponKey === 'shotgun' ? 3.4 : 3;
+  ctx.beginPath();
+  if (weaponKey === 'sniper') {
+    ctx.moveTo(-24, 0);
+    ctx.lineTo(24, 0);
+    ctx.moveTo(-11, -5);
+    ctx.lineTo(3, -5);
+    ctx.moveTo(0, 3);
+    ctx.lineTo(6, 13);
+    ctx.moveTo(-21, 0);
+    ctx.lineTo(-29, 8);
+  } else if (weaponKey === 'shotgun') {
+    ctx.moveTo(-22, -2);
+    ctx.lineTo(18, -2);
+    ctx.moveTo(-20, 2);
+    ctx.lineTo(18, 2);
+    ctx.moveTo(-3, 4);
+    ctx.lineTo(3, 14);
+    ctx.moveTo(-18, 0);
+    ctx.lineTo(-27, 8);
+  } else if (weaponKey === 'smg') {
+    ctx.moveTo(-16, -1);
+    ctx.lineTo(18, -1);
+    ctx.moveTo(7, -6);
+    ctx.lineTo(12, 7);
+    ctx.moveTo(-4, 3);
+    ctx.lineTo(-1, 14);
+    ctx.moveTo(-13, 0);
+    ctx.lineTo(-20, 7);
+  } else {
+    ctx.moveTo(-15, -1);
+    ctx.lineTo(13, -1);
+    ctx.moveTo(7, -6);
+    ctx.lineTo(11, 7);
+    ctx.moveTo(-2, 3);
+    ctx.lineTo(2, 13);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle = '#f8fafc';
+  if (weaponKey === 'sniper') {
+    ctx.fillRect(3, -7, 8, 3);
+    ctx.fillRect(20, -1, 8, 2);
+  } else if (weaponKey === 'shotgun') {
+    ctx.fillRect(15, -4, 7, 3);
+    ctx.fillRect(15, 1, 7, 3);
+  } else if (weaponKey === 'smg') {
+    ctx.fillRect(0, -5, 6, 3);
+    ctx.fillRect(10, -2, 8, 2);
+  } else {
+    ctx.fillRect(7, -7, 5, 3);
+  }
+  ctx.restore();
+}
+
+function drawXpVacuumPickup(x, y, blink, ttlMs, nowMs) {
+  const color = '#a78bfa';
+  const pulse = 1 + Math.sin(nowMs / 160) * 0.14;
+  drawShadowAtScreen(x, y + 10, 11, 4.5, blink ? 0.14 : 0.24);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const aura = ctx.createRadialGradient(x, y, 2, x, y, 24 * pulse);
+  aura.addColorStop(0, 'rgba(221, 214, 254, 0.58)');
+  aura.addColorStop(0.55, 'rgba(167, 139, 250, 0.24)');
+  aura.addColorStop(1, 'rgba(167, 139, 250, 0)');
+  ctx.fillStyle = aura;
+  ctx.beginPath();
+  ctx.arc(x, y, 24 * pulse, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.strokeStyle = blink ? '#fca5a5' : color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(x, y, 10, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = '#ddd6fe';
+  ctx.beginPath();
+  ctx.arc(x, y, 6.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(x - 2.5, y - 3, 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  drawPickupLabel(x, y, 'XP Surge', blink, ttlMs, color);
+}
+
+function drawWeaponPickup(d, x, y, blink, ttlMs, nowMs) {
+  const color = blink ? '#ef4444' : weaponPickupColor(d.weaponKey);
+  const pulse = 1 + Math.sin(nowMs / 180 + (Number(d.id) || 0)) * 0.12;
+  const spin = nowMs * 0.003 + (Number(d.id) || 0);
+  drawShadowAtScreen(x, y + 12, 17, 6, blink ? 0.16 : 0.28);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const aura = ctx.createRadialGradient(x, y, 4, x, y, 31 * pulse);
+  aura.addColorStop(0, hexToRgba(color, 0.42));
+  aura.addColorStop(0.55, hexToRgba(color, 0.2));
+  aura.addColorStop(1, hexToRgba(color, 0));
+  ctx.fillStyle = aura;
+  ctx.beginPath();
+  ctx.arc(x, y, 31 * pulse, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.translate(x, y);
+  ctx.rotate(spin);
+  ctx.setLineDash([7, 6]);
+  ctx.strokeStyle = hexToRgba(color, blink ? 0.88 : 0.62);
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 27, 15, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  if (!drawWeaponPickupImage(x, y, d.weaponKey, color, nowMs)) {
+    drawWeaponPickupSilhouette(x, y, d.weaponKey, color, nowMs);
+  }
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.strokeStyle = hexToRgba(color, 0.65);
+  ctx.lineWidth = 2;
+  const flash = 13 + Math.sin(nowMs / 90) * 3;
+  ctx.beginPath();
+  ctx.moveTo(x + 15, y - 3);
+  ctx.lineTo(x + flash + 13, y - 6);
+  ctx.stroke();
+  ctx.restore();
+
+  const label = d.weaponLabel || 'Weapon';
+  drawPickupLabel(x, y, label, blink, ttlMs, color);
+}
+
+function drawDropPickup(d, nowMs) {
+  if (!d || !isVisibleWorld(d.x, d.y, 56)) return;
+  const ttlMs = Math.max(0, Number(d.ttlMs) || 0);
+  const blink = ttlMs > 0 && ttlMs <= 5000;
+  if (blink && Math.sin(nowMs / 90) <= 0) return;
+  const x = d.x - camera.x;
+  const y = d.y - camera.y;
+  if (d.kind === 'xp_vacuum') {
+    drawXpVacuumPickup(x, y, blink, ttlMs, nowMs);
+  } else {
+    drawWeaponPickup(d, x, y, blink, ttlMs, nowMs);
+  }
 }
 
 function drawPlayer(p, t, isMe, rx, ry, drawUi = true) {
@@ -1220,6 +1873,46 @@ function drawEnemies(enemies, t) {
   }
 }
 
+function drawEnemyOverlayLayer(enemies, t) {
+  void t;
+  for (const e of enemies) {
+    const re = getEnemyRenderPos(e);
+    const er = Math.max(18, Number(e.radius) || 18);
+    if (!isVisibleWorld(re.x, re.y, Math.max(60, er + 24))) continue;
+    const x = re.x - camera.x;
+    const y = re.y - camera.y;
+    const isBoss = e.type === 'boss';
+    const mobRender = getMobRenderDef(e.mobId || e.type);
+    const behavior = getEnemyRenderBehavior(e);
+    const tint = getEnemyRenderColor(e);
+    const scaleBase = Number(e.spriteScale) || Number(mobRender?.spriteScale) || (isBoss ? 2.6 : 1);
+    const scale = isBoss ? Math.max(2.2, scaleBase) : Math.max(0.65, scaleBase);
+    const sh = 50 * scale;
+
+    if (isBoss) {
+      ctx.fillStyle = '#fca5a5';
+      ctx.font = 'bold 13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(String(e.name || 'BOSS').slice(0, 22).toUpperCase(), x, y - sh * 0.62 - 10);
+    }
+    if (behavior === 'healer' || behavior === 'shield' || behavior === 'exploder') {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = hexToRgba(tint, behavior === 'exploder' ? 0.5 : 0.34);
+      ctx.lineWidth = behavior === 'shield' ? 3 : 2;
+      ctx.beginPath();
+      ctx.arc(x, y + 7, Math.max(16, er * (behavior === 'exploder' ? 1.25 : 1.05)), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (game.enemyHpBarsEnabled) {
+      const ratio = Math.max(0, e.hp / e.maxHp);
+      const hpY = isBoss ? (re.y - 20) : re.y;
+      drawHpBar(re.x, hpY, ratio);
+    }
+  }
+}
+
 
 function drawXpOrbs(orbs, nowMs) {
   if (!Array.isArray(orbs)) return;
@@ -1264,18 +1957,180 @@ function skillOrbDisplayData(skillId) {
   const def = game.skillCatalog?.[sid] || game.skillCatalog?.[skillId] || {};
   const rarity = String(def.rarity || 'common').toLowerCase();
   const fallbackName = String(def.name || sid || 'Skill');
+  const skillForIcon = def?.id || def?.icon || def?.iconPath ? def : { id: sid, name: fallbackName, rarity };
+  const iconPath = typeof getBattleHubHeroSkillIconPath === 'function'
+    ? getBattleHubHeroSkillIconPath(skillForIcon)
+    : '';
+  const badge = typeof skillBadgeLabel === 'function'
+    ? skillBadgeLabel(skillForIcon)
+    : fallbackName.replace(/[^A-Za-z0-9]+/g, ' ').trim().slice(0, 3).toUpperCase();
   return {
     name: trRender(`skill.${sid}.name`, fallbackName),
     rarity,
+    color: skillOrbAccentColor(sid, def, rarity),
+    fxKind: skillOrbFxKind(sid, def),
+    iconPath,
+    badge: badge || '?',
   };
 }
+
+function getRenderCachedImage(path) {
+  const key = String(path || '').trim();
+  if (!key) return null;
+  let img = renderImageCache.get(key);
+  if (!img) {
+    img = new Image();
+    img.decoding = 'async';
+    img.onload = () => { img.__cwFailed = false; };
+    img.onerror = () => { img.__cwFailed = true; };
+    img.src = key;
+    renderImageCache.set(key, img);
+  }
+  return img.__cwFailed ? null : img;
+}
+
+function isRenderImageReady(img) {
+  return Boolean(img?.complete && img.naturalWidth > 0 && img.naturalHeight > 0);
+}
+
+function skillOrbAccentColor(skillId, def, rarity) {
+  const text = `${skillId} ${def?.name || ''} ${def?.desc || ''}`.toLowerCase();
+  if (/(regen|vital|heal|aid|triage|shield|plating|sterile|support)/.test(text)) return '#34d399';
+  if (/(chain|lightning|shock|storm|arc|ion|pulse|electric)/.test(text)) return '#67e8f9';
+  if (/(laser|beam|lance|psi|void|shadow|eclipse|night|umbral|ghost)/.test(text)) return '#c084fc';
+  if (/(rocket|missile|explosive|barrage|shrapnel|stomp|slap)/.test(text)) return '#fb923c';
+  if (/(blood|rage|berserk|fang|blade|assassin)/.test(text)) return '#fb7185';
+  if (/(haste|speed|reload|stride|trail|dodge|jump|drink)/.test(text)) return '#facc15';
+  if (/(magnet|gps|seeker|homing|mark|sync|frame)/.test(text)) return '#60a5fa';
+  return rarityColor(rarity);
+}
+
+function skillOrbFxKind(skillId, def) {
+  const text = `${skillId} ${def?.name || ''} ${def?.desc || ''}`.toLowerCase();
+  if (/(chain|lightning|shock|storm|arc|ion|electric)/.test(text)) return 'electric';
+  if (/(regen|vital|heal|aid|triage|shield|plating|sterile|support)/.test(text)) return 'support';
+  if (/(laser|beam|lance|psi|void|shadow|eclipse|night|umbral|ghost)/.test(text)) return 'void';
+  if (/(rocket|missile|explosive|barrage|shrapnel|weapon|gun|smg|shotgun|sniper|pistol)/.test(text)) return 'weapon';
+  if (/(haste|speed|reload|stride|trail|dodge|jump|drink)/.test(text)) return 'speed';
+  return 'core';
+}
+
+function drawSkillOrbCore(info, sx, sy, baseColor, pulse) {
+  const icon = getRenderCachedImage(info.iconPath);
+  const coreR = 10.5 * pulse;
+  ctx.save();
+  const coreGrad = ctx.createRadialGradient(sx - 3, sy - 4, 1, sx, sy, coreR + 3);
+  coreGrad.addColorStop(0, '#ffffff');
+  coreGrad.addColorStop(0.38, hexToRgba(baseColor, 0.9));
+  coreGrad.addColorStop(1, 'rgba(6, 10, 18, 0.94)');
+  ctx.fillStyle = coreGrad;
+  ctx.beginPath();
+  ctx.arc(sx, sy, coreR, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(sx, sy, coreR - 1.5, 0, Math.PI * 2);
+  ctx.clip();
+  if (isRenderImageReady(icon)) {
+    const side = (coreR - 1.5) * 2;
+    ctx.globalAlpha = 0.95;
+    ctx.drawImage(icon, sx - side * 0.5, sy - side * 0.5, side, side);
+  } else {
+    ctx.fillStyle = 'rgba(3, 7, 18, 0.48)';
+    ctx.fillRect(sx - coreR, sy - coreR, coreR * 2, coreR * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 7.5px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(info.badge || '?').slice(0, 3), sx, sy + 0.4);
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle = hexToRgba(baseColor, 0.96);
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(sx, sy, coreR + 2.3, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawSkillOrbFx(sx, sy, info, baseColor, nowMs, seed, progress, own) {
+  const phase = nowMs / 1000 + seed * 0.41;
+  const pulse = 1 + Math.sin(nowMs / 170 + seed) * 0.12;
+  const auraR = own ? 27 * pulse : 21 * pulse;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const aura = ctx.createRadialGradient(sx, sy, 4, sx, sy, auraR);
+  aura.addColorStop(0, hexToRgba(baseColor, own ? 0.42 : 0.2));
+  aura.addColorStop(0.55, hexToRgba(baseColor, own ? 0.22 : 0.12));
+  aura.addColorStop(1, hexToRgba(baseColor, 0));
+  ctx.fillStyle = aura;
+  ctx.beginPath();
+  ctx.arc(sx, sy, auraR, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = hexToRgba(baseColor, own ? 0.8 : 0.42);
+  ctx.lineWidth = 1.5;
+  for (let i = 0; i < 2; i += 1) {
+    const r = 15.5 + i * 6 + Math.sin(phase * 3 + i) * 1.6;
+    const a0 = phase * (i ? -1.35 : 1.2) + i * 1.6;
+    const span = Math.PI * (info.fxKind === 'speed' ? 1.05 : 0.72);
+    ctx.beginPath();
+    ctx.arc(sx, sy, r, a0, a0 + span);
+    ctx.stroke();
+  }
+
+  const sparks = info.fxKind === 'core' ? 4 : 6;
+  for (let i = 0; i < sparks; i += 1) {
+    const a = phase * (info.fxKind === 'void' ? -1.7 : 1.9) + (i / sparks) * Math.PI * 2;
+    const inner = 13 + (i % 2) * 2;
+    const outer = 21 + ((i + seed) % 3) * 2;
+    const mx = sx + Math.cos(a + 0.18) * ((inner + outer) * 0.5);
+    const my = sy + Math.sin(a - 0.12) * ((inner + outer) * 0.5);
+    ctx.beginPath();
+    ctx.moveTo(sx + Math.cos(a) * inner, sy + Math.sin(a) * inner);
+    if (info.fxKind === 'electric') {
+      ctx.lineTo(mx + Math.sin(phase * 8 + i) * 4, my + Math.cos(phase * 7 + i) * 4);
+    } else if (info.fxKind === 'support') {
+      ctx.quadraticCurveTo(mx, my - 7, sx + Math.cos(a + 0.28) * outer, sy + Math.sin(a + 0.28) * outer);
+    } else {
+      ctx.lineTo(mx, my);
+    }
+    ctx.lineTo(sx + Math.cos(a + 0.06) * outer, sy + Math.sin(a + 0.06) * outer);
+    ctx.stroke();
+  }
+
+  if (info.fxKind === 'weapon') {
+    ctx.strokeStyle = hexToRgba('#ffffff', own ? 0.68 : 0.32);
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 3; i += 1) {
+      const a = -0.6 + i * 0.18 + Math.sin(phase * 4 + i) * 0.04;
+      ctx.beginPath();
+      ctx.moveTo(sx + Math.cos(a) * 12, sy + Math.sin(a) * 12);
+      ctx.lineTo(sx + Math.cos(a) * 24, sy + Math.sin(a) * 24);
+      ctx.stroke();
+    }
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle = progress < 0.24 ? '#f87171' : hexToRgba(baseColor, own ? 0.86 : 0.46);
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(sx, sy, 18.5, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * progress));
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawSkillOfferOrbs(orbs, nowMs) {
   if (!Array.isArray(orbs)) return;
   for (const orb of orbs) {
     if (!isVisibleWorld(orb.x, orb.y, 80)) continue;
     const own = orb.ownerId === game.myId;
     const info = skillOrbDisplayData(orb.skillId);
-    const baseColor = own ? rarityColor(info.rarity) : '#9ca3af';
+    const baseColor = own ? info.color : '#9ca3af';
     const ttlMs = Math.max(0, Number(orb.ttlMs) || 0);
     const ttlMaxMs = Math.max(1, Number(orb.ttlMaxMs) || 15000);
     const lowTtl = ttlMs <= 3500;
@@ -1283,38 +2138,20 @@ function drawSkillOfferOrbs(orbs, nowMs) {
     if (blinkHidden) continue;
     const sx = orb.x - camera.x;
     const sy = orb.y - camera.y;
-    const pulse = 1 + Math.sin((nowMs / 170) + (Number(orb.id) || 0)) * 0.16;
-    const auraR = 18 * pulse;
+    const seed = Number(orb.id) || 0;
+    const pulse = 1 + Math.sin((nowMs / 170) + seed) * 0.12;
+    const progress = Math.max(0, Math.min(1, ttlMs / ttlMaxMs));
     ctx.save();
     if (!own) ctx.globalAlpha = 0.52;
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.fillStyle = `${baseColor}55`;
-    ctx.beginPath();
-    ctx.arc(sx, sy, auraR, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = own ? (baseColor + 'cc') : '#9ca3af';
-    ctx.beginPath();
-    ctx.arc(sx, sy, 8.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = baseColor;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(sx, sy, 12.5, 0, Math.PI * 2);
-    ctx.stroke();
-    const progress = Math.max(0, Math.min(1, ttlMs / ttlMaxMs));
-    ctx.strokeStyle = lowTtl ? '#f87171' : (baseColor + 'cc');
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(sx, sy, 15.5, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * progress));
-    ctx.stroke();
+    drawSkillOrbFx(sx, sy, info, baseColor, nowMs, seed, progress, own);
+    drawSkillOrbCore(info, sx, sy, baseColor, pulse);
     const label = info.name;
     ctx.font = 'bold 12px sans-serif';
     ctx.textAlign = 'center';
     ctx.strokeStyle = 'rgba(7, 12, 20, 0.88)';
     ctx.lineWidth = 3;
     ctx.strokeText(label, sx, sy - 22);
-    ctx.fillStyle = own ? (baseColor + 'cc') : '#9ca3af';
+    ctx.fillStyle = lowTtl ? '#fecaca' : (own ? baseColor : '#cbd5e1');
     ctx.fillText(label, sx, sy - 22);
     ctx.restore();
   }
@@ -2267,6 +3104,107 @@ function drawFx() {
   ctx.globalAlpha = 1;
 }
 
+function buildMinimapStaticSignature(params) {
+  const objects = Array.isArray(game.state?.decor?.objects) ? game.state.decor.objects : [];
+  let objectVersion = Number(game.state?.decor?.objectsVersion) || 0;
+  if (!objectVersion) {
+    objectVersion = objects.length;
+    for (let i = 0; i < objects.length; i += 1) {
+      const obj = objects[i];
+      objectVersion += (Number(obj?.destroyedAt) || 0) + (obj?.destroyed ? 13 : 0);
+    }
+  }
+  return [
+    params.w,
+    params.h,
+    Math.round(params.viewX),
+    Math.round(params.viewY),
+    Math.round(params.viewW),
+    Math.round(params.viewH),
+    Math.round(params.worldW),
+    Math.round(params.worldH),
+    params.dpr,
+    objectVersion,
+  ].join(':');
+}
+
+function getMinimapStaticLayer(params) {
+  const state = visuals.minimapRenderState || (visuals.minimapRenderState = {});
+  const signature = buildMinimapStaticSignature(params);
+  if (state.staticCanvas && state.staticSignature === signature) return state.staticCanvas;
+
+  const c = document.createElement('canvas');
+  c.width = params.w;
+  c.height = params.h;
+  const g = c.getContext('2d');
+  if (!g) return null;
+
+  const toMapX = (x) => params.mapX + (Number(x || 0) - params.viewX) * params.sx;
+  const toMapY = (y) => params.mapY + (Number(y || 0) - params.viewY) * params.sy;
+  const isVisibleInMini = (x, y, margin = 0) => Number(x || 0) >= (params.viewX - margin)
+    && Number(x || 0) <= (params.viewX + params.viewW + margin)
+    && Number(y || 0) >= (params.viewY - margin)
+    && Number(y || 0) <= (params.viewY + params.viewH + margin);
+
+  const bg = g.createLinearGradient(0, 0, 0, params.h);
+  bg.addColorStop(0, 'rgba(11, 18, 28, 0.96)');
+  bg.addColorStop(1, 'rgba(5, 9, 15, 0.96)');
+  g.fillStyle = bg;
+  g.fillRect(0, 0, params.w, params.h);
+
+  g.strokeStyle = 'rgba(255,255,255,0.16)';
+  g.lineWidth = Math.max(1, params.dpr);
+  g.strokeRect(params.mapX, params.mapY, params.mapW, params.mapH);
+
+  g.fillStyle = 'rgba(34, 197, 94, 0.06)';
+  g.fillRect(params.mapX, params.mapY, params.mapW, params.mapH);
+  g.save();
+  g.beginPath();
+  g.rect(params.mapX, params.mapY, params.mapW, params.mapH);
+  g.clip();
+
+  const miniTileWorld = Math.max(180, Math.round(Math.min(params.worldW, params.worldH) / 18));
+  const tileStartX = Math.floor(params.viewX / miniTileWorld) - 1;
+  const tileEndX = Math.ceil((params.viewX + params.viewW) / miniTileWorld) + 1;
+  const tileStartY = Math.floor(params.viewY / miniTileWorld) - 1;
+  const tileEndY = Math.ceil((params.viewY + params.viewH) / miniTileWorld) + 1;
+  const tileStroke = 'rgba(255,255,255,0.04)';
+
+  for (let tx = tileStartX; tx <= tileEndX; tx += 1) {
+    for (let ty = tileStartY; ty <= tileEndY; ty += 1) {
+      const worldTileX = tx * miniTileWorld;
+      const worldTileY = ty * miniTileWorld;
+      const tileScreenX = toMapX(worldTileX);
+      const tileScreenY = toMapY(worldTileY);
+      const tileScreenW = miniTileWorld * params.sx;
+      const tileScreenH = miniTileWorld * params.sy;
+      const evenTile = ((tx + ty) & 1) === 0;
+      g.fillStyle = evenTile ? 'rgba(74, 222, 128, 0.065)' : 'rgba(15, 118, 110, 0.075)';
+      g.fillRect(tileScreenX, tileScreenY, tileScreenW, tileScreenH);
+      g.strokeStyle = tileStroke;
+      g.lineWidth = Math.max(1, params.dpr * 0.7);
+      g.strokeRect(tileScreenX, tileScreenY, tileScreenW, tileScreenH);
+    }
+  }
+  g.restore();
+
+  for (const obj of game.state.decor?.objects || []) {
+    if (obj?.destroyed && obj?.hideAfterDestroyed) continue;
+    if (!isVisibleInMini(obj.x, obj.y, Math.max(Number(obj.w) || 0, Number(obj.h) || 0))) continue;
+    const objW = Math.max(2, (Number(obj.w) || 20) * params.sx);
+    const objH = Math.max(2, (Number(obj.h) || 20) * params.sy);
+    g.save();
+    g.translate(toMapX(obj.x), toMapY(obj.y));
+    g.fillStyle = obj.destroyed ? 'rgba(120, 113, 108, 0.55)' : 'rgba(226, 232, 240, 0.4)';
+    g.fillRect(-objW * 0.5, -objH * 0.5, objW, objH);
+    g.restore();
+  }
+
+  state.staticSignature = signature;
+  state.staticCanvas = c;
+  return c;
+}
+
 function drawMinimap() {
   if (!minimapCanvasEl || !minimapCtx || !game.showMinimapEnabled || !game.state) return;
   const cssWidth = Math.max(96, Math.round(minimapCanvasEl.clientWidth || 0));
@@ -2274,9 +3212,18 @@ function drawMinimap() {
   const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
   const targetWidth = Math.max(96, Math.round(cssWidth * dpr));
   const targetHeight = Math.max(96, Math.round(cssHeight * dpr));
+  const miniState = visuals.minimapRenderState || (visuals.minimapRenderState = { lastAt: 0, width: 0, height: 0 });
+  const nowPerf = performance.now();
+  const sizeChanged = minimapCanvasEl.width !== targetWidth || minimapCanvasEl.height !== targetHeight;
+  if (!sizeChanged && nowPerf - (Number(miniState.lastAt) || 0) < MINIMAP_RENDER_INTERVAL_MS) return;
+  miniState.lastAt = nowPerf;
   if (minimapCanvasEl.width !== targetWidth || minimapCanvasEl.height !== targetHeight) {
     minimapCanvasEl.width = targetWidth;
     minimapCanvasEl.height = targetHeight;
+    miniState.width = targetWidth;
+    miniState.height = targetHeight;
+    miniState.staticSignature = '';
+    miniState.staticCanvas = null;
   }
 
   const w = minimapCanvasEl.width;
@@ -2326,63 +3273,24 @@ function drawMinimap() {
   }
 
   minimapCtx.clearRect(0, 0, w, h);
-
-  const bg = minimapCtx.createLinearGradient(0, 0, 0, h);
-  bg.addColorStop(0, 'rgba(11, 18, 28, 0.96)');
-  bg.addColorStop(1, 'rgba(5, 9, 15, 0.96)');
-  minimapCtx.fillStyle = bg;
-  minimapCtx.fillRect(0, 0, w, h);
-
-  minimapCtx.strokeStyle = 'rgba(255,255,255,0.16)';
-  minimapCtx.lineWidth = Math.max(1, dpr);
-  minimapCtx.strokeRect(mapX, mapY, mapW, mapH);
-
-  minimapCtx.fillStyle = 'rgba(34, 197, 94, 0.06)';
-  minimapCtx.fillRect(mapX, mapY, mapW, mapH);
-  minimapCtx.save();
-  minimapCtx.beginPath();
-  minimapCtx.rect(mapX, mapY, mapW, mapH);
-  minimapCtx.clip();
-
-  const miniTileWorld = Math.max(180, Math.round(Math.min(worldW, worldH) / 18));
-  const tileStartX = Math.floor(viewX / miniTileWorld) - 1;
-  const tileEndX = Math.ceil((viewX + viewW) / miniTileWorld) + 1;
-  const tileStartY = Math.floor(viewY / miniTileWorld) - 1;
-  const tileEndY = Math.ceil((viewY + viewH) / miniTileWorld) + 1;
-  const tileStroke = 'rgba(255,255,255,0.04)';
-
-  for (let tx = tileStartX; tx <= tileEndX; tx += 1) {
-    for (let ty = tileStartY; ty <= tileEndY; ty += 1) {
-      const worldTileX = tx * miniTileWorld;
-      const worldTileY = ty * miniTileWorld;
-      const tileScreenX = toMapX(worldTileX);
-      const tileScreenY = toMapY(worldTileY);
-      const tileScreenW = miniTileWorld * sx;
-      const tileScreenH = miniTileWorld * sy;
-      const evenTile = ((tx + ty) & 1) === 0;
-
-      minimapCtx.fillStyle = evenTile ? 'rgba(74, 222, 128, 0.065)' : 'rgba(15, 118, 110, 0.075)';
-      minimapCtx.fillRect(tileScreenX, tileScreenY, tileScreenW, tileScreenH);
-
-      minimapCtx.strokeStyle = tileStroke;
-      minimapCtx.lineWidth = Math.max(1, dpr * 0.7);
-      minimapCtx.strokeRect(tileScreenX, tileScreenY, tileScreenW, tileScreenH);
-    }
-  }
-
-  minimapCtx.restore();
-
-  for (const obj of game.state.decor?.objects || []) {
-    if (obj?.destroyed && obj?.hideAfterDestroyed) continue;
-    if (!isVisibleInMini(obj.x, obj.y, Math.max(Number(obj.w) || 0, Number(obj.h) || 0))) continue;
-    const objW = Math.max(2, (Number(obj.w) || 20) * sx);
-    const objH = Math.max(2, (Number(obj.h) || 20) * sy);
-    minimapCtx.save();
-    minimapCtx.translate(toMapX(obj.x), toMapY(obj.y));
-    minimapCtx.fillStyle = obj.destroyed ? 'rgba(120, 113, 108, 0.55)' : 'rgba(226, 232, 240, 0.4)';
-    minimapCtx.fillRect(-objW * 0.5, -objH * 0.5, objW, objH);
-    minimapCtx.restore();
-  }
+  const staticLayer = getMinimapStaticLayer({
+    w,
+    h,
+    dpr,
+    mapX,
+    mapY,
+    mapW,
+    mapH,
+    worldW,
+    worldH,
+    viewX,
+    viewY,
+    viewW,
+    viewH,
+    sx,
+    sy,
+  });
+  if (staticLayer) minimapCtx.drawImage(staticLayer, 0, 0);
 
   for (const orb of game.state.xpOrbs || []) {
     dot(orb.x, orb.y, Math.max(1.6 * dpr, 1.5), '#38bdf8');
@@ -2488,6 +3396,78 @@ function drawMinimap() {
   minimapCtx.strokeRect(mapX, mapY, mapW, mapH);
 }
 
+function renderWebGLWorldLayer(playersByDepth, t, options = {}) {
+  const renderer = globalThis.CWWebGLWorld;
+  if (!game.webglWorldEnabled || !renderer?.renderWorld || options.sceneTransformActive) {
+    renderer?.clear?.();
+    return { used: false, actors: false };
+  }
+  const actorSpritesReady = Boolean(sprites.enemy?.complete && sprites.enemy.naturalWidth > 0)
+    && playersByDepth.every((item) => {
+      const p = item?.p;
+      if (!p?.alive) return true;
+      const variant = getPlayerVariant(p.playerClass || (p.id === game.myId ? selectedPlayerClass : 'cyber'));
+      const sprite = sprites.players?.[variant.id];
+      return Boolean(sprite?.complete && sprite.naturalWidth > 0);
+    });
+  const drawActors = actorSpritesReady && localStorage.getItem('cw:webglActorsEnabled') !== '0';
+  const sceneTheme = getSceneTheme();
+  const used = renderer.renderWorld({
+    enabled: true,
+    width: canvas.width,
+    height: canvas.height,
+    camera,
+    game,
+    sprites,
+    shadowsEnabled: game.shadowsEnabled,
+    groundChunks: getGroundChunksForRender(),
+    mapObjects: game.sortedMapObjects || [],
+    groundOverlayEnabled: getQ().overlays,
+    groundOverlayAccent: sceneTheme.accent || '#f97316',
+    enemies: drawActors ? (game.state.enemies || []) : [],
+    playersByDepth: drawActors ? playersByDepth : [],
+    t,
+    input,
+    mobile,
+    myId: game.myId,
+    selectedPlayerClass,
+    replayActive: replayGame.active,
+    isVisibleWorld,
+    getEnemyRenderPos,
+    getMobRenderDef,
+    getEnemyRenderColor,
+    getTintedEnemyFrame,
+    getPlayerVariant,
+  });
+  return { used: Boolean(used), actors: drawActors && Boolean(used) };
+}
+
+function pushActorOcclusionMarker(out, x, y) {
+  const pool = renderScratch.actorOcclusionPool;
+  const index = out.length;
+  let marker = pool[index];
+  if (!marker) {
+    marker = { x: 0, y: 0 };
+    pool[index] = marker;
+  }
+  marker.x = x;
+  marker.y = y;
+  out.push(marker);
+}
+
+function pushPlayerDepthItem(out, p, rp) {
+  const pool = renderScratch.playersByDepthPool;
+  const index = out.length;
+  let item = pool[index];
+  if (!item) {
+    item = { p: null, rp: null };
+    pool[index] = item;
+  }
+  item.p = p;
+  item.rp = rp;
+  out.push(item);
+}
+
 function render(ts) {
   const dt = Math.min(0.05, (ts - lastFrameTs) / 1000);
   lastFrameTs = ts;
@@ -2539,8 +3519,11 @@ function render(ts) {
   updateXpOrbInterpolation(simDt);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  updateTopCenterHud(Number(game.state.now) || Date.now());
-  updateBottomHud();
+  if (ts - renderScratch.hudLastAt >= 100) {
+    renderScratch.hudLastAt = ts;
+    updateTopCenterHud(Number(game.state.now) || Date.now());
+    updateBottomHud();
+  }
 
   if (!Number.isFinite(Number(camera.x))) camera.x = 0;
   if (!Number.isFinite(Number(camera.y))) camera.y = 0;
@@ -2600,98 +3583,79 @@ function render(ts) {
     ctx.translate(-canvas.width * 0.5, -canvas.height * 0.5);
     ctx.scale(sceneScale, sceneScale);
   }
-  drawGround();
-  drawBloodPuddles();
-  drawMapObjects(Number(game.state.now) || Date.now());
+  const playersByDepth = renderScratch.playersByDepth;
+  playersByDepth.length = 0;
+  for (const p of game.state.players || []) {
+    pushPlayerDepthItem(playersByDepth, p, getPlayerRenderPos(p));
+  }
+  playersByDepth.sort((a, b) => (Number(a.rp.y) || 0) - (Number(b.rp.y) || 0));
+
+  const stateNowMs = Number(game.state.now) || Date.now();
+  const webglWorld = renderWebGLWorldLayer(playersByDepth, ts / 1000, { sceneTransformActive });
+  if (webglWorld.used) {
+    drawBloodPuddles();
+    drawMapObjectHpBars(stateNowMs);
+  } else {
+    drawGround();
+    drawBloodPuddles();
+    drawMapObjects(stateNowMs);
+  }
   drawXpOrbs(game.state.xpOrbs || [], Number(game.state.now) || Date.now());
   drawBossPortals(game.state.bossPortals || [], Number(game.state.now) || Date.now());
   drawSkillOfferOrbs(game.state.skillOrbs || [], Number(game.state.now) || Date.now());
 
   for (const d of game.state.drops || []) {
-    if (!isVisibleWorld(d.x, d.y, 50)) continue;
-    const x = d.x - camera.x;
-    const y = d.y - camera.y;
-    const isXpVacuum = d.kind === 'xp_vacuum';
-    const glow = isXpVacuum
-      ? '#a78bfa'
-      : (d.weaponKey === 'sniper' ? '#e5e7eb' : (d.weaponKey === 'shotgun' ? '#f97316' : (d.weaponKey === 'smg' ? '#38bdf8' : '#22c55e')));
-
-    const ttlMs = Math.max(0, Number(d.ttlMs) || 0);
-    const blink = ttlMs > 0 && ttlMs <= 5000;
-    const blinkOn = !blink || (Math.sin(ts / 90) > 0);
-    if (!blinkOn) continue;
-
-    drawShadowAtScreen(x, y + 10, 9, 4, blink ? 0.14 : 0.24);
-
-    ctx.fillStyle = blink ? 'rgba(40,10,10,0.84)' : 'rgba(8,12,18,0.78)';
-    ctx.fillRect(x - 26, y - 28, 52, 12);
-    ctx.strokeStyle = blink ? 'rgba(248,113,113,0.9)' : 'rgba(255,255,255,0.22)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x - 26, y - 28, 52, 12);
-
-    if (isXpVacuum) {
-      ctx.fillStyle = '#ddd6fe';
-      ctx.beginPath();
-      ctx.arc(x - 14, y - 21, 3.5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#a78bfa';
-      ctx.lineWidth = 1.4;
-      ctx.beginPath();
-      ctx.arc(x - 14, y - 21, 5.6, 0, Math.PI * 2);
-      ctx.stroke();
-    } else {
-      drawWeaponIcon(x - 17, y - 22, d.weaponKey);
-    }
-
-    ctx.fillStyle = blink ? '#fecaca' : '#e2e8f0';
-    ctx.font = '10px sans-serif';
-    ctx.textAlign = 'left';
-    const label = d.weaponLabel || (isXpVacuum ? 'XP Surge' : 'Weapon');
-    const warnSec = blink ? Math.max(0, Math.ceil(ttlMs / 1000)) : 0;
-    ctx.fillText(blink ? `${label} ${warnSec}s` : label, x - 10, y - 18);
-
-    ctx.beginPath();
-    ctx.moveTo(x, y - 12);
-    ctx.lineTo(x + 10, y);
-    ctx.lineTo(x, y + 12);
-    ctx.lineTo(x - 10, y);
-    ctx.closePath();
-    ctx.fillStyle = blink ? '#ef4444' : glow;
-    ctx.fill();
+    drawDropPickup(d, ts);
   }
+  const projectile = renderScratch.projectile;
   for (const b of getBulletsForRender()) {
     if (b?.replayHidden) continue;
     const rb = getBulletRenderPos(b);
     if (!rb) continue;
     const isRocket = String(rb.kind || b.kind || '').toLowerCase() === 'rocket';
     if (!isVisibleWorld(rb.x, rb.y, isRocket ? 24 : 12)) continue;
+    projectile.id = b.id;
+    projectile.x = rb.x;
+    projectile.y = rb.y;
+    projectile.vx = rb.vx ?? b.vx;
+    projectile.vy = rb.vy ?? b.vy;
+    projectile.color = rb.color || b.color || (isRocket ? '#fb923c' : '#f59e0b');
+    projectile.kind = rb.kind || b.kind || 'bullet';
+    projectile.radius = rb.radius || b.radius || 3;
+    projectile.weaponKey = rb.weaponKey || b.weaponKey || '';
+    projectile.ownerId = rb.ownerId || b.ownerId || '';
+    projectile.ownerPlayerId = rb.ownerPlayerId || b.ownerPlayerId || '';
+    projectile.shooterType = rb.shooterType || b.shooterType || '';
     if (isRocket) {
-      drawRocketProjectile({ ...b, ...rb, color: rb.color || b.color || '#fb923c' });
+      drawRocketProjectile(projectile);
     } else {
-      drawEnergyProjectile({ ...b, ...rb, color: rb.color || b.color || '#f59e0b' });
+      drawEnergyProjectile(projectile);
     }
   }
-  drawEnemies(game.state.enemies, ts / 1000);
-
-  const playersByDepth = (game.state.players || [])
-    .map((p) => ({ p, rp: getPlayerRenderPos(p) }))
-    .sort((a, b) => (Number(a.rp.y) || 0) - (Number(b.rp.y) || 0));
-  for (const item of playersByDepth) {
-    const p = item.p;
-    const rp = item.rp;
-    drawPlayer(p, ts / 1000, p.id === game.myId, rp.x, rp.y, false);
+  if (!webglWorld.actors) {
+    drawEnemies(game.state.enemies, ts / 1000);
+    for (const item of playersByDepth) {
+      const p = item.p;
+      const rp = item.rp;
+      drawPlayer(p, ts / 1000, p.id === game.myId, rp.x, rp.y, false);
+    }
+  } else {
+    drawEnemyOverlayLayer(game.state.enemies, ts / 1000);
   }
-  const actorOcclusionMarkers = (game.state.enemies || [])
-    .map((e) => {
-      const re = getEnemyRenderPos(e);
-      return re ? { x: re.x, y: re.y } : null;
-    })
-    .filter(Boolean)
-    .concat(
-      playersByDepth
-        .filter((item) => item?.p?.alive)
-        .map((item) => ({ x: Number(item.rp?.x) || 0, y: Number(item.rp?.y) || 0 })),
-    );
+  const actorOcclusionMarkers = renderScratch.actorOcclusionMarkers;
+  actorOcclusionMarkers.length = 0;
+  for (const e of game.state.enemies || []) {
+    const re = getEnemyRenderPos(e);
+    if (!re || !isVisibleWorld(re.x, re.y, 120)) continue;
+    pushActorOcclusionMarker(actorOcclusionMarkers, re.x, re.y);
+  }
+  for (const item of playersByDepth) {
+    if (!item?.p?.alive) continue;
+    const x = Number(item.rp?.x) || 0;
+    const y = Number(item.rp?.y) || 0;
+    if (!isVisibleWorld(x, y, 120)) continue;
+    pushActorOcclusionMarker(actorOcclusionMarkers, x, y);
+  }
   drawMapObjectOcclusionOverlay(actorOcclusionMarkers, Number(game.state.now) || Date.now());
   drawCompanionUiLayer(playersByDepth);
   drawPlayerUiLayer(playersByDepth);

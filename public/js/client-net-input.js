@@ -3910,9 +3910,7 @@ function tickReplayGame(ts) {
     game.bossAlive = nextState.bossAlive;
     game.roomDifficulty = nextState.roomDifficulty;
     game.sortedTrees = Array.isArray(nextState.decor?.trees) ? nextState.decor.trees.slice().sort((a, b) => a.y - b.y) : [];
-    game.sortedMapObjects = Array.isArray(nextState.decor?.objects)
-      ? nextState.decor.objects.slice().sort((a, b) => ((Number(a.y) || 0) + (Number(a.h) || 0) * 0.08) - ((Number(b.y) || 0) + (Number(b.h) || 0) * 0.08))
-      : [];
+    updateSortedMapObjectsFromState(nextState);
     updateScoreboard(nextState.players || []);
     updateStatsPanel((nextState.players || []).find((p) => p.id === game.myId) || (nextState.players || [])[0] || null);
     updateJumpButtonUi((nextState.players || []).find((p) => p.id === game.myId) || null);
@@ -4592,8 +4590,10 @@ window.addEventListener('resize', () => {
 });
 function updatePlayerInterpolation(dt) {
   if (!game.state) return;
-  const liveMap = mapById(game.state.players);
-  const targetMap = game.sampledNet?.players ? new Map(game.sampledNet.players) : new Map(liveMap);
+  const liveMap = fillMapById(game.state.players, interpolationScratch.livePlayers);
+  const targetMap = game.sampledNet?.players
+    ? copyMap(game.sampledNet.players, interpolationScratch.targetPlayers)
+    : copyMap(liveMap, interpolationScratch.targetPlayers);
   const usingBufferedTargets = Boolean(game.sampledNet?.players);
   const statePerfAt = usingBufferedTargets ? 0 : Math.max(0, Number(netStats?.lastStateAt) || 0);
   const extraSec = usingBufferedTargets ? 0 : getLiveStateExtrapolationSec();
@@ -4891,7 +4891,7 @@ function spawnSpectatorShotEventFx(event, state) {
 
 function updateEnemyInterpolation(dt) {
   if (!game.state) return;
-  const targetMap = game.sampledNet?.enemies || mapById(game.state.enemies);
+  const targetMap = game.sampledNet?.enemies || fillMapById(game.state.enemies, interpolationScratch.liveEnemies);
   const usingBufferedTargets = Boolean(game.sampledNet?.enemies);
   const statePerfAt = usingBufferedTargets ? 0 : Math.max(0, Number(netStats?.lastStateAt) || 0);
   const extraSec = usingBufferedTargets ? 0 : getLiveStateExtrapolationSec();
@@ -5019,8 +5019,7 @@ function syncBulletsFromState(nextState) {
 }
 
 function updateBulletInterpolation(dt) {
-  const liveBullets = mapById(game.state?.bullets || []);
-  const targets = game.sampledNet?.bullets || new Map(liveBullets);
+  const targets = game.sampledNet?.bullets || fillMapById(game.state?.bullets || [], interpolationScratch.liveBullets);
   const alive = new Set();
 
   for (const [id, tb] of targets.entries()) {
@@ -5118,7 +5117,7 @@ function updateBulletInterpolation(dt) {
 
 function updateXpOrbInterpolation(dt) {
   if (!game.state) return;
-  const targetMap = game.sampledNet?.xpOrbs || mapById(game.state.xpOrbs || []);
+  const targetMap = game.sampledNet?.xpOrbs || fillMapById(game.state.xpOrbs || [], interpolationScratch.liveXpOrbs);
   const alpha = 1 - Math.exp(-roomSync.entityInterpRate * dt * 0.9);
   const alive = new Set();
   for (const [id, o] of targetMap.entries()) {
@@ -5235,6 +5234,70 @@ function mapById(list) {
   const out = new Map();
   for (const item of list) out.set(item.id, item);
   return out;
+}
+
+const interpolationScratch = {
+  livePlayers: new Map(),
+  targetPlayers: new Map(),
+  liveEnemies: new Map(),
+  liveBullets: new Map(),
+  liveXpOrbs: new Map(),
+  sortedObjects: new Map(),
+};
+
+function fillMapById(list, out) {
+  const target = out || new Map();
+  target.clear();
+  for (const item of Array.isArray(list) ? list : []) {
+    if (!item) continue;
+    target.set(item.id, item);
+  }
+  return target;
+}
+
+function copyMap(source, out) {
+  const target = out || new Map();
+  target.clear();
+  if (source && typeof source.entries === 'function') {
+    for (const [key, value] of source.entries()) target.set(key, value);
+  }
+  return target;
+}
+
+function getMapObjectsSortSignature(state) {
+  const objects = Array.isArray(state?.decor?.objects) ? state.decor.objects : [];
+  const version = Math.max(0, Number(state?.decor?.objectsVersion) || 0);
+  if (version > 0) return `${state?.roomCode || ''}:${objects.length}:${version}`;
+  return objects.map((obj) => [
+    obj?.id || '',
+    Number(obj?.x) || 0,
+    Number(obj?.y) || 0,
+    Number(obj?.w) || 0,
+    Number(obj?.h) || 0,
+  ].join(':')).join('|');
+}
+
+function updateSortedMapObjectsFromState(state) {
+  const objects = Array.isArray(state?.decor?.objects) ? state.decor.objects : [];
+  if (objects.length <= 0) {
+    game.sortedMapObjects = [];
+    game.sortedMapObjectIds = [];
+    game.sortedMapObjectsSignature = '';
+    return;
+  }
+  const signature = getMapObjectsSortSignature(state);
+  if (game.sortedMapObjectsSignature === signature && Array.isArray(game.sortedMapObjectIds) && game.sortedMapObjectIds.length === objects.length) {
+    const byId = fillMapById(objects, interpolationScratch.sortedObjects);
+    game.sortedMapObjects = game.sortedMapObjectIds.map((id) => byId.get(id)).filter(Boolean);
+    return;
+  }
+  const sorted = objects.slice().sort((a, b) => (
+    ((Number(a.y) || 0) + (Number(a.h) || 0) * 0.08)
+    - ((Number(b.y) || 0) + (Number(b.h) || 0) * 0.08)
+  ));
+  game.sortedMapObjects = sorted;
+  game.sortedMapObjectIds = sorted.map((obj) => obj?.id || '');
+  game.sortedMapObjectsSignature = signature;
 }
 
 function deriveSnapshotVelocity(prevItem, nextItem, dtMs, maxSpeed = 0) {
@@ -6090,6 +6153,15 @@ function resetRunCameraView() {
   camera.y = 0;
   game.sortedTreesRoomCode = '';
   game.sortedTreesSourceCount = -1;
+  game.sortedMapObjects = [];
+  game.sortedMapObjectIds = [];
+  game.sortedMapObjectsSignature = '';
+  if (visuals?.groundChunkCache instanceof Map) visuals.groundChunkCache.clear();
+  if (visuals?.minimapRenderState) {
+    visuals.minimapRenderState.staticCanvas = null;
+    visuals.minimapRenderState.staticSignature = '';
+  }
+  globalThis.CWWebGLWorld?.clear?.();
 }
 
 function clampRunCameraCenter(center, viewport, world) {
@@ -6746,9 +6818,7 @@ message: (ev) => {
       game.sortedTreesRoomCode = s.roomCode;
       game.sortedTreesSourceCount = nextTrees.length;
     }
-    game.sortedMapObjects = Array.isArray(s.decor?.objects)
-      ? s.decor.objects.slice().sort((a, b) => ((Number(a.y) || 0) + (Number(a.h) || 0) * 0.08) - ((Number(b.y) || 0) + (Number(b.h) || 0) * 0.08))
-      : [];
+    updateSortedMapObjectsFromState(s);
     updateScoreboard(s.players);
 
     const seenAliveIds = new Set();

@@ -1,5 +1,6 @@
 ﻿const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
+const webglCanvas = document.getElementById('game-webgl');
 
 function cwFormatDurationSec(value, options = {}) {
   const totalSec = Math.max(0, Math.floor(Number(value) || 0));
@@ -329,7 +330,10 @@ const game = {
   state: null,
   sortedTrees: [],
   sortedMapObjects: [],
+  sortedMapObjectIds: [],
+  sortedMapObjectsSignature: '',
   qualityKey: 'medium',
+  webglWorldEnabled: localStorage.getItem('cw:webglWorldEnabled') !== '0',
   shadowsEnabled: getToggleDefaultOn('cw:shadowsEnabled'),
   bulletTracersEnabled: getToggleDefaultOn('cw:bulletTracersEnabled'),
   enemyHpBarsEnabled: getToggleDefaultOn('cw:enemyHpBarsEnabled'),
@@ -437,6 +441,15 @@ const visuals = {
   groundTileCanvas: null,
   groundTiles: {},
   groundTileSize: 0,
+  groundChunkCache: new Map(),
+  groundChunkCacheSignature: '',
+  minimapRenderState: {
+    lastAt: 0,
+    width: 0,
+    height: 0,
+    staticCanvas: null,
+    staticSignature: '',
+  },
 };
 
 const gameAudio = {
@@ -4151,6 +4164,9 @@ function buildGroundMaterialSet(material, size) {
 function rebuildGroundTile() {
   visuals.groundTileCanvas = null;
   visuals.groundTiles = {};
+  if (visuals.groundChunkCache instanceof Map) visuals.groundChunkCache.clear();
+  visuals.groundChunkCacheSignature = '';
+  globalThis.CWWebGLWorld?.clearTextureCache?.();
   if (!getQ().groundTexture) return;
 
   const size = getQ().groundTileSize;
@@ -5074,6 +5090,13 @@ function resizeCanvas() {
   const { width, height } = getSafeCanvasViewportSize();
   if (canvas.width !== width) canvas.width = width;
   if (canvas.height !== height) canvas.height = height;
+  if (webglCanvas) {
+    if (webglCanvas.width !== width) webglCanvas.width = width;
+    if (webglCanvas.height !== height) webglCanvas.height = height;
+  }
+  if (typeof globalThis.CWWebGLWorld?.resize === 'function') {
+    globalThis.CWWebGLWorld.resize(width, height);
+  }
 }
 
 window.addEventListener('resize', resizeCanvas);
@@ -5214,6 +5237,7 @@ function updateHudVisibility(overlayOpen) {
   const showHudPanel = !menuOpen;
   const embedMode = Boolean(game.embedMode);
   canvas.classList.toggle('hidden', menuOpen);
+  if (webglCanvas) webglCanvas.classList.toggle('hidden', menuOpen);
   if (hudEl) hudEl.classList.toggle('menu-hidden', !showHudPanel || embedMode);
   if (toggleInfoBtn) toggleInfoBtn.classList.toggle('hidden', embedMode || !infoPanelHidden || menuOpen);
   const joinToggleInfoBtn = document.getElementById('join-toggle-info');

@@ -10,9 +10,11 @@
   const missionVictoryRewardsEl = document.getElementById('mission-victory-rewards');
   const missionVictoryContinueBtn = document.getElementById('mission-victory-continue');
   const missionVictoryMenuBtn = document.getElementById('mission-victory-menu');
+  const deathRewardsTitleEl = deathRewardsPanelEl?.querySelector('.death-rewards-title') || null;
   let latestMissionVictoryPayload = null;
   let pendingMissionVictorySparkTimer = null;
   let pendingMissionVictoryLayoutFrame = 0;
+  let pendingDeathRewardsLayoutFrame = 0;
 
   function formatRunDuration(value) {
     if (typeof globalThis.cwFormatDurationSec === 'function') return globalThis.cwFormatDurationSec(value);
@@ -33,6 +35,10 @@
     const resultMission = result?.mission && typeof result.mission === 'object' ? result.mission : null;
     const optionMission = options?.mission && typeof options.mission === 'object' ? options.mission : null;
     return resultMission || optionMission || game.mission || null;
+  }
+
+  function getDeathPayloadMission(result) {
+    return (result?.mission && typeof result.mission === 'object') ? result.mission : null;
   }
 
   function formatMissionGoalValue(goal) {
@@ -274,7 +280,16 @@
 
   function clearDeathRewardsUi() {
     joinOverlay.classList.remove('death-rewards-visible');
-    if (deathRewardsBodyEl) deathRewardsBodyEl.innerHTML = escapeNewsHtml(tr('ui.death.collecting_rewards'));
+    deathRewardsPanelEl?.classList.remove('is-fit', 'is-scrollable');
+    if (deathRewardsTitleEl) deathRewardsTitleEl.textContent = 'Полевой акт вскрытия';
+    if (deathRewardsMenuBtn) {
+      deathRewardsMenuBtn.textContent = 'В штаб';
+      deathRewardsMenuBtn.title = 'Закрыть посмертный отчет и вернуться в штаб.';
+      deathRewardsMenuBtn.setAttribute('aria-label', 'В штаб: закрыть посмертный отчет');
+    }
+    if (deathRewardsBodyEl) {
+      deathRewardsBodyEl.innerHTML = '<div class="death-defeat-loading">Считаем, что от нас осталось. Бухгалтерия надела перчатки.</div>';
+    }
   }
 
   function localizeRewardCardName(cardId, fallbackName) {
@@ -351,40 +366,151 @@
       + `</details>`;
   }
 
-  function renderDeathRewardsPanel() {
-    if (!deathRewardsBodyEl) return;
-    const run = latestDeathSnapshot || {};
-    const rewards = latestRunRewards;
-    const isLoggedIn = Boolean(game.playerAuth?.player);
+  function buildDeathDefeatLine(run) {
+    const mission = getDeathPayloadMission(run);
+    const campaign = String(mission?.campaignShortName || mission?.campaignName || run?.campaignName || '').trim();
+    const missionTitle = String(mission?.title || run?.levelTitle || '').trim();
+    const intro = [campaign, missionTitle].filter(Boolean).join(' / ');
+    const enemyKills = Math.max(0, Number(run?.enemyKills) || Number(run?.kills) || 0);
+    const bossKills = Math.max(0, Number(run?.bossKills) || 0);
+    const survival = formatRunDuration(Math.max(1, Number(run?.survivalSec) || 1));
+    const prefix = intro ? `${intro}: ` : '';
+    if (mission) {
+      return `${prefix}операция закончилась горизонтально. Продержались ${survival}, врагов утащили с собой ${enemyKills}, боссов зацепили ${bossKills}. План был бодрый, тело оказалось менее убедительным.`;
+    }
+    return `${prefix}герой вышел на арену с выражением лица "я всё контролирую" и через ${survival} стал частью статистики. Врагов списано ${enemyKills}, гордость повреждена, но не списана.`;
+  }
+
+  function buildDeathDefeatStatsHtml(run) {
+    const mission = getDeathPayloadMission(run);
+    const goals = Array.isArray(mission?.goals) ? mission.goals : [];
+    const completedGoals = Math.max(0, Number(mission?.completedGoals) || goals.filter((goal) => goal?.completed).length || 0);
+    const totalGoals = Math.max(goals.length, Number(mission?.totalGoals) || 0);
+    const mode = String(run?.gameMode || game.gameMode || 'normal');
+    const rows = [
+      ['Счет', Math.max(0, Number(run?.score) || 0)],
+      ['Фрагов', Math.max(0, Number(run?.kills) || 0)],
+      ['Мобов списано', Math.max(0, Number(run?.enemyKills) || Number(run?.kills) || 0)],
+      ['Боссов зацеплено', Math.max(0, Number(run?.bossKills) || 0)],
+      ['Прожили', formatRunDuration(Math.max(1, Number(run?.survivalSec) || 1))],
+      ['Уровень героя', `Lv ${Math.max(1, Number(run?.heroLevel) || 1)}`],
+      ['Смертей', Math.max(1, Number(run?.deaths) || Number(run?.pvpDeaths) || 1)],
+      ['Итог', 'пакетирован'],
+      ['Цели', totalGoals > 0 ? `${completedGoals}/${totalGoals}` : 'не дожали'],
+      ['Комната', String(run?.roomCode || game.roomCode || '-')],
+      ['Режим', mode],
+      ['Карточка', mission ? 'не вырвана' : 'осталась там'],
+    ];
+    return rows.map(([label, value]) => (
+      `<div class="death-defeat-stat"><span>${escapeHtml(String(label))}</span><b>${escapeHtml(String(value))}</b></div>`
+    )).join('');
+  }
+
+  function buildDeathGoalProgress(goal) {
+    const target = Math.max(1, Number(goal?.target) || 1);
+    const current = Math.max(0, Number(goal?.current) || 0);
+    const rawProgress = Number(goal?.progress);
+    if (Number.isFinite(rawProgress)) return Math.max(0, Math.min(100, Math.round(rawProgress * 100)));
+    return Math.max(0, Math.min(100, Math.round((current / target) * 100)));
+  }
+
+  function buildDeathDefeatObjectivesHtml(run) {
+    const mission = getDeathPayloadMission(run);
+    const goals = Array.isArray(mission?.goals) ? mission.goals : [];
+    const title = '<div class="death-defeat-section-title">Цели, которые смотрели на нас с осуждением</div>';
+    if (!goals.length) {
+      const kills = Math.max(0, Number(run?.enemyKills) || Number(run?.kills) || 0);
+      const survival = formatRunDuration(Math.max(1, Number(run?.survivalSec) || 1));
+      const fallbackRows = [
+        ['Остаться живым', 'провалено выразительно', 13],
+        ['Наследить на арене', `${kills} подтвержденных причин нервничать`, Math.min(100, 22 + kills * 2)],
+        ['Продержаться достойно', survival, 48],
+      ];
+      return title
+        + '<div class="death-defeat-objective-list">'
+        + fallbackRows.map(([label, value, progress]) => ''
+          + '<div class="death-defeat-objective">'
+          +   `<strong>${escapeHtml(String(label))}</strong>`
+          +   `<span>${escapeHtml(String(value))}</span>`
+          +   `<div class="death-defeat-progress"><i style="--goal-progress: ${Math.max(0, Math.min(100, Number(progress) || 0))}%"></i></div>`
+          + '</div>').join('')
+        + '</div>';
+    }
+    const items = goals.map((goal) => {
+      const label = String(goal?.label || goal?.type || 'Objective').trim();
+      const progress = buildDeathGoalProgress(goal);
+      const done = Boolean(goal?.completed) || progress >= 100;
+      return ''
+        + `<div class="death-defeat-objective${done ? ' is-done' : ''}">`
+        +   `<strong>${escapeHtml(label)}</strong>`
+        +   `<span>${escapeHtml(done ? `${formatMissionGoalValue(goal)} | закрыто` : `${formatMissionGoalValue(goal)} | не дожали`)}</span>`
+        +   `<div class="death-defeat-progress"><i style="--goal-progress: ${progress}%"></i></div>`
+        + '</div>';
+    }).join('');
+    return title + `<div class="death-defeat-objective-list">${items}</div>`;
+  }
+
+  function buildDeathDefeatRewardsHtml(run, rewards, isLoggedIn) {
+    const title = '<div class="death-defeat-section-title">Добыча и страховая ведомость</div>';
     const accountXpLabel = rewards
       ? ('+' + rewards.gainedXp)
       : (isLoggedIn ? trWithFallback('ui.pending', 'Pending...') : trWithFallback('ui.profile.login_required', 'Login required.'));
     const shardsLabel = rewards
       ? ('+' + rewards.gainedShards)
       : (isLoggedIn ? trWithFallback('ui.pending', 'Pending...') : trWithFallback('ui.profile.login_required', 'Login required.'));
-    const isPvpRun = normalizeGameMode(run.gameMode || game.gameMode || 'normal') === 'pvp';
-    const deathsValue = Math.max(0, Number(run.deaths) || Number(run.pvpDeaths) || 0);
-    const baseRows = [
-      [trWithFallback('ui.run_rewards.score', 'Score'), Math.max(0, Number(run.score) || 0)],
-      [trWithFallback('ui.run_rewards.kills', 'Kills'), Math.max(0, Number(run.kills) || 0)],
-      [trWithFallback('ui.run_rewards.deaths', 'Deaths'), deathsValue],
-      [trWithFallback('ui.run_rewards.enemy_kills', 'Enemy kills'), Math.max(0, Number(run.enemyKills) || 0)],
-      [trWithFallback('ui.run_rewards.boss_kills', 'Boss kills'), Math.max(0, Number(run.bossKills) || 0)],
-      [trWithFallback('ui.run_rewards.survival', 'Survival'), formatRunDuration(Math.max(1, Number(run.survivalSec) || 1))],
-      [trWithFallback('ui.run_rewards.hero_xp', 'Hero XP'), `Lv${Math.max(1, Number(run.heroLevel) || 1)} | ${Math.max(0, Number(run.heroXp) || 0)}/${Math.max(1, Number(run.heroXpToNext) || 1)}`],
-      [trWithFallback('ui.run_rewards.account_xp', 'Account XP'), accountXpLabel],
-      [trWithFallback('ui.run_rewards.shards', 'Shards'), shardsLabel],
+    const rows = [
+      ['Опыт аккаунта', accountXpLabel],
+      ['Осколки', shardsLabel],
+      ['Hero XP', `Lv${Math.max(1, Number(run?.heroLevel) || 1)} | ${Math.max(0, Number(run?.heroXp) || 0)}/${Math.max(1, Number(run?.heroXpToNext) || 1)}`],
     ];
-    if (rewards && rewards.levelsGained > 0) baseRows.push([trWithFallback('ui.run_rewards.account_level_up', 'Account level up'), '+' + rewards.levelsGained]);
-    const rowsHtml = baseRows.map(([k, v]) => `<div class="death-reward-row"><span>${escapeHtml(String(k))}</span><b>${escapeHtml(String(v))}</b></div>`).join('');
+    if (rewards && rewards.levelsGained > 0) rows.push(['Уровни аккаунта', '+' + rewards.levelsGained]);
+    const rowsHtml = rows.map(([label, value]) => (
+      `<div class="death-reward-row"><span>${escapeHtml(String(label))}</span><b>${escapeHtml(String(value))}</b></div>`
+    )).join('');
     const cardsHtml = rewards && rewards.cards.length > 0
       ? (`<div class="death-reward-cards">` + rewards.cards.map((card) => `<span>+${card.count} ${escapeHtml(card.name)}</span>`).join('') + `</div>`)
-      : '<div class="death-reward-cards muted">' + trWithFallback('ui.run_rewards.no_cards', 'No hero card drops this run') + '</div>';
+      : '<div class="death-reward-cards muted">Карты героев не выпали. Видимо, курьер тоже не выжил.</div>';
     const itemsHtml = rewards && rewards.items.length > 0
       ? (`<div class="death-reward-cards">` + rewards.items.map((item) => `<span>+${item.quantity} ${escapeHtml(item.name)}${item.level > 1 ? ` Lv${item.level}` : ''}</span>`).join('') + `</div>`)
-      : '<div class="death-reward-cards muted">' + trWithFallback('ui.run_rewards.no_items', 'Предметы в этот раз не выпали') + '</div>';
+      : '<div class="death-reward-cards muted">Предметы не выпали. Зато выпал герой.</div>';
+    return title + `<div class="death-defeat-reward-list">${rowsHtml}${cardsHtml}${itemsHtml}</div>`;
+  }
+
+  function renderDeathRewardsPanel() {
+    if (!deathRewardsBodyEl) return;
+    const run = latestDeathSnapshot || {};
+    const rewards = latestRunRewards;
+    const isLoggedIn = Boolean(game.playerAuth?.player);
+    const isPvpRun = normalizeGameMode(run.gameMode || game.gameMode || 'normal') === 'pvp';
     const pvpResultsHtml = (isPvpRun && Boolean(run.pvpMatchEnded)) ? buildDeathRewardsPvpResultsHtml() : '';
-    deathRewardsBodyEl.innerHTML = rowsHtml + cardsHtml + itemsHtml + pvpResultsHtml;
+    if (deathRewardsTitleEl) deathRewardsTitleEl.textContent = getDeathPayloadMission(run) ? 'Миссия провалена. Но с протоколом.' : 'Забег лёг. Отчёт выжил.';
+    if (deathRewardsMenuBtn) deathRewardsMenuBtn.textContent = 'В штаб';
+    deathRewardsBodyEl.innerHTML = ''
+      + '<div class="death-defeat-head">'
+      +   '<div class="death-defeat-kicker">ПОСМЕРТНЫЙ РАЗБОР ПОЛЁТОВ</div>'
+      +   '<h2>Сдохли. Но шумно.</h2>'
+      +   `<p>${escapeHtml(buildDeathDefeatLine(run))}</p>`
+      + '</div>'
+      + `<div class="death-defeat-stats">${buildDeathDefeatStatsHtml(run)}</div>`
+      + `<div class="death-defeat-objectives">${buildDeathDefeatObjectivesHtml(run)}</div>`
+      + `<div class="death-defeat-rewards">${buildDeathDefeatRewardsHtml(run, rewards, isLoggedIn)}${pvpResultsHtml}</div>`;
+    scheduleDeathRewardsLayoutSync();
+  }
+
+  function syncDeathRewardsLayoutMode() {
+    if (!deathRewardsPanelEl) return;
+    deathRewardsPanelEl.classList.remove('is-fit', 'is-scrollable');
+    const limit = Math.max(260, Math.floor((window.innerHeight || document.documentElement.clientHeight || 720) * 0.8));
+    const naturalHeight = Math.ceil(deathRewardsPanelEl.scrollHeight || deathRewardsPanelEl.getBoundingClientRect().height || 0);
+    deathRewardsPanelEl.classList.add(naturalHeight <= limit + 1 ? 'is-fit' : 'is-scrollable');
+  }
+
+  function scheduleDeathRewardsLayoutSync() {
+    if (pendingDeathRewardsLayoutFrame) cancelAnimationFrame(pendingDeathRewardsLayoutFrame);
+    pendingDeathRewardsLayoutFrame = requestAnimationFrame(() => {
+      pendingDeathRewardsLayoutFrame = 0;
+      syncDeathRewardsLayoutMode();
+    });
   }
 
   function scheduleDeathRewardsReveal() {
@@ -394,6 +520,7 @@
       pendingDeathRewardsTimer = null;
       renderDeathRewardsPanel();
       joinOverlay.classList.add('death-rewards-visible');
+      scheduleDeathRewardsLayoutSync();
     }, DEATH_REWARDS_SHOW_DELAY_MS);
   }
 
@@ -405,6 +532,10 @@
     if (pendingDeathRewardsTimer) {
       clearTimeout(pendingDeathRewardsTimer);
       pendingDeathRewardsTimer = null;
+    }
+    if (pendingDeathRewardsLayoutFrame) {
+      cancelAnimationFrame(pendingDeathRewardsLayoutFrame);
+      pendingDeathRewardsLayoutFrame = 0;
     }
     pendingDeathResult = null;
     clearDeathScreenBloodFx();
@@ -555,14 +686,18 @@
   }
 
   function openDeathOverlay(result) {
-    latestDeathSnapshot = result || null;
+    const snapshot = { ...(result || {}) };
+    if (!snapshot.mission && game.mission && typeof game.mission === 'object') {
+      snapshot.mission = JSON.parse(JSON.stringify(game.mission));
+    }
+    latestDeathSnapshot = snapshot;
     cancelPendingDeathOverlay();
     if (typeof window.cwTrackMetrikaGoal === 'function') {
       window.cwTrackMetrikaGoal('player_death', {
-        room_code: result?.roomCode || '-',
-        kills: Number(result?.kills) || 0,
-        score: Number(result?.score) || 0,
-        survival_sec: Number(result?.survivalSec) || 0,
+        room_code: snapshot?.roomCode || '-',
+        kills: Number(snapshot?.kills) || 0,
+        score: Number(snapshot?.score) || 0,
+        survival_sec: Number(snapshot?.survivalSec) || 0,
       });
     }
     leaveActiveRoom();
@@ -581,7 +716,7 @@
     joinOverlay.style.display = 'grid';
     joinOverlay.classList.add('death-mode');
     spawnDeathScreenBloodFx();
-    renderDeathResult(result);
+    renderDeathResult(snapshot);
     renderDeathRewardsPanel();
     setDeathCinematicActive(true);
     scheduleDeathRewardsReveal();
@@ -639,8 +774,12 @@
   });
 
   window.addEventListener('resize', () => {
-    if (!missionVictoryOverlayEl || missionVictoryOverlayEl.classList.contains('hidden')) return;
-    scheduleMissionVictoryLayoutSync();
+    if (missionVictoryOverlayEl && !missionVictoryOverlayEl.classList.contains('hidden')) {
+      scheduleMissionVictoryLayoutSync();
+    }
+    if (joinOverlay.classList.contains('death-rewards-visible')) {
+      scheduleDeathRewardsLayoutSync();
+    }
   }, { passive: true });
 
   Object.assign(globalThis, {
