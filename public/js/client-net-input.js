@@ -996,6 +996,9 @@ function summarizeCommentarySpeechText(value, maxLen = 74) {
 function renderCommentatorSpeechMonitor() {
   const queueCount = commentatorSpeech.queue.length;
   const activeItem = commentatorSpeech.activeItem || null;
+  const activeText = activeItem?.text || commentatorSpeech.activeText;
+  const activeCount = activeText ? 1 : 0;
+  const inFlightCount = queueCount + activeCount;
   const activeId = activeItem?.id ? `#${activeItem.id}` : (commentatorSpeech.activeText ? '#' : '-');
   const rate = commentatorSpeech.activeText
     ? Math.max(0, Number(commentatorSpeech.lastRate) || getCommentatorSpeechRate())
@@ -1004,16 +1007,16 @@ function renderCommentatorSpeechMonitor() {
   if (commentatorQueueCurrentEl) commentatorQueueCurrentEl.textContent = activeId;
   if (commentatorQueueCountEl) commentatorQueueCountEl.textContent = String(queueCount);
   if (commentatorQueueTotalEl) {
-    commentatorQueueTotalEl.textContent = `${commentatorSpeech.totalQueued}/${commentatorSpeech.totalSpoken}`;
-    commentatorQueueTotalEl.title = `Queued total: ${commentatorSpeech.totalQueued}; spoken: ${commentatorSpeech.totalSpoken}; dropped: ${commentatorSpeech.totalDropped}; peak: ${commentatorSpeech.peakQueueLength}`;
+    commentatorQueueTotalEl.textContent = String(inFlightCount);
+    commentatorQueueTotalEl.title = `\u0412 \u0440\u0430\u0431\u043e\u0442\u0435: ${inFlightCount}; \u0433\u043e\u0432\u043e\u0440\u0438\u0442: ${activeCount}; \u043e\u0447\u0435\u0440\u0435\u0434\u044c: ${queueCount}; \u0432\u0441\u0435\u0433\u043e \u0434\u043e\u0431\u0430\u0432\u043b\u0435\u043d\u043e: ${commentatorSpeech.totalQueued}; \u0441\u043a\u0430\u0437\u0430\u043d\u043e: ${commentatorSpeech.totalSpoken}; \u0441\u0431\u0440\u043e\u0448\u0435\u043d\u043e: ${commentatorSpeech.totalDropped}; \u043f\u0438\u043a \u043e\u0447\u0435\u0440\u0435\u0434\u0438: ${commentatorSpeech.peakQueueLength}`;
   }
   if (!commentatorQueueListEl) return;
   const rows = [];
-  if (activeItem?.text || commentatorSpeech.activeText) {
+  if (activeText) {
     rows.push({
       cls: 'is-active',
       label: '\u0413\u043e\u0432\u043e\u0440\u0438\u0442',
-      text: activeItem?.text || commentatorSpeech.activeText,
+      text: activeText,
     });
   }
   for (const item of commentatorSpeech.queue.slice(0, COMMENTATOR_QUEUE_PREVIEW_MAX)) {
