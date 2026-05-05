@@ -2929,8 +2929,10 @@ function updateBottomHud() {
       const quantity = Math.max(0, Number(slot?.quantity) || 0);
       const itemId = String(slot?.itemId || '').trim();
       const itemDef = getProgressionCatalogItem(itemId) || {};
-      const itemName = trItemNameCore(itemId, String(slot?.name || itemDef?.name || itemId || `Quick ${index + 1}`));
-      const hotkey = `${index + 4}`;
+      const slotMatch = /^quick_(\d+)$/.exec(String(slot?.slotKey || '').trim());
+      const slotHotkey = Math.max(1, Math.floor(Number(slot?.hotkey || slotMatch?.[1] || index + 1) || 1));
+      const itemName = trItemNameCore(itemId, String(slot?.name || itemDef?.name || itemId || `Quick ${slotHotkey}`));
+      const hotkey = `${slotHotkey}`;
       const stateText = quantity > 0 ? `x${quantity}` : trCore('ui.inventory.empty_slot', 'Empty');
       const badge = itemName.slice(0, 3).toUpperCase();
       if (compactSkills) {

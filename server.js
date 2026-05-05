@@ -6793,19 +6793,42 @@ function rebuildPlayerDerivedStats(player) {
   refreshPlayerForceShieldStats(player);
 }
 
+const QUICK_CONSUMABLE_SLOT_KEYS = Object.freeze(['quick_1', 'quick_2', 'quick_3']);
+
+function getQuickSlotHotkey(slotKey) {
+  const match = /^quick_(\d+)$/.exec(String(slotKey || '').trim());
+  return match ? Math.max(1, Math.floor(Number(match[1]) || 1)) : 0;
+}
+
+function getEmptyPlayerQuickSlotState(slotKey) {
+  return {
+    slotKey,
+    hotkey: getQuickSlotHotkey(slotKey),
+    itemUid: '',
+    itemId: '',
+    name: '',
+    rarity: 'common',
+    quantity: 0,
+    level: 1,
+    combatUse: null,
+    empty: true,
+  };
+}
+
 function getPlayerQuickSlotState(player, slotKey) {
   const progression = player?.accountProgression;
   const heroId = String(player?.playerClass || '').trim();
   const heroEquipment = progression?.heroEquipment?.[heroId];
   const itemUid = String(heroEquipment?.[slotKey] || '').trim();
-  if (!itemUid) return null;
+  if (!itemUid) return getEmptyPlayerQuickSlotState(slotKey);
   const inventoryItems = Array.isArray(progression?.inventoryItems) ? progression.inventoryItems : [];
   const item = inventoryItems.find((entry) => String(entry?.uid || '').trim() === itemUid);
-  if (!item) return null;
+  if (!item) return getEmptyPlayerQuickSlotState(slotKey);
   const itemDef = itemDefsById[String(item.itemId || '').trim()] || null;
-  if (!itemDef) return null;
+  if (!itemDef) return getEmptyPlayerQuickSlotState(slotKey);
   return {
     slotKey,
+    hotkey: getQuickSlotHotkey(slotKey),
     itemUid,
     itemId: String(item.itemId || '').trim(),
     name: String(itemDef.name || item.itemId || slotKey),
@@ -6813,13 +6836,12 @@ function getPlayerQuickSlotState(player, slotKey) {
     quantity: Math.max(0, Math.floor(Number(item.quantity) || 0)),
     level: Math.max(1, Math.floor(Number(item.level) || 1)),
     combatUse: itemDef.combatUse && typeof itemDef.combatUse === 'object' ? { ...itemDef.combatUse } : null,
+    empty: false,
   };
 }
 
 function getPlayerQuickSlotsState(player) {
-  return ['quick_1', 'quick_2', 'quick_3']
-    .map((slotKey) => getPlayerQuickSlotState(player, slotKey))
-    .filter(Boolean);
+  return QUICK_CONSUMABLE_SLOT_KEYS.map((slotKey) => getPlayerQuickSlotState(player, slotKey));
 }
 
 function scaleConsumableMagnitude(base, level, step = 0.22) {

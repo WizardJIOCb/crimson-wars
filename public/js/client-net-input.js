@@ -5913,9 +5913,9 @@ window.addEventListener('keydown', (e) => {
     }
   }
 
-  const quickDigitMatch = !typing && !overlayOpen ? /^Digit([4-6])$/.exec(e.code) : null;
+  const quickDigitMatch = !typing && !overlayOpen ? /^Digit([1-3])$/.exec(e.code) : null;
   if (quickDigitMatch && !e.repeat) {
-    const slotIndex = Math.max(1, Number(quickDigitMatch[1]) - 3);
+    const slotIndex = Math.max(1, Number(quickDigitMatch[1]) || 1);
     if (useQuickItemInRun(`quick_${slotIndex}`)) {
       e.preventDefault();
       return;
@@ -5926,9 +5926,6 @@ window.addEventListener('keydown', (e) => {
   keyStateFromCode(e.code, true);
   const after = `${input.up}:${input.down}:${input.left}:${input.right}`;
   if (before !== after) requestImmediateInputSend();
-  if (e.code === 'Digit1' && ws.readyState === WebSocket.OPEN) {
-    sendJson({ type: 'weaponSwitch', weaponKey: 'pistol' });
-  }
 });
 window.addEventListener('keyup', (e) => {
   if (e.code === 'Tab') {
