@@ -143,6 +143,60 @@
     heroActionFeedbackEl.className = `hero-action-feedback ${kind}`.trim();
     heroActionFeedbackEl.classList.remove('hidden');
   }
+  function getHeroInventoryScrollEl() {
+    return heroCharacterPanelEl?.querySelector?.('.hero-inventory-panel .inventory-category-list')
+      || heroTreePanelEl?.querySelector?.('.hero-inventory-panel .inventory-category-list')
+      || document.querySelector('#menu-panel-characters .hero-inventory-panel .inventory-category-list')
+      || null;
+  }
+  function captureHeroInventoryScrollState() {
+    const el = getHeroInventoryScrollEl();
+    const joinFormEl = document.getElementById('join-form');
+    const pageScrollEl = document.scrollingElement || document.documentElement || document.body;
+    return {
+      inventoryLeft: Math.max(0, Number(el?.scrollLeft) || 0),
+      inventoryTop: Math.max(0, Number(el?.scrollTop) || 0),
+      joinFormLeft: Math.max(0, Number(joinFormEl?.scrollLeft) || 0),
+      joinFormTop: Math.max(0, Number(joinFormEl?.scrollTop) || 0),
+      pageLeft: Math.max(0, Number(pageScrollEl?.scrollLeft ?? globalThis.scrollX) || 0),
+      pageTop: Math.max(0, Number(pageScrollEl?.scrollTop ?? globalThis.scrollY) || 0),
+    };
+  }
+  function restoreHeroInventoryScrollState(state) {
+    if (!state) return;
+    const apply = () => {
+      const el = getHeroInventoryScrollEl();
+      const joinFormEl = document.getElementById('join-form');
+      const pageScrollEl = document.scrollingElement || document.documentElement || document.body;
+      if (el) {
+        const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
+        const maxLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+        el.scrollTop = Math.min(Math.max(0, Number(state.inventoryTop) || 0), maxTop);
+        el.scrollLeft = Math.min(Math.max(0, Number(state.inventoryLeft) || 0), maxLeft);
+      }
+      if (joinFormEl) {
+        const maxTop = Math.max(0, joinFormEl.scrollHeight - joinFormEl.clientHeight);
+        const maxLeft = Math.max(0, joinFormEl.scrollWidth - joinFormEl.clientWidth);
+        joinFormEl.scrollTop = Math.min(Math.max(0, Number(state.joinFormTop) || 0), maxTop);
+        joinFormEl.scrollLeft = Math.min(Math.max(0, Number(state.joinFormLeft) || 0), maxLeft);
+      }
+      if (pageScrollEl) {
+        pageScrollEl.scrollTop = Math.max(0, Number(state.pageTop) || 0);
+        pageScrollEl.scrollLeft = Math.max(0, Number(state.pageLeft) || 0);
+      }
+    };
+    apply();
+    if (typeof globalThis.requestAnimationFrame === 'function') {
+      globalThis.requestAnimationFrame(() => {
+        apply();
+        globalThis.requestAnimationFrame(apply);
+      });
+    } else {
+      setTimeout(apply, 0);
+    }
+    setTimeout(apply, 90);
+    setTimeout(apply, 220);
+  }
   function humanizeHeroApiError(err, fallback) {
     const msg = String(err?.message || '').trim();
     if (msg.includes('404')) {
@@ -276,9 +330,103 @@
     };
     return trWithFallback(`ui.inventory.category.${key}`, fallbackMap[key] || key || '-');
   }
+  function getInventoryUiText(ruText, enText) {
+    const lang = typeof globalThis.cwI18nGetLanguage === 'function'
+      ? String(globalThis.cwI18nGetLanguage() || '').trim().toLowerCase()
+      : 'ru';
+    return lang === 'ru' ? ruText : enText;
+  }
+  function formatInventoryNumber(value, decimals = 1) {
+    const n = Number(value) || 0;
+    const fixed = n.toFixed(decimals);
+    return fixed.replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
+  }
+  function formatInventorySignedNumber(value, decimals = 1) {
+    const n = Number(value) || 0;
+    const sign = n > 0 ? '+' : '';
+    return `${sign}${formatInventoryNumber(n, decimals)}`;
+  }
+  function formatInventorySignedPercent(value) {
+    const pct = (Number(value) || 0) * 100;
+    if (Math.abs(pct) < 0.05) return '';
+    return `${pct > 0 ? '+' : ''}${formatInventoryNumber(pct, Math.abs(pct) < 10 ? 1 : 0)}%`;
+  }
+  function scaleInventoryConsumableMagnitude(base, item, step = 0.22) {
+    const level = Math.max(1, Number(item?.level) || 1);
+    return Number(base || 0) * (1 + Math.max(0, Math.floor(level) - 1) * step);
+  }
+  function formatInventoryItemEffectText(itemDef, item = null) {
+    if (!itemDef || typeof itemDef !== 'object') return '';
+    const isRu = (typeof globalThis.cwI18nGetLanguage !== 'function')
+      || String(globalThis.cwI18nGetLanguage() || 'ru').trim().toLowerCase() === 'ru';
+    const parts = [];
+    const addPart = (labelRu, labelEn, value) => {
+      const text = String(value || '').trim();
+      if (!text) return;
+      parts.push(`${getInventoryUiText(labelRu, labelEn)} ${text}`);
+    };
+    const addPct = (labelRu, labelEn, value) => addPart(labelRu, labelEn, formatInventorySignedPercent(value));
+    const addFlat = (labelRu, labelEn, value, decimals = 0) => {
+      if (Math.abs(Number(value) || 0) < 0.001) return;
+      addPart(labelRu, labelEn, formatInventorySignedNumber(value, decimals));
+    };
+    const combatUse = itemDef.combatUse && typeof itemDef.combatUse === 'object' ? itemDef.combatUse : null;
+    if (combatUse) {
+      const type = String(combatUse.type || '').trim().toLowerCase();
+      const secSuffix = isRu ? 'с' : 's';
+      if (type === 'heal') {
+        parts.push(`${getInventoryUiText('Лечение', 'Heal')} +${Math.round(scaleInventoryConsumableMagnitude(combatUse.healFlat, item, 0.3))} HP`);
+      } else if (type === 'grenade') {
+        parts.push(`${getInventoryUiText('Урон', 'Damage')} ${Math.round(scaleInventoryConsumableMagnitude(combatUse.damage, item, 0.26))}`);
+        parts.push(`${getInventoryUiText('Радиус', 'Radius')} ${Math.round(scaleInventoryConsumableMagnitude(combatUse.radius, item, 0.08))}`);
+        const stunMs = Math.round(scaleInventoryConsumableMagnitude(combatUse.stunMs, item, 0.14));
+        if (stunMs > 0) parts.push(`${getInventoryUiText('Стан', 'Stun')} ${formatInventoryNumber(stunMs / 1000, 1)}${secSuffix}`);
+      } else if (type === 'artillery') {
+        parts.push(`${getInventoryUiText('Залпы', 'Waves')} ${Math.max(1, Math.round(Number(combatUse.waves) || 1))}`);
+        parts.push(`${getInventoryUiText('Урон', 'Damage')} ${Math.round(scaleInventoryConsumableMagnitude(combatUse.damage, item, 0.24))}`);
+        parts.push(`${getInventoryUiText('Радиус', 'Radius')} ${Math.round(scaleInventoryConsumableMagnitude(combatUse.radius, item, 0.09))}`);
+      } else if (type === 'satellite') {
+        parts.push(`${getInventoryUiText('Орбитальный удар', 'Orbital strike')} ${Math.round(scaleInventoryConsumableMagnitude(combatUse.damage, item, 0.28))}`);
+        parts.push(`${getInventoryUiText('Радиус', 'Radius')} ${Math.round(scaleInventoryConsumableMagnitude(combatUse.radius, item, 0.08))}`);
+        const stunMs = Math.max(240, Math.round(scaleInventoryConsumableMagnitude(combatUse.stunMs || 900, item, 0.12)));
+        parts.push(`${getInventoryUiText('Стан', 'Stun')} ${formatInventoryNumber(stunMs / 1000, 1)}${secSuffix}`);
+      } else if (type === 'buff') {
+        addPct('Урон', 'Damage', scaleInventoryConsumableMagnitude(combatUse.damageMul, item, 0.16));
+        addPct('Скорострельность', 'Fire rate', scaleInventoryConsumableMagnitude(combatUse.fireRateMul, item, 0.16));
+        addPct('Скорость', 'Move speed', scaleInventoryConsumableMagnitude(combatUse.moveSpeedMul, item, 0.14));
+        const durationSec = Math.round(scaleInventoryConsumableMagnitude(combatUse.durationMs, item, 0.06) / 1000);
+        if (durationSec > 0) parts.push(`${getInventoryUiText('Длительность', 'Duration')} ${durationSec}${secSuffix}`);
+      } else if (type === 'regen') {
+        addPart('Реген', 'Regen', `${formatInventorySignedNumber(scaleInventoryConsumableMagnitude(combatUse.hpRegenPerSec, item, 0.18), 1)}/s`);
+        const durationSec = Math.round(scaleInventoryConsumableMagnitude(combatUse.durationMs, item, 0.06) / 1000);
+        if (durationSec > 0) parts.push(`${getInventoryUiText('Длительность', 'Duration')} ${durationSec}${secSuffix}`);
+      }
+      return parts.length
+        ? `${getInventoryUiText('Эффект:', 'Effect:')} ${parts.join(' · ')}`
+        : '';
+    }
+
+    const stats = itemDef.stats && typeof itemDef.stats === 'object' ? itemDef.stats : null;
+    if (!stats) return '';
+    const levelScale = 1 + Math.max(0, (Math.max(1, Number(item?.level) || 1) - 1)) * 0.22;
+    addPct('Урон', 'Damage', (Number(stats.damageMul) || 0) * levelScale);
+    addPct('Скорострельность', 'Fire rate', (Number(stats.fireRateMul) || 0) * levelScale);
+    addPct('Перезарядка', 'Reload', (Number(stats.reloadSpeedMul) || 0) * levelScale);
+    addPct('Скорость', 'Move speed', (Number(stats.moveSpeedMul) || 0) * levelScale);
+    addFlat('HP', 'HP', (Number(stats.maxHpFlat) || 0) * levelScale, 0);
+    const regen = (Number(stats.hpRegenPerSec) || 0) * levelScale;
+    if (Math.abs(regen) >= 0.001) addPart('Реген', 'Regen', `${formatInventorySignedNumber(regen, 2)}/s`);
+    addFlat('Подбор', 'Pickup', (Number(stats.pickupRadius) || 0) * levelScale, 0);
+    return parts.length
+      ? `${getInventoryUiText('Даёт:', 'Gives:')} ${parts.join(' · ')}`
+      : '';
+  }
   function getItemIconPath(itemDef) {
     const icon = String(itemDef?.icon || itemDef?.iconPath || '').trim();
-    if (!icon) return '';
+    if (!icon) {
+      const id = String(itemDef?.id || '').trim();
+      return id ? `/assets/items/${id}.webp` : '';
+    }
     if (/^(?:https?:)?\/\//.test(icon) || icon.startsWith('/') || icon.startsWith('data:')) return icon;
     return `/assets/items/${icon}`;
   }
@@ -519,9 +667,11 @@
     for (const btn of targetEl?.querySelectorAll?.('[data-item-sell]') || []) {
       btn.addEventListener('click', async () => {
         try {
+          const inventoryScrollState = captureHeroInventoryScrollState();
           await sellInventoryItemForAccount(btn.getAttribute('data-item-sell') || '');
           setHeroActionFeedback(trWithFallback('ui.inventory.sold', 'Предмет продан.'), 'ok');
           renderCharacterPicker();
+          restoreHeroInventoryScrollState(inventoryScrollState);
         } catch (err) {
           setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to sell item.'), 'err');
         }
@@ -651,7 +801,10 @@
       const requirementDisplayLabel = String(requirementLabel || '')
         .replace(/\s+[•·]\s+(Need|Нужно):\s*\d+\s+[•·]\s+/iu, ' • ')
         .replace(/\s+•\s+(Need|Нужно):\s*\d+\s+•\s+/iu, ' • ');
-      return `<div class="hero-node hero-unique-skill ${(!costReq.enough && lvl < maxLevel) ? 'hero-node-lack' : ''}"><div><div class="hero-node-name">${escapeHtml(skillName)} <span class="muted">(${escapeHtml(skillType)})</span></div><div class="hero-node-desc">${escapeHtml(skillDesc)}</div><div class="hero-node-desc hero-req ${(costReq.enough || lvl >= maxLevel) ? 'ok' : 'lack'}">${escapeHtml(requirementDisplayLabel)}</div></div><button type="button" class="hero-node-up ${(!costReq.enough && lvl < maxLevel) ? 'hero-node-up-lack' : ''}" data-hero-skill-id="${escapeHtml(skill.id)}" data-hero-skill-action="${unlockedSkill ? 'upgrade' : 'unlock'}" ${(unlockedSkill ? canUpgradeSkill : canUnlockSkill) ? '' : 'disabled'}>Lv ${lvl}/${maxLevel}</button></div>`;
+      const skillIconHtml = typeof globalThis.renderBattleHubHeroSkillIcon === 'function'
+        ? globalThis.renderBattleHubHeroSkillIcon(skill, skill.kind === 'active' ? 'A' : 'P', 'hero-unique-skill-icon')
+        : '';
+      return `<div class="hero-node hero-unique-skill ${(!costReq.enough && lvl < maxLevel) ? 'hero-node-lack' : ''}">${skillIconHtml}<div><div class="hero-node-name">${escapeHtml(skillName)} <span class="muted">(${escapeHtml(skillType)})</span></div><div class="hero-node-desc">${escapeHtml(skillDesc)}</div><div class="hero-node-desc hero-req ${(costReq.enough || lvl >= maxLevel) ? 'ok' : 'lack'}">${escapeHtml(requirementDisplayLabel)}</div></div><button type="button" class="hero-node-up ${(!costReq.enough && lvl < maxLevel) ? 'hero-node-up-lack' : ''}" data-hero-skill-id="${escapeHtml(skill.id)}" data-hero-skill-action="${unlockedSkill ? 'upgrade' : 'unlock'}" ${(unlockedSkill ? canUpgradeSkill : canUnlockSkill) ? '' : 'disabled'}>Lv ${lvl}/${maxLevel}</button></div>`;
     }).join('');
     const unlockMeta = !unlocked
       ? `<div class="hero-lock-meta"><span class="hero-req ${accountLevelReq.enough ? 'ok' : 'lack'}">${escapeHtml(accountLevelReq.text)}</span><span class="hero-req ${cardsReq.enough ? 'ok' : 'lack'}">${escapeHtml(cardsReq.text)}</span><span class="hero-req ${shardsReq.enough ? 'ok' : 'lack'}">${escapeHtml(shardsReq.text)}</span></div>`
@@ -774,7 +927,10 @@
         ? trWithFallback('ui.hero.skill_type_active', 'Active')
         : (skill.globalAura ? trWithFallback('ui.hero.skill_type_passive_aura', 'Passive Aura') : trWithFallback('ui.hero.skill_type_passive', 'Passive'));
       const requirementLabel = unlockedSkill ? (lvl >= maxLevel ? trWithFallback('ui.common.max', 'MAX') : costReq.text) : costReq.text;
-      return `<div class="hero-node hero-unique-skill ${(!costReq.enough && lvl < maxLevel) ? 'hero-node-lack' : ''}"><div><div class="hero-node-name">${escapeHtml(skillName)} <span class="muted">(${escapeHtml(skillType)})</span></div><div class="hero-node-desc">${escapeHtml(skillDesc)}</div><div class="hero-node-desc hero-req ${(costReq.enough || lvl >= maxLevel) ? 'ok' : 'lack'}">${escapeHtml(requirementLabel)}</div></div><button type="button" class="hero-node-up ${(!costReq.enough && lvl < maxLevel) ? 'hero-node-up-lack' : ''}" data-hero-skill-id="${escapeHtml(skill.id)}" data-hero-skill-action="${unlockedSkill ? 'upgrade' : 'unlock'}" ${(unlockedSkill ? canUpgradeSkill : canUnlockSkill) ? '' : 'disabled'}>Lv ${lvl}/${maxLevel}</button></div>`;
+      const skillIconHtml = typeof globalThis.renderBattleHubHeroSkillIcon === 'function'
+        ? globalThis.renderBattleHubHeroSkillIcon(skill, skill.kind === 'active' ? 'A' : 'P', 'hero-unique-skill-icon')
+        : '';
+      return `<div class="hero-node hero-unique-skill ${(!costReq.enough && lvl < maxLevel) ? 'hero-node-lack' : ''}">${skillIconHtml}<div><div class="hero-node-name">${escapeHtml(skillName)} <span class="muted">(${escapeHtml(skillType)})</span></div><div class="hero-node-desc">${escapeHtml(skillDesc)}</div><div class="hero-node-desc hero-req ${(costReq.enough || lvl >= maxLevel) ? 'ok' : 'lack'}">${escapeHtml(requirementLabel)}</div></div><button type="button" class="hero-node-up ${(!costReq.enough && lvl < maxLevel) ? 'hero-node-up-lack' : ''}" data-hero-skill-id="${escapeHtml(skill.id)}" data-hero-skill-action="${unlockedSkill ? 'upgrade' : 'unlock'}" ${(unlockedSkill ? canUpgradeSkill : canUnlockSkill) ? '' : 'disabled'}>Lv ${lvl}/${maxLevel}</button></div>`;
     }).join('');
     const gearSlots = (Array.isArray(catalog.itemSlots) ? catalog.itemSlots : []).filter((slot) => slot?.kind === 'gear');
     const quickSlots = (Array.isArray(catalog.itemSlots) ? catalog.itemSlots : []).filter((slot) => slot?.kind === 'consumable');
@@ -798,6 +954,7 @@
       const itemMeta = itemDef
         ? `${getItemRarityLabel(itemDef.rarity)} • Lv ${Math.max(1, Number(item.level) || 1)}${Math.max(1, Number(item.quantity) || 1) > 1 ? ` • x${Math.max(1, Number(item.quantity) || 1)}` : ''}`
         : (slot?.kind === 'consumable' ? '' : trWithFallback('ui.inventory.empty_slot_hint', 'Выберите предмет из инвентаря'));
+      const itemStats = itemDef ? formatInventoryItemEffectText(itemDef, item) : '';
       const slotFx = getHeroEquipSlotFx(hero.id, slot.key);
       const loadoutSlotEnter = loadoutSwapFx.active && !slotFx.className;
       const slotEnterIndex = heroLoadoutSlotEnterIndex++;
@@ -808,8 +965,10 @@
       if (slotFxColor) slotStyleVars.push(`--skill-color:${escapeHtml(slotFxColor)}`);
       if (loadoutSlotEnter) slotStyleVars.push(`--slot-enter-index:${slotEnterIndex}`);
       const slotStyle = slotStyleVars.length ? ` style="${slotStyleVars.join(';')}"` : '';
+      const openSlotLabel = `${trWithFallback('ui.inventory.equip_slot_title', 'Снарядить слот')}: ${getItemSlotLabel(slot)}`;
+      const slotIconButton = `<button type="button" class="hero-equip-slot-icon-button" data-open-slot-equip="${escapeHtml(slot.key)}" title="${escapeHtml(openSlotLabel)}" aria-label="${escapeHtml(openSlotLabel)}">${renderInventoryItemIconHtml(iconMeta, 'hero-equip-slot-icon')}</button>`;
       const emptyAction = `<button type="button" class="hero-equip-action hero-equip-slot-empty-cta" data-open-slot-equip="${escapeHtml(slot.key)}">${escapeHtml(trWithFallback('ui.inventory.equip', 'Снарядить'))}</button>`;
-      return `<div class="${slotClass}" data-slot-key="${escapeHtml(slot.key)}"${slotStyle}><div class="hero-equip-slot-layout"><div class="hero-equip-slot-side">${renderInventoryItemIconHtml(iconMeta, 'hero-equip-slot-icon')}${item ? `<button type="button" class="hero-equip-action" data-unequip-slot="${escapeHtml(slot.key)}">${escapeHtml(trWithFallback('ui.inventory.unequip', 'Снять'))}</button>` : emptyAction}</div><div class="hero-equip-slot-copy"><div class="hero-equip-slot-label">${escapeHtml(getItemSlotLabel(slot))}${extraMeta ? `<span class="hero-equip-slot-hotkey">${escapeHtml(extraMeta)}</span>` : ''}</div><div class="hero-equip-slot-name">${escapeHtml(itemName)}</div><div class="hero-equip-slot-meta">${escapeHtml(itemMeta)}</div></div></div></div>`;
+      return `<div class="${slotClass}" data-slot-key="${escapeHtml(slot.key)}"${slotStyle}><div class="hero-equip-slot-layout"><div class="hero-equip-slot-side">${slotIconButton}${item ? `<button type="button" class="hero-equip-action" data-unequip-slot="${escapeHtml(slot.key)}">${escapeHtml(trWithFallback('ui.inventory.unequip', 'Снять'))}</button>` : emptyAction}</div><div class="hero-equip-slot-copy"><div class="hero-equip-slot-label">${escapeHtml(getItemSlotLabel(slot))}${extraMeta ? `<span class="hero-equip-slot-hotkey">${escapeHtml(extraMeta)}</span>` : ''}</div><div class="hero-equip-slot-name">${escapeHtml(itemName)}</div><div class="hero-equip-slot-meta">${escapeHtml(itemMeta)}</div>${itemStats ? `<div class="hero-equip-slot-stats">${escapeHtml(itemStats)}</div>` : ''}</div></div></div>`;
     };
     const gearSlotsByGroup = {
       core: gearSlots.filter((slot) => ['head', 'armor', 'legs'].includes(String(slot.key || ''))),
@@ -881,8 +1040,9 @@
       const equippedMeta = equippedIn.length
         ? `<div class="inventory-item-chip inventory-item-chip-eq">${escapeHtml(equippedIn.map((slotKey) => getItemSlotLabel((catalog.itemSlots || []).find((slot) => slot.key === slotKey) || { key: slotKey })).join(', '))}</div>`
         : '';
+      const itemStats = formatInventoryItemEffectText(itemDef, item);
       const actionButtonsHtml = `${equipButtons || ''}${!itemDef.combatUse ? `<button type="button" class="inventory-mini-btn inventory-text-action upgrade${canUpgradeItem ? '' : ' disabled-like'}" data-item-upgrade="${escapeHtml(item.uid)}" title="${escapeHtml(upgradeCostLabel)}" aria-label="${escapeHtml(upgradeCostLabel)}">${escapeHtml(upgradeLabel)}</button>` : ''}<button type="button" class="inventory-mini-btn inventory-text-action danger" data-item-sell="${escapeHtml(item.uid)}" title="${escapeHtml(sellCostLabel)}" aria-label="${escapeHtml(sellCostLabel)}">${escapeHtml(sellLabel)}</button>`;
-      const cardHtml = `<div class="inventory-item-card inventory-item-card-compact rarity-${escapeHtml(String(itemDef.rarity || 'common').toLowerCase())}"><div class="inventory-item-layout">${renderInventoryItemIconHtml(iconMeta)}<div class="inventory-item-main"><div class="inventory-item-name">${escapeHtml(getItemDisplayName(itemDef))}</div><div class="inventory-item-meta">${escapeHtml(getItemRarityLabel(itemDef.rarity))} • ${escapeHtml(categoryLabel)}</div><div class="inventory-item-chip-row"><div class="inventory-item-chip">Lv ${Math.max(1, Number(item.level) || 1)}</div>${quantity > 1 ? `<div class="inventory-item-chip">x${quantity}</div>` : ''}<div class="inventory-item-chip">${escapeHtml(trWithFallback('ui.inventory.sell_value_short', 'Продажа'))}: ${Math.max(0, Number(item.sellValue) || 0)}</div>${equippedMeta}</div>${itemDef.combatUse ? `<div class="inventory-item-consumable">${escapeHtml(trWithFallback('ui.inventory.consumable_hint_keys', 'Клавиши 4/5/6 в бою'))}</div>` : ''}</div><div class="inventory-item-actions-compact">${actionButtonsHtml}</div></div></div>`;
+      const cardHtml = `<div class="inventory-item-card inventory-item-card-compact rarity-${escapeHtml(String(itemDef.rarity || 'common').toLowerCase())}"><div class="inventory-item-layout">${renderInventoryItemIconHtml(iconMeta)}<div class="inventory-item-main"><div class="inventory-item-name">${escapeHtml(getItemDisplayName(itemDef))}</div><div class="inventory-item-meta">${escapeHtml(getItemRarityLabel(itemDef.rarity))} • ${escapeHtml(categoryLabel)}</div><div class="inventory-item-chip-row"><div class="inventory-item-chip">Lv ${Math.max(1, Number(item.level) || 1)}</div>${quantity > 1 ? `<div class="inventory-item-chip">x${quantity}</div>` : ''}<div class="inventory-item-chip">${escapeHtml(trWithFallback('ui.inventory.sell_value_short', 'Продажа'))}: ${Math.max(0, Number(item.sellValue) || 0)}</div>${equippedMeta}</div>${itemStats ? `<div class="inventory-item-stats">${escapeHtml(itemStats)}</div>` : ''}${itemDef.combatUse ? `<div class="inventory-item-consumable">${escapeHtml(trWithFallback('ui.inventory.consumable_hint_keys', 'Клавиши 4/5/6 в бою'))}</div>` : ''}</div><div class="inventory-item-actions-compact">${actionButtonsHtml}</div></div></div>`;
       const groupKey = getInventoryGroupKey(itemDef, equipTargets);
       inventoryCardsByGroup.get(groupKey)?.push(cardHtml);
       const slotCategory = String(itemDef?.slotCategory || '').trim().toLowerCase();
@@ -1016,9 +1176,11 @@
     for (const btn of heroTreePanelEl.querySelectorAll('[data-item-sell]')) {
       btn.addEventListener('click', async () => {
         try {
+          const inventoryScrollState = captureHeroInventoryScrollState();
           await sellInventoryItemForAccount(btn.getAttribute('data-item-sell') || '');
           setHeroActionFeedback(trWithFallback('ui.inventory.sold', 'Предмет продан.'), 'ok');
           renderCharacterPicker();
+          restoreHeroInventoryScrollState(inventoryScrollState);
         } catch (err) {
           setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to sell item.'), 'err');
         }
@@ -1151,6 +1313,7 @@
       });
       const wrap = document.createElement('div');
       wrap.className = 'hero-v2-item';
+      wrap.style.setProperty('--accent', hero.accent || '#38bdf8');
       wrap.appendChild(cardBtn);
       wrap.appendChild(name);
       wrap.appendChild(status);
@@ -1182,6 +1345,7 @@
     getItemRarityLabel,
     getItemSlotLabel,
     getItemCategoryLabel,
+    formatInventoryItemEffectText,
     getInventoryItemIconMeta,
     renderInventoryItemIconHtml,
     getItemRaritySortWeight,
@@ -1228,6 +1392,7 @@
     getItemRarityLabel,
     getItemSlotLabel,
     getItemCategoryLabel,
+    formatInventoryItemEffectText,
     getInventoryItemIconMeta,
     renderInventoryItemIconHtml,
     getItemRaritySortWeight,

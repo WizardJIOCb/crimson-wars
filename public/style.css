@@ -1980,7 +1980,37 @@ body.replay-game-active #scoreboard {
   display: contents;
 }
 
-.hero-paper-slot .hero-equip-slot .hero-equip-slot-icon {
+.hero-paper-slot .hero-equip-slot-icon-button {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+  align-self: start;
+  width: 52px;
+  height: 52px;
+  min-height: 52px;
+  border-radius: 7px;
+}
+
+.hero-paper-slot .hero-equip-slot-icon-button .hero-equip-slot-icon {
+  grid-area: 1 / 1 / 2 / 2;
+  grid-column: auto;
+  grid-row: auto;
+  width: 52px;
+  height: 52px;
+  min-height: 52px;
+  justify-self: stretch;
+  align-self: stretch;
+  border-radius: 7px;
+}
+
+.hero-paper-slot .hero-equip-slot-icon-button .hero-equip-slot-icon.has-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+.hero-paper-slot .hero-equip-slot > .hero-equip-slot-layout > .hero-equip-slot-side > .hero-equip-slot-icon {
   grid-column: 1;
   grid-row: 1;
   width: 52px;
@@ -2048,6 +2078,8 @@ body.replay-game-active #scoreboard {
 
 .hero-inventory-panel .inventory-category-list {
   max-height: 520px;
+  overflow-x: hidden;
+  overflow-anchor: none;
 }
 
 .hero-inventory-panel .inventory-category-grid {
@@ -2130,16 +2162,41 @@ body.replay-game-active #scoreboard {
   align-content: start;
   min-height: 128px;
   overflow: hidden;
+  isolation: isolate;
   border-radius: 10px;
   border: 1px solid rgba(148, 163, 184, 0.24);
   background: rgba(15, 23, 42, 0.62);
   padding: 8px;
+  transition:
+    border-color 170ms ease,
+    box-shadow 170ms ease,
+    filter 170ms ease,
+    transform 170ms ease;
+}
+
+.hero-equip-slot::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 24% 22%, color-mix(in srgb, var(--skill-color, #39c1d9) 28%, transparent), transparent 34%),
+    linear-gradient(120deg, transparent 0 28%, rgba(255, 255, 255, 0.1), transparent 62%),
+    radial-gradient(circle at 88% 86%, rgba(255, 78, 78, 0.12), transparent 34%);
+  transform: translateY(4px) scale(0.985);
+  transition:
+    opacity 170ms ease,
+    transform 170ms ease;
 }
 
 .hero-equip-slot::after {
   content: "";
   position: absolute;
   inset: -20%;
+  z-index: 0;
   pointer-events: none;
   opacity: 0;
   background:
@@ -2148,7 +2205,26 @@ body.replay-game-active #scoreboard {
   transform: translateX(-26%) rotate(-8deg);
 }
 
+.hero-equip-slot:hover,
+.hero-equip-slot:focus-within {
+  border-color: color-mix(in srgb, var(--skill-color, #39c1d9) 52%, rgba(255, 255, 255, 0.2));
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--skill-color, #39c1d9) 18%, transparent),
+    0 12px 24px rgba(0, 0, 0, 0.24),
+    inset 0 0 24px color-mix(in srgb, var(--skill-color, #39c1d9) 10%, transparent);
+}
+
+.hero-equip-slot:hover::before,
+.hero-equip-slot:focus-within::before {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
 .hero-equip-slot-layout {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: 90px minmax(0, 1fr);
   gap: 12px;
@@ -2161,6 +2237,73 @@ body.replay-game-active #scoreboard {
   gap: 6px;
   justify-items: start;
   align-items: start;
+}
+
+.hero-equip-slot-icon-button {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 90px;
+  height: 90px;
+  min-height: 90px;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+#join-form .hero-equip-slot-icon-button,
+#join-form .hero-equip-slot-icon-button:hover,
+#join-form .hero-equip-slot-icon-button:focus-visible {
+  box-sizing: border-box;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-transform: none;
+  letter-spacing: 0;
+  box-shadow: none;
+  filter: none;
+}
+
+#join-form .hero-equip-slot-icon-button:hover,
+#join-form .hero-equip-slot-icon-button:focus-visible {
+  transform: none;
+}
+
+.hero-equip-slot-icon-button .inventory-item-icon {
+  grid-area: 1 / 1;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  justify-self: stretch;
+  align-self: stretch;
+  transition:
+    border-color 170ms ease,
+    box-shadow 170ms ease,
+    filter 170ms ease,
+    transform 170ms ease;
+}
+
+.hero-equip-slot-icon-button:hover .inventory-item-icon,
+.hero-equip-slot-icon-button:focus-visible .inventory-item-icon {
+  border-color: color-mix(in srgb, var(--skill-color, #39c1d9) 64%, rgba(255, 255, 255, 0.22));
+  filter: brightness(1.12) saturate(1.08);
+  transform: scale(1.025);
+  box-shadow:
+    0 0 18px color-mix(in srgb, var(--skill-color, #39c1d9) 24%, transparent),
+    inset 0 0 18px rgba(255, 255, 255, 0.08);
+}
+
+.hero-equip-slot-icon-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--skill-color, #39c1d9) 72%, #ffffff);
+  outline-offset: 3px;
 }
 
 .hero-equip-slot .hero-equip-slot-icon {
@@ -2557,6 +2700,63 @@ body.replay-game-active #scoreboard {
   line-height: 1.5;
 }
 
+.hero-equip-current-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 14px 16px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--skill-color, #39c1d9) 34%, rgba(148, 163, 184, 0.22));
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 0% 0%, color-mix(in srgb, var(--skill-color, #39c1d9) 16%, transparent), transparent 42%),
+    linear-gradient(135deg, rgba(14, 20, 31, 0.94), rgba(7, 9, 13, 0.84));
+}
+
+.hero-equip-current-card.empty {
+  border-style: dashed;
+  color: #94a3b8;
+}
+
+.hero-equip-current-copy {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.hero-equip-current-label,
+.hero-equip-section-title {
+  color: #93c5fd;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.hero-equip-current-name {
+  color: #fff2eb;
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.hero-equip-current-meta {
+  color: #cbd5e1;
+  font-size: 12px;
+}
+
+.hero-equip-current-stats {
+  color: #e5edf7;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.hero-equip-section-title {
+  margin-top: 2px;
+}
+
 .hero-equip-picker-list {
   display: grid;
   gap: 10px;
@@ -2706,9 +2906,10 @@ body.replay-game-active #scoreboard {
   grid-template-columns: 90px minmax(0, 1fr);
   grid-template-areas:
     "icon main"
-    "actions main";
+    "actions actions";
   gap: 12px;
   align-items: start;
+  min-width: 0;
 }
 
 .inventory-item-main {
@@ -2778,6 +2979,29 @@ body.replay-game-active #scoreboard {
   color: #cbd5e1;
 }
 
+.inventory-item-stats,
+.hero-equip-slot-stats,
+.hero-equip-picker-stats {
+  color: #9bd7ff;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.inventory-item-stats {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.hero-equip-slot-stats {
+  color: #a7f3d0;
+}
+
+.hero-equip-picker-stats {
+  margin-top: 4px;
+  color: #bfdbfe;
+}
+
 .inventory-item-chip-row {
   display: flex;
   flex-wrap: wrap;
@@ -2808,9 +3032,11 @@ body.replay-game-active #scoreboard {
 .inventory-item-actions-compact {
   grid-area: actions;
   display: grid;
-  grid-auto-flow: column;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
-  justify-content: start;
+  width: 100%;
+  min-width: 0;
+  justify-content: stretch;
   align-items: start;
 }
 
@@ -2854,6 +3080,24 @@ body.replay-game-active #scoreboard {
 
 #join-form .inventory-item-actions-compact .inventory-text-action {
   font-size: 12px !important;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  padding: 4px 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: normal;
+}
+
+#join-form .inventory-item-actions-compact .inventory-text-action.danger,
+#join-form .inventory-item-actions-compact .inventory-text-action.upgrade {
+  width: 100%;
+  min-width: 0;
+}
+
+#join-form .inventory-item-actions-compact .inventory-text-action:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
 }
 
 .inventory-mini-btn-icon {
@@ -2988,6 +3232,18 @@ body.replay-game-active #scoreboard {
   background: rgba(15, 23, 42, 0.56);
 }
 
+.hero-node > div {
+  min-width: 0;
+}
+
+.hero-node.hero-unique-skill {
+  justify-content: flex-start;
+}
+
+.hero-node.hero-unique-skill > div {
+  flex: 1 1 auto;
+}
+
 .hero-node-name {
   font-size: 13px;
   font-weight: 700;
@@ -3039,6 +3295,14 @@ body.replay-game-active #scoreboard {
   border-color: rgba(248, 113, 113, 0.34);
   background: rgba(127, 29, 29, 0.8);
   color: #fecaca;
+}
+
+.hero-unique-skill-icon {
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  border-radius: 8px;
 }
 
 .hero-action-feedback {
@@ -4922,9 +5186,38 @@ body.levelup-open #dev-console-toggle {
 }
 
 .hero-v2-item {
+  position: relative;
   display: grid;
   justify-items: center;
   gap: 5px;
+  padding: 6px 10px 10px;
+  isolation: isolate;
+}
+
+.hero-v2-item::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: 4px 8px 28px;
+  border-radius: 15px;
+  pointer-events: none;
+  opacity: 0;
+  background: color-mix(in srgb, var(--accent, #38bdf8) 38%, transparent);
+  filter: blur(18px);
+  transform: translateY(5px) scale(0.94);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease,
+    filter 180ms ease,
+    background 180ms ease;
+}
+
+.hero-v2-item:has(.hero-v2-card:hover)::before,
+.hero-v2-item:has(.hero-v2-card.focused)::before,
+.hero-v2-item:has(.hero-v2-card.active)::before {
+  opacity: 0.74;
+  transform: translateY(2px) scale(1);
+  filter: blur(20px);
 }
 
 .hero-v2-card {
@@ -4940,6 +5233,7 @@ body.levelup-open #dev-console-toggle {
   overflow: hidden;
   box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.95), 0 0 24px color-mix(in srgb, var(--accent) 30%, transparent), 0 16px 32px rgba(0, 0, 0, 0.34);
   cursor: pointer;
+  z-index: 1;
   transition:
     border-color 180ms ease,
     box-shadow 180ms ease,
@@ -4986,7 +5280,10 @@ body.levelup-open #dev-console-toggle {
   --hero-card-rise: -2px;
   border-color: color-mix(in srgb, var(--accent) 78%, #f8fafc);
   filter: brightness(1.04);
-  box-shadow: 0 0 0 1px rgba(186, 230, 253, 0.72), 0 0 28px color-mix(in srgb, var(--accent) 42%, transparent), 0 18px 36px rgba(0, 0, 0, 0.38);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 62%, transparent),
+    0 0 22px color-mix(in srgb, var(--accent) 38%, transparent),
+    0 18px 36px rgba(0, 0, 0, 0.38);
 }
 
 .hero-v2-card.active {
@@ -7177,6 +7474,18 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
   box-shadow: 0 0 14px color-mix(in srgb, var(--skill-color, #d1d5db) 24%, transparent);
 }
 
+.battle-hub-hero-skill-icon.has-image {
+  background: rgba(4, 6, 9, 0.88);
+}
+
+.battle-hub-hero-skill-icon.has-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 5px;
+  object-fit: cover;
+}
+
 .battle-hub-hero-skill-copy {
   position: relative;
   z-index: 1;
@@ -7507,8 +7816,7 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
 }
 
 .battle-hub-skill-modal-art::before {
-  border: 1px solid color-mix(in srgb, var(--skill-color, #d1d5db) 36%, transparent);
-  transform: rotate(8deg);
+  display: none;
 }
 
 .battle-hub-skill-modal-art::after {
@@ -7520,11 +7828,54 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
 .battle-hub-skill-modal-art span {
   position: relative;
   z-index: 2;
+  display: grid;
+  place-items: center;
   color: #fff2eb;
   font-size: 30px;
   font-weight: 950;
   letter-spacing: 0;
   text-shadow: 0 0 24px color-mix(in srgb, var(--skill-color, #d1d5db) 64%, transparent);
+}
+
+.battle-hub-skill-modal-art span.has-image {
+  width: 100%;
+  height: 100%;
+  padding: 12px;
+  font-size: 0;
+  text-shadow: none;
+}
+
+.battle-hub-skill-modal-art span.has-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: 98px;
+  max-height: 112px;
+  object-fit: contain;
+  border-radius: 9px;
+  filter:
+    drop-shadow(0 0 18px color-mix(in srgb, var(--skill-color, #d1d5db) 36%, transparent))
+    drop-shadow(0 12px 18px rgba(0, 0, 0, 0.38));
+}
+
+.battle-hub-skill-modal-art.has-item-image::before {
+  display: none;
+}
+
+.battle-hub-skill-modal-art.has-image {
+  min-height: 132px;
+  background: rgba(4, 6, 9, 0.94);
+}
+
+.battle-hub-skill-modal-art.has-image img {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 132px;
+  object-fit: cover;
+  filter: saturate(1.08) contrast(1.04);
 }
 
 .battle-hub-skill-modal-head {
@@ -7887,6 +8238,16 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
 }
 
 @media (max-width: 720px) {
+  .battle-hub-skill-modal.hero-equip-modal .hero-equip-current-card {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    padding: 12px;
+  }
+
+  .battle-hub-skill-modal.hero-equip-modal .hero-equip-current-name {
+    font-size: 15px;
+  }
+
   .battle-hub-skill-modal.hero-equip-modal .hero-equip-picker-row {
     display: grid;
     gap: 12px;
@@ -9689,16 +10050,20 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
   grid-auto-flow: column;
   grid-auto-columns: minmax(0, 1fr);
   grid-template-columns: none;
-  gap: 14px;
+  gap: 6px;
   align-items: start;
   justify-items: stretch;
   width: 100%;
   min-width: 0;
-  margin: -8px 0 -10px;
+  margin: -18px -12px -20px;
   overflow-x: auto;
-  overflow-y: hidden;
-  padding: 12px 0 24px;
+  overflow-y: visible;
+  padding: 24px 12px 34px;
   scrollbar-width: thin;
+}
+
+#menu-panel-characters .hero-gallery-v2 .hero-v2-item {
+  min-width: 0;
 }
 
 #menu-panel-characters .hero-gallery-v2 .hero-v2-card {
@@ -9707,6 +10072,25 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
   height: auto;
   min-width: 0;
   max-width: none;
+}
+
+#join-form #menu-panel-characters .hero-gallery-v2 .hero-v2-card:hover,
+#join-form #menu-panel-characters .hero-gallery-v2 .hero-v2-card.focused {
+  border-color: color-mix(in srgb, var(--accent, #38bdf8) 78%, #f8fafc) !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent, #38bdf8) 62%, transparent),
+    0 0 22px color-mix(in srgb, var(--accent, #38bdf8) 38%, transparent),
+    0 18px 36px rgba(0, 0, 0, 0.38) !important;
+}
+
+#join-form #menu-panel-characters .hero-gallery-v2 .hero-v2-card.active,
+#join-form #menu-panel-characters .hero-gallery-v2 .hero-v2-card.active:hover,
+#join-form #menu-panel-characters .hero-gallery-v2 .hero-v2-card.active.focused {
+  border-color: color-mix(in srgb, var(--accent, #38bdf8) 90%, #fff) !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent, #38bdf8) 70%, transparent),
+    0 0 28px color-mix(in srgb, var(--accent, #38bdf8) 52%, transparent),
+    0 18px 36px rgba(0, 0, 0, 0.4) !important;
 }
 
 #menu-panel-characters .hero-gallery-v2 .hero-v2-inner {
@@ -10152,7 +10536,8 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
     grid-template-columns: 56px minmax(0, 1fr);
   }
 
-  #menu-panel-characters .hero-paper-slot .hero-equip-slot .hero-equip-slot-icon {
+  #menu-panel-characters .hero-paper-slot .hero-equip-slot-icon-button,
+  #menu-panel-characters .hero-paper-slot .hero-equip-slot-icon-button .hero-equip-slot-icon {
     width: 56px;
     height: 56px;
     min-height: 56px;

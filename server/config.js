@@ -215,30 +215,30 @@ const ITEM_SLOT_DEFS = [
 ];
 
 const ITEM_DEFS = [
-  { id: 'wool_cap', name: 'Шерстяная шапка', icon: '/assets/items/wool_cap.png', slotCategory: 'head', rarity: 'common', sellSalvage: 6, upgradeSalvageBase: 10, upgradeSalvageStep: 6, stats: { maxHpFlat: 10, hpRegenPerSec: 0.08 } },
+  { id: 'wool_cap', name: 'Шерстяная шапка', slotCategory: 'head', rarity: 'common', sellSalvage: 6, upgradeSalvageBase: 10, upgradeSalvageStep: 6, stats: { maxHpFlat: 10, hpRegenPerSec: 0.08 } },
   { id: 'scavenger_mask', name: 'Маска падальщика', slotCategory: 'head', rarity: 'uncommon', sellSalvage: 10, upgradeSalvageBase: 14, upgradeSalvageStep: 7, stats: { damageMul: 0.012, pickupRadius: 12 } },
   { id: 'tactical_helmet', name: 'Тактический шлем', slotCategory: 'head', rarity: 'rare', sellSalvage: 15, upgradeSalvageBase: 18, upgradeSalvageStep: 9, stats: { damageMul: 0.015, maxHpFlat: 16 } },
-  { id: 'psi_visor', name: 'Пси-визор', icon: '/assets/items/psi_visor.png', slotCategory: 'head', rarity: 'epic', sellSalvage: 32, upgradeSalvageBase: 28, upgradeSalvageStep: 13, stats: { fireRateMul: 0.025, pickupRadius: 18 } },
+  { id: 'psi_visor', name: 'Пси-визор', slotCategory: 'head', rarity: 'epic', sellSalvage: 32, upgradeSalvageBase: 28, upgradeSalvageStep: 13, stats: { fireRateMul: 0.025, pickupRadius: 18 } },
   { id: 'war_crown', name: 'Корона войны', slotCategory: 'head', rarity: 'legendary', sellSalvage: 52, upgradeSalvageBase: 42, upgradeSalvageStep: 18, stats: { damageMul: 0.03, fireRateMul: 0.018, maxHpFlat: 18 } },
   { id: 'oracle_hood', name: 'Капюшон оракула', slotCategory: 'head', rarity: 'rare', sellSalvage: 19, upgradeSalvageBase: 21, upgradeSalvageStep: 10, stats: { pickupRadius: 22, hpRegenPerSec: 0.16 } },
   { id: 'cloth_vest', name: 'Лёгкий жилет', slotCategory: 'armor', rarity: 'common', sellSalvage: 8, upgradeSalvageBase: 10, upgradeSalvageStep: 6, stats: { maxHpFlat: 18 } },
   { id: 'hunter_jacket', name: 'Куртка охотника', slotCategory: 'armor', rarity: 'uncommon', sellSalvage: 12, upgradeSalvageBase: 16, upgradeSalvageStep: 8, stats: { maxHpFlat: 20, moveSpeedMul: 0.01 } },
   { id: 'steel_carapace', name: 'Стальная кираса', slotCategory: 'armor', rarity: 'rare', sellSalvage: 18, upgradeSalvageBase: 20, upgradeSalvageStep: 10, stats: { maxHpFlat: 30, moveSpeedMul: -0.005 } },
   { id: 'nano_mail', name: 'Нано-кольчуга', slotCategory: 'armor', rarity: 'epic', sellSalvage: 34, upgradeSalvageBase: 30, upgradeSalvageStep: 14, stats: { maxHpFlat: 24, hpRegenPerSec: 0.22, damageMul: 0.012 } },
-  { id: 'reactive_plate', name: 'Реактивная бронеплита', icon: '/assets/items/reactive_plate.png', slotCategory: 'armor', rarity: 'legendary', sellSalvage: 56, upgradeSalvageBase: 44, upgradeSalvageStep: 19, stats: { maxHpFlat: 42, hpRegenPerSec: 0.28, damageMul: 0.018 } },
+  { id: 'reactive_plate', name: 'Реактивная бронеплита', slotCategory: 'armor', rarity: 'legendary', sellSalvage: 56, upgradeSalvageBase: 44, upgradeSalvageStep: 19, stats: { maxHpFlat: 42, hpRegenPerSec: 0.28, damageMul: 0.018 } },
   { id: 'hazmat_shell', name: 'Хазмат-корпус', slotCategory: 'armor', rarity: 'epic', sellSalvage: 37, upgradeSalvageBase: 31, upgradeSalvageStep: 14, stats: { maxHpFlat: 28, hpRegenPerSec: 0.18, pickupRadius: 14 } },
   { id: 'field_pants', name: 'Полевые штаны', slotCategory: 'legs', rarity: 'common', sellSalvage: 7, upgradeSalvageBase: 10, upgradeSalvageStep: 5, stats: { moveSpeedMul: 0.012 } },
   { id: 'runner_leggings', name: 'Штаны рейдера', slotCategory: 'legs', rarity: 'uncommon', sellSalvage: 10, upgradeSalvageBase: 13, upgradeSalvageStep: 7, stats: { moveSpeedMul: 0.016, pickupRadius: 8 } },
   { id: 'combat_greaves', name: 'Боевые поножи', slotCategory: 'legs', rarity: 'rare', sellSalvage: 16, upgradeSalvageBase: 18, upgradeSalvageStep: 9, stats: { moveSpeedMul: 0.018, maxHpFlat: 10 } },
   { id: 'shadow_treads', name: 'Теневые ботфорты', slotCategory: 'legs', rarity: 'epic', sellSalvage: 31, upgradeSalvageBase: 28, upgradeSalvageStep: 12, stats: { moveSpeedMul: 0.03, fireRateMul: 0.012 } },
-  { id: 'servo_greaves', name: 'Сервоприводные поножи', icon: '/assets/items/servo_greaves.png', slotCategory: 'legs', rarity: 'legendary', sellSalvage: 50, upgradeSalvageBase: 41, upgradeSalvageStep: 18, stats: { moveSpeedMul: 0.04, fireRateMul: 0.015, maxHpFlat: 16 } },
+  { id: 'servo_greaves', name: 'Сервоприводные поножи', slotCategory: 'legs', rarity: 'legendary', sellSalvage: 50, upgradeSalvageBase: 41, upgradeSalvageStep: 18, stats: { moveSpeedMul: 0.04, fireRateMul: 0.015, maxHpFlat: 16 } },
   { id: 'grav_boots', name: 'Грави-ботинки', slotCategory: 'legs', rarity: 'rare', sellSalvage: 18, upgradeSalvageBase: 20, upgradeSalvageStep: 9, stats: { moveSpeedMul: 0.022, pickupRadius: 12 } },
   { id: 'combat_knife', name: 'Боевой нож', slotCategory: 'hand', rarity: 'common', sellSalvage: 7, upgradeSalvageBase: 9, upgradeSalvageStep: 5, stats: { damageMul: 0.014 } },
   { id: 'breacher_glove', name: 'Перчатка взломщика', slotCategory: 'hand', rarity: 'uncommon', sellSalvage: 11, upgradeSalvageBase: 14, upgradeSalvageStep: 7, stats: { fireRateMul: 0.014, pickupRadius: 10 } },
   { id: 'stabilizer_glove', name: 'Перчатка-стабилизатор', slotCategory: 'hand', rarity: 'rare', sellSalvage: 15, upgradeSalvageBase: 16, upgradeSalvageStep: 8, stats: { fireRateMul: 0.022 } },
   { id: 'plasma_emitter', name: 'Плазменный эмиттер', slotCategory: 'hand', rarity: 'epic', sellSalvage: 33, upgradeSalvageBase: 29, upgradeSalvageStep: 13, stats: { damageMul: 0.022, fireRateMul: 0.014 } },
   { id: 'nova_gauntlet', name: 'Нова-рукавица', slotCategory: 'hand', rarity: 'legendary', sellSalvage: 54, upgradeSalvageBase: 43, upgradeSalvageStep: 18, stats: { damageMul: 0.032, fireRateMul: 0.018, moveSpeedMul: 0.012 } },
-  { id: 'phase_blade', name: 'Фазовый клинок', icon: '/assets/items/phase_blade.png', slotCategory: 'hand', rarity: 'epic', sellSalvage: 36, upgradeSalvageBase: 30, upgradeSalvageStep: 13, stats: { damageMul: 0.026, moveSpeedMul: 0.015 } },
+  { id: 'phase_blade', name: 'Фазовый клинок', slotCategory: 'hand', rarity: 'epic', sellSalvage: 36, upgradeSalvageBase: 30, upgradeSalvageStep: 13, stats: { damageMul: 0.026, moveSpeedMul: 0.015 } },
   { id: 'copper_ring', name: 'Медное кольцо', slotCategory: 'ring', rarity: 'common', sellSalvage: 6, upgradeSalvageBase: 8, upgradeSalvageStep: 4, stats: { pickupRadius: 10 } },
   { id: 'emerald_ring', name: 'Изумрудное кольцо', slotCategory: 'ring', rarity: 'uncommon', sellSalvage: 10, upgradeSalvageBase: 12, upgradeSalvageStep: 6, stats: { hpRegenPerSec: 0.15, pickupRadius: 8 } },
   { id: 'ruby_ring', name: 'Рубиновое кольцо', slotCategory: 'ring', rarity: 'rare', sellSalvage: 14, upgradeSalvageBase: 15, upgradeSalvageStep: 8, stats: { damageMul: 0.012, maxHpFlat: 8 } },
@@ -252,7 +252,7 @@ const ITEM_DEFS = [
   { id: 'incendiary_grenade', name: 'Зажигательная граната', slotCategory: 'quick', rarity: 'uncommon', stackable: true, maxStack: 9, sellSalvage: 4, combatUse: { type: 'grenade', damage: 102, radius: 128 } },
   { id: 'cluster_grenade', name: 'Кассетная граната', slotCategory: 'quick', rarity: 'rare', stackable: true, maxStack: 6, sellSalvage: 6, combatUse: { type: 'grenade', damage: 130, radius: 145 } },
   { id: 'artillery_beacon', name: 'Маяк артиллерии', slotCategory: 'quick', rarity: 'epic', stackable: true, maxStack: 5, sellSalvage: 10, combatUse: { type: 'artillery', damage: 170, radius: 170, waves: 3 } },
-  { id: 'satellite_laser', name: 'Спутниковый лазер', icon: '/assets/items/satellite_laser.png', slotCategory: 'quick', rarity: 'legendary', stackable: true, maxStack: 4, sellSalvage: 14, combatUse: { type: 'satellite', damage: 280, radius: 190 } },
+  { id: 'satellite_laser', name: 'Спутниковый лазер', slotCategory: 'quick', rarity: 'legendary', stackable: true, maxStack: 4, sellSalvage: 14, combatUse: { type: 'satellite', damage: 280, radius: 190 } },
   { id: 'stim_pack', name: 'Стим-пак', slotCategory: 'quick', rarity: 'rare', stackable: true, maxStack: 7, sellSalvage: 6, combatUse: { type: 'buff', damageMul: 0.18, fireRateMul: 0.18, durationMs: 12000 } },
   { id: 'adrenaline_shot', name: 'Адреналиновый укол', slotCategory: 'quick', rarity: 'epic', stackable: true, maxStack: 6, sellSalvage: 8, combatUse: { type: 'buff', damageMul: 0.14, fireRateMul: 0.16, moveSpeedMul: 0.12, durationMs: 14000 } },
   { id: 'regen_injector', name: 'Реген-инъектор', slotCategory: 'quick', rarity: 'epic', stackable: true, maxStack: 5, sellSalvage: 9, combatUse: { type: 'regen', hpRegenPerSec: 7.5, durationMs: 10000 } },
@@ -260,15 +260,22 @@ const ITEM_DEFS = [
   { id: 'orbital_marker', name: 'Орбитальный маркер', slotCategory: 'quick', rarity: 'legendary', stackable: true, maxStack: 3, sellSalvage: 16, combatUse: { type: 'satellite', damage: 340, radius: 210, stunMs: 1200 } },
   { id: 'phoenix_kit', name: 'Феникс-комплект', slotCategory: 'quick', rarity: 'legendary', stackable: true, maxStack: 4, sellSalvage: 15, combatUse: { type: 'heal', healFlat: 120 } },
   { id: 'drone_swarm', name: 'Рой дронов', slotCategory: 'quick', rarity: 'epic', stackable: true, maxStack: 5, sellSalvage: 11, combatUse: { type: 'artillery', damage: 210, radius: 155, waves: 4 } },
-];
+].map((item) => ({
+  ...item,
+  icon: `/assets/items/${item.id}.webp`,
+}));
 
 function makeHeroUniqueSkills(heroId, defs) {
-  return defs.map((def) => ({
-    id: `${heroId}_${def.id}`,
-    heroId,
-    sourceHeroId: heroId,
-    ...def,
-  }));
+  return defs.map((def) => {
+    const id = String(def?.id || '').trim();
+    return {
+      ...def,
+      id,
+      heroId,
+      sourceHeroId: heroId,
+      icon: `/assets/hero-skills/${heroId}_${id}.webp`,
+    };
+  });
 }
 
 const HERO_DEFS = [

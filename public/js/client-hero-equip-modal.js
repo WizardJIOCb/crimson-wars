@@ -7,6 +7,7 @@
   let heroEquipModalTitleEl = null;
   let heroEquipModalSubtitleEl = null;
   let heroEquipModalIconEl = null;
+  let heroEquipModalArtEl = null;
   let heroEquipModalBodyEl = null;
   let heroEquipModalCloseTimer = 0;
 
@@ -18,6 +19,13 @@
   const trWithFallback = (key, fallback, params = null) => {
     const out = tr(key, params);
     return out === key ? String(fallback ?? key) : out;
+  };
+
+  const uiText = (ruText, enText) => {
+    const lang = typeof globalThis.cwI18nGetLanguage === 'function'
+      ? String(globalThis.cwI18nGetLanguage() || '').trim().toLowerCase()
+      : 'ru';
+    return lang === 'ru' ? String(ruText || '') : String(enText || ruText || '');
   };
 
   function escapeHtml(raw) {
@@ -110,6 +118,7 @@
     heroEquipModalTitleEl = title;
     heroEquipModalSubtitleEl = subtitle;
     heroEquipModalIconEl = icon;
+    heroEquipModalArtEl = art;
     heroEquipModalBodyEl = body;
   }
 
@@ -168,6 +177,18 @@
     return String(hero?.name || hero?.id || 'Hero');
   }
 
+  function setModalArt(iconMeta, fallbackGlyph) {
+    if (!heroEquipModalIconEl) return;
+    const imagePath = String(iconMeta?.imagePath || '').trim();
+    heroEquipModalIconEl.classList.toggle('has-image', Boolean(imagePath));
+    if (heroEquipModalArtEl) heroEquipModalArtEl.classList.toggle('has-item-image', Boolean(imagePath));
+    if (imagePath) {
+      heroEquipModalIconEl.innerHTML = `<img src="${escapeHtml(imagePath)}" alt="" loading="lazy" decoding="async" />`;
+      return;
+    }
+    heroEquipModalIconEl.textContent = fallbackGlyph || 'EQ';
+  }
+
   function open(hero, slotKey) {
     const catalog = getProgressionCatalog();
     const progression = getProgressionState();
@@ -180,10 +201,14 @@
     const itemMap = getCatalogItemMap(catalog);
     const inventoryItems = Array.isArray(progression?.inventoryItems) ? progression.inventoryItems.slice() : [];
     const equippedItems = getHeroEquipmentItemMap(catalog, progression, hero.id);
-    const matchingItems = inventoryItems
+    const currentSlotItem = equippedItems[String(slotKey || '')] || null;
+    const currentSlotItemDef = currentSlotItem ? (itemMap[currentSlotItem.itemId] || {}) : null;
+    const currentSlotUid = String(currentSlotItem?.uid || '');
+    const replacementItems = inventoryItems
       .filter((item) => {
         const itemDef = itemMap[item.itemId] || {};
-        return getInventorySlotTargets(catalog, itemDef).some((target) => String(target?.key || '') === String(slotKey || ''));
+        return String(item?.uid || '') !== currentSlotUid
+          && getInventorySlotTargets(catalog, itemDef).some((target) => String(target?.key || '') === String(slotKey || ''));
       })
       .sort((a, b) => {
         const itemDefA = itemMap[a.itemId] || {};
@@ -204,17 +229,43 @@
     heroEquipModalEl.setAttribute('aria-label', titleText);
     heroEquipModalTitleEl.textContent = titleText;
     if (heroEquipModalSubtitleEl) {
-      heroEquipModalSubtitleEl.textContent = `${getHeroDisplayName(hero)} | ${matchingItems.length} ${trWithFallback('ui.inventory.items', 'items')}`;
+      heroEquipModalSubtitleEl.textContent = `${getHeroDisplayName(hero)} | ${replacementItems.length} ${uiText('замен', 'replacements')}`;
     }
-    if (heroEquipModalIconEl) heroEquipModalIconEl.textContent = getSlotGlyph(slot);
 
-    if (!matchingItems.length) {
-      heroEquipModalBodyEl.innerHTML = `<div class="hero-equip-modal-empty">${escapeHtml(trWithFallback('ui.inventory.no_matching_items', 'No suitable items for this slot yet.'))}</div>`;
+    const currentIconMeta = currentSlotItemDef
+      ? getInventoryItemIconMeta(currentSlotItemDef, getInventorySlotTargets(catalog, currentSlotItemDef))
+      : getInventoryItemIconMeta(
+        {
+          slotCategory: slot?.category,
+          combatUse: slot?.kind === 'consumable',
+        },
+        [slot],
+      );
+    setModalArt(currentIconMeta, getSlotGlyph(slot));
+    const currentQuantity = Math.max(1, Number(currentSlotItem?.quantity) || 1);
+    const currentStats = currentSlotItemDef && typeof globalThis.formatInventoryItemEffectText === 'function'
+      ? globalThis.formatInventoryItemEffectText(currentSlotItemDef, currentSlotItem)
+      : '';
+    const currentMeta = currentSlotItemDef
+      ? `${getItemRarityLabel(currentSlotItemDef.rarity)} | Lv ${Math.max(1, Number(currentSlotItem?.level) || 1)}${currentQuantity > 1 ? ` | x${currentQuantity}` : ''}`
+      : trWithFallback('ui.inventory.empty_slot_hint', 'Choose an item from inventory');
+    const currentName = currentSlotItemDef
+      ? getItemDisplayName(currentSlotItemDef)
+      : trWithFallback('ui.inventory.empty_slot', 'Empty');
+    const currentCardClass = `hero-equip-current-card ${currentSlotItemDef ? `rarity-${escapeHtml(String(currentSlotItemDef.rarity || 'common').toLowerCase())}` : 'empty'}`;
+    const currentSlotCard = `<div class="${currentCardClass}"><div class="hero-equip-current-copy"><div class="hero-equip-current-label">${escapeHtml(currentSlotItemDef ? uiText('Сейчас одето', 'Equipped now') : uiText('Слот пуст', 'Slot empty'))}</div><div class="hero-equip-current-name">${escapeHtml(currentName)}</div><div class="hero-equip-current-meta">${escapeHtml(currentMeta)}</div>${currentStats ? `<div class="hero-equip-current-stats">${escapeHtml(currentStats)}</div>` : ''}</div></div>`;
+    const replacementTitle = `<div class="hero-equip-section-title">${escapeHtml(currentSlotItemDef ? uiText('Доступные замены', 'Available replacements') : uiText('Подходящие предметы', 'Suitable items'))}</div>`;
+
+    if (!replacementItems.length) {
+      const emptyText = currentSlotItemDef
+        ? uiText('Других подходящих предметов для этого слота пока нет.', 'No replacement items for this slot yet.')
+        : trWithFallback('ui.inventory.no_matching_items', 'No suitable items for this slot yet.');
+      heroEquipModalBodyEl.innerHTML = `${currentSlotCard}${replacementTitle}<div class="hero-equip-modal-empty">${escapeHtml(emptyText)}</div>`;
       showModal();
       return;
     }
 
-    const rowsHtml = matchingItems.map((item) => {
+    const rowsHtml = replacementItems.map((item) => {
       const itemDef = itemMap[item.itemId] || {};
       const quantity = Math.max(1, Number(item.quantity) || 1);
       const iconMeta = getInventoryItemIconMeta(itemDef, getInventorySlotTargets(catalog, itemDef));
@@ -225,10 +276,14 @@
       const equippedMeta = equippedIn.length
         ? `<div class="hero-equip-picker-meta hero-equip-picker-meta-eq">${escapeHtml(trWithFallback('ui.inventory.equipped_in', 'Equipped'))}: ${escapeHtml(equippedIn.map((key) => getItemSlotLabel((catalog.itemSlots || []).find((entry) => entry.key === key) || { key })).join(', '))}</div>`
         : '';
-      return `<div class="hero-equip-picker-row rarity-${escapeHtml(String(itemDef.rarity || 'common').toLowerCase())}">${iconHtml}<div class="hero-equip-picker-copy"><div class="hero-equip-picker-name">${escapeHtml(getItemDisplayName(itemDef))}</div><div class="hero-equip-picker-meta">${escapeHtml(getItemRarityLabel(itemDef.rarity))} | Lv ${Math.max(1, Number(item.level) || 1)}${quantity > 1 ? ` | x${quantity}` : ''}</div>${equippedMeta}</div><button type="button" class="hero-equip-action" data-modal-item-equip="${escapeHtml(item.uid)}" data-slot-key="${escapeHtml(slot.key)}">${escapeHtml(trWithFallback('ui.inventory.equip', 'Equip'))}</button></div>`;
+      const itemStats = typeof globalThis.formatInventoryItemEffectText === 'function'
+        ? globalThis.formatInventoryItemEffectText(itemDef, item)
+        : '';
+      const actionLabel = currentSlotItemDef ? uiText('Заменить', 'Replace') : trWithFallback('ui.inventory.equip', 'Equip');
+      return `<div class="hero-equip-picker-row rarity-${escapeHtml(String(itemDef.rarity || 'common').toLowerCase())}">${iconHtml}<div class="hero-equip-picker-copy"><div class="hero-equip-picker-name">${escapeHtml(getItemDisplayName(itemDef))}</div><div class="hero-equip-picker-meta">${escapeHtml(getItemRarityLabel(itemDef.rarity))} | Lv ${Math.max(1, Number(item.level) || 1)}${quantity > 1 ? ` | x${quantity}` : ''}</div>${itemStats ? `<div class="hero-equip-picker-stats">${escapeHtml(itemStats)}</div>` : ''}${equippedMeta}</div><button type="button" class="hero-equip-action" data-modal-item-equip="${escapeHtml(item.uid)}" data-slot-key="${escapeHtml(slot.key)}">${escapeHtml(actionLabel)}</button></div>`;
     }).join('');
 
-    heroEquipModalBodyEl.innerHTML = `<div class="hero-equip-picker-list">${rowsHtml}</div>`;
+    heroEquipModalBodyEl.innerHTML = `${currentSlotCard}${replacementTitle}<div class="hero-equip-picker-list">${rowsHtml}</div>`;
     for (const btn of heroEquipModalBodyEl.querySelectorAll('[data-modal-item-equip]')) {
       btn.addEventListener('click', async () => {
         try {

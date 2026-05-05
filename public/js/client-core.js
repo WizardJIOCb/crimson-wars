@@ -1725,7 +1725,7 @@ function renderBattleHubHeroSkillModal() {
   const heroName = trHeroNameCore(hero?.id, hero?.name || hero?.id || 'Hero');
 
   content.innerHTML = '<div class="battle-hub-skill-modal-hero">'
-    + `<div class="battle-hub-skill-modal-art rarity-${rarity}" style="--skill-color:${color}"><span>${escapeHtml(icon)}</span></div>`
+    + renderBattleHubHeroSkillModalArt(skill, icon, rarity, color)
     + '<div class="battle-hub-skill-modal-head">'
     + `<span class="battle-hub-skill-modal-kicker">${escapeHtml(skillTypeLabel)} | ${escapeHtml(rarityLabel)}</span>`
     + `<strong>${escapeHtml(skillName)}</strong>`
@@ -1841,7 +1841,7 @@ function renderBattleHubHeroSkills(heroId, progression = null, catalog = null, l
     const shards = Math.max(0, Number(progression?.shards) || 0);
     const canAfford = loggedIn && cost.action !== 'maxed' && shards >= cost.cost;
     return `<button type="button" class="battle-hub-hero-skill ${unlocked ? 'is-unlocked' : 'is-locked'} ${canAfford ? 'can-afford' : ''} ${flash ? 'is-skill-flash' : ''} rarity-${rarity}" data-battle-hub-hero-id="${escapeHtml(heroId)}" data-battle-hub-skill-id="${escapeHtml(skillId)}" style="--skill-color:${color}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">`
-      + `<span class="battle-hub-hero-skill-icon">${escapeHtml(icon)}</span>`
+      + renderBattleHubHeroSkillIcon(skill, icon)
       + '<span class="battle-hub-hero-skill-copy">'
       + `<span class="battle-hub-hero-skill-name">${escapeHtml(skillName)}</span>`
       + `<span class="battle-hub-hero-skill-meta"><b>${escapeHtml(skillType)}</b><strong>${escapeHtml(levelLabel)}</strong></span>`
@@ -2606,6 +2606,39 @@ function skillBadgeLabel(skill) {
   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
   return parts[0].slice(0, 3).toUpperCase();
 }
+
+function getBattleHubHeroSkillIconPath(skill) {
+  const explicit = String(skill?.icon || skill?.iconPath || '').trim();
+  if (explicit) {
+    if (/^(?:https?:)?\/\//.test(explicit) || explicit.startsWith('/') || explicit.startsWith('data:')) return explicit;
+    return `/assets/hero-skills/${explicit}`;
+  }
+  const skillId = String(skill?.id || '').trim();
+  if (!skillId) return '';
+  const heroId = String(skill?.heroId || skill?.sourceHeroId || '').trim().toLowerCase();
+  return heroId ? `/assets/hero-skills/${heroId}_${skillId}.webp` : `/assets/hero-skills/${skillId}.webp`;
+}
+
+function renderBattleHubHeroSkillIcon(skill, fallbackIcon, extraClass = '') {
+  const imagePath = getBattleHubHeroSkillIconPath(skill);
+  const className = ['battle-hub-hero-skill-icon', imagePath ? 'has-image' : '', extraClass].filter(Boolean).join(' ');
+  if (imagePath) {
+    return `<span class="${escapeHtml(className)}"><img src="${escapeHtml(imagePath)}" alt="" loading="lazy" decoding="async"></span>`;
+  }
+  return `<span class="${escapeHtml(className)}">${escapeHtml(fallbackIcon)}</span>`;
+}
+
+function renderBattleHubHeroSkillModalArt(skill, fallbackIcon, rarity, color) {
+  const imagePath = getBattleHubHeroSkillIconPath(skill);
+  const className = `battle-hub-skill-modal-art rarity-${rarity}${imagePath ? ' has-image' : ''}`;
+  const style = `--skill-color:${color}`;
+  if (imagePath) {
+    return `<div class="${escapeHtml(className)}" style="${escapeHtml(style)}"><img src="${escapeHtml(imagePath)}" alt="" loading="lazy" decoding="async"></div>`;
+  }
+  return `<div class="${escapeHtml(className)}" style="${escapeHtml(style)}"><span>${escapeHtml(fallbackIcon)}</span></div>`;
+}
+
+globalThis.renderBattleHubHeroSkillIcon = renderBattleHubHeroSkillIcon;
 
 function escapeHtml(text) {
   return String(text || '')
