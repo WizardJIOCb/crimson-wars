@@ -216,9 +216,14 @@
         : ((Number(progress?.completedAt) || 0) > 0 || (Number(progress?.victories) || 0) > 0)
           ? 'Пройдено'
           : 'Доступно';
+      const statusClass = !unlocked
+        ? 'is-locked'
+        : ((Number(progress?.completedAt) || 0) > 0 || (Number(progress?.victories) || 0) > 0)
+          ? 'is-completed'
+          : 'is-available';
       return ''
         + `<button type="button" class="campaign-level-card${selected ? ' is-selected' : ''}${unlocked ? '' : ' is-locked'}" data-level-id="${escapeHtml(level.id)}" ${unlocked ? '' : 'disabled'}>`
-        +   `<span class="campaign-level-head"><b>${index + 1}. ${escapeHtml(level.title || level.id)}</b><small>${status}</small></span>`
+        +   `<span class="campaign-level-head"><b>${index + 1}. ${escapeHtml(level.title || level.id)}</b><small class="campaign-level-status ${statusClass}">${status}</small></span>`
         +   `<span class="campaign-level-brief">${escapeHtml(level.brief || '')}</span>`
         +   `<span class="campaign-level-goals">${formatGoals(level)}</span>`
         +   `<span class="campaign-level-scenario">${escapeHtml(level.scenario || '')}</span>`

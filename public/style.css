@@ -9343,6 +9343,27 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
   align-items: baseline;
 }
 
+.campaign-level-status {
+  flex: 0 0 auto;
+  font-weight: 900;
+  text-shadow: 0 0 12px rgba(255, 255, 255, 0.08);
+}
+
+.campaign-level-status.is-completed {
+  color: #8bd79b;
+  text-shadow: 0 0 14px rgba(34, 197, 94, 0.22);
+}
+
+.campaign-level-status.is-available {
+  color: #e6bf68;
+  text-shadow: 0 0 14px rgba(245, 158, 11, 0.2);
+}
+
+.campaign-level-status.is-locked {
+  color: #a8b0bd;
+  opacity: 0.82;
+}
+
 .campaign-card-desc {
   color: #d4dce6;
   font-size: 13px;
