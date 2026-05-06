@@ -3,10 +3,16 @@
 (() => {
   const HERO_EQUIP_SLOT_FX_MS = 1500;
   const HERO_LOADOUT_SWAP_FX_MS = 1350;
+  const HERO_SKILL_UPGRADE_FX_MS = 1550;
+  const HERO_TALENT_UPGRADE_FX_MS = 1350;
   let heroEquipSlotFx = null;
   let heroEquipSlotFxTimer = 0;
   let heroLoadoutSwapFx = null;
   let heroLoadoutSwapFxTimer = 0;
+  let heroSkillUpgradeFx = null;
+  let heroSkillUpgradeFxTimer = 0;
+  let heroTalentUpgradeFx = null;
+  let heroTalentUpgradeFxTimer = 0;
   let lastHeroLoadoutRenderId = '';
 
   function getPlayerVariant(id) {
@@ -125,6 +131,99 @@
       ? { active: true, color: heroLoadoutSwapFx.color || '' }
       : { active: false, color: '' };
   }
+  function getHeroSkillFxColor(heroId, skillId) {
+    const nextHeroId = normalizeHeroEquipFxKey(heroId);
+    const nextSkillId = String(skillId || '').trim();
+    const catalog = getProgressionCatalog();
+    const hero = (Array.isArray(catalog?.heroes) ? catalog.heroes : [])
+      .find((entry) => normalizeHeroEquipFxKey(entry?.id) === nextHeroId);
+    const skill = (Array.isArray(hero?.uniqueSkills) ? hero.uniqueSkills : [])
+      .find((entry) => String(entry?.id || '').trim() === nextSkillId);
+    if (skill) return getInventoryRarityFxColor(skill.rarity);
+    return String(hero?.accent || '').trim() || '#38bdf8';
+  }
+  function markHeroSkillUpgradeFx(heroId, skillId, kind = 'upgrade', color = '') {
+    const nextHeroId = normalizeHeroEquipFxKey(heroId);
+    const nextSkillId = String(skillId || '').trim();
+    if (!nextHeroId || !nextSkillId) return;
+    heroSkillUpgradeFx = {
+      heroId: nextHeroId,
+      skillId: nextSkillId,
+      kind: kind === 'unlock' ? 'unlock' : 'upgrade',
+      color: String(color || '').trim() || getHeroSkillFxColor(nextHeroId, nextSkillId),
+      at: getHeroEquipFxNow(),
+    };
+    if (heroSkillUpgradeFxTimer) clearTimeout(heroSkillUpgradeFxTimer);
+    heroSkillUpgradeFxTimer = setTimeout(() => {
+      heroSkillUpgradeFx = null;
+      heroSkillUpgradeFxTimer = 0;
+    }, HERO_SKILL_UPGRADE_FX_MS);
+    globalThis.markBattleHubHeroSkillFx?.(nextHeroId, nextSkillId);
+  }
+  function getHeroSkillUpgradeFx(heroId, skillId) {
+    if (!heroSkillUpgradeFx) return { className: '', color: '' };
+    const active = normalizeHeroEquipFxKey(heroId) === heroSkillUpgradeFx.heroId
+      && String(skillId || '').trim() === heroSkillUpgradeFx.skillId
+      && (getHeroEquipFxNow() - Number(heroSkillUpgradeFx.at || 0)) < HERO_SKILL_UPGRADE_FX_MS;
+    if (!active) return { className: '', color: '' };
+    return {
+      className: heroSkillUpgradeFx.kind === 'unlock' ? 'is-skill-unlock-flash' : 'is-skill-upgrade-flash',
+      color: heroSkillUpgradeFx.color || '',
+    };
+  }
+  function getHeroTalentNodeVisual(hero, node) {
+    const probe = [
+      node?.id,
+      node?.name,
+      node?.desc,
+      ...Object.keys(node || {}),
+    ].join(' ').toLowerCase();
+    if (/regen|recovery|aid|heal/.test(probe)) return { key: 'regen', color: '#fb7185' };
+    if (/hp|maxhp|vital|armor|barrier|skin|plating/.test(probe)) return { key: 'guard', color: '#22c55e' };
+    if (/dodge|roll|charge/.test(probe)) return { key: 'dodge', color: '#a78bfa' };
+    if (/fire|reload|tempo|overclock|hands|rate/.test(probe)) return { key: 'rate', color: '#f59e0b' };
+    if (/damage|killer|rage|shot|burst|sting|core/.test(probe)) return { key: 'damage', color: '#f43f5e' };
+    if (/move|speed|stride|haste|blink/.test(probe)) return { key: 'speed', color: '#38bdf8' };
+    if (/pickup|magnet|sweep|aura/.test(probe)) return { key: 'field', color: '#14b8a6' };
+    return { key: 'core', color: String(hero?.accent || '').trim() || '#38bdf8' };
+  }
+  function getHeroTalentFxColor(heroId, nodeId) {
+    const nextHeroId = normalizeHeroEquipFxKey(heroId);
+    const nextNodeId = String(nodeId || '').trim();
+    const catalog = getProgressionCatalog();
+    const hero = (Array.isArray(catalog?.heroes) ? catalog.heroes : [])
+      .find((entry) => normalizeHeroEquipFxKey(entry?.id) === nextHeroId);
+    const node = (Array.isArray(catalog?.trees?.[hero?.id]) ? catalog.trees[hero.id] : [])
+      .find((entry) => String(entry?.id || '').trim() === nextNodeId);
+    return getHeroTalentNodeVisual(hero, node).color;
+  }
+  function markHeroTalentUpgradeFx(heroId, nodeId, color = '') {
+    const nextHeroId = normalizeHeroEquipFxKey(heroId);
+    const nextNodeId = String(nodeId || '').trim();
+    if (!nextHeroId || !nextNodeId) return;
+    heroTalentUpgradeFx = {
+      heroId: nextHeroId,
+      nodeId: nextNodeId,
+      color: String(color || '').trim() || getHeroTalentFxColor(nextHeroId, nextNodeId),
+      at: getHeroEquipFxNow(),
+    };
+    if (heroTalentUpgradeFxTimer) clearTimeout(heroTalentUpgradeFxTimer);
+    heroTalentUpgradeFxTimer = setTimeout(() => {
+      heroTalentUpgradeFx = null;
+      heroTalentUpgradeFxTimer = 0;
+    }, HERO_TALENT_UPGRADE_FX_MS);
+  }
+  function getHeroTalentUpgradeFx(heroId, nodeId) {
+    if (!heroTalentUpgradeFx) return { className: '', color: '' };
+    const active = normalizeHeroEquipFxKey(heroId) === heroTalentUpgradeFx.heroId
+      && String(nodeId || '').trim() === heroTalentUpgradeFx.nodeId
+      && (getHeroEquipFxNow() - Number(heroTalentUpgradeFx.at || 0)) < HERO_TALENT_UPGRADE_FX_MS;
+    if (!active) return { className: '', color: '' };
+    return {
+      className: 'is-talent-upgrade-flash',
+      color: heroTalentUpgradeFx.color || '',
+    };
+  }
   function getUnlockedHeroSet(catalog, progression) {
     if (progression?.unlockedHeroes && Array.isArray(progression.unlockedHeroes)) {
       return new Set(progression.unlockedHeroes.map((id) => String(id || '').trim()).filter(Boolean));
@@ -234,11 +333,13 @@
   }
   async function upgradeHeroNodeForAccount(heroId, nodeId) {
     if (!game.playerAuth?.player) return;
+    const fxColor = getHeroTalentFxColor(heroId, nodeId);
     const data = await apiJson('/api/player/progression/upgrade-node', {
       method: 'POST',
       body: JSON.stringify({ heroId, nodeId }),
     });
     if (data?.progression) game.playerAuth.progression = data.progression;
+    markHeroTalentUpgradeFx(heroId, nodeId, fxColor);
   }
   async function unlockHeroSkillForAccount(heroId, skillId) {
     if (!game.playerAuth?.player) return;
@@ -247,6 +348,7 @@
       body: JSON.stringify({ heroId, skillId }),
     });
     if (data?.progression) game.playerAuth.progression = data.progression;
+    markHeroSkillUpgradeFx(heroId, skillId, 'unlock');
   }
   async function upgradeHeroSkillForAccount(heroId, skillId) {
     if (!game.playerAuth?.player) return;
@@ -255,6 +357,7 @@
       body: JSON.stringify({ heroId, skillId }),
     });
     if (data?.progression) game.playerAuth.progression = data.progression;
+    markHeroSkillUpgradeFx(heroId, skillId, 'upgrade');
   }
   async function equipItemForAccount(heroId, itemUid, slotKey) {
     if (!game.playerAuth?.player) return;
@@ -580,6 +683,98 @@
       text: formatter(Math.max(0, Number(need) || 0), Math.max(0, Number(have) || 0)),
     };
   }
+  function renderHeroUniqueSkillRow(hero, skill, progression, shards, unlocked) {
+    const lvl = getHeroSkillLevel(progression, hero.id, skill.id);
+    const maxLevel = Math.max(1, Number(skill.maxLevel) || 1);
+    const unlockedSkill = lvl > 0;
+    const maxedSkill = lvl >= maxLevel;
+    const unlockCost = Math.max(1, Number(skill.unlockCostShards) || 1);
+    const upgradeCost = Math.max(1, (Number(skill.upgradeCostShardsBase) || 1) + (Math.max(0, lvl - 1) * Math.max(0, Number(skill.upgradeCostShardsStep) || 0)));
+    const shardWord = trWithFallback('ui.profile.shards', 'Shards').toLowerCase();
+    const costReq = heroRequirementMeta(unlockedSkill ? upgradeCost : unlockCost, shards, (need, have) => {
+      const tpl = unlockedSkill ? 'ui.hero.skill_upgrade_cost' : 'ui.hero.skill_unlock_cost';
+      const fb = unlockedSkill ? 'Upgrade: {cost} shards' : 'Unlock: {cost} shards';
+      return trWithFallback(tpl, fb, { cost: need, currency: shardWord }) + ' | ' + `${trWithFallback('ui.hero.have_label', 'You have')}: ${have}`;
+    });
+    const canUnlockSkill = Boolean(game.playerAuth?.player && unlocked && !unlockedSkill && costReq.enough);
+    const canUpgradeSkill = Boolean(game.playerAuth?.player && unlocked && unlockedSkill && !maxedSkill && costReq.enough);
+    const canUseAction = unlockedSkill ? canUpgradeSkill : canUnlockSkill;
+    const skillName = trWithFallback(`skill.${String(skill.id || '').toLowerCase()}.name`, skill.name || skill.id);
+    const skillDesc = trWithFallback(`skill.${String(skill.id || '').toLowerCase()}.desc`, skill.desc || '');
+    const skillType = skill.kind === 'active'
+      ? trWithFallback('ui.hero.skill_type_active', 'Active')
+      : (skill.globalAura ? trWithFallback('ui.hero.skill_type_passive_aura', 'Passive Aura') : trWithFallback('ui.hero.skill_type_passive', 'Passive'));
+    const requirementLabel = unlockedSkill
+      ? (maxedSkill ? trWithFallback('ui.common.max', 'MAX') : costReq.text)
+      : costReq.text;
+    const requirementClass = (costReq.enough || maxedSkill) ? 'ok' : 'lack';
+    const skillIconHtml = typeof globalThis.renderBattleHubHeroSkillIcon === 'function'
+      ? globalThis.renderBattleHubHeroSkillIcon(skill, skill.kind === 'active' ? 'A' : 'P', 'hero-unique-skill-icon')
+      : '';
+    const skillFx = getHeroSkillUpgradeFx(hero.id, skill.id);
+    const skillColor = skillFx.color || getInventoryRarityFxColor(skill.rarity);
+    const rowClasses = [
+      'hero-node',
+      'hero-unique-skill',
+      unlockedSkill ? 'is-unlocked' : 'is-locked',
+      maxedSkill ? 'is-maxed' : '',
+      canUseAction ? 'can-upgrade' : '',
+      (!costReq.enough && !maxedSkill) ? 'hero-node-lack' : '',
+      skillFx.className,
+    ].filter(Boolean).join(' ');
+    const buttonClasses = [
+      'hero-node-up',
+      'hero-skill-upgrade-action',
+      canUseAction ? 'is-ready' : '',
+      (!costReq.enough && !maxedSkill) ? 'hero-node-up-lack' : '',
+      unlockedSkill ? 'is-upgrade' : 'is-unlock',
+      maxedSkill ? 'is-maxed' : '',
+    ].filter(Boolean).join(' ');
+    const actionVerb = maxedSkill
+      ? trWithFallback('ui.common.max', 'MAX')
+      : (unlockedSkill ? trWithFallback('ui.inventory.action_upgrade', 'Upgrade') : trWithFallback('ui.hero.unlock', 'Unlock'));
+    const levelLabel = `LV ${lvl}/${maxLevel}`;
+    const actionTitle = `${actionVerb}: ${skillName}. ${levelLabel}. ${requirementLabel}`;
+    const actionGlyph = maxedSkill ? 'MAX' : '+';
+    return `<div class="${escapeHtml(rowClasses)}" data-hero-skill-row="${escapeHtml(skill.id)}" style="--skill-color:${escapeHtml(skillColor)}">${skillIconHtml}<div class="hero-unique-skill-copy"><div class="hero-node-name">${escapeHtml(skillName)} <span class="muted">(${escapeHtml(skillType)})</span></div><div class="hero-node-desc">${escapeHtml(skillDesc)}</div><div class="hero-node-desc hero-req ${requirementClass}">${escapeHtml(requirementLabel)}</div></div><button type="button" class="${escapeHtml(buttonClasses)}" data-hero-skill-id="${escapeHtml(skill.id)}" data-hero-skill-action="${unlockedSkill ? 'upgrade' : 'unlock'}" title="${escapeHtml(actionTitle)}" aria-label="${escapeHtml(actionTitle)}" ${canUseAction ? '' : 'disabled'}><span class="hero-skill-upgrade-action-frame" aria-hidden="true"></span><span class="hero-skill-upgrade-action-level">${escapeHtml(levelLabel)}</span><span class="hero-skill-upgrade-action-mark" aria-hidden="true">${escapeHtml(actionGlyph)}</span></button></div>`;
+  }
+  function renderHeroTalentNodeRow(hero, node, progression, points, unlocked) {
+    const lvl = getNodeLevel(progression, hero.id, node.id);
+    const maxLevel = Math.max(1, Number(node.maxLevel) || 1);
+    const maxedNode = lvl >= maxLevel;
+    const cost = Math.max(1, Number(node.cost) || 1);
+    const pointReq = heroRequirementMeta(cost, points, (need, have) => trWithFallback('ui.hero.need_have_points', 'Skill points: need {need} • you have {have}', { need, have }));
+    const canUpgrade = Boolean(game.playerAuth?.player && unlocked && !maxedNode && pointReq.enough);
+    const nodeName = trWithFallback(`hero.node.${String(node.id || '').toLowerCase()}.name`, node.name || node.id);
+    const nodeDesc = trWithFallback(`hero.node.${String(node.id || '').toLowerCase()}.desc`, node.desc || '');
+    const requirementLabel = maxedNode ? trWithFallback('ui.common.max', 'MAX') : pointReq.text;
+    const requirementClass = (pointReq.enough || maxedNode) ? 'ok' : 'lack';
+    const talentVisual = getHeroTalentNodeVisual(hero, node);
+    const talentFx = getHeroTalentUpgradeFx(hero.id, node.id);
+    const talentColor = talentFx.color || talentVisual.color;
+    const rowClasses = [
+      'hero-node',
+      'hero-talent-node',
+      `hero-talent-${talentVisual.key}`,
+      maxedNode ? 'is-maxed' : '',
+      canUpgrade ? 'can-upgrade' : '',
+      (!pointReq.enough && !maxedNode) ? 'hero-node-lack' : '',
+      talentFx.className,
+    ].filter(Boolean).join(' ');
+    const buttonClasses = [
+      'hero-node-up',
+      'hero-skill-upgrade-action',
+      'hero-talent-upgrade-action',
+      canUpgrade ? 'is-ready' : '',
+      (!pointReq.enough && !maxedNode) ? 'hero-node-up-lack' : '',
+      maxedNode ? 'is-maxed' : '',
+    ].filter(Boolean).join(' ');
+    const actionVerb = maxedNode ? trWithFallback('ui.common.max', 'MAX') : trWithFallback('ui.inventory.action_upgrade', 'Upgrade');
+    const levelLabel = `LV ${lvl}/${maxLevel}`;
+    const actionTitle = `${actionVerb}: ${nodeName}. ${levelLabel}. ${requirementLabel}`;
+    const actionGlyph = maxedNode ? 'MAX' : '+';
+    return `<div class="${escapeHtml(rowClasses)}" data-hero-talent-row="${escapeHtml(node.id)}" style="--skill-color:${escapeHtml(talentColor)};--talent-color:${escapeHtml(talentColor)}"><span class="hero-talent-icon hero-talent-icon-${escapeHtml(talentVisual.key)}" aria-hidden="true"><span class="hero-talent-icon-core"></span></span><div class="hero-talent-copy"><div class="hero-node-name">${escapeHtml(nodeName)}</div><div class="hero-node-desc">${escapeHtml(nodeDesc)}</div><div class="hero-node-desc hero-req ${requirementClass}">${escapeHtml(requirementLabel)}</div></div><button type="button" class="${escapeHtml(buttonClasses)}" data-node-id="${escapeHtml(node.id)}" title="${escapeHtml(actionTitle)}" aria-label="${escapeHtml(actionTitle)}" ${canUpgrade ? '' : 'disabled'}><span class="hero-skill-upgrade-action-frame" aria-hidden="true"></span><span class="hero-skill-upgrade-action-level">${escapeHtml(levelLabel)}</span><span class="hero-skill-upgrade-action-mark" aria-hidden="true">${escapeHtml(actionGlyph)}</span></button></div>`;
+  }
   function bindHeroUnlockButton(targetEl, hero) {
     const unlockBtn = targetEl?.querySelector?.('[data-hero-unlock="1"]');
     unlockBtn?.addEventListener('click', async () => {
@@ -760,52 +955,9 @@
     const heroXpNeed = Math.max(0, Number(heroXpToNext[hero.id]) || 0);
     const rows = [];
     for (const node of tree) {
-      const lvl = getNodeLevel(progression, hero.id, node.id);
-      const maxLevel = Math.max(1, Number(node.maxLevel) || 1);
-      const cost = Math.max(1, Number(node.cost) || 1);
-      const pointReq = heroRequirementMeta(cost, points, (need, have) => trWithFallback('ui.hero.need_have_points', 'Skill points: need {need} • you have {have}', { need, have }));
-      const canUpgrade = Boolean(game.playerAuth?.player && unlocked && lvl < maxLevel && pointReq.enough);
-      const nodeName = trWithFallback(`hero.node.${String(node.id || '').toLowerCase()}.name`, node.name || node.id);
-      const nodeDesc = trWithFallback(`hero.node.${String(node.id || '').toLowerCase()}.desc`, node.desc || '');
-      const reqClass = pointReq.enough ? 'ok' : 'lack';
-      rows.push(`<div class="hero-node ${pointReq.enough ? '' : 'hero-node-lack'}"><div><div class="hero-node-name">${escapeHtml(nodeName)}</div><div class="hero-node-desc">${escapeHtml(nodeDesc)}</div><div class="hero-node-desc hero-req ${reqClass}">${escapeHtml(pointReq.text)}</div></div><button type="button" class="hero-node-up ${pointReq.enough ? '' : 'hero-node-up-lack'}" data-node-id="${escapeHtml(node.id)}" ${canUpgrade ? '' : 'disabled'}>Lv ${lvl}/${maxLevel}</button></div>`);
+      rows.push(renderHeroTalentNodeRow(hero, node, progression, points, unlocked));
     }
-    const skillRows = uniqueSkills.map((skill) => {
-      const lvl = getHeroSkillLevel(progression, hero.id, skill.id);
-      const maxLevel = Math.max(1, Number(skill.maxLevel) || 1);
-      const unlockedSkill = lvl > 0;
-      const unlockCost = Math.max(1, Number(skill.unlockCostShards) || 1);
-      const upgradeCost = Math.max(1, (Number(skill.upgradeCostShardsBase) || 1) + (Math.max(0, lvl - 1) * Math.max(0, Number(skill.upgradeCostShardsStep) || 0)));
-      const shardWord = trWithFallback('ui.profile.shards', 'Shards').toLowerCase();
-      const costReq = heroRequirementMeta(unlockedSkill ? upgradeCost : unlockCost, shards, (need, have) => {
-        const tpl = unlockedSkill ? 'ui.hero.skill_upgrade_cost' : 'ui.hero.skill_unlock_cost';
-        const fb = unlockedSkill ? 'Upgrade: {cost} shards' : 'Unlock: {cost} shards';
-        return trWithFallback(tpl, fb, { cost: need, currency: shardWord })
-          + ' • '
-          + `${trWithFallback('ui.hero.have_label', 'У вас')}: ${have}`;
-      });
-      const canUnlockSkill = Boolean(game.playerAuth?.player && unlocked && !unlockedSkill && costReq.enough);
-      const canUpgradeSkill = Boolean(game.playerAuth?.player && unlocked && unlockedSkill && lvl < maxLevel && costReq.enough);
-      const skillName = trWithFallback(`skill.${String(skill.id || '').toLowerCase()}.name`, skill.name || skill.id);
-      const skillDesc = trWithFallback(`skill.${String(skill.id || '').toLowerCase()}.desc`, skill.desc || '');
-      const skillType = skill.kind === 'active'
-        ? trWithFallback('ui.hero.skill_type_active', 'Active')
-        : (skill.globalAura
-          ? trWithFallback('ui.hero.skill_type_passive_aura', 'Passive Aura')
-          : trWithFallback('ui.hero.skill_type_passive', 'Passive'));
-      const requirementLabel = unlockedSkill
-        ? (lvl >= maxLevel
-          ? trWithFallback('ui.common.max', 'MAX')
-          : costReq.text)
-        : costReq.text;
-      const requirementDisplayLabel = String(requirementLabel || '')
-        .replace(/\s+[•·]\s+(Need|Нужно):\s*\d+\s+[•·]\s+/iu, ' • ')
-        .replace(/\s+•\s+(Need|Нужно):\s*\d+\s+•\s+/iu, ' • ');
-      const skillIconHtml = typeof globalThis.renderBattleHubHeroSkillIcon === 'function'
-        ? globalThis.renderBattleHubHeroSkillIcon(skill, skill.kind === 'active' ? 'A' : 'P', 'hero-unique-skill-icon')
-        : '';
-      return `<div class="hero-node hero-unique-skill ${(!costReq.enough && lvl < maxLevel) ? 'hero-node-lack' : ''}">${skillIconHtml}<div><div class="hero-node-name">${escapeHtml(skillName)} <span class="muted">(${escapeHtml(skillType)})</span></div><div class="hero-node-desc">${escapeHtml(skillDesc)}</div><div class="hero-node-desc hero-req ${(costReq.enough || lvl >= maxLevel) ? 'ok' : 'lack'}">${escapeHtml(requirementDisplayLabel)}</div></div><button type="button" class="hero-node-up ${(!costReq.enough && lvl < maxLevel) ? 'hero-node-up-lack' : ''}" data-hero-skill-id="${escapeHtml(skill.id)}" data-hero-skill-action="${unlockedSkill ? 'upgrade' : 'unlock'}" ${(unlockedSkill ? canUpgradeSkill : canUnlockSkill) ? '' : 'disabled'}>Lv ${lvl}/${maxLevel}</button></div>`;
-    }).join('');
+    const skillRows = uniqueSkills.map((skill) => renderHeroUniqueSkillRow(hero, skill, progression, shards, unlocked)).join('');
     const unlockMeta = !unlocked
       ? `<div class="hero-lock-meta"><span class="hero-req ${accountLevelReq.enough ? 'ok' : 'lack'}">${escapeHtml(accountLevelReq.text)}</span><span class="hero-req ${cardsReq.enough ? 'ok' : 'lack'}">${escapeHtml(cardsReq.text)}</span><span class="hero-req ${shardsReq.enough ? 'ok' : 'lack'}">${escapeHtml(shardsReq.text)}</span></div>`
       : '<div class="hero-lock-meta unlocked">' + trWithFallback('ui.hero.unlocked', 'Unlocked') + '</div>';
@@ -897,41 +1049,9 @@
     const heroXpNeed = Math.max(0, Number(heroXpToNext[hero.id]) || 0);
     const rows = [];
     for (const node of tree) {
-      const lvl = getNodeLevel(progression, hero.id, node.id);
-      const maxLevel = Math.max(1, Number(node.maxLevel) || 1);
-      const cost = Math.max(1, Number(node.cost) || 1);
-      const pointReq = heroRequirementMeta(cost, points, (need, have) => trWithFallback('ui.hero.need_have_points', 'Skill points: need {need} • you have {have}', { need, have }));
-      const canUpgrade = Boolean(game.playerAuth?.player && unlocked && lvl < maxLevel && pointReq.enough);
-      const nodeName = trWithFallback(`hero.node.${String(node.id || '').toLowerCase()}.name`, node.name || node.id);
-      const nodeDesc = trWithFallback(`hero.node.${String(node.id || '').toLowerCase()}.desc`, node.desc || '');
-      const reqClass = pointReq.enough ? 'ok' : 'lack';
-      rows.push(`<div class="hero-node ${pointReq.enough ? '' : 'hero-node-lack'}"><div><div class="hero-node-name">${escapeHtml(nodeName)}</div><div class="hero-node-desc">${escapeHtml(nodeDesc)}</div><div class="hero-node-desc hero-req ${reqClass}">${escapeHtml(pointReq.text)}</div></div><button type="button" class="hero-node-up ${pointReq.enough ? '' : 'hero-node-up-lack'}" data-node-id="${escapeHtml(node.id)}" ${canUpgrade ? '' : 'disabled'}>Lv ${lvl}/${maxLevel}</button></div>`);
+      rows.push(renderHeroTalentNodeRow(hero, node, progression, points, unlocked));
     }
-    const skillRows = uniqueSkills.map((skill) => {
-      const lvl = getHeroSkillLevel(progression, hero.id, skill.id);
-      const maxLevel = Math.max(1, Number(skill.maxLevel) || 1);
-      const unlockedSkill = lvl > 0;
-      const unlockCost = Math.max(1, Number(skill.unlockCostShards) || 1);
-      const upgradeCost = Math.max(1, (Number(skill.upgradeCostShardsBase) || 1) + (Math.max(0, lvl - 1) * Math.max(0, Number(skill.upgradeCostShardsStep) || 0)));
-      const shardWord = trWithFallback('ui.profile.shards', 'Shards').toLowerCase();
-      const costReq = heroRequirementMeta(unlockedSkill ? upgradeCost : unlockCost, shards, (need, have) => {
-        const tpl = unlockedSkill ? 'ui.hero.skill_upgrade_cost' : 'ui.hero.skill_unlock_cost';
-        const fb = unlockedSkill ? 'Upgrade: {cost} shards' : 'Unlock: {cost} shards';
-        return trWithFallback(tpl, fb, { cost: need, currency: shardWord }) + ' • ' + `${trWithFallback('ui.hero.have_label', 'У вас')}: ${have}`;
-      });
-      const canUnlockSkill = Boolean(game.playerAuth?.player && unlocked && !unlockedSkill && costReq.enough);
-      const canUpgradeSkill = Boolean(game.playerAuth?.player && unlocked && unlockedSkill && lvl < maxLevel && costReq.enough);
-      const skillName = trWithFallback(`skill.${String(skill.id || '').toLowerCase()}.name`, skill.name || skill.id);
-      const skillDesc = trWithFallback(`skill.${String(skill.id || '').toLowerCase()}.desc`, skill.desc || '');
-      const skillType = skill.kind === 'active'
-        ? trWithFallback('ui.hero.skill_type_active', 'Active')
-        : (skill.globalAura ? trWithFallback('ui.hero.skill_type_passive_aura', 'Passive Aura') : trWithFallback('ui.hero.skill_type_passive', 'Passive'));
-      const requirementLabel = unlockedSkill ? (lvl >= maxLevel ? trWithFallback('ui.common.max', 'MAX') : costReq.text) : costReq.text;
-      const skillIconHtml = typeof globalThis.renderBattleHubHeroSkillIcon === 'function'
-        ? globalThis.renderBattleHubHeroSkillIcon(skill, skill.kind === 'active' ? 'A' : 'P', 'hero-unique-skill-icon')
-        : '';
-      return `<div class="hero-node hero-unique-skill ${(!costReq.enough && lvl < maxLevel) ? 'hero-node-lack' : ''}">${skillIconHtml}<div><div class="hero-node-name">${escapeHtml(skillName)} <span class="muted">(${escapeHtml(skillType)})</span></div><div class="hero-node-desc">${escapeHtml(skillDesc)}</div><div class="hero-node-desc hero-req ${(costReq.enough || lvl >= maxLevel) ? 'ok' : 'lack'}">${escapeHtml(requirementLabel)}</div></div><button type="button" class="hero-node-up ${(!costReq.enough && lvl < maxLevel) ? 'hero-node-up-lack' : ''}" data-hero-skill-id="${escapeHtml(skill.id)}" data-hero-skill-action="${unlockedSkill ? 'upgrade' : 'unlock'}" ${(unlockedSkill ? canUpgradeSkill : canUnlockSkill) ? '' : 'disabled'}>Lv ${lvl}/${maxLevel}</button></div>`;
-    }).join('');
+    const skillRows = uniqueSkills.map((skill) => renderHeroUniqueSkillRow(hero, skill, progression, shards, unlocked)).join('');
     const gearSlots = (Array.isArray(catalog.itemSlots) ? catalog.itemSlots : []).filter((slot) => slot?.kind === 'gear');
     const quickSlots = (Array.isArray(catalog.itemSlots) ? catalog.itemSlots : []).filter((slot) => slot?.kind === 'consumable');
     const heroAccent = String(hero?.accent || '').trim() || '#e11d2e';

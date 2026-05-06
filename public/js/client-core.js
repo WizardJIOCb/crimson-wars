@@ -1427,6 +1427,17 @@ function waitBattleHubFx(ms) {
   });
 }
 
+function markBattleHubHeroSkillFx(heroId, skillId) {
+  const nextHeroId = String(heroId || '').trim().toLowerCase();
+  const nextSkillId = String(skillId || '').trim();
+  if (!nextHeroId || !nextSkillId) return;
+  battleHubHeroSkillFx = {
+    heroId: nextHeroId,
+    skillId: nextSkillId,
+    at: performance.now(),
+  };
+}
+
 function clearBattleHubHeroSwapTimer() {
   if (!battleHubHeroSwapTimer) return;
   globalThis.clearTimeout(battleHubHeroSwapTimer);
@@ -1810,11 +1821,7 @@ async function purchaseBattleHubHeroSkill() {
   battleHubHeroSkillModalEl.classList.add('is-busy');
   try {
     await actionApi(data.hero.id, data.skill.id);
-    battleHubHeroSkillFx = {
-      heroId: String(data.hero.id || '').trim().toLowerCase(),
-      skillId: String(data.skill.id || '').trim(),
-      at: performance.now(),
-    };
+    markBattleHubHeroSkillFx(data.hero.id, data.skill.id);
     renderBattleHubPlayerBadge();
     globalThis.CWCharacters?.render?.();
     globalThis.setTimeout(() => {
@@ -2516,6 +2523,7 @@ window.renderBattleHubPlayerBadge = renderBattleHubPlayerBadge;
 window.beginBattleHubPlayerSwapFx = beginBattleHubPlayerSwapFx;
 window.endBattleHubPlayerSwapFx = endBattleHubPlayerSwapFx;
 window.cancelBattleHubPlayerSwapFx = cancelBattleHubPlayerSwapFx;
+window.markBattleHubHeroSkillFx = markBattleHubHeroSkillFx;
 window.renderDeploySelectionSummary = renderDeploySelectionSummary;
 window.cwGetMapCatalog = getMapCatalog;
 window.cwGetCampaignCatalog = getCampaignCatalog;
