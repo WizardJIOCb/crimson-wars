@@ -46,11 +46,7 @@ function applyParams(sql, params = []) {
 
 function parseMysqlValue(value) {
   if (value === undefined || value === '\\N' || value === 'NULL') return null;
-  return value
-    .replace(/\\n/g, '\n')
-    .replace(/\\r/g, '\r')
-    .replace(/\\t/g, '\t')
-    .replace(/\\\\/g, '\\');
+  return value;
 }
 
 function parseTsv(raw) {
