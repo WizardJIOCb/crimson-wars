@@ -101,6 +101,8 @@ function normalizeReply(raw, fallback = {}) {
     id: toId(raw?.id || fallback.id || commentId()) || commentId(),
     authorName: safeText(raw?.authorName || fallback.authorName || 'Player', 48),
     authorAccountId: clampInt(raw?.authorAccountId || fallback.authorAccountId, 0),
+    authorHeroId: safeText(raw?.authorHeroId || fallback.authorHeroId || '', 64),
+    authorHeroName: safeText(raw?.authorHeroName || fallback.authorHeroName || '', 80),
     text: safeText(raw?.text || fallback.text || '', 1500),
     createdAt: clampInt(raw?.createdAt || fallback.createdAt || nowMs(), 0),
     updatedAt: clampInt(raw?.updatedAt || fallback.updatedAt || nowMs(), 0),
@@ -115,6 +117,8 @@ function normalizeComment(raw, fallback = {}) {
     id: toId(raw?.id || fallback.id || commentId()) || commentId(),
     authorName: safeText(raw?.authorName || fallback.authorName || 'Player', 48),
     authorAccountId: clampInt(raw?.authorAccountId || fallback.authorAccountId, 0),
+    authorHeroId: safeText(raw?.authorHeroId || fallback.authorHeroId || '', 64),
+    authorHeroName: safeText(raw?.authorHeroName || fallback.authorHeroName || '', 80),
     text: safeText(raw?.text || fallback.text || '', 1500),
     createdAt: clampInt(raw?.createdAt || fallback.createdAt || nowMs(), 0),
     updatedAt: clampInt(raw?.updatedAt || fallback.updatedAt || nowMs(), 0),
@@ -393,7 +397,7 @@ function createNewsStore({ dataDir, filePath, mysql }) {
     return { ok: true, item: removed };
   }
 
-  function addComment(newsId, { authorName, authorAccountId, text, parentId }) {
+  function addComment(newsId, { authorName, authorAccountId, authorHeroId, authorHeroName, text, parentId }) {
     const targetId = toId(newsId);
     if (!targetId) return { ok: false, code: 400, message: 'Invalid news id' };
     const body = safeText(text, 1500);
@@ -409,6 +413,8 @@ function createNewsStore({ dataDir, filePath, mysql }) {
       id: commentId(),
       authorName: safeText(authorName || 'Player', 48),
       authorAccountId: clampInt(authorAccountId, 0),
+      authorHeroId: safeText(authorHeroId || '', 64),
+      authorHeroName: safeText(authorHeroName || '', 80),
       text: body,
       createdAt: now,
       updatedAt: now,

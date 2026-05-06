@@ -36,6 +36,15 @@
     .image-chip img, .image-chip video { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; display: block; background: #020617; }
     .image-chip span { display: block; padding: 5px 6px; color: #94a3b8; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .image-chip button { position: absolute; top: 5px; right: 5px; padding: 3px 6px; background: rgba(127, 29, 29, 0.9); }
+    .live-data { display: grid; gap: 10px; padding: 10px; border: 1px solid #334155; border-radius: 10px; background: #0b1220; }
+    .live-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+    .live-stat { display: grid; gap: 3px; padding: 8px; border: 1px solid #334155; border-radius: 8px; background: #111827; }
+    .live-stat b { font-size: 18px; color: #f8fafc; }
+    .comment-preview { display: grid; gap: 8px; max-height: 280px; overflow: auto; padding-right: 4px; }
+    .comment-preview-item { display: grid; gap: 4px; padding: 8px; border: 1px solid #334155; border-radius: 8px; background: #111827; }
+    .comment-preview-item.reply { margin-left: 14px; border-left-color: #38bdf8; }
+    .comment-head { display: flex; justify-content: space-between; gap: 8px; color: #cbd5e1; font-size: 12px; }
+    .comment-hero { color: #93c5fd; }
     @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -78,8 +87,8 @@
           <span id="news-meta" class="meta">0 item(s)</span>
         </div>
         <table>
-          <thead><tr><th>Title</th><th>Type</th><th>Published</th><th>Updated</th></tr></thead>
-          <tbody id="news-body"><tr><td colspan="4">Loading...</td></tr></tbody>
+          <thead><tr><th>Title</th><th>Type</th><th>Published</th><th>Stats</th><th>Comments</th><th>Updated</th></tr></thead>
+          <tbody id="news-body"><tr><td colspan="6">Loading...</td></tr></tbody>
         </table>
       </div>
 
@@ -101,6 +110,7 @@
             <div id="news-images" class="image-list"></div>
           </div>
           <label class="field"><span><input id="news-published" type="checkbox" checked /> Published</span></label>
+          <div id="live-data" class="live-data hidden"></div>
         </div>
         <div class="row" style="margin-top:10px">
           <button id="create-btn" class="primary">Create</button>
@@ -147,6 +157,7 @@
     uploadImageBtn: $('upload-image-btn'),
     newsImages: $('news-images'),
     newsPublished: $('news-published'),
+    liveData: $('live-data'),
     createBtn: $('create-btn'),
     saveBtn: $('save-btn'),
     deleteBtn: $('delete-btn'),
@@ -230,6 +241,73 @@
     return modeCopy[state.mode] || modeCopy.news;
   }
 
+  function countComments(item) {
+    const comments = Array.isArray(item?.comments) ? item.comments : [];
+    return comments.reduce((total, comment) => total + 1 + (Array.isArray(comment?.replies) ? comment.replies.length : 0), 0);
+  }
+
+  function sumReactions(reactions) {
+    return Object.values(reactions && typeof reactions === 'object' ? reactions : {})
+      .reduce((total, value) => total + Math.max(0, Number(value) || 0), 0);
+  }
+
+  function mediaCount(item) {
+    const media = Array.isArray(item?.media) ? item.media : [];
+    if (media.length) return media.length;
+    return Array.isArray(item?.images) ? item.images.length : 0;
+  }
+
+  function formatDateTime(value) {
+    return new Date(Number(value) || Date.now()).toLocaleString();
+  }
+
+  function renderCommentPreview(comments) {
+    const rows = [];
+    const pushComment = (comment, isReply = false) => {
+      const hero = [comment?.authorHeroName, comment?.authorHeroId && !comment?.authorHeroName ? comment.authorHeroId : ''].filter(Boolean)[0] || '';
+      rows.push(`
+        <div class="comment-preview-item${isReply ? ' reply' : ''}">
+          <div class="comment-head">
+            <b>${esc(comment?.authorName || 'Player')}${hero ? ` <span class="comment-hero">· ${esc(hero)}</span>` : ''}</b>
+            <span>${esc(formatDateTime(comment?.createdAt))}</span>
+          </div>
+          <div>${esc(comment?.text || '')}</div>
+          <div class="meta">reactions: ${sumReactions(comment?.reactions)}</div>
+        </div>
+      `);
+    };
+    for (const comment of Array.isArray(comments) ? comments : []) {
+      pushComment(comment, false);
+      for (const reply of Array.isArray(comment?.replies) ? comment.replies : []) pushComment(reply, true);
+    }
+    return rows.length ? rows.join('') : '<div class="meta">No comments yet.</div>';
+  }
+
+  function renderLiveData(item) {
+    if (!dom.liveData) return;
+    if (!item) {
+      dom.liveData.classList.add('hidden');
+      dom.liveData.innerHTML = '';
+      return;
+    }
+    const comments = countComments(item);
+    const reactions = sumReactions(item?.reactions);
+    dom.liveData.classList.remove('hidden');
+    dom.liveData.innerHTML = `
+      <div class="row" style="justify-content:space-between">
+        <b>Live data</b>
+        <span class="meta">Public id: ${esc(item.id || '-')}</span>
+      </div>
+      <div class="live-stats">
+        <div class="live-stat"><span class="meta">Views</span><b>${Math.max(0, Number(item?.views) || 0)}</b></div>
+        <div class="live-stat"><span class="meta">Comments</span><b>${comments}</b></div>
+        <div class="live-stat"><span class="meta">Reactions</span><b>${reactions}</b></div>
+        <div class="live-stat"><span class="meta">Media</span><b>${mediaCount(item)}</b></div>
+      </div>
+      <div class="comment-preview">${renderCommentPreview(item?.comments)}</div>
+    `;
+  }
+
   function filteredItems() {
     return state.items.filter((item) => (item?.kind === 'devlog' ? 'devlog' : 'news') === state.mode);
   }
@@ -273,6 +351,7 @@
     dom.saveBtn.classList.toggle('hidden', !edit);
     dom.deleteBtn.classList.toggle('hidden', !edit);
     dom.newBtn.classList.toggle('hidden', !edit);
+    renderLiveData(item);
   }
 
   function collectEditorPayload() {
@@ -341,15 +420,17 @@
     const items = filteredItems();
     dom.newsMeta.textContent = `${items.length} item(s)`;
     if (!items.length) {
-      dom.newsBody.innerHTML = `<tr><td colspan="4">${esc(copy.empty)}</td></tr>`;
+      dom.newsBody.innerHTML = `<tr><td colspan="6">${esc(copy.empty)}</td></tr>`;
       return;
     }
     dom.newsBody.innerHTML = items.map((item) => {
       const sel = item.id === state.selectedId ? ' class="sel"' : '';
       const kind = item.kind === 'devlog' ? 'devlog' : 'news';
       const published = item.isPublished ? 'yes' : 'no';
-      const updated = new Date(Number(item.updatedAt) || Date.now()).toLocaleString();
-      return `<tr data-id="${esc(item.id)}"${sel}><td>${esc(item.title || '-')}</td><td>${kind}</td><td>${published}</td><td>${esc(updated)}</td></tr>`;
+      const updated = formatDateTime(item.updatedAt);
+      const comments = countComments(item);
+      const reactions = sumReactions(item.reactions);
+      return `<tr data-id="${esc(item.id)}"${sel}><td>${esc(item.title || '-')}</td><td>${kind}</td><td>${published}</td><td>${Math.max(0, Number(item.views) || 0)} views / ${reactions} reactions / ${mediaCount(item)} media</td><td>${comments}</td><td>${esc(updated)}</td></tr>`;
     }).join('');
   }
 

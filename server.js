@@ -609,6 +609,170 @@ function getCombatSkillDef(skillId, playerClass = '') {
   return heroUniqueSkillDefsById[id] || skillsStore.getById(id) || null;
 }
 
+function normalizePublicRarity(raw) {
+  const rarity = String(raw || '').trim().toLowerCase();
+  return ['common', 'uncommon', 'rare', 'epic', 'legendary'].includes(rarity) ? rarity : 'common';
+}
+
+function getPublicHeroAvatarPath(heroId) {
+  const id = String(heroId || '').trim().toLowerCase();
+  if (id === 'medic') return '/assets/characters/medis.png';
+  if (['cyber', 'scout', 'shadow', 'raider', 'medis'].includes(id)) return `/assets/characters/${id}.png`;
+  return '/assets/characters/cyber.png';
+}
+
+function normalizePublicAssetPath(raw, fallbackBase, fallbackId) {
+  const explicit = String(raw || '').trim();
+  if (explicit) {
+    if (/^(?:https?:)?\/\//i.test(explicit) || explicit.startsWith('/') || explicit.startsWith('data:')) return explicit;
+    return `${fallbackBase.replace(/\/+$/, '')}/${explicit.replace(/^\/+/, '')}`;
+  }
+  const id = String(fallbackId || '').trim();
+  return id ? `${fallbackBase.replace(/\/+$/, '')}/${id}.webp` : '';
+}
+
+function makePublicSkillBadge(skill) {
+  const id = String(skill?.id || '').toLowerCase();
+  const named = {
+    pulse_wave: 'PW',
+    ion_lance: 'ION',
+    arc_matrix: 'ARC',
+    seeker_protocol: 'SKR',
+    adaptive_frame: 'HP',
+    combat_firmware: 'DMG',
+    sync_link: 'SYN',
+    razor_wind: 'RW',
+    hunter_mark: 'HM',
+    storm_net: 'SN',
+    sky_chasers: 'SKY',
+    long_stride: 'SPD',
+    vital_sight: 'VS',
+    trailblazer: 'TRL',
+    void_burst: 'VB',
+    night_fangs: 'NF',
+    eclipse_chain: 'ECL',
+    black_comets: 'BC',
+    assassin_instinct: 'DMG',
+    ghost_step: 'GST',
+    sterile_wave: 'SW',
+    triage_beam: 'TB',
+    toxin_arc: 'TOX',
+    rescue_rockets: 'RR',
+    field_aid: 'REG',
+    support_protocol: 'SUP',
+    shrapnel_burst: 'SB',
+    war_stomp: 'STP',
+    berserk_arc: 'BRK',
+    siege_barrage: 'SG',
+    iron_hide: 'HP',
+    battle_rage: 'RAG',
+  };
+  if (named[id]) return named[id];
+  const parts = String(skill?.name || id || '?').replace(/[^A-Za-z0-9]+/g, ' ').trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return (parts[0] || '?').slice(0, 3).toUpperCase();
+}
+
+function buildPublicProfileProgressionDetails(publicProgression, catalog) {
+  const heroDefs = Array.isArray(catalog?.heroes) ? catalog.heroes : [];
+  const itemDefs = Array.isArray(catalog?.items) ? catalog.items : [];
+  const itemSlots = Array.isArray(catalog?.itemSlots) ? catalog.itemSlots : [];
+  const itemDefById = new Map(itemDefs.map((item) => [String(item?.id || '').trim(), item]));
+  const activeHeroIdRaw = String(publicProgression?.activeHero || catalog?.baseHeroId || heroDefs[0]?.id || '').trim();
+  const activeHeroDef = heroDefs.find((hero) => String(hero?.id || '').trim() === activeHeroIdRaw) || heroDefs[0] || {};
+  const activeHeroId = String(activeHeroDef?.id || activeHeroIdRaw || 'cyber').trim();
+  const heroLevels = publicProgression?.heroLevels && typeof publicProgression.heroLevels === 'object'
+    ? publicProgression.heroLevels
+    : {};
+  const heroXp = publicProgression?.heroXp && typeof publicProgression.heroXp === 'object'
+    ? publicProgression.heroXp
+    : {};
+  const heroXpToNext = publicProgression?.heroXpToNext && typeof publicProgression.heroXpToNext === 'object'
+    ? publicProgression.heroXpToNext
+    : {};
+  const heroRuns = publicProgression?.heroRuns && typeof publicProgression.heroRuns === 'object'
+    ? publicProgression.heroRuns
+    : {};
+  const skillLevelsByHero = publicProgression?.heroSkillLevels && typeof publicProgression.heroSkillLevels === 'object'
+    ? publicProgression.heroSkillLevels
+    : {};
+  const activeSkillLevels = skillLevelsByHero[activeHeroId] && typeof skillLevelsByHero[activeHeroId] === 'object'
+    ? skillLevelsByHero[activeHeroId]
+    : {};
+  const inventory = Array.isArray(publicProgression?.inventoryItems) ? publicProgression.inventoryItems : [];
+  const inventoryByUid = new Map(inventory.map((item) => [String(item?.uid || '').trim(), item]));
+  const equipmentByHero = publicProgression?.heroEquipment && typeof publicProgression.heroEquipment === 'object'
+    ? publicProgression.heroEquipment
+    : {};
+  const activeEquipment = equipmentByHero[activeHeroId] && typeof equipmentByHero[activeHeroId] === 'object'
+    ? equipmentByHero[activeHeroId]
+    : {};
+
+  const activeHero = {
+    id: activeHeroId,
+    name: String(activeHeroDef?.name || activeHeroId).trim(),
+    accent: String(activeHeroDef?.accent || '#39c1d9').trim(),
+    avatar: getPublicHeroAvatarPath(activeHeroId),
+    level: Math.max(1, Number(heroLevels[activeHeroId]) || 1),
+    xp: Math.max(0, Number(heroXp[activeHeroId]) || 0),
+    xpToNext: Math.max(0, Number(heroXpToNext[activeHeroId]) || 0),
+    runs: Math.max(0, Number(heroRuns[activeHeroId]) || 0),
+    tagline: String(activeHeroDef?.tagline || '').trim(),
+    baseStats: activeHeroDef?.baseStats && typeof activeHeroDef.baseStats === 'object' ? { ...activeHeroDef.baseStats } : {},
+  };
+
+  const activeSkills = (Array.isArray(activeHeroDef?.uniqueSkills) ? activeHeroDef.uniqueSkills : []).map((skill) => {
+    const skillId = String(skill?.id || '').trim();
+    const level = Math.max(0, Number(activeSkillLevels[skillId]) || 0);
+    const rarity = normalizePublicRarity(skill?.rarity);
+    return {
+      id: skillId,
+      heroId: activeHeroId,
+      name: String(skill?.name || skillId).trim(),
+      desc: String(skill?.desc || '').trim(),
+      kind: String(skill?.kind || 'passive').trim(),
+      rarity,
+      level,
+      maxLevel: Math.max(1, Number(skill?.maxLevel) || 1),
+      unlocked: level > 0,
+      globalAura: skill?.globalAura === true,
+      badge: makePublicSkillBadge(skill),
+      icon: normalizePublicAssetPath(skill?.icon || skill?.iconPath, '/assets/hero-skills', activeHeroId ? `${activeHeroId}_${skillId}` : skillId),
+    };
+  });
+
+  const equippedItems = itemSlots.map((slot) => {
+    const slotKey = String(slot?.key || '').trim();
+    const uid = String(activeEquipment[slotKey] || '').trim();
+    const publicItem = uid ? inventoryByUid.get(uid) : null;
+    const itemDef = publicItem ? (itemDefById.get(String(publicItem.itemId || '').trim()) || {}) : {};
+    const itemId = String(publicItem?.itemId || itemDef?.id || '').trim();
+    const rarity = normalizePublicRarity(publicItem?.rarity || itemDef?.rarity);
+    return {
+      slotKey,
+      slotName: String(slot?.name || slotKey).trim(),
+      slotKind: String(slot?.kind || '').trim(),
+      slotCategory: String(slot?.category || '').trim(),
+      empty: !publicItem,
+      item: publicItem ? {
+        uid: publicItem.uid,
+        itemId,
+        name: String(itemDef?.name || itemId).trim(),
+        rarity,
+        level: Math.max(1, Number(publicItem.level) || 1),
+        quantity: Math.max(0, Number(publicItem.quantity) || 0),
+        stackable: publicItem.stackable === true || itemDef?.stackable === true,
+        maxStack: Math.max(0, Number(publicItem.maxStack ?? itemDef?.maxStack) || 0),
+        slotCategory: String(publicItem.slotCategory || itemDef?.slotCategory || '').trim(),
+        icon: normalizePublicAssetPath(itemDef?.icon || publicItem.icon, '/assets/items', itemId),
+        stats: itemDef?.stats && typeof itemDef.stats === 'object' ? { ...itemDef.stats } : {},
+      } : null,
+    };
+  });
+
+  return { activeHero, activeSkills, equippedItems };
+}
+
 function sanitizeHeroId(rawHeroId) {
   const id = (rawHeroId || '').toString().trim();
   if (heroDefsById[id]) return id;
@@ -1694,10 +1858,13 @@ app.get('/api/player/public-profile/:id', (req, res) => {
   const heroStats = heroDefs.map((hero) => ({
     id: hero.id,
     name: hero.name || hero.id,
+    accent: hero.accent || '#39c1d9',
+    avatar: getPublicHeroAvatarPath(hero.id),
     level: Math.max(1, Number(heroLevels[hero.id]) || 1),
     runs: Math.max(0, Number(heroRuns[hero.id]) || 0),
     unlocked: unlocked.has(hero.id),
   }));
+  const publicDetails = buildPublicProfileProgressionDetails(publicProgression, catalog);
 
   res.json({
     ok: true,
@@ -1715,6 +1882,10 @@ app.get('/api/player/public-profile/:id', (req, res) => {
       heroesUnlocked: unlocked.size,
       heroesTotal: heroDefs.length,
       heroStats,
+      activeHero: publicDetails.activeHero,
+      activeSkills: publicDetails.activeSkills,
+      equippedItems: publicDetails.equippedItems,
+      activeRun: buildPublicActiveRunForPlayer(player),
     },
     now: Date.now(),
   });
@@ -2105,6 +2276,7 @@ registerNewsRoutes(app, {
   newsImageDir: path.join(DATA_DIR, 'news-images'),
   newsStore,
   requireAdmin,
+  accountProgressionStore,
 });
 
 app.get('/api/rooms', (_req, res) => {
@@ -4048,6 +4220,56 @@ function findRoomPlayerByAccount(playerAccountId, requestedCode = '') {
     }
   }
   return null;
+}
+
+function buildPublicActiveRunForPlayer(playerAccount) {
+  const accountId = Math.max(0, Number(playerAccount?.id) || 0);
+  const byAccount = accountId > 0 ? findRoomPlayerByAccount(accountId) : null;
+  const byName = byAccount || findOccupiedPlayer(playerAccount?.nickname || '');
+  const room = byName?.room || null;
+  const player = byName?.player || null;
+  if (!room || !player || room.completedAt) return null;
+  const now = Date.now();
+  const roomCode = cleanRoomCodeForLookup(room.code);
+  const playerScore = Math.max(0, Number(room.scores?.get(player.id)) || 0);
+  const playerKills = Math.max(0, Number(room.kills?.get(player.id)) || 0);
+  const roomDifficulty = getRoomDifficulty(room, now);
+  return {
+    live: true,
+    roomCode,
+    startedAt: Math.max(0, Number(room.startedAt) || 0),
+    liveForSec: Math.max(1, Math.floor((now - (Number(room.startedAt) || now)) / 1000)),
+    gameMode: normalizeGameMode(room.gameMode || 'normal'),
+    runType: String(room.runType || 'free'),
+    mapId: String(room.mapId || ''),
+    campaignId: String(room.campaignId || ''),
+    campaignLevelId: String(room.campaignLevelId || ''),
+    players: Math.max(0, Number(room.players?.size) || 0),
+    maxPlayers: Math.max(1, Number(room.maxPlayers) || getRoomMaxPlayers(room.gameMode)),
+    spectators: Math.max(0, Number(room.spectators?.size) || 0),
+    totalEnemyKills: Math.max(0, Number(room.totalEnemyKills) || 0),
+    totalBossKills: Math.max(0, Number(room.totalBossKills) || 0),
+    bossAlive: hasAliveBoss(room),
+    roomDifficulty: {
+      level: Math.max(1, Number(roomDifficulty.level) || 1),
+      hpMul: Number(roomDifficulty.hpMul.toFixed(3)),
+      speedMul: Number(roomDifficulty.speedMul.toFixed(3)),
+      damageMul: Number(roomDifficulty.damageMul.toFixed(3)),
+    },
+    spectateUrl: roomCode ? `/play?room=${encodeURIComponent(roomCode)}&mode=spectate` : '/play',
+    player: {
+      name: String(player.name || playerAccount?.nickname || '').trim(),
+      accountId: Math.max(0, Number(player.playerAccountId) || 0),
+      heroId: String(player.playerClass || '').trim(),
+      heroName: String(heroDefsById[player.playerClass]?.name || player.playerClass || '').trim(),
+      level: Math.max(1, Math.floor(Number(player.level) || 1)),
+      hp: Math.max(0, Math.round(Number(player.hp) || 0)),
+      maxHp: Math.max(1, Math.round(Number(player.maxHp) || PLAYER_HP_MAX)),
+      alive: player.alive !== false,
+      kills: playerKills,
+      score: playerScore,
+    },
+  };
 }
 
 function resolveJoinIdentity(ws, rawName) {

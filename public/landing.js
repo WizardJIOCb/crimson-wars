@@ -1,6 +1,11 @@
 const nav = document.getElementById('site-nav');
 const mobileToggle = document.querySelector('.mobile-menu-toggle');
 const newsGrid = document.getElementById('landing-news-grid');
+const newsModal = document.getElementById('landing-news-modal');
+const newsModalTitle = document.getElementById('landing-news-title');
+const newsModalDate = document.getElementById('landing-news-modal-date');
+const newsModalBody = document.getElementById('landing-news-body');
+const newsCloseBtn = document.getElementById('landing-news-close');
 const devlogFeature = document.getElementById('landing-devlog-feature');
 const devlogGallery = document.getElementById('landing-devlog-gallery');
 const devlogGalleryCount = document.getElementById('landing-devlog-gallery-count');
@@ -120,6 +125,7 @@ let landingLiveIframeProbeStopper = 0;
 let landingLiveCanvasWrap = null;
 const DEVLOG_GUEST_NAME_KEY = 'cw:devlogGuestName';
 const DEVLOG_REACTION_VOTES_KEY = 'cw:devlogReactionVotes';
+let newsModalCloseTimer = 0;
 let devlogModalCloseTimer = 0;
 const DEVLOG_REACTIONS = [
   { key: 'heart', label: 'Нравится' },
@@ -139,6 +145,20 @@ const devlogState = {
   commentError: '',
   guestName: '',
   reactionVotes: {},
+};
+const landingPlayerState = {
+  loadedAt: 0,
+  loading: false,
+  player: null,
+  progression: null,
+  catalog: null,
+};
+const landingNewsState = {
+  items: [],
+  activeItem: null,
+  loadingItem: false,
+  postingComment: false,
+  commentError: '',
 };
 let landingLiveSpectatorCommentary = {
   roomCode: '',
@@ -929,6 +949,64 @@ function formatShortDateTime(value) {
   }).format(stamp);
 }
 
+function getCatalogHeroName(heroId) {
+  const id = String(heroId || '').trim();
+  if (!id) return '';
+  const heroes = Array.isArray(landingPlayerState.catalog?.heroes) ? landingPlayerState.catalog.heroes : [];
+  const hero = heroes.find((entry) => String(entry?.id || '').trim() === id);
+  return String(hero?.name || HERO_LABELS[id.toLowerCase()] || id).trim();
+}
+
+function getLandingPlayerIdentityText() {
+  const player = landingPlayerState.player;
+  if (!player) return '';
+  const heroId = String(landingPlayerState.progression?.activeHero || '').trim();
+  const heroName = getCatalogHeroName(heroId);
+  return [String(player.nickname || 'Player').trim(), heroName].filter(Boolean).join(' · ');
+}
+
+async function refreshLandingPlayer(options = {}) {
+  const force = options?.force === true;
+  if (landingPlayerState.loading) return landingPlayerState;
+  if (!force && landingPlayerState.loadedAt && Date.now() - landingPlayerState.loadedAt < 8000) return landingPlayerState;
+  landingPlayerState.loading = true;
+  try {
+    const response = await fetch('/api/player/me', { cache: 'no-store', credentials: 'same-origin' });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.ok || !payload?.authenticated) {
+      landingPlayerState.player = null;
+      landingPlayerState.progression = null;
+      landingPlayerState.catalog = payload?.progressionCatalog || null;
+      return landingPlayerState;
+    }
+    landingPlayerState.player = payload.player || null;
+    landingPlayerState.progression = payload.progression || null;
+    landingPlayerState.catalog = payload.progressionCatalog || null;
+    return landingPlayerState;
+  } catch {
+    landingPlayerState.player = null;
+    landingPlayerState.progression = null;
+    return landingPlayerState;
+  } finally {
+    landingPlayerState.loadedAt = Date.now();
+    landingPlayerState.loading = false;
+  }
+}
+
+function getCommentHeroLabel(comment) {
+  return String(comment?.authorHeroName || getCatalogHeroName(comment?.authorHeroId) || comment?.authorHeroId || '').trim();
+}
+
+function renderLandingLoginHint() {
+  return `
+    <div class="devlog-comment-form devlog-auth-hint">
+      <strong>Комментарии пишутся от игрового аккаунта.</strong>
+      <span>Войди в Battle Hub, выбери героя, и заметка подпишется твоим ником и активным персонажем.</span>
+      <a class="devlog-submit-btn" href="#play" data-hub-tab="profile">Войти в игре</a>
+    </div>
+  `;
+}
+
 function formatProfileDateTime(value) {
   const stamp = Number(value) || 0;
   if (!stamp) return '—';
@@ -1343,62 +1421,332 @@ window.addEventListener('keydown', (event) => {
   }
 });
 
+function sanitizeProfileColor(raw) {
+  const value = String(raw || '').trim();
+  if (/^#[0-9a-f]{3,8}$/i.test(value)) return value;
+  return '#ff8a5d';
+}
+
+function getLandingProfileHeroAvatarPath(heroId) {
+  const id = String(heroId || '').trim().toLowerCase();
+  if (id === 'medic') return '/assets/characters/medis.png';
+  if (['cyber', 'scout', 'shadow', 'raider', 'medis'].includes(id)) return `/assets/characters/${id}.png`;
+  return '/assets/characters/cyber.png';
+}
+
+function getLandingProfileHeroAccent(heroId) {
+  const id = String(heroId || '').trim().toLowerCase();
+  if (id === 'scout') return '#a7e7c5';
+  if (id === 'shadow') return '#d4c1ff';
+  if (id === 'medic') return '#ffd1dc';
+  if (id === 'raider') return '#ffe4b5';
+  return '#8ec5ff';
+}
+
+function getLandingProfileRarityColor(rarity) {
+  const key = String(rarity || '').trim().toLowerCase();
+  if (key === 'legendary') return '#fbbf24';
+  if (key === 'epic') return '#f0abfc';
+  if (key === 'rare') return '#93c5fd';
+  if (key === 'uncommon') return '#86efac';
+  return '#d1d5db';
+}
+
+function getLandingProfileRarityLabel(rarity) {
+  const key = String(rarity || 'common').trim().toLowerCase();
+  if (key === 'legendary') return 'легендарное';
+  if (key === 'epic') return 'эпическое';
+  if (key === 'rare') return 'редкое';
+  if (key === 'uncommon') return 'необычное';
+  return 'обычное';
+}
+
+function getLandingProfileSkillTypeLabel(skill) {
+  if (skill?.kind === 'active') return 'активное';
+  if (skill?.globalAura) return 'аура';
+  return 'пассивное';
+}
+
+function normalizeLandingProfileAssetPath(raw, fallbackBase, fallbackId) {
+  const explicit = String(raw || '').trim();
+  if (explicit) {
+    if (/^(?:https?:)?\/\//i.test(explicit) || explicit.startsWith('/') || explicit.startsWith('data:')) return explicit;
+    return `${fallbackBase.replace(/\/+$/, '')}/${explicit.replace(/^\/+/, '')}`;
+  }
+  const id = String(fallbackId || '').trim();
+  return id ? `${fallbackBase.replace(/\/+$/, '')}/${id}.webp` : '';
+}
+
+function makeLandingProfileBadge(source, fallback = '?') {
+  const raw = String(source?.badge || source?.name || source?.id || fallback || '?').trim();
+  if (source?.badge) return raw.slice(0, 4).toUpperCase();
+  const latinParts = raw.replace(/[^A-Za-z0-9]+/g, ' ').trim().split(/\s+/).filter(Boolean);
+  if (latinParts.length >= 2) return (latinParts[0][0] + latinParts[1][0]).toUpperCase();
+  if (latinParts.length === 1) return latinParts[0].slice(0, 3).toUpperCase();
+  return raw.slice(0, 2).toUpperCase() || '?';
+}
+
+function renderLandingProfileSlotIcon(imagePath, badge) {
+  const safePath = String(imagePath || '').trim();
+  const safeBadge = escapeHtml(String(badge || '?').slice(0, 4));
+  if (safePath) {
+    return `<span class="landing-profile-slot-icon has-image"><img src="${escapeHtml(safePath)}" alt="" loading="lazy" decoding="async"><span>${safeBadge}</span></span>`;
+  }
+  return `<span class="landing-profile-slot-icon"><span>${safeBadge}</span></span>`;
+}
+
+function renderLandingProfileSkillSlot(skill, index) {
+  const skillId = String(skill?.id || '').trim();
+  const level = Math.max(0, Number(skill?.level) || 0);
+  const maxLevel = Math.max(1, Number(skill?.maxLevel) || 1);
+  const unlocked = level > 0 || skill?.unlocked === true;
+  const rarity = String(skill?.rarity || 'common').trim().toLowerCase();
+  const color = sanitizeProfileColor(getLandingProfileRarityColor(rarity));
+  const icon = normalizeLandingProfileAssetPath(skill?.icon || skill?.iconPath, '/assets/hero-skills', skill?.heroId ? `${skill.heroId}_${skillId}` : skillId);
+  const style = `--slot-color: ${color}; --slot-delay: ${Math.min(520, index * 48)}ms;`;
+  return `
+    <article class="landing-profile-slot landing-profile-skill-slot${unlocked ? ' is-unlocked' : ' is-locked'}" style="${escapeHtml(style)}">
+      <span class="landing-profile-slot-ring" aria-hidden="true"></span>
+      ${renderLandingProfileSlotIcon(icon, makeLandingProfileBadge(skill))}
+      <div>
+        <b>${escapeHtml(skill?.name || skillId || 'Умение')}</b>
+        <span>${escapeHtml(getLandingProfileSkillTypeLabel(skill))} · ${escapeHtml(getLandingProfileRarityLabel(rarity))}</span>
+        <small>${escapeHtml(skill?.desc || (unlocked ? 'Умение уже в боевом меню.' : 'Пока закрыто, но очень старается выглядеть занятым.'))}</small>
+      </div>
+      <em>${unlocked ? `Lv${level}/${maxLevel}` : `0/${maxLevel}`}</em>
+    </article>
+  `;
+}
+
+function renderLandingProfileEquipmentSlot(slot, index) {
+  const item = slot?.item && typeof slot.item === 'object' ? slot.item : null;
+  const rarity = String(item?.rarity || 'common').trim().toLowerCase();
+  const color = sanitizeProfileColor(item ? getLandingProfileRarityColor(rarity) : '#6b7280');
+  const slotName = String(slot?.slotName || slot?.slotKey || 'Слот').trim();
+  const itemName = String(item?.name || 'Пустой слот').trim();
+  const icon = item ? normalizeLandingProfileAssetPath(item?.icon || item?.iconPath, '/assets/items', item?.itemId) : '';
+  const qty = Math.max(0, Number(item?.quantity) || 0);
+  const level = Math.max(1, Number(item?.level) || 1);
+  const meta = item
+    ? `${item?.stackable ? `x${qty}` : `Lv${level}`} · ${getLandingProfileRarityLabel(rarity)}`
+    : 'ждет добычу';
+  const style = `--slot-color: ${color}; --slot-delay: ${Math.min(520, index * 42)}ms;`;
+  return `
+    <article class="landing-profile-slot landing-profile-equipment-slot${item ? '' : ' is-empty'}" style="${escapeHtml(style)}">
+      <span class="landing-profile-slot-ring" aria-hidden="true"></span>
+      ${renderLandingProfileSlotIcon(icon, makeLandingProfileBadge({ name: itemName }, slotName))}
+      <div>
+        <b>${escapeHtml(slotName)}</b>
+        <span>${escapeHtml(itemName)}</span>
+        <small>${escapeHtml(meta)}</small>
+      </div>
+    </article>
+  `;
+}
+
+function buildLandingProfileReplayUrl(run, profileId = 0) {
+  const id = Math.max(0, Number(run?.id) || 0);
+  if (!id) return '/play';
+  const url = new URL('/play', window.location.origin);
+  url.searchParams.set('replay', String(id));
+  const apiPath = String(run?.replayApiPath || '').trim()
+    || (profileId > 0 ? `/api/player/public-profile/${profileId}/run-history/${id}/replay` : `/api/leaderboard/runs/${id}/replay`);
+  url.searchParams.set('replayPath', apiPath);
+  return url.toString();
+}
+
+function buildLandingProfileLiveUrl(activeRun) {
+  const roomCode = String(activeRun?.roomCode || '').trim().toUpperCase();
+  const explicit = String(activeRun?.spectateUrl || '').trim();
+  if (explicit) {
+    try {
+      return new URL(explicit, window.location.origin).toString();
+    } catch {
+      return explicit;
+    }
+  }
+  if (!roomCode) return '/play';
+  const url = new URL('/play', window.location.origin);
+  url.searchParams.set('room', roomCode);
+  url.searchParams.set('mode', 'spectate');
+  return url.toString();
+}
+
+function renderLandingProfileLiveBadge(activeRun) {
+  if (!activeRun?.live) return '';
+  const roomCode = String(activeRun.roomCode || '').trim().toUpperCase();
+  const player = activeRun?.player && typeof activeRun.player === 'object' ? activeRun.player : {};
+  const kills = Math.max(0, Number(player.kills ?? activeRun.totalEnemyKills) || 0);
+  const score = Math.max(0, Number(player.score) || 0);
+  const url = escapeHtml(buildLandingProfileLiveUrl(activeRun));
+  return `
+    <a class="landing-profile-live-badge" href="${url}" target="_blank" rel="noopener noreferrer">
+      <span>LIVE</span>
+      <b>Комната ${escapeHtml(roomCode || '--')}</b>
+      <small>${escapeHtml(formatLiveDuration(activeRun.liveForSec))} · ${kills} kills · ${score} pts</small>
+    </a>
+  `;
+}
+
+function renderLandingProfileActiveRunRow(activeRun) {
+  if (!activeRun?.live) return '';
+  const roomCode = String(activeRun.roomCode || '').trim().toUpperCase();
+  const player = activeRun?.player && typeof activeRun.player === 'object' ? activeRun.player : {};
+  const kills = Math.max(0, Number(player.kills ?? activeRun.totalEnemyKills) || 0);
+  const score = Math.max(0, Number(player.score) || 0);
+  const mode = escapeHtml(formatRunGameModeLabel({ runDetails: { gameMode: activeRun.gameMode } }));
+  const url = escapeHtml(buildLandingProfileLiveUrl(activeRun));
+  return `
+    <div class="landing-profile-run landing-profile-run-live">
+      <div class="landing-profile-run-copy">
+        <div class="landing-profile-run-head">
+          <span>Сейчас в забеге</span>
+          <span>Room ${escapeHtml(roomCode || '-')} | ${mode}</span>
+        </div>
+        <div class="landing-profile-run-main">
+          <span>${kills} kills</span>
+          <span>${score} pts</span>
+          <span>${escapeHtml(formatLiveDuration(activeRun.liveForSec))}</span>
+          <span class="landing-profile-run-xp">LIVE</span>
+        </div>
+      </div>
+      <a class="landing-profile-run-launch" href="${url}" target="_blank" rel="noopener noreferrer">Запустить</a>
+    </div>
+  `;
+}
+
+function renderLandingProfileTitle(profile, fallbackName, fallbackId) {
+  const name = escapeHtml(profile?.nickname || fallbackName || `ID ${fallbackId}`);
+  const activeRun = profile?.activeRun && typeof profile.activeRun === 'object' ? profile.activeRun : null;
+  const live = activeRun?.live
+    ? `<span class="landing-profile-title-live">LIVE · ${escapeHtml(String(activeRun.roomCode || '').trim().toUpperCase() || 'забег')}</span>`
+    : '';
+  return `Профиль: ${name}${live}`;
+}
+
 function renderProfile(profile, runPayload) {
   const publicHeroes = Array.isArray(profile?.heroStats) ? profile.heroStats : [];
   const runs = Array.isArray(runPayload?.runs) ? runPayload.runs : [];
+  const activeHero = profile?.activeHero && typeof profile.activeHero === 'object' ? profile.activeHero : {};
+  const activeSkills = Array.isArray(profile?.activeSkills) ? profile.activeSkills : [];
+  const equippedItems = Array.isArray(profile?.equippedItems) ? profile.equippedItems : [];
+  const activeRun = profile?.activeRun && typeof profile.activeRun === 'object' ? profile.activeRun : null;
+  const heroId = String(activeHero?.id || publicHeroes.find((hero) => hero?.unlocked)?.id || 'cyber').trim().toLowerCase();
+  const heroName = String(activeHero?.name || heroId || 'Hero').trim();
+  const heroAccent = sanitizeProfileColor(activeHero?.accent || getLandingProfileHeroAccent(heroId));
+  const heroAvatar = String(activeHero?.avatar || getLandingProfileHeroAvatarPath(heroId)).trim();
+  const heroLevel = Math.max(1, Number(activeHero?.level) || 1);
+  const heroXp = Math.max(0, Number(activeHero?.xp) || 0);
+  const heroXpNeed = Math.max(0, Number(activeHero?.xpToNext) || 0);
+  const heroXpPct = heroXpNeed > 0 ? Math.max(0, Math.min(100, (heroXp / heroXpNeed) * 100)) : 100;
+  const heroStats = activeHero?.baseStats && typeof activeHero.baseStats === 'object' ? activeHero.baseStats : {};
+  const heroStatsHtml = [
+    ['Сила', heroStats.power],
+    ['Скорость', heroStats.agility],
+    ['Живучесть', heroStats.vitality],
+    ['Техника', heroStats.tech],
+  ].filter(([, value]) => Number(value) > 0).map(([label, value]) => `
+    <span><b>${Math.max(0, Number(value) || 0)}</b>${escapeHtml(label)}</span>
+  `).join('');
 
   const heroesHtml = publicHeroes.length > 0
     ? publicHeroes.map((hero) => `
-        <div class="landing-profile-row">
+        <div class="landing-profile-row${String(hero?.id || '').toLowerCase() === heroId ? ' is-active' : ''}">
           <span>${escapeHtml(hero?.name || hero?.id || 'Hero')}</span>
           <span>Lv${Math.max(1, Number(hero?.level) || 1)}</span>
-          <span>${Math.max(0, Number(hero?.runs) || 0)} runs | ${hero?.unlocked ? 'Unlocked' : 'Locked'}</span>
+          <span>${Math.max(0, Number(hero?.runs) || 0)} забегов · ${hero?.unlocked ? 'открыт' : 'закрыт'}</span>
         </div>
       `).join('')
-    : '<div class="landing-profile-empty">No hero data.</div>';
+    : '<div class="landing-profile-empty">Нет данных по героям.</div>';
+
+  const skillsHtml = activeSkills.length > 0
+    ? activeSkills.map((skill, index) => renderLandingProfileSkillSlot(skill, index)).join('')
+    : '<div class="landing-profile-empty">У этого героя пока нет показанных умений.</div>';
+
+  const equipmentHtml = equippedItems.length > 0
+    ? equippedItems.map((slot, index) => renderLandingProfileEquipmentSlot(slot, index)).join('')
+    : '<div class="landing-profile-empty">Экипировка пока не найдена.</div>';
 
   const runsHtml = runs.length > 0
     ? runs.map((run) => `
         <div class="landing-profile-run">
-          <div class="landing-profile-run-head">
-            <span>${escapeHtml(formatShortDateTime(run?.at))}</span>
-            <span>Room ${escapeHtml(run?.roomCode || '-')} | ${escapeHtml(formatRunGameModeLabel(run))}</span>
+          <div class="landing-profile-run-copy">
+            <div class="landing-profile-run-head">
+              <span>${escapeHtml(formatShortDateTime(run?.at))}</span>
+              <span>Room ${escapeHtml(run?.roomCode || '-')} | ${escapeHtml(formatRunGameModeLabel(run))}</span>
+            </div>
+            <div class="landing-profile-run-main">
+              <span>${Math.max(0, Number(run?.kills) || 0)} kills</span>
+              <span>${Math.max(0, Number(run?.score) || 0)} pts</span>
+              <span>${escapeHtml(formatDurationSec(run?.durationSec))}</span>
+              <span class="landing-profile-run-xp">XP ${Math.max(0, Number(run?.runDetails?.xp) || 0)}</span>
+            </div>
           </div>
-          <div class="landing-profile-run-main">
-            <span>${Math.max(0, Number(run?.kills) || 0)} kills</span>
-            <span>${Math.max(0, Number(run?.score) || 0)} pts</span>
-            <span>${escapeHtml(formatDurationSec(run?.durationSec))}</span>
-            <span class="landing-profile-run-xp">XP ${Math.max(0, Number(run?.runDetails?.xp) || 0)}</span>
-          </div>
+          <a class="landing-profile-run-launch" href="${escapeHtml(buildLandingProfileReplayUrl(run, Math.max(0, Number(profile?.id) || 0)))}" target="_blank" rel="noopener noreferrer">Запустить</a>
         </div>
       `).join('')
-    : '<div class="landing-profile-empty">Runs not found.</div>';
+    : '<div class="landing-profile-empty">Забеги пока не найдены.</div>';
 
   return `
-    <div class="landing-profile-card">
-      <h3>Profile Lv${Math.max(1, Number(profile?.accountLevel) || 1)}</h3>
-      <div class="landing-profile-meta">
-        XP ${Math.max(0, Number(profile?.accountXp) || 0)}/${Math.max(0, Number(profile?.accountXpToNext) || 0)}
-        | Skill points: ${Math.max(0, Number(profile?.accountSkillPoints) || 0)}
-        | Shards: ${Math.max(0, Number(profile?.shards) || 0)}
-        | Heroes: ${Math.max(0, Number(profile?.heroesUnlocked) || 0)}/${Math.max(0, Number(profile?.heroesTotal) || 0)}
-        | Runs: ${Math.max(0, Number(profile?.totalRuns) || 0)}
-      </div>
-    </div>
-    <div class="landing-profile-card">
-      <h3>Account info</h3>
-      <div class="landing-profile-meta">
-        Created: ${escapeHtml(formatProfileDateTime(profile?.createdAt))}
-        | Last login: ${escapeHtml(formatProfileDateTime(profile?.lastLoginAt))}
-      </div>
-    </div>
-    <div class="landing-profile-card">
-      <h3>Heroes</h3>
-      <div class="landing-profile-heroes">${heroesHtml}</div>
-    </div>
-    <div class="landing-profile-card">
-      <h3>Run history (${Math.max(0, Number(runPayload?.total) || runs.length)})</h3>
-      <div class="landing-profile-runs">${runsHtml}</div>
+    <div class="landing-profile-shell" style="--profile-accent: ${escapeHtml(heroAccent)}; --hero-xp: ${heroXpPct.toFixed(1)}%;">
+      <section class="landing-profile-hero-card">
+        <div class="landing-profile-hero-art">
+          <img src="${escapeHtml(heroAvatar)}" alt="${escapeHtml(heroName)}" loading="eager" decoding="async">
+        </div>
+        <div class="landing-profile-hero-info">
+          <span class="landing-profile-kicker">Активный герой</span>
+          <h3>${escapeHtml(heroName)}</h3>
+          ${renderLandingProfileLiveBadge(activeRun)}
+          <p>${escapeHtml(activeHero?.tagline || 'Герой в режиме: зашел красиво, вышел через дым и спорный план.')}</p>
+          <div class="landing-profile-hero-xp">
+            <span>Lv${heroLevel}</span>
+            <i aria-hidden="true"></i>
+            <span>${heroXpNeed > 0 ? `${heroXp}/${heroXpNeed} XP` : 'MAX'}</span>
+          </div>
+          ${heroStatsHtml ? `<div class="landing-profile-hero-stats">${heroStatsHtml}</div>` : ''}
+        </div>
+      </section>
+
+      <section class="landing-profile-strip">
+        <span><b>Lv${Math.max(1, Number(profile?.accountLevel) || 1)}</b>аккаунт</span>
+        <span><b>${Math.max(0, Number(profile?.shards) || 0)}</b>shards</span>
+        <span><b>${Math.max(0, Number(profile?.heroesUnlocked) || 0)}/${Math.max(0, Number(profile?.heroesTotal) || 0)}</b>герои</span>
+        <span><b>${Math.max(0, Number(profile?.totalRuns) || 0)}</b>забеги</span>
+      </section>
+
+      <section class="landing-profile-card landing-profile-skills-card">
+        <div class="landing-profile-card-head">
+          <h3>Умения</h3>
+          <span>${activeSkills.filter((skill) => Math.max(0, Number(skill?.level) || 0) > 0).length}/${activeSkills.length || 0} открыто</span>
+        </div>
+        <div class="landing-profile-skill-grid">${skillsHtml}</div>
+      </section>
+
+      <section class="landing-profile-card">
+        <div class="landing-profile-card-head">
+          <h3>Предметы</h3>
+          <span>${equippedItems.filter((slot) => slot?.item).length}/${equippedItems.length || 0} слотов</span>
+        </div>
+        <div class="landing-profile-equipment-grid">${equipmentHtml}</div>
+      </section>
+
+      <section class="landing-profile-card">
+        <div class="landing-profile-card-head">
+          <h3>Ростер</h3>
+          <span>${escapeHtml(formatProfileDateTime(profile?.lastLoginAt))}</span>
+        </div>
+        <div class="landing-profile-heroes">${heroesHtml}</div>
+      </section>
+
+      <section class="landing-profile-card">
+        <div class="landing-profile-card-head">
+          <h3>История забегов</h3>
+          <span>${Math.max(0, Number(runPayload?.total) || runs.length)} всего</span>
+        </div>
+        ${renderLandingProfileActiveRunRow(activeRun)}
+        <div class="landing-profile-runs">${runsHtml}</div>
+        <div class="landing-profile-meta">Создан: ${escapeHtml(formatProfileDateTime(profile?.createdAt))} · XP аккаунта ${Math.max(0, Number(profile?.accountXp) || 0)}/${Math.max(1, Number(profile?.accountXpToNext) || 1)}</div>
+      </section>
     </div>
   `;
 }
@@ -1406,7 +1754,7 @@ function renderProfile(profile, runPayload) {
 async function openPlayerProfile(playerId, fallbackName) {
   const id = Math.max(0, Number(playerId) || 0);
   if (!id || !profileBody || !profileTitle) return;
-  openProfileModalShell(`Profile: ${String(fallbackName || `ID ${id}`)}`);
+  openProfileModalShell(`Профиль: ${String(fallbackName || `ID ${id}`)}`);
   try {
     const [profileResponse, runsResponse] = await Promise.all([
       fetch(`/api/player/public-profile/${id}`, { cache: 'no-store' }),
@@ -1417,7 +1765,7 @@ async function openPlayerProfile(playerId, fallbackName) {
     if (!profileResponse.ok || !profilePayload?.ok || !profilePayload?.profile) {
       throw new Error(profilePayload?.message || `HTTP ${profileResponse.status}`);
     }
-    profileTitle.textContent = `Profile: ${String(profilePayload.profile?.nickname || fallbackName || `ID ${id}`)}`;
+    profileTitle.innerHTML = renderLandingProfileTitle(profilePayload.profile, fallbackName, id);
     const runData = runsResponse.ok && runsPayload?.ok
       ? {
           runs: Array.isArray(runsPayload.runs) ? runsPayload.runs : [],
@@ -1443,6 +1791,7 @@ function bindRatingProfileButtons() {
 
 function renderNews(items) {
   if (!newsGrid) return;
+  landingNewsState.items = Array.isArray(items) ? items : [];
   if (!Array.isArray(items) || items.length === 0) {
     newsGrid.innerHTML = `
       <article class="news-card">
@@ -1459,15 +1808,209 @@ function renderNews(items) {
     const title = escapeHtml(item?.title || 'Crimson Wars update');
     const summary = escapeHtml(item?.summary || 'Свежая запись в журнале обновлений.');
     const date = escapeHtml(formatNewsDate(item?.publishedAt));
+    const comments = Math.max(0, Number(item?.commentsCount) || 0);
+    const views = Math.max(0, Number(item?.views) || 0);
     return `
-      <article class="news-card">
+      <article class="news-card news-card-button" role="button" tabindex="0" data-news-open="${escapeHtml(item?.id || '')}">
         <span class="news-meta">${date}</span>
         <h3>${title}</h3>
         <p>${summary}</p>
-        <a href="#play" data-hub-tab="news">Открыть новость</a>
+        <span class="news-card-stats">${formatDevlogCount(comments, 'комментарий', 'комментария', 'комментариев')} · ${formatDevlogCount(views, 'просмотр', 'просмотра', 'просмотров')}</span>
+        <span class="news-card-link">Открыть новость</span>
       </article>
     `;
   }).join('');
+}
+
+function getNewsMedia(item) {
+  const media = Array.isArray(item?.media) ? item.media : [];
+  if (media.length > 0) return media.filter((entry) => entry && entry.url);
+  const images = Array.isArray(item?.images) ? item.images : [];
+  return images
+    .filter((image) => image && image.url)
+    .map((image) => ({ ...image, type: 'image', caption: image.alt || '' }));
+}
+
+function openNewsModalShell(item) {
+  if (!newsModal || !newsModalTitle || !newsModalBody) return;
+  if (newsModalCloseTimer) {
+    window.clearTimeout(newsModalCloseTimer);
+    newsModalCloseTimer = 0;
+  }
+  newsModal.classList.remove('hidden', 'is-closing');
+  newsModal.setAttribute('aria-hidden', 'false');
+  document.body.style.overflow = 'hidden';
+  window.requestAnimationFrame(() => {
+    newsModal.classList.add('is-open');
+  });
+  newsModalTitle.textContent = String(item?.title || 'Новость');
+  if (newsModalDate) newsModalDate.textContent = formatNewsDate(item?.publishedAt);
+  newsModalBody.innerHTML = '<div class="devlog-comment">Загрузка...</div>';
+}
+
+function closeNewsModal() {
+  if (!newsModal) return;
+  if (newsModal.classList.contains('hidden') || newsModal.classList.contains('is-closing')) return;
+  if (newsModalCloseTimer) window.clearTimeout(newsModalCloseTimer);
+  newsModal.classList.remove('is-open');
+  newsModal.classList.add('is-closing');
+  newsModal.setAttribute('aria-hidden', 'true');
+  document.body.style.overflow = '';
+  landingNewsState.activeItem = null;
+  landingNewsState.commentError = '';
+  newsModalCloseTimer = window.setTimeout(() => {
+    newsModal.classList.add('hidden');
+    newsModal.classList.remove('is-closing');
+    newsModalCloseTimer = 0;
+  }, 260);
+}
+
+function renderLandingCommentNode(comment, itemId, isReply = false, parentId = '', options = {}) {
+  const commentId = String(comment?.id || '').trim();
+  const replies = Array.isArray(comment?.replies) ? comment.replies : [];
+  const hero = getCommentHeroLabel(comment);
+  const showReactions = options?.showReactions !== false;
+  const authorAccountId = Math.max(0, Number(comment?.authorAccountId || comment?.accountId || comment?.playerId) || 0);
+  const authorName = String(comment?.authorName || 'Player').trim();
+  const authorLabel = `${escapeHtml(authorName)}${hero ? ` <span class="devlog-comment-hero">· ${escapeHtml(hero)}</span>` : ''}`;
+  const authorHtml = authorAccountId > 0
+    ? `<button class="devlog-comment-author-btn" type="button" data-comment-profile="${authorAccountId}" data-comment-profile-name="${escapeHtml(authorName)}">${authorLabel}</button>`
+    : `<strong>${authorLabel}</strong>`;
+  return `
+    <article class="devlog-comment${isReply ? ' devlog-comment-reply' : ''}">
+      <div class="devlog-comment-head">
+        ${authorHtml}
+        <span>${escapeHtml(formatShortDateTime(comment?.createdAt))}</span>
+      </div>
+      <div class="devlog-comment-text">${escapeHtml(comment?.text || '')}</div>
+      ${showReactions ? renderDevlogReactions({ id: itemId, reactions: comment?.reactions || {} }, {
+        small: true,
+        itemId,
+        targetType: isReply ? 'reply' : 'comment',
+        commentId,
+        parentId,
+      }) : ''}
+      ${replies.length ? `<div class="devlog-comment-replies">${replies.map((reply) => renderLandingCommentNode(reply, itemId, true, commentId, options)).join('')}</div>` : ''}
+    </article>
+  `;
+}
+
+function renderLandingNewsComments(item) {
+  const comments = Array.isArray(item?.comments) ? item.comments : [];
+  const identity = getLandingPlayerIdentityText();
+  const form = identity ? `
+    <form class="devlog-comment-form" data-news-comment-form="${escapeHtml(item.id)}">
+      <div class="devlog-comment-identity">Комментируешь как <strong>${escapeHtml(identity)}</strong></div>
+      <textarea data-news-comment-input="true" maxlength="1500" placeholder="Комментарий к новости"></textarea>
+      <div class="devlog-comment-actions">
+        <button class="devlog-submit-btn" type="submit" ${landingNewsState.postingComment ? 'disabled' : ''}>${landingNewsState.postingComment ? 'Отправка...' : 'Отправить'}</button>
+        ${landingNewsState.commentError ? `<span class="devlog-meta-row">${escapeHtml(landingNewsState.commentError)}</span>` : ''}
+      </div>
+    </form>
+  ` : renderLandingLoginHint();
+  return `
+    <section class="devlog-comments">
+      <h3>Комментарии</h3>
+      ${form}
+      ${comments.length ? comments.map((comment) => renderLandingCommentNode(comment, item.id, false, '', { showReactions: false })).join('') : '<div class="devlog-comment">Пока тихо. Можно открыть обсуждение первым и сделать вид, что так было в плане релиза.</div>'}
+    </section>
+  `;
+}
+
+function renderLandingNewsDetail(item) {
+  if (!newsModalBody || !item) return;
+  const media = getNewsMedia(item);
+  const comments = Math.max(0, Number(item?.commentsCount) || 0);
+  const views = Math.max(0, Number(item?.views) || 0);
+  if (newsModalTitle) newsModalTitle.textContent = String(item.title || 'Новость');
+  if (newsModalDate) newsModalDate.textContent = formatNewsDate(item.publishedAt);
+  newsModalBody.innerHTML = `
+    <section class="devlog-detail-brief">
+      <div>
+        <span class="devlog-kicker">${escapeHtml(formatNewsDate(item?.publishedAt))}</span>
+        <h3>${escapeHtml(item?.title || 'Новость')}</h3>
+        <p>${escapeHtml(item?.summary || 'Свежая запись Crimson Wars.')}</p>
+      </div>
+      <div class="devlog-detail-stats" aria-label="Статистика новости">
+        <span><strong>${views}</strong>${formatDevlogUnit(views, 'просмотр', 'просмотра', 'просмотров')}</span>
+        <span><strong>${comments}</strong>${formatDevlogUnit(comments, 'комментарий', 'комментария', 'комментариев')}</span>
+        <span><strong>${media.length}</strong>${formatDevlogUnit(media.length, 'медиа', 'медиа', 'медиа')}</span>
+      </div>
+    </section>
+    ${media.length ? `<div class="devlog-detail-media-grid">${media.map((entry, index) => `
+      <figure class="devlog-detail-media${index === 0 ? ' devlog-detail-media-primary' : ''}">
+        ${renderDevlogMediaElement(entry)}
+        <figcaption>${escapeHtml(entry?.caption || entry?.alt || item?.title || 'Кадр новости')}</figcaption>
+      </figure>
+    `).join('')}</div>` : ''}
+    ${renderDevlogStory(item.body || item.summary, item.items)}
+    ${renderLandingNewsComments(item)}
+  `;
+}
+
+async function openLandingNewsItem(itemId) {
+  const id = String(itemId || '').trim();
+  if (!id || landingNewsState.loadingItem) return;
+  const localItem = landingNewsState.items.find((item) => item?.id === id) || null;
+  landingNewsState.loadingItem = true;
+  landingNewsState.commentError = '';
+  openNewsModalShell(localItem);
+  await refreshLandingPlayer({ force: true });
+  try {
+    const response = await fetch(`/api/news/${encodeURIComponent(id)}`, { cache: 'no-store' });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.ok || !payload?.item) throw new Error(payload?.message || `HTTP ${response.status}`);
+    landingNewsState.activeItem = payload.item;
+    const idx = landingNewsState.items.findIndex((item) => item?.id === payload.item.id);
+    if (idx >= 0) landingNewsState.items[idx] = { ...landingNewsState.items[idx], ...payload.item };
+    renderLandingNewsDetail(payload.item);
+    renderNews(landingNewsState.items);
+  } catch (error) {
+    newsModalBody.innerHTML = `<div class="devlog-comment">Не удалось открыть новость: ${escapeHtml(error?.message || 'Unknown error')}</div>`;
+  } finally {
+    landingNewsState.loadingItem = false;
+  }
+}
+
+async function submitLandingNewsComment(form) {
+  const item = landingNewsState.activeItem;
+  if (!item?.id || landingNewsState.postingComment) return;
+  await refreshLandingPlayer({ force: true });
+  if (!landingPlayerState.player) {
+    landingNewsState.commentError = 'Нужно войти в игровой аккаунт.';
+    renderLandingNewsDetail(item);
+    return;
+  }
+  const textInput = form?.querySelector('[data-news-comment-input]');
+  const text = String(textInput?.value || '').trim();
+  if (!text) {
+    landingNewsState.commentError = 'Нужен сам комментарий.';
+    renderLandingNewsDetail(item);
+    return;
+  }
+  landingNewsState.postingComment = true;
+  landingNewsState.commentError = '';
+  renderLandingNewsDetail(item);
+  try {
+    const response = await fetch(`/api/news/${encodeURIComponent(item.id)}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ text }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.ok || !payload?.item) throw new Error(payload?.message || `HTTP ${response.status}`);
+    landingNewsState.activeItem = payload.item;
+    landingNewsState.postingComment = false;
+    renderLandingNewsDetail(payload.item);
+    const idx = landingNewsState.items.findIndex((entry) => entry?.id === payload.item.id);
+    if (idx >= 0) landingNewsState.items[idx] = { ...landingNewsState.items[idx], ...payload.item };
+    renderNews(landingNewsState.items);
+  } catch (error) {
+    landingNewsState.postingComment = false;
+    landingNewsState.commentError = error?.message || 'Не удалось отправить комментарий.';
+    renderLandingNewsDetail(item);
+  }
 }
 
 function getFallbackDevlogItems() {
@@ -1703,6 +2246,7 @@ function renderDevlogFeature(items) {
   if (!devlogFeature) return;
   const first = items[0];
   if (!first) return;
+  devlogFeature.dataset.devlogOpen = first.id || '';
   devlogFeature.style.setProperty('--devlog-cover', `url("${getDevlogCover(first).replaceAll('"', '%22')}")`);
   devlogFeature.innerHTML = `
     <button class="devlog-feature-cover-action" type="button" data-devlog-open="${escapeHtml(first.id)}" aria-label="Открыть запись: ${escapeHtml(first.title || 'Журнал разработки')}"></button>
@@ -1744,7 +2288,7 @@ function renderDevlogTimeline(items) {
     const likes = Math.max(0, Number(item?.reactions?.heart) || 0);
     const comments = Math.max(0, Number(item?.commentsCount) || 0);
     return `
-      <article class="devlog-timeline-card">
+      <article class="devlog-timeline-card" data-devlog-open="${escapeHtml(item.id)}">
         <button class="devlog-card-media" type="button" data-devlog-open="${escapeHtml(item.id)}">
           ${media ? renderDevlogMediaElement(media) : '<img src="/assets/backgrounds/screen-loading.jpg" alt="" loading="lazy" />'}
         </button>
@@ -1811,41 +2355,26 @@ function closeDevlogModal() {
 }
 
 function renderDevlogCommentNode(comment, itemId, isReply = false, parentId = '') {
-  const commentId = String(comment?.id || '').trim();
-  const replies = Array.isArray(comment?.replies) ? comment.replies : [];
-  return `
-    <article class="devlog-comment${isReply ? ' devlog-comment-reply' : ''}">
-      <div class="devlog-comment-head">
-        <strong>${escapeHtml(comment?.authorName || 'Гость')}</strong>
-        <span>${escapeHtml(formatShortDateTime(comment?.createdAt))}</span>
-      </div>
-      <div class="devlog-comment-text">${escapeHtml(comment?.text || '')}</div>
-      ${renderDevlogReactions({ id: itemId, reactions: comment?.reactions || {} }, {
-        small: true,
-        itemId,
-        targetType: isReply ? 'reply' : 'comment',
-        commentId,
-        parentId,
-      })}
-      ${replies.length ? `<div class="devlog-comment-replies">${replies.map((reply) => renderDevlogCommentNode(reply, itemId, true, commentId)).join('')}</div>` : ''}
-    </article>
-  `;
+  return renderLandingCommentNode(comment, itemId, isReply, parentId);
 }
 
 function renderDevlogComments(item) {
   const comments = Array.isArray(item?.comments) ? item.comments : [];
-  const nameValue = escapeHtml(devlogState.guestName || '');
-  return `
-    <section class="devlog-comments">
-      <h3>Комментарии</h3>
+  const identity = getLandingPlayerIdentityText();
+  const form = identity ? `
       <form class="devlog-comment-form" data-devlog-comment-form="${escapeHtml(item.id)}">
-        <input data-devlog-name-input="true" maxlength="48" placeholder="Имя" value="${nameValue}" />
+        <div class="devlog-comment-identity">Комментируешь как <strong>${escapeHtml(identity)}</strong></div>
         <textarea data-devlog-comment-input="true" maxlength="1500" placeholder="Легкий комментарий к заметке"></textarea>
         <div class="devlog-comment-actions">
           <button class="devlog-submit-btn" type="submit" data-devlog-comment-submit="${escapeHtml(item.id)}" ${devlogState.postingComment ? 'disabled' : ''}>${devlogState.postingComment ? 'Отправка...' : 'Отправить'}</button>
           ${devlogState.commentError ? `<span class="devlog-meta-row">${escapeHtml(devlogState.commentError)}</span>` : ''}
         </div>
       </form>
+    ` : renderLandingLoginHint();
+  return `
+    <section class="devlog-comments">
+      <h3>Комментарии</h3>
+      ${form}
       ${comments.length ? comments.map((comment) => renderDevlogCommentNode(comment, item.id)).join('') : '<div class="devlog-comment">Пока тихо. Можно оставить первый комментарий и сделать вид, что так и планировалось.</div>'}
     </section>
   `;
@@ -1875,6 +2404,7 @@ async function openDevlogItem(itemId, options = {}) {
   const fallbackItem = getFallbackDevlogItems().find((item) => item.id === id);
   const localItem = devlogState.items.find((item) => item?.id === id) || fallbackItem || null;
   openDevlogModalShell(localItem);
+  await refreshLandingPlayer({ force: true });
   if (fallbackItem?.isFallback) {
     devlogState.activeItem = fallbackItem;
     renderDevlogDetail(fallbackItem, { focusMediaId });
@@ -1895,12 +2425,16 @@ async function openDevlogItem(itemId, options = {}) {
 async function submitDevlogComment(form) {
   const item = devlogState.activeItem;
   if (!item?.id || item.isFallback || devlogState.postingComment) return;
-  const nameInput = form?.querySelector('[data-devlog-name-input]');
+  await refreshLandingPlayer({ force: true });
+  if (!landingPlayerState.player) {
+    devlogState.commentError = 'Нужно войти в игровой аккаунт.';
+    renderDevlogDetail(item, { focusMediaId: devlogState.activeMediaId });
+    return;
+  }
   const textInput = form?.querySelector('[data-devlog-comment-input]');
-  const authorName = String(nameInput?.value || '').trim().slice(0, 48);
   const text = String(textInput?.value || '').trim();
-  if (!authorName || !text) {
-    devlogState.commentError = 'Нужно имя и сам комментарий.';
+  if (!text) {
+    devlogState.commentError = 'Нужен сам комментарий.';
     renderDevlogDetail(item, { focusMediaId: devlogState.activeMediaId });
     return;
   }
@@ -1908,16 +2442,11 @@ async function submitDevlogComment(form) {
   devlogState.commentError = '';
   renderDevlogDetail(item, { focusMediaId: devlogState.activeMediaId });
   try {
-    localStorage.setItem(DEVLOG_GUEST_NAME_KEY, authorName);
-    devlogState.guestName = authorName;
-  } catch {
-    devlogState.guestName = authorName;
-  }
-  try {
     const response = await fetch(`/api/news/${encodeURIComponent(item.id)}/comments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ authorName, text }),
+      credentials: 'same-origin',
+      body: JSON.stringify({ text }),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload?.ok || !payload?.item) throw new Error(payload?.message || `HTTP ${response.status}`);
@@ -1965,6 +2494,15 @@ async function reactToDevlog(button) {
 function handleDevlogClick(event) {
   const target = event.target;
   if (!(target instanceof Element)) return;
+  const profileButton = target.closest('[data-comment-profile]');
+  if (profileButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const playerId = Math.max(0, Number(profileButton.getAttribute('data-comment-profile')) || 0);
+    const nickname = String(profileButton.getAttribute('data-comment-profile-name') || profileButton.textContent || '').trim();
+    void openPlayerProfile(playerId, nickname);
+    return;
+  }
   const closeTarget = target.closest('[data-devlog-close]');
   if (closeTarget) {
     closeDevlogModal();
@@ -1983,6 +2521,48 @@ function handleDevlogClick(event) {
   }
 }
 
+function handleNewsClick(event) {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const profileButton = target.closest('[data-comment-profile]');
+  if (profileButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const playerId = Math.max(0, Number(profileButton.getAttribute('data-comment-profile')) || 0);
+    const nickname = String(profileButton.getAttribute('data-comment-profile-name') || profileButton.textContent || '').trim();
+    void openPlayerProfile(playerId, nickname);
+    return;
+  }
+  const closeTarget = target.closest('[data-news-close]');
+  if (closeTarget) {
+    closeNewsModal();
+    return;
+  }
+  const openButton = target.closest('[data-news-open]');
+  if (openButton) {
+    const id = openButton.getAttribute('data-news-open') || '';
+    void openLandingNewsItem(id);
+  }
+}
+
+newsGrid?.addEventListener('click', handleNewsClick);
+newsGrid?.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const openButton = target.closest('[data-news-open]');
+  if (!openButton) return;
+  event.preventDefault();
+  void openLandingNewsItem(openButton.getAttribute('data-news-open') || '');
+});
+newsModal?.addEventListener('click', handleNewsClick);
+newsCloseBtn?.addEventListener('click', closeNewsModal);
+newsModalBody?.addEventListener('submit', (event) => {
+  const form = event.target;
+  if (!(form instanceof HTMLFormElement) || !form.matches('[data-news-comment-form]')) return;
+  event.preventDefault();
+  void submitLandingNewsComment(form);
+});
 devlogFeature?.addEventListener('click', handleDevlogClick);
 devlogGallery?.addEventListener('click', handleDevlogClick);
 devlogTimeline?.addEventListener('click', handleDevlogClick);
@@ -1995,6 +2575,8 @@ devlogModalBody?.addEventListener('submit', (event) => {
   void submitDevlogComment(form);
 });
 document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && profileModal && !profileModal.classList.contains('hidden')) return;
+  if (event.key === 'Escape' && newsModal && !newsModal.classList.contains('hidden')) closeNewsModal();
   if (event.key === 'Escape' && devlogModal && !devlogModal.classList.contains('hidden')) closeDevlogModal();
 });
 

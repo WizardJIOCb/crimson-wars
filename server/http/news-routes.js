@@ -45,9 +45,34 @@ function registerNewsRoutes(app, {
   newsImageDir,
   newsStore,
   requireAdmin,
+  accountProgressionStore,
 }) {
   const uploadDir = newsImageDir || path.join(process.cwd(), 'data', 'news-images');
   fs.mkdirSync(uploadDir, { recursive: true });
+
+  function getPlayerCommentIdentity(playerUser) {
+    if (!playerUser) return null;
+    let authorHeroId = '';
+    let authorHeroName = '';
+    try {
+      const progression = accountProgressionStore?.getOrCreateProgression?.(playerUser.id);
+      const publicProgression = accountProgressionStore?.toPublicProgression?.(progression) || progression;
+      authorHeroId = String(publicProgression?.activeHero || '').trim();
+      const catalog = accountProgressionStore?.getCatalogPayload?.();
+      const heroes = Array.isArray(catalog?.heroes) ? catalog.heroes : [];
+      const hero = heroes.find((entry) => String(entry?.id || '').trim() === authorHeroId);
+      authorHeroName = String(hero?.name || authorHeroId || '').trim();
+    } catch {
+      authorHeroId = '';
+      authorHeroName = '';
+    }
+    return {
+      authorName: String(playerUser.nickname || 'Player').trim(),
+      authorAccountId: Math.max(0, Number(playerUser.id) || 0),
+      authorHeroId,
+      authorHeroName,
+    };
+  }
 
   app.get('/api/news/images/:file', (req, res) => {
     const file = String(req.params.file || '').trim();
@@ -104,28 +129,18 @@ function registerNewsRoutes(app, {
 
   app.post('/api/news/:id/comments', (req, res) => {
     const payload = req.body && typeof req.body === 'object' ? req.body : {};
-    let authorName = req.playerUser?.nickname || '';
-    let authorAccountId = req.playerUser?.id || 0;
-
     if (!req.playerUser) {
-      const current = newsStore.getPublicById(req.params.id, { incrementView: false });
-      const guestName = String(payload.authorName || '').trim().slice(0, 48);
-      if (!current.ok || current.item?.kind !== 'devlog' || !guestName) {
-        res.status(401).json({ ok: false, message: 'Authentication required' });
-        return;
-      }
-      authorName = guestName;
-      authorAccountId = 0;
+      res.status(401).json({ ok: false, message: 'Authentication required' });
+      return;
     }
-
-    if (!authorName) {
+    const identity = getPlayerCommentIdentity(req.playerUser);
+    if (!identity?.authorName) {
       res.status(401).json({ ok: false, message: 'Authentication required' });
       return;
     }
 
     const result = newsStore.addComment(req.params.id, {
-      authorName,
-      authorAccountId,
+      ...identity,
       text: payload.text,
       parentId: payload.parentId,
     });

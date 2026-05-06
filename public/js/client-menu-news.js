@@ -36,6 +36,17 @@
     }
   }
 
+  function getActiveHeroLabel() {
+    const heroId = String(game.playerAuth?.progression?.activeHero || selectedPlayerClass || '').trim();
+    const heroes = Array.isArray(game.playerAuth?.progressionCatalog?.heroes) ? game.playerAuth.progressionCatalog.heroes : [];
+    const hero = heroes.find((entry) => String(entry?.id || '').trim() === heroId);
+    return String(hero?.name || heroId || '').trim();
+  }
+
+  function getCommentHeroLabel(comment) {
+    return String(comment?.authorHeroName || comment?.authorHeroId || '').trim();
+  }
+
   const newsUi = {
     items: [],
     activeId: '',
@@ -293,6 +304,11 @@
     const wrap = document.createElement('div');
     wrap.className = 'news-comment-compose news-comment-reply-compose';
 
+    const identity = document.createElement('div');
+    identity.className = 'news-comment-identity';
+    const hero = getActiveHeroLabel();
+    identity.textContent = trWithFallback('ui.news.comment_as', 'Комментируете как') + ' ' + String(game.playerAuth?.player?.nickname || 'Player') + (hero ? ' · ' + hero : '');
+
     const input = document.createElement('textarea');
     input.className = 'news-comment-input';
     input.rows = 2;
@@ -337,6 +353,7 @@
 
     actions.appendChild(sendBtn);
     actions.appendChild(cancelBtn);
+    wrap.appendChild(identity);
     wrap.appendChild(input);
     wrap.appendChild(actions);
     container.appendChild(wrap);
@@ -367,6 +384,13 @@
 
     const meta = document.createElement('div');
     meta.className = 'news-comment-meta';
+    const heroLabel = getCommentHeroLabel(comment);
+    if (heroLabel) {
+      const hero = document.createElement('span');
+      hero.className = 'news-comment-hero';
+      hero.textContent = heroLabel;
+      meta.appendChild(hero);
+    }
     const date = document.createElement('span');
     date.className = 'news-comment-date';
     date.textContent = formatNewsDate(comment?.createdAt || 0);
@@ -551,6 +575,12 @@
       if (isLoggedIn) {
         const compose = document.createElement('div');
         compose.className = 'news-comment-compose';
+
+        const identity = document.createElement('div');
+        identity.className = 'news-comment-identity';
+        const hero = getActiveHeroLabel();
+        identity.textContent = trWithFallback('ui.news.comment_as', 'Комментируете как') + ' ' + String(game.playerAuth?.player?.nickname || 'Player') + (hero ? ' · ' + hero : '');
+        compose.appendChild(identity);
 
         const input = document.createElement('textarea');
         input.className = 'news-comment-input';
