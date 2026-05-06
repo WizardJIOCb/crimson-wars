@@ -49,6 +49,7 @@
         <button class="nav-btn" data-section="campaigns"><span>Кампании</span><span id="campaigns-nav-count">0</span></button>
         <button class="nav-btn" data-section="mobs"><span>Mobs</span><span id="mobs-nav-count">0</span></button>
         <button class="nav-btn" data-section="news"><span>Новости</span><span>legacy</span></button>
+        <button class="nav-btn" data-section="devlog"><span>Разработка</span><span>dev-log</span></button>
         <button class="nav-btn" data-section="skills"><span>Навыки</span><span>legacy</span></button>
       </nav>
 
@@ -101,8 +102,8 @@
             <span>Mobs in catalog</span>
           </div>
           <div class="card metric-card">
-            <strong id="metric-legacy">2</strong>
-            <span>Встроенных legacy-редактора</span>
+            <strong id="metric-legacy">3</strong>
+            <span>Встроенных редактора</span>
           </div>
         </div>
 
@@ -145,6 +146,17 @@
             <div class="btn-row">
               <button class="btn btn-ghost" data-jump="news">Перейти к новостям</button>
               <a class="btn btn-ghost" href="/admin/news" target="_blank" rel="noreferrer">Открыть отдельно</a>
+            </div>
+          </div>
+
+          <div class="card shortcut-card">
+            <div>
+              <h3>Разработка</h3>
+              <p>Записи для публичного dev-log: заголовки, форматируемый текст, скриншоты, видео и медиа-история процесса.</p>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-ghost" data-jump="devlog">Перейти к разработке</button>
+              <a class="btn btn-ghost" href="/admin/devlog" target="_blank" rel="noreferrer">Открыть отдельно</a>
             </div>
           </div>
 
@@ -628,6 +640,15 @@
         </div>
       </section>
 
+      <section id="section-devlog" class="admin-section hidden">
+        <div class="card frame-shell">
+          <div class="btn-row" style="margin-bottom:12px">
+            <a class="btn btn-ghost" href="/admin/devlog" target="_blank" rel="noreferrer">Открыть dev-log editor отдельно</a>
+          </div>
+          <iframe id="devlog-frame" class="frame-embed" title="Development devlog admin" loading="lazy"></iframe>
+        </div>
+      </section>
+
       <section id="section-skills" class="admin-section hidden">
         <div class="card frame-shell">
           <div class="btn-row" style="margin-bottom:12px">
@@ -639,6 +660,6 @@
     </main>
   </div>
 
-  <script src="/js/admin-hub.js?v=20260502buildings1"></script>
+  <script src="/js/admin-hub.js?v=20260506devlogadmin"></script>
 </body>
 </html>

@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="icon" type="image/svg+xml" href="assets/other/favicon.png" />
-  <link rel="stylesheet" href="/landing.css?v=20260504gameheight2" />
+  <link rel="stylesheet" href="/landing.css?v=20260506devlog10" />
   <!-- Yandex.Metrika counter -->
   <script type="text/javascript">
     (function(m,e,t,r,i,k,a){
@@ -55,6 +55,7 @@
         <a href="#video">Повторы</a>
         <a href="#ratings">Рейтинг</a>
         <a href="#news">Новости</a>
+        <a href="#development">Разработка</a>
         <a href="#about">Об игре</a>
         <a href="#screenshots">Скриншоты</a>
         <a href="#contacts">Контакты</a>
@@ -348,6 +349,36 @@
         </div>
       </section>
 
+      <section id="development" class="landing-section devlog-section reveal">
+        <div class="section-heading devlog-heading">
+          <p class="eyebrow">Разработка</p>
+          <h2>Журнал разработки: скриншоты, видео и заметки о том, как игра собирается, падает, встаёт и просит ещё один фикс.</h2>
+          <p>
+            Здесь живут кадры из редактора, первые кривые прототипы, короткие видео и честные записи из разряда:
+            «мы нажали кнопку, карта моргнула, босс обиделся». Комментарии и реакции рядом, чтобы каждую заметку можно было обсудить
+            по-доброму, шумно и без заседаний совета выживших.
+          </p>
+        </div>
+
+        <div class="devlog-layout">
+          <article id="landing-devlog-feature" class="devlog-feature" aria-live="polite">
+            <span class="devlog-kicker">Загрузка</span>
+            <h3>Собираем свежие записи разработки...</h3>
+            <p>Сейчас здесь появится последняя заметка с медиа, реакциями и быстрым переходом к обсуждению.</p>
+          </article>
+
+          <div id="development-gallery" class="devlog-gallery-shell">
+            <div class="devlog-gallery-head">
+              <span>Галерея процесса</span>
+              <strong id="landing-devlog-gallery-count">0 медиа</strong>
+            </div>
+            <div id="landing-devlog-gallery" class="devlog-gallery" aria-live="polite"></div>
+          </div>
+        </div>
+
+        <div id="landing-devlog-timeline" class="devlog-timeline" aria-live="polite"></div>
+      </section>
+
       <section id="about" class="landing-section reveal">
         <div class="section-heading">
           <p class="eyebrow">Об игре</p>
@@ -619,12 +650,26 @@
     <div class="landing-profile-dialog" role="dialog" aria-modal="true" aria-labelledby="landing-profile-title">
       <div class="landing-profile-head">
         <b id="landing-profile-title">Профиль игрока</b>
-        <button id="landing-profile-close" type="button" class="mini">Close</button>
+        <button id="landing-profile-close" type="button" class="modal-close-btn" aria-label="Закрыть"><span>Закрыть</span></button>
       </div>
       <div id="landing-profile-body" class="landing-profile-body">Загрузка...</div>
     </div>
   </div>
 
-  <script src="/landing.js?v=20260504gameheight2"></script>
+  <div id="landing-devlog-modal" class="landing-devlog-modal hidden" aria-hidden="true">
+    <div class="landing-devlog-backdrop" data-devlog-close="true"></div>
+    <article class="landing-devlog-dialog" role="dialog" aria-modal="true" aria-labelledby="landing-devlog-title">
+      <div class="landing-devlog-dialog-head">
+        <div>
+          <span id="landing-devlog-modal-date" class="devlog-kicker">Разработка</span>
+          <h2 id="landing-devlog-title">Журнал разработки</h2>
+        </div>
+        <button id="landing-devlog-close" type="button" class="modal-close-btn" aria-label="Закрыть"><span>Закрыть</span></button>
+      </div>
+      <div id="landing-devlog-body" class="landing-devlog-body">Загрузка...</div>
+    </article>
+  </div>
+
+  <script src="/landing.js?v=20260506devlog10"></script>
 </body>
 </html>

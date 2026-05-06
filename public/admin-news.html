@@ -25,10 +25,16 @@
     tr.sel { background: rgba(14, 116, 144, 0.22); }
     .status { min-height: 18px; color: #93c5fd; }
     .meta { color: #94a3b8; font-size: 13px; }
+    select { width: 100%; box-sizing: border-box; background: #0b1220; color: #e2e8f0; border: 1px solid #334155; border-radius: 8px; padding: 8px; }
+    .mode-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+    .mode-tab { min-height: 38px; padding: 0 14px; }
+    .mode-tab.active { background: #0b5fd4; border-color: #38bdf8; }
+    .editor-hint { padding: 10px 12px; border: 1px solid #334155; border-radius: 10px; background: #0b1220; color: #a7f3d0; font-size: 13px; line-height: 1.45; }
     .image-tools { display: grid; gap: 8px; }
-    .image-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+    .image-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(116px, 1fr)); gap: 8px; }
     .image-chip { position: relative; overflow: hidden; border: 1px solid #334155; border-radius: 10px; background: #0b1220; }
-    .image-chip img { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; display: block; }
+    .image-chip img, .image-chip video { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; display: block; background: #020617; }
+    .image-chip span { display: block; padding: 5px 6px; color: #94a3b8; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .image-chip button { position: absolute; top: 5px; right: 5px; padding: 3px 6px; background: rgba(127, 29, 29, 0.9); }
     @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
   </style>
@@ -51,39 +57,46 @@
   <div id="app-view" class="app hidden">
     <div class="card">
       <div class="row" style="justify-content:space-between">
-        <h2>News Admin</h2>
+        <h2 id="admin-title">Content Admin</h2>
         <div class="row">
           <button id="reload-btn">Reload</button>
           <button id="logout-btn" class="primary">Log out</button>
         </div>
       </div>
-      <div class="meta">Manage news visible in the in-game News tab.</div>
+      <div class="mode-tabs" role="tablist" aria-label="Content section">
+        <button class="mode-tab" type="button" data-admin-mode="news">Новости</button>
+        <button class="mode-tab" type="button" data-admin-mode="devlog">Разработка</button>
+      </div>
+      <div id="admin-meta" class="meta">Manage news visible in the in-game News tab.</div>
       <div id="status" class="status">Ready.</div>
     </div>
 
     <div class="grid2">
       <div class="card">
         <div class="row" style="justify-content:space-between">
-          <h3>News List</h3>
+          <h3 id="list-title">News List</h3>
           <span id="news-meta" class="meta">0 item(s)</span>
         </div>
         <table>
-          <thead><tr><th>Title</th><th>Published</th><th>Updated</th></tr></thead>
-          <tbody id="news-body"><tr><td colspan="3">Loading...</td></tr></tbody>
+          <thead><tr><th>Title</th><th>Type</th><th>Published</th><th>Updated</th></tr></thead>
+          <tbody id="news-body"><tr><td colspan="4">Loading...</td></tr></tbody>
         </table>
       </div>
 
       <div class="card">
         <h3 id="editor-title">Create News</h3>
         <div class="grid">
-          <label class="field">Title<input id="news-title" maxlength="180" /></label>
-          <label class="field">Summary<textarea id="news-summary" maxlength="1000"></textarea></label>
-          <label class="field">Items (one per line)<textarea id="news-items"></textarea></label>
+          <input id="news-kind" type="hidden" value="news" />
+          <div id="editor-hint" class="editor-hint">Choose a section above. Development entries appear in the public Разработка block.</div>
+          <label id="news-title-label" class="field">Title<input id="news-title" maxlength="180" /></label>
+          <label id="news-summary-label" class="field">Summary<textarea id="news-summary" maxlength="1000"></textarea></label>
+          <label id="news-body-label" class="field">Story body (Markdown-lite: ## heading, - list, &gt; quote)<textarea id="news-story-body" maxlength="12000"></textarea></label>
+          <label id="news-items-label" class="field">Highlights (one per line)<textarea id="news-items"></textarea></label>
           <div class="field image-tools">
-            <span>Images</span>
+            <span id="news-media-label">Media gallery</span>
             <div class="row">
-              <input id="news-image-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple />
-              <button id="upload-image-btn" type="button">Upload images</button>
+              <input id="news-image-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/ogg,video/quicktime" multiple />
+              <button id="upload-image-btn" type="button">Upload media</button>
             </div>
             <div id="news-images" class="image-list"></div>
           </div>
@@ -109,15 +122,27 @@
     loginPassword: $('login-password'),
     loginBtn: $('login-btn'),
     loginStatus: $('login-status'),
+    adminTitle: $('admin-title'),
+    adminMeta: $('admin-meta'),
+    modeTabs: Array.from(document.querySelectorAll('[data-admin-mode]')),
     reloadBtn: $('reload-btn'),
     logoutBtn: $('logout-btn'),
     status: $('status'),
     newsMeta: $('news-meta'),
     newsBody: $('news-body'),
+    listTitle: $('list-title'),
     editorTitle: $('editor-title'),
+    editorHint: $('editor-hint'),
+    newsKind: $('news-kind'),
+    newsTitleLabel: $('news-title-label'),
     newsTitle: $('news-title'),
+    newsSummaryLabel: $('news-summary-label'),
     newsSummary: $('news-summary'),
+    newsBodyLabel: $('news-body-label'),
+    newsStoryBody: $('news-story-body'),
+    newsItemsLabel: $('news-items-label'),
     newsItems: $('news-items'),
+    newsMediaLabel: $('news-media-label'),
     newsImageFile: $('news-image-file'),
     uploadImageBtn: $('upload-image-btn'),
     newsImages: $('news-images'),
@@ -132,7 +157,49 @@
   const state = {
     items: [],
     selectedId: '',
-    editorImages: [],
+    editorMedia: [],
+    mode: location.pathname.toLowerCase().includes('/devlog') ? 'devlog' : 'news',
+  };
+
+  const modeCopy = {
+    news: {
+      title: 'News Admin',
+      listTitle: 'News List',
+      meta: 'Manage news visible in the in-game News tab.',
+      editorNew: 'Create News',
+      editorEdit: 'Edit News',
+      titleLabel: 'Title',
+      summaryLabel: 'Summary',
+      bodyLabel: 'Article body (optional, Markdown-lite: ## heading, - list, > quote)',
+      itemsLabel: 'Patch notes / highlights (one per line)',
+      mediaLabel: 'Images',
+      hint: 'Обычные новости показываются в новостной ленте игры и на главной. Для процесса разработки переключись на раздел Разработка.',
+      created: 'News created.',
+      updated: 'News updated.',
+      deleted: 'News deleted.',
+      empty: 'No news yet.',
+      newStatus: 'Create new news item.',
+      deletedConfirm: 'Delete selected news item?',
+    },
+    devlog: {
+      title: 'Development Admin',
+      listTitle: 'Development Entries',
+      meta: 'Manage public dev-log stories shown in the Разработка block on the main page.',
+      editorNew: 'Create Development Entry',
+      editorEdit: 'Edit Development Entry',
+      titleLabel: 'Заголовок записи',
+      summaryLabel: 'Короткое вступление для карточки',
+      bodyLabel: 'Форматируемый текст статьи (## заголовок, - список, > цитата)',
+      itemsLabel: 'Короткие выжимки / смешные пункты (по одному в строке)',
+      mediaLabel: 'Скриншоты и видео',
+      hint: 'Эти записи общедоступны в блоке Разработка: добавь заголовок, красивый текст, скриншоты или видео, затем опубликуй.',
+      created: 'Development entry created.',
+      updated: 'Development entry updated.',
+      deleted: 'Development entry deleted.',
+      empty: 'No development entries yet.',
+      newStatus: 'Create new development entry.',
+      deletedConfirm: 'Delete selected development entry?',
+    },
   };
 
   function esc(s) {
@@ -159,15 +226,49 @@
     el.textContent = String(text || '');
   }
 
+  function currentCopy() {
+    return modeCopy[state.mode] || modeCopy.news;
+  }
+
+  function filteredItems() {
+    return state.items.filter((item) => (item?.kind === 'devlog' ? 'devlog' : 'news') === state.mode);
+  }
+
+  function syncModeUi() {
+    const copy = currentCopy();
+    dom.adminTitle.textContent = copy.title;
+    dom.adminMeta.textContent = copy.meta;
+    dom.listTitle.textContent = copy.listTitle;
+    dom.editorHint.textContent = copy.hint;
+    dom.newsTitleLabel.firstChild.nodeValue = copy.titleLabel;
+    dom.newsSummaryLabel.firstChild.nodeValue = copy.summaryLabel;
+    dom.newsBodyLabel.firstChild.nodeValue = copy.bodyLabel;
+    dom.newsItemsLabel.firstChild.nodeValue = copy.itemsLabel;
+    dom.newsMediaLabel.textContent = copy.mediaLabel;
+    dom.newsKind.value = state.mode;
+    for (const tab of dom.modeTabs) {
+      const active = tab.dataset.adminMode === state.mode;
+      tab.classList.toggle('active', active);
+      tab.setAttribute('aria-selected', String(active));
+    }
+    const nextPath = state.mode === 'devlog' ? '/admin/devlog' : '/admin/news';
+    if (location.pathname !== nextPath) history.replaceState({}, document.title, nextPath);
+  }
+
   function toEditor(item) {
+    const copy = currentCopy();
+    dom.newsKind.value = item ? (item?.kind === 'devlog' ? 'devlog' : 'news') : state.mode;
     dom.newsTitle.value = item?.title || '';
     dom.newsSummary.value = item?.summary || '';
+    dom.newsStoryBody.value = item?.body || '';
     dom.newsItems.value = Array.isArray(item?.items) ? item.items.join('\n') : '';
-    state.editorImages = Array.isArray(item?.images) ? item.images.map((image) => ({ ...image })) : [];
+    state.editorMedia = Array.isArray(item?.media) && item.media.length
+      ? item.media.map((media) => ({ ...media }))
+      : (Array.isArray(item?.images) ? item.images.map((image) => ({ ...image, type: 'image', caption: '', poster: '' })) : []);
     renderEditorImages();
     dom.newsPublished.checked = item?.isPublished !== false;
     const edit = !!item;
-    dom.editorTitle.textContent = edit ? 'Edit News' : 'Create News';
+    dom.editorTitle.textContent = edit ? copy.editorEdit : copy.editorNew;
     dom.createBtn.classList.toggle('hidden', edit);
     dom.saveBtn.classList.toggle('hidden', !edit);
     dom.deleteBtn.classList.toggle('hidden', !edit);
@@ -175,80 +276,92 @@
   }
 
   function collectEditorPayload() {
+    const media = state.editorMedia.map((item) => ({
+      id: item.id,
+      type: item.type === 'video' ? 'video' : 'image',
+      url: item.url,
+      poster: item.poster || '',
+      alt: item.alt || '',
+      caption: item.caption || '',
+    }));
     return {
+      kind: dom.newsKind.value === 'devlog' ? 'devlog' : 'news',
       title: dom.newsTitle.value.trim(),
       summary: dom.newsSummary.value.trim(),
+      body: dom.newsStoryBody.value.trim(),
       items: dom.newsItems.value.split(/\r?\n/).map((x) => x.trim()).filter(Boolean),
-      images: state.editorImages.map((image) => ({
-        id: image.id,
-        url: image.url,
-        alt: image.alt || '',
-      })),
+      images: media.filter((item) => item.type === 'image').map((image) => ({ id: image.id, url: image.url, alt: image.alt || '' })),
+      media,
       isPublished: !!dom.newsPublished.checked,
     };
   }
 
   function renderEditorImages() {
-    if (!state.editorImages.length) {
-      dom.newsImages.innerHTML = '<div class="meta">No uploaded images.</div>';
+    if (!state.editorMedia.length) {
+      dom.newsImages.innerHTML = '<div class="meta">No uploaded media.</div>';
       return;
     }
-    dom.newsImages.innerHTML = state.editorImages.map((image, index) => (
-      `<div class="image-chip" data-index="${index}"><img src="${esc(image.url)}" alt="${esc(image.alt || '')}" /><button type="button" data-remove-image="${index}">x</button></div>`
+    dom.newsImages.innerHTML = state.editorMedia.map((media, index) => (
+      `<div class="image-chip" data-index="${index}">${media.type === 'video' ? `<video src="${esc(media.url)}" muted preload="metadata"></video>` : `<img src="${esc(media.url)}" alt="${esc(media.alt || '')}" />`}<span>${esc(media.type === 'video' ? 'video' : 'image')} - ${esc(media.alt || media.caption || media.url || '')}</span><button type="button" data-remove-image="${index}">x</button></div>`
     )).join('');
   }
 
   async function uploadImages() {
     const files = Array.from(dom.newsImageFile.files || []);
     if (!files.length) {
-      setStatus(dom.editorStatus, 'Choose image files first.');
+      setStatus(dom.editorStatus, 'Choose media files first.');
       return;
     }
     try {
-      for (const file of files.slice(0, Math.max(0, 12 - state.editorImages.length))) {
-        const res = await fetch('/api/admin/news/images', {
+      for (const file of files.slice(0, Math.max(0, 18 - state.editorMedia.length))) {
+        const res = await fetch('/api/admin/news/media', {
           method: 'POST',
           credentials: 'same-origin',
           headers: { 'content-type': file.type || 'application/octet-stream' },
           body: file,
         });
         const payload = await res.json().catch(() => ({}));
-        if (!res.ok || !payload?.ok || !payload?.image) throw new Error(payload?.message || ('HTTP ' + res.status));
-        state.editorImages.push({
-          ...payload.image,
-          alt: file.name || payload.image.alt || '',
+        if (!res.ok || !payload?.ok || !payload?.media) throw new Error(payload?.message || ('HTTP ' + res.status));
+        state.editorMedia.push({
+          ...payload.media,
+          alt: file.name || payload.media.alt || '',
+          caption: file.name || payload.media.caption || '',
         });
       }
       dom.newsImageFile.value = '';
       renderEditorImages();
-      setStatus(dom.editorStatus, 'Images uploaded. Save the news item to keep them.');
+      setStatus(dom.editorStatus, 'Media uploaded. Save the news item to keep it.');
     } catch (err) {
       setStatus(dom.editorStatus, err.message);
     }
   }
 
   function renderList() {
-    dom.newsMeta.textContent = `${state.items.length} item(s)`;
-    if (!state.items.length) {
-      dom.newsBody.innerHTML = '<tr><td colspan="3">No news yet.</td></tr>';
+    const copy = currentCopy();
+    const items = filteredItems();
+    dom.newsMeta.textContent = `${items.length} item(s)`;
+    if (!items.length) {
+      dom.newsBody.innerHTML = `<tr><td colspan="4">${esc(copy.empty)}</td></tr>`;
       return;
     }
-    dom.newsBody.innerHTML = state.items.map((item) => {
+    dom.newsBody.innerHTML = items.map((item) => {
       const sel = item.id === state.selectedId ? ' class="sel"' : '';
+      const kind = item.kind === 'devlog' ? 'devlog' : 'news';
       const published = item.isPublished ? 'yes' : 'no';
       const updated = new Date(Number(item.updatedAt) || Date.now()).toLocaleString();
-      return `<tr data-id="${esc(item.id)}"${sel}><td>${esc(item.title || '-')}</td><td>${published}</td><td>${esc(updated)}</td></tr>`;
+      return `<tr data-id="${esc(item.id)}"${sel}><td>${esc(item.title || '-')}</td><td>${kind}</td><td>${published}</td><td>${esc(updated)}</td></tr>`;
     }).join('');
   }
 
   async function loadNews(selectId = '') {
     const data = await fetchJson('/api/admin/news');
     state.items = Array.isArray(data.items) ? data.items : [];
-    state.selectedId = selectId && state.items.some((x) => x.id === selectId)
+    const items = filteredItems();
+    state.selectedId = selectId && items.some((x) => x.id === selectId)
       ? selectId
-      : (state.selectedId && state.items.some((x) => x.id === state.selectedId) ? state.selectedId : '');
+      : (state.selectedId && items.some((x) => x.id === state.selectedId) ? state.selectedId : '');
     renderList();
-    const current = state.items.find((x) => x.id === state.selectedId) || null;
+    const current = items.find((x) => x.id === state.selectedId) || null;
     toEditor(current);
   }
 
@@ -281,7 +394,7 @@
       state.selectedId = created;
       renderList();
       toEditor(state.items.find((x) => x.id === created) || null);
-      setStatus(dom.editorStatus, 'News created.');
+      setStatus(dom.editorStatus, currentCopy().created);
     } catch (err) {
       setStatus(dom.editorStatus, err.message);
     }
@@ -295,7 +408,7 @@
       state.items = Array.isArray(data.items) ? data.items : state.items;
       renderList();
       toEditor(state.items.find((x) => x.id === state.selectedId) || null);
-      setStatus(dom.editorStatus, 'News updated.');
+      setStatus(dom.editorStatus, currentCopy().updated);
     } catch (err) {
       setStatus(dom.editorStatus, err.message);
     }
@@ -303,7 +416,7 @@
 
   async function deleteNews() {
     if (!state.selectedId) return;
-    if (!confirm('Delete selected news item?')) return;
+    if (!confirm(currentCopy().deletedConfirm)) return;
     try {
       const deletingId = state.selectedId;
       const data = await fetchJson('/api/admin/news/' + encodeURIComponent(deletingId), { method: 'DELETE' });
@@ -311,10 +424,21 @@
       state.selectedId = '';
       renderList();
       toEditor(null);
-      setStatus(dom.editorStatus, 'News deleted.');
+      setStatus(dom.editorStatus, currentCopy().deleted);
     } catch (err) {
       setStatus(dom.editorStatus, err.message);
     }
+  }
+
+  function setMode(mode) {
+    const nextMode = mode === 'devlog' ? 'devlog' : 'news';
+    if (state.mode === nextMode) return;
+    state.mode = nextMode;
+    state.selectedId = '';
+    syncModeUi();
+    renderList();
+    toEditor(null);
+    setStatus(dom.editorStatus, currentCopy().newStatus);
   }
 
   dom.loginBtn.onclick = login;
@@ -324,12 +448,15 @@
   dom.createBtn.onclick = createNews;
   dom.saveBtn.onclick = saveNews;
   dom.deleteBtn.onclick = deleteNews;
-  dom.newBtn.onclick = () => { state.selectedId = ''; toEditor(null); renderList(); setStatus(dom.editorStatus, 'Create new news item.'); };
+  for (const tab of dom.modeTabs) {
+    tab.onclick = () => setMode(tab.dataset.adminMode);
+  }
+  dom.newBtn.onclick = () => { state.selectedId = ''; syncModeUi(); toEditor(null); renderList(); setStatus(dom.editorStatus, currentCopy().newStatus); };
   dom.uploadImageBtn.onclick = uploadImages;
   dom.newsImages.onclick = (e) => {
     const idx = Number(e.target?.dataset?.removeImage);
     if (!Number.isInteger(idx)) return;
-    state.editorImages.splice(idx, 1);
+    state.editorMedia.splice(idx, 1);
     renderEditorImages();
   };
 
@@ -338,9 +465,12 @@
     if (!tr) return;
     state.selectedId = tr.dataset.id || '';
     renderList();
-    toEditor(state.items.find((x) => x.id === state.selectedId) || null);
+    toEditor(filteredItems().find((x) => x.id === state.selectedId) || null);
     setStatus(dom.editorStatus, 'Editing selected item.');
   };
+
+  syncModeUi();
+  toEditor(null);
 
   (async () => {
     try {

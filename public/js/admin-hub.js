@@ -21,6 +21,10 @@
       title: 'Новости',
       copy: 'Старый news-editor встроен прямо в Admin Hub и использует ту же админ-сессию.',
     },
+    devlog: {
+      title: 'Разработка',
+      copy: 'Редактор публичного dev-log: статьи о процессе разработки, форматированный текст, скриншоты, видео и медиа-галерея.',
+    },
     skills: {
       title: 'Навыки',
       copy: 'Legacy-редактор навыков и админ-аккаунтов теперь тоже живёт в одном shell-е.',
@@ -121,9 +125,11 @@
       campaigns: $('section-campaigns'),
       mobs: $('section-mobs'),
       news: $('section-news'),
+      devlog: $('section-devlog'),
       skills: $('section-skills'),
     },
     newsFrame: $('news-frame'),
+    devlogFrame: $('devlog-frame'),
     skillsFrame: $('skills-frame'),
     mapList: $('map-list'),
     mapId: $('map-id'),
@@ -274,6 +280,7 @@
     selectedMobId: '',
     framesLoaded: {
       news: false,
+      devlog: false,
       skills: false,
     },
     mapEditor: {
@@ -1715,12 +1722,18 @@
       dom.newsFrame.addEventListener('load', () => resizeFrame(dom.newsFrame), { once: true });
       state.framesLoaded.news = true;
     }
+    if (section === 'devlog' && !state.framesLoaded.devlog) {
+      dom.devlogFrame.src = '/admin/devlog';
+      dom.devlogFrame.addEventListener('load', () => resizeFrame(dom.devlogFrame), { once: true });
+      state.framesLoaded.devlog = true;
+    }
     if (section === 'skills' && !state.framesLoaded.skills) {
       dom.skillsFrame.src = '/admin/skills';
       dom.skillsFrame.addEventListener('load', () => resizeFrame(dom.skillsFrame), { once: true });
       state.framesLoaded.skills = true;
     }
     if (section === 'news') resizeFrame(dom.newsFrame);
+    if (section === 'devlog') resizeFrame(dom.devlogFrame);
     if (section === 'skills') resizeFrame(dom.skillsFrame);
   }
 
@@ -2731,6 +2744,7 @@
   function startFrameResizeLoop() {
     window.setInterval(() => {
       if (state.framesLoaded.news) resizeFrame(dom.newsFrame);
+      if (state.framesLoaded.devlog) resizeFrame(dom.devlogFrame);
       if (state.framesLoaded.skills) resizeFrame(dom.skillsFrame);
     }, 1500);
   }

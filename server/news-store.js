@@ -19,22 +19,77 @@ function safeText(raw, maxLen = 1000) {
   return String(raw || '').trim().slice(0, maxLen);
 }
 
+const ALLOWED_KINDS = new Set(['news', 'devlog']);
+const ALLOWED_REACTIONS = new Set(['heart', 'fire', 'laugh', 'wow', 'idea', 'wait']);
+const ALLOWED_MEDIA_TYPES = new Set(['image', 'video']);
+
+function normalizeKind(raw, fallback = 'news') {
+  const kind = String(raw || fallback || 'news').trim().toLowerCase();
+  return ALLOWED_KINDS.has(kind) ? kind : 'news';
+}
+
+function normalizeReactions(raw) {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  const out = {};
+  for (const key of ALLOWED_REACTIONS) {
+    const count = clampInt(source[key], 0);
+    if (count > 0) out[key] = count;
+  }
+  return out;
+}
+
 function normalizeItems(raw) {
   const source = Array.isArray(raw) ? raw : [];
   return source.map((line) => safeText(line, 420)).filter(Boolean).slice(0, 80);
+}
+
+function inferMediaType(value, fallback = 'image') {
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw === 'video' || /\.(mp4|webm|ogg|ogv|mov)(\?|#|$)/i.test(raw)) return 'video';
+  if (raw === 'image' || /\.(png|jpe?g|webp|gif|avif)(\?|#|$)/i.test(raw)) return 'image';
+  return fallback === 'video' ? 'video' : 'image';
 }
 
 function normalizeImages(raw) {
   const source = Array.isArray(raw) ? raw : [];
   return source.map((image) => {
     const url = safeText(image?.url || image, 420);
-    if (!url || !/^\/api\/news\/images\/[a-z0-9_.-]+$/i.test(url)) return null;
+    if (!url || !/^\/api\/news\/(?:images|media)\/[a-z0-9_.-]+$/i.test(url)) return null;
     return {
       id: toId(image?.id || path.basename(url)) || `img-${nowMs()}`,
       url,
       alt: safeText(image?.alt || '', 180),
     };
   }).filter(Boolean).slice(0, 12);
+}
+
+function normalizeMedia(raw, fallbackImages = []) {
+  const rawItems = Array.isArray(raw) ? raw : [];
+  const imageItems = normalizeImages(fallbackImages).map((image) => ({
+    ...image,
+    type: 'image',
+    caption: '',
+    poster: '',
+  }));
+  const source = rawItems.length ? rawItems : imageItems;
+  return source.map((media) => {
+    const url = safeText(media?.url || media, 640);
+    if (!url) return null;
+    const isLocalUpload = /^\/api\/news\/(?:images|media)\/[a-z0-9_.-]+$/i.test(url);
+    const isPublicAsset = /^\/assets\/[\w\-./% ()]+$/i.test(url);
+    const isExternal = /^https?:\/\/[^\s<>"]+$/i.test(url);
+    if (!isLocalUpload && !isPublicAsset && !isExternal) return null;
+    const rawType = String(media?.type || '').trim().toLowerCase();
+    const type = ALLOWED_MEDIA_TYPES.has(rawType) ? rawType : inferMediaType(url, 'image');
+    return {
+      id: toId(media?.id || path.basename(url) || `${type}-${nowMs()}`) || `${type}-${nowMs()}`,
+      type,
+      url,
+      poster: safeText(media?.poster || '', 640),
+      alt: safeText(media?.alt || '', 180),
+      caption: safeText(media?.caption || '', 320),
+    };
+  }).filter(Boolean).slice(0, 18);
 }
 
 function commentId() {
@@ -49,6 +104,7 @@ function normalizeReply(raw, fallback = {}) {
     text: safeText(raw?.text || fallback.text || '', 1500),
     createdAt: clampInt(raw?.createdAt || fallback.createdAt || nowMs(), 0),
     updatedAt: clampInt(raw?.updatedAt || fallback.updatedAt || nowMs(), 0),
+    reactions: normalizeReactions(raw?.reactions || fallback.reactions),
   };
 }
 
@@ -62,6 +118,7 @@ function normalizeComment(raw, fallback = {}) {
     text: safeText(raw?.text || fallback.text || '', 1500),
     createdAt: clampInt(raw?.createdAt || fallback.createdAt || nowMs(), 0),
     updatedAt: clampInt(raw?.updatedAt || fallback.updatedAt || nowMs(), 0),
+    reactions: normalizeReactions(raw?.reactions || fallback.reactions),
     replies,
   };
 }
@@ -77,10 +134,13 @@ function countComments(item) {
 }
 
 function normalizeNewsItem(raw, fallback = {}) {
+  const kind = normalizeKind(raw?.kind || fallback.kind, 'news');
   const title = safeText(raw?.title || fallback.title || '', 180);
   const summary = safeText(raw?.summary || fallback.summary || '', 1000);
+  const body = safeText(raw?.body || fallback.body || '', 12000);
   const items = normalizeItems(raw?.items || fallback.items);
   const images = normalizeImages(raw?.images || fallback.images);
+  const media = normalizeMedia(raw?.media || fallback.media, images);
   const idSource = raw?.id || fallback.id || title;
   const id = toId(idSource) || `news-${nowMs()}`;
   const createdAt = clampInt(raw?.createdAt || fallback.createdAt || nowMs(), 0);
@@ -94,15 +154,19 @@ function normalizeNewsItem(raw, fallback = {}) {
   const comments = commentsRaw.map((comment) => normalizeComment(comment)).filter((comment) => comment.text).slice(0, 500);
   return {
     id,
+    kind,
     title,
     summary,
+    body,
     items,
     images,
+    media,
     isPublished,
     createdAt,
     updatedAt,
     publishedAt,
     views,
+    reactions: normalizeReactions(raw?.reactions || fallback.reactions),
     comments,
   };
 }
@@ -114,6 +178,7 @@ function seedDefaultNews() {
       id: 'welcome-news',
       title: 'Welcome Update',
       summary: 'News now supports views, comments and replies directly in game.',
+      body: 'Use the admin panel to publish updates, development stories and media galleries.',
       items: [
         'Track views and comments per news item.',
         'Open full article view and discuss it in comments.',
@@ -141,7 +206,7 @@ function createNewsStore({ dataDir, filePath, mysql }) {
   function normalizeStoredItems(items) {
     return (Array.isArray(items) ? items : [])
       .map((item) => normalizeNewsItem(item))
-      .filter((item) => item.title || item.summary || item.items.length > 0);
+      .filter((item) => item.title || item.summary || item.body || item.items.length > 0 || item.media.length > 0);
   }
 
   function cloneItems(items) {
@@ -220,16 +285,36 @@ function createNewsStore({ dataDir, filePath, mysql }) {
     return sortItems(readAll());
   }
 
-  function listPublic() {
-    return listAdmin().filter((item) => item.isPublished).map((item) => ({
-      id: item.id,
-      title: item.title,
-      summary: item.summary,
-      images: item.images,
-      publishedAt: item.publishedAt,
-      views: item.views,
-      commentsCount: countComments(item),
-    }));
+  function publicItemPayload(item, { detail = true } = {}) {
+    const current = normalizeNewsItem(item, item);
+    const payload = {
+      id: current.id,
+      kind: current.kind,
+      title: current.title,
+      summary: current.summary,
+      images: current.images,
+      media: current.media,
+      publishedAt: current.publishedAt,
+      views: current.views,
+      reactions: current.reactions,
+      commentsCount: countComments(current),
+    };
+    if (detail) {
+      payload.body = current.body;
+      payload.items = current.items;
+      payload.comments = current.comments;
+    } else if (current.kind === 'devlog') {
+      payload.body = current.body;
+    }
+    return payload;
+  }
+
+  function listPublic(options = {}) {
+    const kind = String(options?.kind || '').trim().toLowerCase();
+    return listAdmin().filter((item) => (
+      item.isPublished
+      && (!ALLOWED_KINDS.has(kind) || item.kind === kind)
+    )).map((item) => publicItemPayload(item, { detail: false }));
   }
 
   function getPublicById(id, { incrementView = true } = {}) {
@@ -248,20 +333,9 @@ function createNewsStore({ dataDir, filePath, mysql }) {
         tryWriteAll(all);
       }
     }
-    const current = normalizeNewsItem(all[idx], all[idx]);
     return {
       ok: true,
-      item: {
-        id: current.id,
-        title: current.title,
-        summary: current.summary,
-        items: current.items,
-        images: current.images,
-        publishedAt: current.publishedAt,
-        views: current.views,
-        commentsCount: countComments(current),
-        comments: current.comments,
-      },
+      item: publicItemPayload(all[idx], { detail: true }),
     };
   }
 
@@ -357,20 +431,56 @@ function createNewsStore({ dataDir, filePath, mysql }) {
     }
     return {
       ok: true,
-      item: {
-        id: item.id,
-        title: item.title,
-        summary: item.summary,
-        items: item.items,
-        images: item.images,
-        publishedAt: item.publishedAt,
-        views: item.views,
-        commentsCount: countComments(item),
-        comments: item.comments,
-      },
+      item: publicItemPayload(item, { detail: true }),
     };
   }
 
+
+  function addReaction(newsId, { targetType, reaction, delta = 1, commentId: rawCommentId, parentId }) {
+    const targetId = toId(newsId);
+    if (!targetId) return { ok: false, code: 400, message: 'Invalid news id' };
+    const reactionKey = String(reaction || '').trim().toLowerCase();
+    if (!ALLOWED_REACTIONS.has(reactionKey)) return { ok: false, code: 400, message: 'Invalid reaction' };
+    const step = Math.max(-1, Math.min(1, Math.trunc(Number(delta) || 1))) || 1;
+
+    const all = readAll();
+    const idx = all.findIndex((x) => x.id === targetId && x.isPublished);
+    if (idx < 0) return { ok: false, code: 404, message: 'News not found' };
+
+    const item = normalizeNewsItem(all[idx], all[idx]);
+    const type = String(targetType || 'item').trim().toLowerCase();
+    let bucket = null;
+
+    if (type === 'item' || type === 'article') {
+      bucket = item.reactions;
+    } else {
+      const targetCommentId = toId(rawCommentId);
+      if (!targetCommentId) return { ok: false, code: 400, message: 'Invalid comment id' };
+      const parentKey = toId(parentId);
+      if (type === 'reply' || parentKey) {
+        const parent = item.comments.find((c) => c.id === parentKey);
+        if (!parent) return { ok: false, code: 404, message: 'Parent comment not found' };
+        const reply = (parent.replies || []).find((r) => r.id === targetCommentId);
+        if (!reply) return { ok: false, code: 404, message: 'Comment not found' };
+        if (!reply.reactions) reply.reactions = {};
+        bucket = reply.reactions;
+      } else {
+        const comment = item.comments.find((c) => c.id === targetCommentId);
+        if (!comment) return { ok: false, code: 404, message: 'Comment not found' };
+        if (!comment.reactions) comment.reactions = {};
+        bucket = comment.reactions;
+      }
+    }
+
+    bucket[reactionKey] = Math.max(0, clampInt(bucket[reactionKey], 0) + step);
+    if (bucket[reactionKey] <= 0) delete bucket[reactionKey];
+    item.updatedAt = nowMs();
+    all[idx] = item;
+    if (!tryWriteAll(all)) {
+      return { ok: false, code: 503, message: 'News storage is temporarily read-only' };
+    }
+    return { ok: true, item: publicItemPayload(item, { detail: true }) };
+  }
 
 
   function deleteComment(newsId, { commentId, parentId, authorAccountId }) {
@@ -433,17 +543,7 @@ function createNewsStore({ dataDir, filePath, mysql }) {
     }
     return {
       ok: true,
-      item: {
-        id: item.id,
-        title: item.title,
-        summary: item.summary,
-        items: item.items,
-        images: item.images,
-        publishedAt: item.publishedAt,
-        views: item.views,
-        commentsCount: countComments(item),
-        comments: item.comments,
-      },
+      item: publicItemPayload(item, { detail: true }),
     };
   }
   return {
@@ -454,6 +554,7 @@ function createNewsStore({ dataDir, filePath, mysql }) {
     update,
     remove,
     addComment,
+    addReaction,
     deleteComment,
   };
 }

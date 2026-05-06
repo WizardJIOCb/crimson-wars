@@ -1,6 +1,15 @@
 const nav = document.getElementById('site-nav');
 const mobileToggle = document.querySelector('.mobile-menu-toggle');
 const newsGrid = document.getElementById('landing-news-grid');
+const devlogFeature = document.getElementById('landing-devlog-feature');
+const devlogGallery = document.getElementById('landing-devlog-gallery');
+const devlogGalleryCount = document.getElementById('landing-devlog-gallery-count');
+const devlogTimeline = document.getElementById('landing-devlog-timeline');
+const devlogModal = document.getElementById('landing-devlog-modal');
+const devlogModalTitle = document.getElementById('landing-devlog-title');
+const devlogModalDate = document.getElementById('landing-devlog-modal-date');
+const devlogModalBody = document.getElementById('landing-devlog-body');
+const devlogCloseBtn = document.getElementById('landing-devlog-close');
 const ratingsGrid = document.getElementById('landing-ratings-grid');
 const latestRunsGrid = document.getElementById('landing-latest-runs');
 const latestRunsPager = document.getElementById('landing-latest-runs-pager');
@@ -109,6 +118,28 @@ let landingLiveIframeReady = false;
 let landingLiveIframeProbeTimer = 0;
 let landingLiveIframeProbeStopper = 0;
 let landingLiveCanvasWrap = null;
+const DEVLOG_GUEST_NAME_KEY = 'cw:devlogGuestName';
+const DEVLOG_REACTION_VOTES_KEY = 'cw:devlogReactionVotes';
+let devlogModalCloseTimer = 0;
+const DEVLOG_REACTIONS = [
+  { key: 'heart', label: 'Нравится' },
+  { key: 'fire', label: 'Огонь' },
+  { key: 'laugh', label: 'Смешно' },
+  { key: 'wow', label: 'Вау' },
+  { key: 'idea', label: 'Идея' },
+  { key: 'wait', label: 'Жду' },
+];
+const devlogState = {
+  items: [],
+  activeItem: null,
+  activeMediaId: '',
+  loading: false,
+  error: '',
+  postingComment: false,
+  commentError: '',
+  guestName: '',
+  reactionVotes: {},
+};
 let landingLiveSpectatorCommentary = {
   roomCode: '',
   title: '',
@@ -169,6 +200,14 @@ try {
 } catch {
   landingLiveVolume = 0.72;
   landingLiveMuted = false;
+}
+
+try {
+  devlogState.guestName = String(localStorage.getItem(DEVLOG_GUEST_NAME_KEY) || '').trim().slice(0, 48);
+  devlogState.reactionVotes = JSON.parse(localStorage.getItem(DEVLOG_REACTION_VOTES_KEY) || '{}') || {};
+} catch {
+  devlogState.guestName = '';
+  devlogState.reactionVotes = {};
 }
 
 function composeLandingLiveLayout() {
@@ -1431,6 +1470,534 @@ function renderNews(items) {
   }).join('');
 }
 
+function getFallbackDevlogItems() {
+  return [
+    {
+      id: 'fallback-devlog-gallery',
+      kind: 'devlog',
+      isFallback: true,
+      title: 'Здесь будет журнал разработки',
+      summary: 'Заливай скриншоты и видео через админку новостей, выбирай тип Development / Devlog - и запись появится в этом уютном блоке.',
+      body: [
+        '## Как это задумано',
+        'Каждая запись может быть маленькой историей: что сломалось, что внезапно заработало, почему кнопка переехала на три пикселя и кто теперь за это отвечает.',
+        '- Скриншоты и видео лежат в галерее рядом с текстом.',
+        '- Реакции помогают быстро показать настроение.',
+        '- Комментарии можно оставить прямо из записи, без тяжелого форума.',
+        '> Главное - чтобы читать было удобно, а процесс разработки не выглядел как сухой список задач.',
+      ].join('\n'),
+      media: [
+        { id: 'fallback-loading', type: 'image', url: '/assets/backgrounds/screen-loading.jpg', alt: 'Loading screen', caption: 'Первый кадр для будущей истории' },
+        { id: 'fallback-map', type: 'image', url: '/assets/maps/night-mall.jpg', alt: 'Night mall map', caption: 'Карта тоже умеет быть героем заметки' },
+        { id: 'fallback-replay', type: 'image', url: '/assets/backgrounds/screen-replay.jpg', alt: 'Replay screen', caption: 'Повторы, тесты и другие следы разработки' },
+      ],
+      reactions: { heart: 3, fire: 2, idea: 1 },
+      commentsCount: 0,
+      comments: [],
+      publishedAt: Date.now(),
+      views: 0,
+    },
+  ];
+}
+
+function getDevlogMedia(item) {
+  const media = Array.isArray(item?.media) ? item.media : [];
+  if (media.length > 0) return media.filter((entry) => entry && entry.url);
+  const images = Array.isArray(item?.images) ? item.images : [];
+  return images
+    .filter((image) => image && image.url)
+    .map((image) => ({ ...image, type: 'image', caption: image.alt || '' }));
+}
+
+function getDevlogCover(item) {
+  return getDevlogMedia(item)[0]?.url || '/assets/backgrounds/screen-loading.jpg';
+}
+
+function formatDevlogCount(value, single, few, many) {
+  const count = Math.max(0, Number(value) || 0);
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${count} ${single}`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${count} ${few}`;
+  return `${count} ${many}`;
+}
+
+function formatDevlogUnit(value, single, few, many) {
+  return formatDevlogCount(value, single, few, many).replace(/^\d+\s+/, '');
+}
+
+function getDevlogReactionVoteKey({ itemId, targetType = 'item', commentId = '', parentId = '', reaction }) {
+  return [itemId, targetType, parentId, commentId, reaction].map((part) => String(part || '').trim()).join(':');
+}
+
+function hasDevlogReactionVote(options) {
+  return devlogState.reactionVotes[getDevlogReactionVoteKey(options)] === true;
+}
+
+function saveDevlogReactionVotes() {
+  try {
+    localStorage.setItem(DEVLOG_REACTION_VOTES_KEY, JSON.stringify(devlogState.reactionVotes));
+  } catch {
+    // Ignore storage failures. The server count still remains the source of truth.
+  }
+}
+
+function renderDevlogReactions(item, options = {}) {
+  const itemId = String(item?.id || options.itemId || '').trim();
+  const reactions = item?.reactions && typeof item.reactions === 'object' ? item.reactions : {};
+  const targetType = options.targetType || 'item';
+  const commentId = options.commentId || '';
+  const parentId = options.parentId || '';
+  const disabled = item?.isFallback ? ' disabled' : '';
+  return `
+    <div class="${options.small ? 'devlog-comment-actions' : 'devlog-reactions'}" aria-label="Реакции">
+      ${DEVLOG_REACTIONS.map((reaction) => {
+        const count = Math.max(0, Number(reactions[reaction.key]) || 0);
+        const active = hasDevlogReactionVote({ itemId, targetType, commentId, parentId, reaction: reaction.key });
+        const cls = options.small ? 'devlog-comment-reaction-btn' : 'devlog-reaction-btn';
+        return `<button class="${cls}${active ? ' is-active' : ''}" type="button" data-devlog-reaction="${escapeHtml(reaction.key)}" data-devlog-item="${escapeHtml(itemId)}" data-devlog-target="${escapeHtml(targetType)}" data-devlog-comment="${escapeHtml(commentId)}" data-devlog-parent="${escapeHtml(parentId)}"${disabled}>${escapeHtml(reaction.label)} ${count}</button>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+function renderDevlogMediaElement(media, className = '') {
+  const type = String(media?.type || '').toLowerCase() === 'video' ? 'video' : 'image';
+  const url = escapeHtml(media?.url || '');
+  const alt = escapeHtml(media?.alt || media?.caption || 'Devlog media');
+  if (!url) return '';
+  if (type === 'video') {
+    const poster = media?.poster ? ` poster="${escapeHtml(media.poster)}"` : '';
+    return `<video class="${escapeHtml(className)}" src="${url}" controls preload="metadata" playsinline${poster}></video>`;
+  }
+  return `<img class="${escapeHtml(className)}" src="${url}" alt="${alt}" loading="lazy" />`;
+}
+
+function renderDevlogMediaThumb(media, item, index = 0) {
+  const likes = Math.max(0, Number(item?.reactions?.heart) || 0);
+  const comments = Math.max(0, Number(item?.commentsCount) || 0);
+  const mediaItems = getDevlogMedia(item);
+  const caption = escapeHtml(media?.caption || media?.alt || item?.summary || item?.title || `Кадр разработки #${index + 1}`);
+  const title = escapeHtml(item?.title || 'Запись разработки');
+  const date = escapeHtml(formatNewsDate(item?.publishedAt));
+  return `
+    <button class="devlog-media-tile" type="button" data-devlog-open="${escapeHtml(item?.id || '')}" data-devlog-media="${escapeHtml(media?.id || media?.url || '')}">
+      ${renderDevlogMediaElement(media)}
+      <span class="devlog-media-live">
+        <b>${caption}</b>
+        <em>${title}</em>
+        <small>
+          <strong>${likes}</strong> ${formatDevlogUnit(likes, 'лайк', 'лайка', 'лайков')}
+          <i></i>
+          <strong>${comments}</strong> ${formatDevlogUnit(comments, 'комментарий', 'комментария', 'комментариев')}
+          <i></i>
+          ${date}
+          <i></i>
+          ${formatDevlogCount(mediaItems.length, 'медиа', 'медиа', 'медиа')}
+        </small>
+      </span>
+    </button>
+  `;
+}
+
+function renderDevlogDetailStats(item, focusMedia = null) {
+  const mediaItems = getDevlogMedia(item);
+  const likes = Math.max(0, Number(item?.reactions?.heart) || 0);
+  const comments = Math.max(0, Number(item?.commentsCount) || 0);
+  const focusCaption = String(focusMedia?.caption || focusMedia?.alt || '').trim();
+  return `
+    <section class="devlog-detail-brief">
+      <div>
+        <span class="devlog-kicker">${escapeHtml(formatNewsDate(item?.publishedAt))}</span>
+        <h3>${escapeHtml(item?.title || 'Запись разработки')}</h3>
+        <p>${escapeHtml(focusCaption || item?.summary || 'Кадр из процесса разработки.')}</p>
+      </div>
+      <div class="devlog-detail-stats" aria-label="Статистика записи">
+        <span><strong>${likes}</strong>${formatDevlogUnit(likes, 'лайк', 'лайка', 'лайков')}</span>
+        <span><strong>${comments}</strong>${formatDevlogUnit(comments, 'комментарий', 'комментария', 'комментариев')}</span>
+        <span><strong>${mediaItems.length}</strong>${formatDevlogUnit(mediaItems.length, 'медиа', 'медиа', 'медиа')}</span>
+      </div>
+    </section>
+  `;
+}
+
+function renderDevlogDetailMediaGrid(item, focusMediaId = '') {
+  const media = getDevlogMedia(item);
+  if (!media.length) return '';
+  const focusKey = String(focusMediaId || '').trim();
+  const focusIndex = focusKey
+    ? media.findIndex((entry) => String(entry?.id || entry?.url || '').trim() === focusKey)
+    : -1;
+  const ordered = focusIndex > 0 ? [media[focusIndex], ...media.slice(0, focusIndex), ...media.slice(focusIndex + 1)] : media;
+  return `
+    <div class="devlog-detail-media-grid">
+      ${ordered.map((entry, index) => {
+        const caption = escapeHtml(entry?.caption || entry?.alt || item?.title || 'Кадр разработки');
+        const isFocused = focusKey && String(entry?.id || entry?.url || '').trim() === focusKey;
+        return `
+          <figure class="devlog-detail-media${index === 0 ? ' devlog-detail-media-primary' : ''}${isFocused ? ' is-focused' : ''}">
+            ${renderDevlogMediaElement(entry)}
+            <figcaption>${caption}</figcaption>
+          </figure>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function renderDevlogStory(body, items = []) {
+  const lines = String(body || '').split(/\r?\n/);
+  const chunks = [];
+  let list = [];
+  const flushList = () => {
+    if (!list.length) return;
+    chunks.push(`<ul>${list.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ul>`);
+    list = [];
+  };
+
+  for (const rawLine of lines) {
+    const line = String(rawLine || '').trim();
+    if (!line) {
+      flushList();
+      continue;
+    }
+    if (line.startsWith('### ')) {
+      flushList();
+      chunks.push(`<h4>${escapeHtml(line.slice(4))}</h4>`);
+      continue;
+    }
+    if (line.startsWith('## ')) {
+      flushList();
+      chunks.push(`<h3>${escapeHtml(line.slice(3))}</h3>`);
+      continue;
+    }
+    if (line.startsWith('> ')) {
+      flushList();
+      chunks.push(`<blockquote>${escapeHtml(line.slice(2))}</blockquote>`);
+      continue;
+    }
+    if (/^[-*]\s+/.test(line)) {
+      list.push(line.replace(/^[-*]\s+/, ''));
+      continue;
+    }
+    flushList();
+    chunks.push(`<p>${escapeHtml(line)}</p>`);
+  }
+  flushList();
+
+  if (!chunks.length && Array.isArray(items) && items.length > 0) {
+    chunks.push(`<ul>${items.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ul>`);
+  }
+
+  return chunks.length ? `<div class="devlog-story">${chunks.join('')}</div>` : '';
+}
+
+function replaceDevlogItem(nextItem) {
+  if (!nextItem?.id) return;
+  const idx = devlogState.items.findIndex((item) => item?.id === nextItem.id);
+  if (idx >= 0) devlogState.items[idx] = { ...devlogState.items[idx], ...nextItem };
+  devlogState.activeItem = nextItem;
+}
+
+function renderDevlogFeature(items) {
+  if (!devlogFeature) return;
+  const first = items[0];
+  if (!first) return;
+  devlogFeature.style.setProperty('--devlog-cover', `url("${getDevlogCover(first).replaceAll('"', '%22')}")`);
+  devlogFeature.innerHTML = `
+    <button class="devlog-feature-cover-action" type="button" data-devlog-open="${escapeHtml(first.id)}" aria-label="Открыть запись: ${escapeHtml(first.title || 'Журнал разработки')}"></button>
+    <span class="devlog-kicker">${escapeHtml(formatNewsDate(first.publishedAt))}</span>
+    <h3>${escapeHtml(first.title || 'Журнал разработки')}</h3>
+    <p>${escapeHtml(first.summary || 'Свежая заметка о том, как собирается Crimson Wars.')}</p>
+    ${renderDevlogReactions(first)}
+    <div class="devlog-feature-actions">
+      <button class="devlog-read-btn" type="button" data-devlog-open="${escapeHtml(first.id)}">Читать историю</button>
+      <span class="devlog-meta-row">${formatDevlogCount(first.commentsCount, 'комментарий', 'комментария', 'комментариев')} / ${formatDevlogCount(getDevlogMedia(first).length, 'медиа', 'медиа', 'медиа')}</span>
+    </div>
+  `;
+}
+
+function renderDevlogGallery(items) {
+  if (!devlogGallery) return;
+  const featureItem = items[0] || null;
+  const featureCoverUrl = getDevlogMedia(featureItem)[0]?.url || '';
+  const mediaItems = items
+    .flatMap((item) => getDevlogMedia(item).map((media) => ({ item, media })))
+    .filter(({ item, media }) => !(item?.id === featureItem?.id && media?.url === featureCoverUrl))
+    .filter(({ media }, index, list) => list.findIndex((entry) => entry.media?.url === media?.url) === index);
+  const noteCount = new Set(mediaItems.map(({ item }) => item?.id).filter(Boolean)).size;
+  if (devlogGalleryCount) {
+    devlogGalleryCount.textContent = `${formatDevlogCount(mediaItems.length, 'кадр', 'кадра', 'кадров')} из ${formatDevlogCount(noteCount, 'заметки', 'заметок', 'заметок')}`;
+  }
+  if (!mediaItems.length) {
+    devlogGallery.innerHTML = '<div class="devlog-sub">Пока нет загруженных кадров.</div>';
+    return;
+  }
+  devlogGallery.innerHTML = mediaItems.map(({ item, media }, index) => renderDevlogMediaThumb(media, item, index)).join('');
+}
+
+function renderDevlogTimeline(items) {
+  if (!devlogTimeline) return;
+  devlogTimeline.innerHTML = items.slice(0, 5).map((item) => {
+    const mediaItems = getDevlogMedia(item);
+    const media = mediaItems[0] || null;
+    const likes = Math.max(0, Number(item?.reactions?.heart) || 0);
+    const comments = Math.max(0, Number(item?.commentsCount) || 0);
+    return `
+      <article class="devlog-timeline-card">
+        <button class="devlog-card-media" type="button" data-devlog-open="${escapeHtml(item.id)}">
+          ${media ? renderDevlogMediaElement(media) : '<img src="/assets/backgrounds/screen-loading.jpg" alt="" loading="lazy" />'}
+        </button>
+        <div class="devlog-card-body">
+          <span class="devlog-kicker">${escapeHtml(formatNewsDate(item.publishedAt))}</span>
+          <h3>${escapeHtml(item.title || 'Запись разработки')}</h3>
+          <p>${escapeHtml(item.summary || '')}</p>
+          <div class="devlog-card-stats" aria-label="Статистика записи">
+            <span><strong>${likes}</strong> ${formatDevlogUnit(likes, 'лайк', 'лайка', 'лайков')}</span>
+            <span><strong>${comments}</strong> ${formatDevlogUnit(comments, 'комментарий', 'комментария', 'комментариев')}</span>
+            <span><strong>${mediaItems.length}</strong> ${formatDevlogUnit(mediaItems.length, 'медиа', 'медиа', 'медиа')}</span>
+          </div>
+          ${renderDevlogReactions(item)}
+          <div class="devlog-card-actions">
+            <button class="devlog-read-btn" type="button" data-devlog-open="${escapeHtml(item.id)}">Открыть заметку</button>
+            <span class="devlog-meta-row">Полная история, кадры и обсуждение</span>
+          </div>
+        </div>
+      </article>
+    `;
+  }).join('');
+}
+
+function renderDevlog(items = devlogState.items) {
+  const list = Array.isArray(items) && items.length ? items : getFallbackDevlogItems();
+  renderDevlogFeature(list);
+  renderDevlogGallery(list);
+  renderDevlogTimeline(list);
+}
+
+function openDevlogModalShell(item) {
+  if (!devlogModal || !devlogModalTitle || !devlogModalBody) return;
+  if (devlogModalCloseTimer) {
+    window.clearTimeout(devlogModalCloseTimer);
+    devlogModalCloseTimer = 0;
+  }
+  devlogModal.classList.remove('hidden', 'is-closing');
+  devlogModal.setAttribute('aria-hidden', 'false');
+  document.body.style.overflow = 'hidden';
+  window.requestAnimationFrame(() => {
+    devlogModal.classList.add('is-open');
+  });
+  devlogModalTitle.textContent = String(item?.title || 'Журнал разработки');
+  if (devlogModalDate) devlogModalDate.textContent = formatNewsDate(item?.publishedAt);
+  devlogModalBody.innerHTML = '<div class="devlog-comment">Загрузка...</div>';
+}
+
+function closeDevlogModal() {
+  if (!devlogModal) return;
+  if (devlogModal.classList.contains('hidden') || devlogModal.classList.contains('is-closing')) return;
+  if (devlogModalCloseTimer) window.clearTimeout(devlogModalCloseTimer);
+  devlogModal.classList.remove('is-open');
+  devlogModal.classList.add('is-closing');
+  devlogModal.setAttribute('aria-hidden', 'true');
+  document.body.style.overflow = '';
+  devlogState.activeItem = null;
+  devlogState.activeMediaId = '';
+  devlogState.commentError = '';
+  devlogModalCloseTimer = window.setTimeout(() => {
+    devlogModal.classList.add('hidden');
+    devlogModal.classList.remove('is-closing');
+    devlogModalCloseTimer = 0;
+  }, 260);
+}
+
+function renderDevlogCommentNode(comment, itemId, isReply = false, parentId = '') {
+  const commentId = String(comment?.id || '').trim();
+  const replies = Array.isArray(comment?.replies) ? comment.replies : [];
+  return `
+    <article class="devlog-comment${isReply ? ' devlog-comment-reply' : ''}">
+      <div class="devlog-comment-head">
+        <strong>${escapeHtml(comment?.authorName || 'Гость')}</strong>
+        <span>${escapeHtml(formatShortDateTime(comment?.createdAt))}</span>
+      </div>
+      <div class="devlog-comment-text">${escapeHtml(comment?.text || '')}</div>
+      ${renderDevlogReactions({ id: itemId, reactions: comment?.reactions || {} }, {
+        small: true,
+        itemId,
+        targetType: isReply ? 'reply' : 'comment',
+        commentId,
+        parentId,
+      })}
+      ${replies.length ? `<div class="devlog-comment-replies">${replies.map((reply) => renderDevlogCommentNode(reply, itemId, true, commentId)).join('')}</div>` : ''}
+    </article>
+  `;
+}
+
+function renderDevlogComments(item) {
+  const comments = Array.isArray(item?.comments) ? item.comments : [];
+  const nameValue = escapeHtml(devlogState.guestName || '');
+  return `
+    <section class="devlog-comments">
+      <h3>Комментарии</h3>
+      <form class="devlog-comment-form" data-devlog-comment-form="${escapeHtml(item.id)}">
+        <input data-devlog-name-input="true" maxlength="48" placeholder="Имя" value="${nameValue}" />
+        <textarea data-devlog-comment-input="true" maxlength="1500" placeholder="Легкий комментарий к заметке"></textarea>
+        <div class="devlog-comment-actions">
+          <button class="devlog-submit-btn" type="submit" data-devlog-comment-submit="${escapeHtml(item.id)}" ${devlogState.postingComment ? 'disabled' : ''}>${devlogState.postingComment ? 'Отправка...' : 'Отправить'}</button>
+          ${devlogState.commentError ? `<span class="devlog-meta-row">${escapeHtml(devlogState.commentError)}</span>` : ''}
+        </div>
+      </form>
+      ${comments.length ? comments.map((comment) => renderDevlogCommentNode(comment, item.id)).join('') : '<div class="devlog-comment">Пока тихо. Можно оставить первый комментарий и сделать вид, что так и планировалось.</div>'}
+    </section>
+  `;
+}
+
+function renderDevlogDetail(item, options = {}) {
+  if (!devlogModalBody || !item) return;
+  const media = getDevlogMedia(item);
+  const focusMediaId = String(options?.focusMediaId || '').trim();
+  const focusMedia = media.find((entry) => String(entry?.id || entry?.url || '').trim() === focusMediaId) || media[0] || null;
+  if (devlogModalTitle) devlogModalTitle.textContent = String(item.title || 'Журнал разработки');
+  if (devlogModalDate) devlogModalDate.textContent = formatNewsDate(item.publishedAt);
+  devlogModalBody.innerHTML = `
+    ${renderDevlogDetailStats(item, focusMedia)}
+    ${renderDevlogDetailMediaGrid(item, focusMediaId)}
+    ${renderDevlogReactions(item)}
+    ${renderDevlogStory(item.body || item.summary, item.items)}
+    ${renderDevlogComments(item)}
+  `;
+}
+
+async function openDevlogItem(itemId, options = {}) {
+  const id = String(itemId || '').trim();
+  if (!id) return;
+  const focusMediaId = String(options?.focusMediaId || '').trim();
+  devlogState.activeMediaId = focusMediaId;
+  const fallbackItem = getFallbackDevlogItems().find((item) => item.id === id);
+  const localItem = devlogState.items.find((item) => item?.id === id) || fallbackItem || null;
+  openDevlogModalShell(localItem);
+  if (fallbackItem?.isFallback) {
+    devlogState.activeItem = fallbackItem;
+    renderDevlogDetail(fallbackItem, { focusMediaId });
+    return;
+  }
+  try {
+    const response = await fetch(`/api/devlog/${encodeURIComponent(id)}`, { cache: 'no-store' });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.ok || !payload?.item) throw new Error(payload?.message || `HTTP ${response.status}`);
+    replaceDevlogItem(payload.item);
+    renderDevlogDetail(payload.item, { focusMediaId });
+    renderDevlog();
+  } catch (error) {
+    devlogModalBody.innerHTML = `<div class="devlog-comment">Не удалось открыть заметку: ${escapeHtml(error?.message || 'Unknown error')}</div>`;
+  }
+}
+
+async function submitDevlogComment(form) {
+  const item = devlogState.activeItem;
+  if (!item?.id || item.isFallback || devlogState.postingComment) return;
+  const nameInput = form?.querySelector('[data-devlog-name-input]');
+  const textInput = form?.querySelector('[data-devlog-comment-input]');
+  const authorName = String(nameInput?.value || '').trim().slice(0, 48);
+  const text = String(textInput?.value || '').trim();
+  if (!authorName || !text) {
+    devlogState.commentError = 'Нужно имя и сам комментарий.';
+    renderDevlogDetail(item, { focusMediaId: devlogState.activeMediaId });
+    return;
+  }
+  devlogState.postingComment = true;
+  devlogState.commentError = '';
+  renderDevlogDetail(item, { focusMediaId: devlogState.activeMediaId });
+  try {
+    localStorage.setItem(DEVLOG_GUEST_NAME_KEY, authorName);
+    devlogState.guestName = authorName;
+  } catch {
+    devlogState.guestName = authorName;
+  }
+  try {
+    const response = await fetch(`/api/news/${encodeURIComponent(item.id)}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ authorName, text }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.ok || !payload?.item) throw new Error(payload?.message || `HTTP ${response.status}`);
+    replaceDevlogItem(payload.item);
+    devlogState.postingComment = false;
+    renderDevlogDetail(payload.item, { focusMediaId: devlogState.activeMediaId });
+    renderDevlog();
+  } catch (error) {
+    devlogState.postingComment = false;
+    devlogState.commentError = error?.message || 'Не удалось отправить комментарий.';
+    renderDevlogDetail(item, { focusMediaId: devlogState.activeMediaId });
+  }
+}
+
+async function reactToDevlog(button) {
+  const itemId = String(button?.getAttribute('data-devlog-item') || '').trim();
+  const reaction = String(button?.getAttribute('data-devlog-reaction') || '').trim();
+  if (!itemId || !reaction || button.disabled) return;
+  const targetType = String(button.getAttribute('data-devlog-target') || 'item').trim();
+  const commentId = String(button.getAttribute('data-devlog-comment') || '').trim();
+  const parentId = String(button.getAttribute('data-devlog-parent') || '').trim();
+  const voteKey = getDevlogReactionVoteKey({ itemId, targetType, commentId, parentId, reaction });
+  const active = devlogState.reactionVotes[voteKey] === true;
+  const delta = active ? -1 : 1;
+  button.disabled = true;
+  try {
+    const response = await fetch(`/api/news/${encodeURIComponent(itemId)}/reactions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetType, commentId, parentId, reaction, delta }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.ok || !payload?.item) throw new Error(payload?.message || `HTTP ${response.status}`);
+    if (active) delete devlogState.reactionVotes[voteKey];
+    else devlogState.reactionVotes[voteKey] = true;
+    saveDevlogReactionVotes();
+    replaceDevlogItem(payload.item);
+    renderDevlog();
+    if (devlogModal && !devlogModal.classList.contains('hidden')) renderDevlogDetail(payload.item, { focusMediaId: devlogState.activeMediaId });
+  } catch {
+    button.disabled = false;
+  }
+}
+
+function handleDevlogClick(event) {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const closeTarget = target.closest('[data-devlog-close]');
+  if (closeTarget) {
+    closeDevlogModal();
+    return;
+  }
+  const reactionButton = target.closest('[data-devlog-reaction]');
+  if (reactionButton instanceof HTMLButtonElement) {
+    void reactToDevlog(reactionButton);
+    return;
+  }
+  const openButton = target.closest('[data-devlog-open]');
+  if (openButton) {
+    const id = openButton.getAttribute('data-devlog-open') || '';
+    const focusMediaId = openButton.getAttribute('data-devlog-media') || '';
+    void openDevlogItem(id, { focusMediaId });
+  }
+}
+
+devlogFeature?.addEventListener('click', handleDevlogClick);
+devlogGallery?.addEventListener('click', handleDevlogClick);
+devlogTimeline?.addEventListener('click', handleDevlogClick);
+devlogModal?.addEventListener('click', handleDevlogClick);
+devlogCloseBtn?.addEventListener('click', closeDevlogModal);
+devlogModalBody?.addEventListener('submit', (event) => {
+  const form = event.target;
+  if (!(form instanceof HTMLFormElement) || !form.matches('[data-devlog-comment-form]')) return;
+  event.preventDefault();
+  void submitDevlogComment(form);
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && devlogModal && !devlogModal.classList.contains('hidden')) closeDevlogModal();
+});
+
 function renderRatings(cards) {
   if (!ratingsGrid) return;
   if (!Array.isArray(cards) || cards.length === 0) {
@@ -2340,6 +2907,25 @@ async function loadNews() {
   }
 }
 
+async function loadDevlog() {
+  if (!devlogFeature && !devlogGallery && !devlogTimeline) return;
+  devlogState.loading = true;
+  devlogState.error = '';
+  renderDevlog(devlogState.items);
+  try {
+    const response = await fetch('/api/devlog', { cache: 'no-store' });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.ok) throw new Error(payload?.message || `HTTP ${response.status}`);
+    devlogState.items = Array.isArray(payload?.items) ? payload.items : [];
+    devlogState.loading = false;
+    renderDevlog(devlogState.items);
+  } catch (error) {
+    devlogState.loading = false;
+    devlogState.error = error?.message || 'Failed to load devlog.';
+    renderDevlog(devlogState.items);
+  }
+}
+
 async function loadRatings() {
   if (!ratingsGrid) return;
   try {
@@ -2460,6 +3046,7 @@ liveNextBtn?.addEventListener('click', () => {
 });
 
 void loadNews();
+void loadDevlog();
 void loadRatings();
 void loadLandingLive();
 void loadLatestRuns();
