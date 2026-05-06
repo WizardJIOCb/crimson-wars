@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Crimson Wars</title>
   <link rel="icon" type="image/png" href="/assets/other/favicon.png" />
-  <link rel="stylesheet" href="/style.css?v=20260506defeat1" />
+  <link rel="stylesheet" href="/style.css?v=20260506xpfx2" />
   <!-- Yandex.Metrika counter -->
   <script type="text/javascript">
     (function(m,e,t,r,i,k,a){
@@ -277,9 +277,19 @@
   <div id="bottom-hud" aria-live="polite">
     <div id="skill-bar"></div>
     <div id="xp-wrap">
-      <div id="xp-level">Lv1</div>
-      <div id="xp-bar"><div id="xp-fill"></div></div>
-      <div id="xp-text">0 / 0 XP</div>
+      <div class="xp-readout">
+        <div id="xp-level">Lv1</div>
+        <div class="xp-readout-main">
+          <span class="xp-kicker">Combat XP</span>
+          <span id="xp-text">0 / 0 XP</span>
+        </div>
+      </div>
+      <div id="xp-bar">
+        <div class="xp-track-glass" aria-hidden="true"></div>
+        <div id="xp-gain-fill" aria-hidden="true"></div>
+        <div id="xp-fill"></div>
+      </div>
+      <div id="xp-levelup-burst" aria-hidden="true">LEVEL UP!</div>
     </div>
   </div>
 
@@ -588,8 +598,8 @@
   <script src="/vendor/react-dom.production.min.js"></script>
   <script src="/js/cw-menu-react.js?v=20260505storyside1"></script>
   <script src="/js/client-i18n.js?v=20260506quickslots1"></script>
-  <script src="/js/client-core.js?v=20260506skillicons1"></script>
-  <script src="/js/client-net-input.js?v=20260506quickslots1"></script>
+  <script src="/js/client-core.js?v=20260506xpfx2"></script>
+  <script src="/js/client-net-input.js?v=20260506craterlayer1"></script>
   <script src="/js/client-menu-runs.js?v=20260506storylevelstatus1"></script>
   <script src="/js/client-death.js?v=20260506defeat1"></script>
   <script src="/js/client-menu-characters.js?v=20260506quickslots1"></script>
@@ -600,8 +610,8 @@
   <script src="/js/client-menu-profile.js?v=20260504duration1"></script>
   <script src="/js/client-menu-rating.js?v=20260504duration1"></script>
   <script src="/js/client-menu-news.js?v=20260429refactor1"></script>
-  <script src="/js/client-fx.js?v=20260430replay7"></script>
-  <script src="/js/client-webgl-renderer.js?v=20260506webgl1"></script>
-  <script src="/js/client-render.js?v=20260505camerasnap1"></script>
+  <script src="/js/client-fx.js?v=20260506craterlayer1"></script>
+  <script src="/js/client-webgl-renderer.js?v=20260506craterlayer1"></script>
+  <script src="/js/client-render.js?v=20260506craterlayer1"></script>
 </body>
 </html>

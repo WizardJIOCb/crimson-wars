@@ -154,17 +154,18 @@ void main() {
     if (width <= 0 || height <= 0) return null;
 
     const version = Number(source.__cwWebglVersion) || 0;
+    const linear = source.__cwWebglLinear === true;
     const cached = state.textures.get(source);
-    if (cached && cached.width === width && cached.height === height && cached.version === version) return cached.texture;
+    if (cached && cached.width === width && cached.height === height && cached.version === version && cached.linear === linear) return cached.texture;
 
     const texture = cached?.texture || state.gl.createTexture();
     state.gl.bindTexture(state.gl.TEXTURE_2D, texture);
     state.gl.texParameteri(state.gl.TEXTURE_2D, state.gl.TEXTURE_WRAP_S, state.gl.CLAMP_TO_EDGE);
     state.gl.texParameteri(state.gl.TEXTURE_2D, state.gl.TEXTURE_WRAP_T, state.gl.CLAMP_TO_EDGE);
-    state.gl.texParameteri(state.gl.TEXTURE_2D, state.gl.TEXTURE_MIN_FILTER, state.gl.NEAREST);
-    state.gl.texParameteri(state.gl.TEXTURE_2D, state.gl.TEXTURE_MAG_FILTER, state.gl.NEAREST);
+    state.gl.texParameteri(state.gl.TEXTURE_2D, state.gl.TEXTURE_MIN_FILTER, linear ? state.gl.LINEAR : state.gl.NEAREST);
+    state.gl.texParameteri(state.gl.TEXTURE_2D, state.gl.TEXTURE_MAG_FILTER, linear ? state.gl.LINEAR : state.gl.NEAREST);
     state.gl.texImage2D(state.gl.TEXTURE_2D, 0, state.gl.RGBA, state.gl.RGBA, state.gl.UNSIGNED_BYTE, source);
-    state.textures.set(source, { texture, width, height, version });
+    state.textures.set(source, { texture, width, height, version, linear });
     return texture;
   }
 
@@ -322,6 +323,31 @@ void main() {
         chunk.y - params.camera.y,
         chunk.canvas.width,
         chunk.canvas.height,
+      );
+    }
+  }
+
+  function drawGroundDecals(params) {
+    const decals = Array.isArray(params.groundDecals) ? params.groundDecals : [];
+    for (const decal of decals) {
+      const source = decal?.canvas || decal?.source;
+      if (!source) continue;
+      const w = source.naturalWidth || source.width || 0;
+      const h = source.naturalHeight || source.height || 0;
+      if (w <= 0 || h <= 0) continue;
+      const alpha = Math.max(0, Math.min(1, Number(decal.alpha ?? 1)));
+      if (alpha <= 0.01) continue;
+      drawSource(
+        source,
+        0,
+        0,
+        w,
+        h,
+        (Number(decal.x) || 0) - params.camera.x - (Number(decal.halfW) || w * 0.5),
+        (Number(decal.y) || 0) - params.camera.y - (Number(decal.halfH) || h * 0.5),
+        w,
+        h,
+        { alpha },
       );
     }
   }
@@ -485,6 +511,7 @@ void main() {
     if (params.enabled === false) return false;
     drawGroundChunks(params);
     drawGroundOverlay(params);
+    drawGroundDecals(params);
     drawMapObjects(params);
     drawEnemies(params);
     drawPlayers(params);

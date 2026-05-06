@@ -2563,6 +2563,9 @@ function seekReplayGame(elapsedMs, { keepPaused = null } = {}) {
   visuals.prevBossAlive = false;
   visuals.blood = [];
   visuals.bloodPuddles = [];
+  visuals.explosionScars = [];
+  visuals.groundDebris = [];
+  visuals.groundFragments = [];
   visuals.gore = [];
   visuals.hitFx = [];
   visuals.objectImpactFx = [];
@@ -2575,6 +2578,8 @@ function seekReplayGame(elapsedMs, { keepPaused = null } = {}) {
   visuals.rocketSmoke = [];
   visuals.rocketFire = [];
   visuals.rocketBlast = [];
+  visuals.rocketTrails = new Map();
+  visuals.rocketRenderAngles = new Map();
   visuals.consumableProjectiles = [];
   visuals.consumableAuras = [];
   visuals.skillBursts = [];
@@ -3955,6 +3960,9 @@ function startReplayGame(payload, record) {
   visuals.spectatorMuzzleBulletIds = new Set();
   visuals.blood = [];
   visuals.bloodPuddles = [];
+  visuals.explosionScars = [];
+  visuals.groundDebris = [];
+  visuals.groundFragments = [];
   visuals.gore = [];
   visuals.hitFx = [];
   visuals.objectImpactFx = [];
@@ -3966,6 +3974,8 @@ function startReplayGame(payload, record) {
   visuals.rocketSmoke = [];
   visuals.rocketFire = [];
   visuals.rocketBlast = [];
+  visuals.rocketTrails = new Map();
+  visuals.rocketRenderAngles = new Map();
   visuals.consumableProjectiles = [];
   visuals.consumableAuras = [];
   visuals.skillBursts = [];
@@ -5066,7 +5076,7 @@ function updateBulletInterpolation(dt) {
     r.weaponKey = tb.weaponKey || '';
 
     if (replayGame.active) {
-      if (isRocket && typeof spawnRocketTrailFx === 'function') {
+      if (isRocket && typeof addRocketTrailSample === 'function') {
         const dx = tb.x - r.x;
         const dy = tb.y - r.y;
         const trailNow = performance.now();
@@ -5075,7 +5085,7 @@ function updateBulletInterpolation(dt) {
           const invDt = 1 / Math.max(0.001, dt);
           const trailVx = Number(tb.vx) || (dx * invDt);
           const trailVy = Number(tb.vy) || (dy * invDt);
-          spawnRocketTrailFx(r.x, r.y, trailVx, trailVy, tb.color || '#fb923c');
+          addRocketTrailSample(id, r.x, r.y, trailVx, trailVy, tb.color || '#fb923c', trailNow, { fromState: true });
           r.replayTrailAt = trailNow;
         }
       }
@@ -5685,6 +5695,7 @@ function normalizeLiveStatePayload(state) {
         radius: Math.max(2, Number(bullet[10]) || 2),
         fromEnemy: Boolean(bullet[11]),
         shooterType: bullet[12] || '',
+        explosionRadius: Math.max(0, Number(bullet[13]) || 0),
       };
     });
   }
@@ -5706,6 +5717,7 @@ function normalizeLiveStatePayload(state) {
         color: enemy[10] || '',
         spriteScale: Number(enemy[11]) || 1,
         name: enemy[12] || '',
+        explosionRadius: Math.max(0, Number(enemy[13]) || 0),
       };
     });
   }
@@ -6344,9 +6356,14 @@ function clearLocalSessionState() {
   lastLevelupHtml = '';
   visuals.bossBlast = [];
   visuals.bloodMist = [];
+  visuals.explosionScars = [];
+  visuals.groundDebris = [];
+  visuals.groundFragments = [];
   visuals.rocketSmoke = [];
   visuals.rocketFire = [];
   visuals.rocketBlast = [];
+  visuals.rocketTrails = new Map();
+  visuals.rocketRenderAngles = new Map();
   visuals.consumableProjectiles = [];
   visuals.consumableAuras = [];
   visuals.skillBursts = [];
@@ -6480,6 +6497,40 @@ message: (ev) => {
     return;
   }
 
+  if (msg.type === 'quickItemConsumed') {
+    const progression = game.playerAuth?.progression;
+    const usedItem = msg.usedItem || {};
+    const uid = String(usedItem.uid || '').trim();
+    const remainingQuantity = Math.max(0, Math.floor(Number(usedItem.remainingQuantity) || 0));
+    if (progression && uid) {
+      const items = Array.isArray(progression.inventoryItems) ? progression.inventoryItems : [];
+      const item = items.find((entry) => String(entry?.uid || '').trim() === uid);
+      if (item) item.quantity = remainingQuantity;
+      if (remainingQuantity <= 0) {
+        progression.inventoryItems = items.filter((entry) => String(entry?.uid || '').trim() !== uid);
+        const equipment = progression.heroEquipment && typeof progression.heroEquipment === 'object'
+          ? progression.heroEquipment
+          : {};
+        for (const slots of Object.values(equipment)) {
+          if (!slots || typeof slots !== 'object') continue;
+          for (const [slotKey, slotUid] of Object.entries(slots)) {
+            if (String(slotUid || '').trim() === uid && (!msg.slotKey || slotKey === msg.slotKey)) {
+              slots[slotKey] = '';
+            }
+          }
+        }
+      }
+    }
+    const progressionMenuVisible = !game.state || joinOverlay.style.display !== 'none';
+    if (progressionMenuVisible) {
+      renderCharacterPicker();
+      if (typeof globalThis.renderRunSetupMenu === 'function') {
+        globalThis.renderRunSetupMenu();
+      }
+    }
+    return;
+  }
+
   if (msg.type === 'accountProgression') {
     if (msg.progression) game.playerAuth.progression = msg.progression;
     if (msg.rewards) {
@@ -6495,9 +6546,12 @@ message: (ev) => {
         globalThis.renderMissionVictoryOverlay();
       }
     }
-    renderCharacterPicker();
-    if (typeof globalThis.renderRunSetupMenu === 'function') {
-      globalThis.renderRunSetupMenu();
+    const progressionMenuVisible = Boolean(msg.rewards) || !game.state || joinOverlay.style.display !== 'none';
+    if (progressionMenuVisible) {
+      renderCharacterPicker();
+      if (typeof globalThis.renderRunSetupMenu === 'function') {
+        globalThis.renderRunSetupMenu();
+      }
     }
     return;
   }
@@ -6544,6 +6598,9 @@ message: (ev) => {
     visuals.playerPrev = new Map();
     visuals.blood = [];
     visuals.bloodPuddles = [];
+    visuals.explosionScars = [];
+    visuals.groundDebris = [];
+    visuals.groundFragments = [];
     visuals.gore = [];
     visuals.hitFx = [];
     visuals.objectImpactFx = [];
@@ -6555,6 +6612,8 @@ message: (ev) => {
     visuals.rocketSmoke = [];
     visuals.rocketFire = [];
     visuals.rocketBlast = [];
+    visuals.rocketTrails = new Map();
+    visuals.rocketRenderAngles = new Map();
     visuals.consumableProjectiles = [];
     visuals.consumableAuras = [];
     visuals.skillBursts = [];

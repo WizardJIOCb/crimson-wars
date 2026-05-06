@@ -12,6 +12,9 @@ const renderScratch = {
   playersByDepthPool: [],
   actorOcclusionMarkers: [],
   actorOcclusionPool: [],
+  groundDecals: [],
+  rocketTrailPoints: [],
+  rocketTrailPointPool: [],
   projectile: {},
   occlusionOverlay: [],
   occlusionSeen: new Set(),
@@ -640,58 +643,263 @@ function drawEnergyProjectile(projectile) {
   ctx.restore();
 }
 
+function drawRocketTrailRibbon(projectile, color = '#fb923c') {
+  const id = String(projectile?.id || '').trim();
+  if (!id) return;
+  const trailMap = typeof getRocketTrailMap === 'function'
+    ? getRocketTrailMap()
+    : (visuals.rocketTrails instanceof Map ? visuals.rocketTrails : null);
+  const trail = trailMap?.get(id);
+  const points = Array.isArray(trail?.points) ? trail.points : [];
+  if (points.length < 2) return;
+
+  const drawPoints = renderScratch.rocketTrailPoints;
+  const pool = renderScratch.rocketTrailPointPool;
+  drawPoints.length = 0;
+  let sxSmooth = Number(points[0]?.x) || 0;
+  let sySmooth = Number(points[0]?.y) || 0;
+  for (let i = 0; i < points.length; i += 1) {
+    const p = points[i];
+    const weight = i <= 1 ? 0.72 : 0.48;
+    sxSmooth += ((Number(p?.x) || sxSmooth) - sxSmooth) * weight;
+    sySmooth += ((Number(p?.y) || sySmooth) - sySmooth) * weight;
+    const out = pool[i] || { x: 0, y: 0, age: 0, ttl: 0, size: 1, seed: 0 };
+    pool[i] = out;
+    out.x = sxSmooth;
+    out.y = sySmooth;
+    out.age = Math.max(0, Number(p?.age) || 0);
+    out.ttl = Math.max(0.08, Number(p?.ttl) || (typeof ROCKET_TRAIL_TTL === 'number' ? ROCKET_TRAIL_TTL : 0.38));
+    out.size = Number(p?.size) || 1;
+    out.seed = Number(p?.seed) || 0;
+    drawPoints.push(out);
+  }
+  if (drawPoints.length < 2) return;
+
+  const trailLife = drawPoints.reduce((sum, p) => sum + Math.max(0, 1 - p.age / Math.max(0.08, p.ttl)), 0) / drawPoints.length;
+  if (trailLife <= 0.01) return;
+
+  const drawSmoothPath = (list, startIndex = 0, endIndex = list.length - 1) => {
+    const start = Math.max(0, Math.min(list.length - 1, startIndex));
+    const end = Math.max(start, Math.min(list.length - 1, endIndex));
+    const count = end - start + 1;
+    if (count <= 0) return;
+    const first = list[start];
+    ctx.beginPath();
+    ctx.moveTo(first.x - camera.x, first.y - camera.y);
+    if (count === 1) return;
+    if (count === 2) {
+      const second = list[end];
+      ctx.lineTo(second.x - camera.x, second.y - camera.y);
+      return;
+    }
+    for (let i = start; i < end; i += 1) {
+      const p0 = list[Math.max(start, i - 1)];
+      const p1 = list[i];
+      const p2 = list[i + 1];
+      const p3 = list[Math.min(end, i + 2)];
+      const tension = 0.18;
+      const cp1x = p1.x + (p2.x - p0.x) * tension;
+      const cp1y = p1.y + (p2.y - p0.y) * tension;
+      const cp2x = p2.x - (p3.x - p1.x) * tension;
+      const cp2y = p2.y - (p3.y - p1.y) * tension;
+      ctx.bezierCurveTo(cp1x - camera.x, cp1y - camera.y, cp2x - camera.x, cp2y - camera.y, p2.x - camera.x, p2.y - camera.y);
+    }
+  };
+
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.strokeStyle = `rgba(105, 116, 130, ${Math.min(0.18, trailLife * 0.14).toFixed(3)})`;
+  ctx.lineWidth = Math.max(10, 22 * Math.min(1.1, 0.75 + trailLife * 0.5));
+  drawSmoothPath(drawPoints);
+  ctx.stroke();
+
+  ctx.strokeStyle = `rgba(214, 221, 230, ${Math.min(0.1, trailLife * 0.06).toFixed(3)})`;
+  ctx.lineWidth = 6;
+  drawSmoothPath(drawPoints, 0, Math.max(1, drawPoints.length - 3));
+  ctx.stroke();
+
+  for (let i = 0; i < drawPoints.length; i += 5) {
+    const p = drawPoints[i];
+    const ttl = Math.max(0.08, Number(p.ttl) || 0.38);
+    const age = Math.max(0, Number(p.age) || 0);
+    const t = Math.max(0, Math.min(1, age / ttl));
+    const life = Math.max(0, 1 - t);
+    const smokeAlpha = Math.min(0.2, life * Math.min(1, t * 2.8) * 0.18);
+    if (smokeAlpha <= 0.008 || !isVisibleWorld(p.x, p.y, 48)) continue;
+    const sx = p.x - camera.x;
+    const sy = p.y - camera.y;
+    const r = (8 + t * 24) * (Number(p.size) || 1);
+    const wobble = Math.sin((Number(p.seed) || 0) + performance.now() * 0.004) * 0.35;
+    ctx.fillStyle = `rgba(142, 151, 164, ${smokeAlpha.toFixed(3)})`;
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, r * (1.16 + wobble * 0.1), r * (0.74 - wobble * 0.08), wobble, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.globalCompositeOperation = 'lighter';
+  const trailTtlFallback = typeof ROCKET_TRAIL_TTL === 'number' ? ROCKET_TRAIL_TTL : 0.38;
+  const hotStart = Math.max(0, drawPoints.length - 5);
+  let hotLife = 0;
+  let hotCount = 0;
+  for (let i = hotStart; i < drawPoints.length; i += 1) {
+    const p = drawPoints[i];
+    const ttl = Math.max(0.1, Number(p.ttl) || trailTtlFallback);
+    hotLife += Math.max(0, Math.min(1, 1 - (Number(p.age) || 0) / ttl));
+    hotCount += 1;
+  }
+  hotLife /= Math.max(1, hotCount);
+  if (hotLife > 0.02) {
+    ctx.strokeStyle = hexToRgba(color, hotLife * 0.34);
+    ctx.lineWidth = Math.max(2, 6.2 * hotLife);
+    drawSmoothPath(drawPoints, hotStart, drawPoints.length - 1);
+    ctx.stroke();
+
+    ctx.strokeStyle = `rgba(255, 250, 220, ${(hotLife * 0.68).toFixed(3)})`;
+    ctx.lineWidth = Math.max(0.9, 2.2 * hotLife);
+    drawSmoothPath(drawPoints, Math.max(0, drawPoints.length - 4), drawPoints.length - 1);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function getRocketRenderAngle(projectile, desiredAngle) {
+  const id = String(projectile?.id || '').trim();
+  if (!id) return desiredAngle;
+  if (!(visuals.rocketRenderAngles instanceof Map)) visuals.rocketRenderAngles = new Map();
+  const nowMs = performance.now();
+  const prev = visuals.rocketRenderAngles.get(id);
+  if (!prev) {
+    visuals.rocketRenderAngles.set(id, { angle: desiredAngle, at: nowMs });
+    return desiredAngle;
+  }
+  const dt = Math.max(0.001, Math.min(0.05, (nowMs - (Number(prev.at) || nowMs)) / 1000));
+  const delta = Math.atan2(Math.sin(desiredAngle - prev.angle), Math.cos(desiredAngle - prev.angle));
+  const maxTurn = 8.4 * dt;
+  const easedDelta = delta * (1 - Math.exp(-14 * dt));
+  const angle = prev.angle + Math.max(-maxTurn, Math.min(maxTurn, easedDelta));
+  prev.angle = angle;
+  prev.at = nowMs;
+  return angle;
+}
+
 function drawRocketProjectile(projectile) {
-  const angle = Math.atan2(Number(projectile.vy) || 0, Number(projectile.vx) || 1);
+  const desiredAngle = Math.atan2(Number(projectile.vy) || 0, Number(projectile.vx) || 1);
+  const angle = getRocketRenderAngle(projectile, desiredAngle);
   const sx = (Number(projectile.x) || 0) - camera.x;
   const sy = (Number(projectile.y) || 0) - camera.y;
   const color = projectile.color || '#fb923c';
-  drawShadowAtScreen(sx, sy + 5, 8, 3.5, 0.22);
+  if (typeof addRocketTrailSample === 'function') {
+    addRocketTrailSample(projectile.id, projectile.x, projectile.y, projectile.vx, projectile.vy, color, performance.now(), { fromRender: true });
+  }
+  drawRocketTrailRibbon(projectile, color);
+  const scale = Math.max(0.72, Math.min(1.08, (Number(projectile.radius) || 6) / 6)) * 0.82;
+  const pulse = 0.94 + Math.sin(performance.now() / 38 + sx * 0.03 + sy * 0.015) * 0.06;
+  drawShadowAtScreen(sx - Math.cos(angle) * 2, sy + 6, 12 * scale, 4.5 * scale, 0.28);
 
   ctx.save();
   ctx.translate(sx, sy);
   ctx.rotate(angle);
 
   ctx.globalCompositeOperation = 'lighter';
-  const flame = ctx.createLinearGradient(-22, 0, 0, 0);
-  flame.addColorStop(0, 'rgba(248,113,113,0)');
-  flame.addColorStop(0.45, hexToRgba(color, 0.3));
-  flame.addColorStop(1, 'rgba(255,245,180,0.82)');
+  const engineGlow = ctx.createRadialGradient(-15 * scale, 0, 0, -15 * scale, 0, 24 * scale * pulse);
+  engineGlow.addColorStop(0, 'rgba(255, 252, 210, 0.72)');
+  engineGlow.addColorStop(0.34, hexToRgba('#fb923c', 0.42));
+  engineGlow.addColorStop(1, hexToRgba(color, 0));
+  ctx.fillStyle = engineGlow;
+  ctx.beginPath();
+  ctx.ellipse(-17 * scale, 0, 23 * scale * pulse, 9 * scale, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const flame = ctx.createLinearGradient(-39 * scale, 0, -7 * scale, 0);
+  flame.addColorStop(0, 'rgba(248, 113, 113, 0)');
+  flame.addColorStop(0.36, hexToRgba(color, 0.34));
+  flame.addColorStop(0.72, 'rgba(251, 146, 60, 0.86)');
+  flame.addColorStop(1, 'rgba(255, 250, 205, 0.98)');
   ctx.fillStyle = flame;
   ctx.beginPath();
-  ctx.moveTo(-23, 0);
-  ctx.lineTo(-8, -5.2);
-  ctx.lineTo(-3, 0);
-  ctx.lineTo(-8, 5.2);
+  ctx.moveTo(-39 * scale * pulse, 0);
+  ctx.bezierCurveTo(-28 * scale, -8.5 * scale, -16 * scale, -7.2 * scale, -8 * scale, -3.2 * scale);
+  ctx.lineTo(-5.5 * scale, 0);
+  ctx.bezierCurveTo(-16 * scale, 7.2 * scale, -28 * scale, 8.5 * scale, -39 * scale * pulse, 0);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(255, 255, 235, 0.92)';
+  ctx.beginPath();
+  ctx.moveTo(-25 * scale * pulse, 0);
+  ctx.bezierCurveTo(-17 * scale, -3.2 * scale, -11 * scale, -2.9 * scale, -7 * scale, -1.2 * scale);
+  ctx.lineTo(-5.2 * scale, 0);
+  ctx.bezierCurveTo(-11 * scale, 2.9 * scale, -17 * scale, 3.2 * scale, -25 * scale * pulse, 0);
   ctx.closePath();
   ctx.fill();
 
   ctx.globalCompositeOperation = 'source-over';
-  ctx.fillStyle = '#475569';
+  ctx.fillStyle = '#ea580c';
   ctx.beginPath();
-  ctx.moveTo(-9, -4);
-  ctx.lineTo(6, -3.5);
-  ctx.lineTo(11, 0);
-  ctx.lineTo(6, 3.5);
-  ctx.lineTo(-9, 4);
+  ctx.moveTo(-15 * scale, -4.6 * scale);
+  ctx.lineTo(-23 * scale, -9.6 * scale);
+  ctx.lineTo(-19 * scale, -1.2 * scale);
   ctx.closePath();
   ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-15 * scale, 4.6 * scale);
+  ctx.lineTo(-23 * scale, 9.6 * scale);
+  ctx.lineTo(-19 * scale, 1.2 * scale);
+  ctx.closePath();
+  ctx.fill();
+
+  const body = ctx.createLinearGradient(-16 * scale, -5 * scale, 18 * scale, 5 * scale);
+  body.addColorStop(0, '#1f2937');
+  body.addColorStop(0.22, '#64748b');
+  body.addColorStop(0.58, '#cbd5e1');
+  body.addColorStop(1, '#f8fafc');
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.moveTo(-16 * scale, -5 * scale);
+  ctx.bezierCurveTo(-7 * scale, -6.4 * scale, 10 * scale, -5 * scale, 18 * scale, 0);
+  ctx.bezierCurveTo(10 * scale, 5 * scale, -7 * scale, 6.4 * scale, -16 * scale, 5 * scale);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(15, 23, 42, 0.72)';
+  ctx.lineWidth = 1.25 * scale;
+  ctx.stroke();
+
+  ctx.fillStyle = hexToRgba(color, 0.92);
+  ctx.fillRect(-8.8 * scale, -2.7 * scale, 13 * scale, 5.4 * scale);
+
+  const nose = ctx.createLinearGradient(5 * scale, -3.5 * scale, 19 * scale, 3.5 * scale);
+  nose.addColorStop(0, '#e2e8f0');
+  nose.addColorStop(0.48, '#ffffff');
+  nose.addColorStop(1, '#bae6fd');
+  ctx.fillStyle = nose;
+  ctx.beginPath();
+  ctx.moveTo(4.6 * scale, -4.2 * scale);
+  ctx.lineTo(19.2 * scale, 0);
+  ctx.lineTo(4.6 * scale, 4.2 * scale);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
+  ctx.beginPath();
+  ctx.ellipse(-13.2 * scale, 0, 2.4 * scale, 3.3 * scale, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.58)';
+  ctx.lineWidth = Math.max(0.8, 1.15 * scale);
+  ctx.beginPath();
+  ctx.moveTo(-11 * scale, -3.4 * scale);
+  ctx.bezierCurveTo(-2 * scale, -4.2 * scale, 8 * scale, -3.2 * scale, 14 * scale, -1 * scale);
+  ctx.stroke();
 
   ctx.fillStyle = color;
-  ctx.fillRect(-5.5, -2.2, 9.5, 4.4);
-  ctx.fillStyle = '#f8fafc';
+  ctx.globalCompositeOperation = 'lighter';
   ctx.beginPath();
-  ctx.moveTo(4, -3.1);
-  ctx.lineTo(11, 0);
-  ctx.lineTo(4, 3.1);
-  ctx.closePath();
+  ctx.ellipse(2 * scale, 0, 8.5 * scale, 2.1 * scale, 0, 0, Math.PI * 2);
   ctx.fill();
-
-  ctx.strokeStyle = hexToRgba('#ffffff', 0.42);
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(-6, -2.5);
-  ctx.lineTo(5.5, -2);
-  ctx.stroke();
   ctx.restore();
 }
 
@@ -2316,6 +2524,428 @@ function drawBloodPuddles() {
   }
 }
 
+function getExplosionScarPalette(material) {
+  const key = String(material || 'asphalt_wet').toLowerCase();
+  if (key === 'grass') {
+    return {
+      rim: 'rgba(103, 78, 42, 0.7)',
+      core0: 'rgba(7, 10, 7, 0.84)',
+      core1: 'rgba(48, 33, 19, 0.62)',
+      soot: 'rgba(12, 15, 10, 0.42)',
+      crack: 'rgba(12, 11, 8, 0.5)',
+      chips: ['#5b4a2c', '#6f5d34', '#2f4a25', '#1f351d'],
+      glint: 'rgba(118, 142, 62, 0.38)',
+    };
+  }
+  if (key === 'dirt') {
+    return {
+      rim: 'rgba(128, 82, 44, 0.72)',
+      core0: 'rgba(17, 10, 7, 0.86)',
+      core1: 'rgba(76, 45, 24, 0.62)',
+      soot: 'rgba(20, 12, 8, 0.42)',
+      crack: 'rgba(24, 15, 10, 0.5)',
+      chips: ['#7a5230', '#5b3a24', '#8b6a3c', '#3b271b'],
+      glint: 'rgba(180, 129, 72, 0.34)',
+    };
+  }
+  if (key === 'concrete' || key === 'concrete_tiles') {
+    return {
+      rim: 'rgba(134, 145, 158, 0.58)',
+      core0: 'rgba(18, 22, 26, 0.84)',
+      core1: 'rgba(66, 74, 84, 0.56)',
+      soot: 'rgba(15, 19, 25, 0.36)',
+      crack: 'rgba(18, 22, 28, 0.5)',
+      chips: ['#aeb6bf', '#7b8794', '#5f6b76', '#d1d5db'],
+      glint: 'rgba(226, 232, 240, 0.34)',
+    };
+  }
+  if (key === 'toxic') {
+    return {
+      rim: 'rgba(90, 113, 34, 0.62)',
+      core0: 'rgba(7, 11, 6, 0.82)',
+      core1: 'rgba(48, 72, 17, 0.62)',
+      soot: 'rgba(9, 18, 7, 0.42)',
+      crack: 'rgba(10, 18, 6, 0.48)',
+      chips: ['#617326', '#a3e635', '#2f451b', '#566b22'],
+      glint: 'rgba(190, 242, 100, 0.38)',
+    };
+  }
+  return {
+    rim: 'rgba(78, 88, 101, 0.6)',
+    core0: 'rgba(5, 8, 12, 0.86)',
+    core1: 'rgba(31, 38, 48, 0.6)',
+    soot: 'rgba(8, 11, 16, 0.38)',
+    crack: 'rgba(5, 8, 12, 0.5)',
+    chips: ['#4b5563', '#2f3843', '#697386', '#111827'],
+    glint: 'rgba(203, 213, 225, 0.28)',
+  };
+}
+
+function drawExplosionScarPath(points, fallbackRadius = 24, g = ctx) {
+  const list = Array.isArray(points) ? points : [];
+  const count = list.length;
+  g.beginPath();
+  if (count <= 0) {
+    g.arc(0, 0, fallbackRadius, 0, Math.PI * 2);
+    return;
+  }
+  for (let i = 0; i < count; i += 1) {
+    const p = list[i];
+    const a = Number(p?.a) || 0;
+    const r = Math.max(1, Number(p?.r) || fallbackRadius);
+    const px = Math.cos(a) * r;
+    const py = Math.sin(a) * r;
+    if (i === 0) g.moveTo(px, py);
+    else g.lineTo(px, py);
+  }
+  g.closePath();
+}
+
+function buildExplosionScarStamp(scar) {
+  if (scar?.stamp?.canvas) return scar.stamp;
+  const r = Math.max(8, Number(scar?.r) || 28);
+  const halfW = Math.ceil(r * 1.78);
+  const halfH = Math.ceil(r * 1.28);
+  const c = document.createElement('canvas');
+  c.width = Math.max(32, halfW * 2);
+  c.height = Math.max(24, halfH * 2);
+  c.__cwWebglVersion = 1;
+  c.__cwWebglLinear = true;
+  const g = c.getContext('2d');
+  if (!g) return null;
+  const palette = getExplosionScarPalette(scar.material);
+  g.translate(halfW, halfH);
+  g.rotate(Number(scar.rot) || 0);
+  g.scale(1, 0.72);
+
+  const soot = g.createRadialGradient(0, 0, r * 0.2, 0, 0, r * 1.28);
+  soot.addColorStop(0, palette.soot);
+  soot.addColorStop(0.4, 'rgba(9, 12, 17, 0.28)');
+  soot.addColorStop(0.78, 'rgba(0, 0, 0, 0.12)');
+  soot.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  g.fillStyle = soot;
+  g.beginPath();
+  g.arc(0, 0, r * 1.28, 0, Math.PI * 2);
+  g.fill();
+
+  drawExplosionScarPath(scar.outer, r, g);
+  g.fillStyle = palette.rim;
+  g.fill();
+
+  g.save();
+  drawExplosionScarPath(scar.outer, r, g);
+  g.clip();
+  const torn = g.createRadialGradient(-r * 0.18, -r * 0.18, r * 0.1, 0, 0, r * 1.02);
+  torn.addColorStop(0, 'rgba(255, 255, 255, 0.12)');
+  torn.addColorStop(0.24, 'rgba(0, 0, 0, 0)');
+  torn.addColorStop(0.58, 'rgba(0, 0, 0, 0.18)');
+  torn.addColorStop(1, 'rgba(0, 0, 0, 0.38)');
+  g.fillStyle = torn;
+  g.fillRect(-r * 1.25, -r * 1.25, r * 2.5, r * 2.5);
+
+  const speckles = Math.max(22, Math.min(72, Math.round(r * 1.15)));
+  for (let i = 0; i < speckles; i += 1) {
+    const a = Math.random() * Math.PI * 2;
+    const d = Math.sqrt(Math.random()) * r * 0.96;
+    const px = Math.cos(a) * d;
+    const py = Math.sin(a) * d;
+    const s = Math.max(0.8, r * (0.012 + Math.random() * 0.018));
+    g.globalAlpha = 0.08 + Math.random() * 0.18;
+    g.fillStyle = Math.random() > 0.45 ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.62)';
+    g.beginPath();
+    g.ellipse(px, py, s * (1.2 + Math.random()), s * 0.55, Math.random() * Math.PI, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.globalAlpha = 1;
+  g.restore();
+
+  const pit = g.createRadialGradient(-r * 0.08, -r * 0.12, r * 0.03, 0, 0, r * 0.82);
+  pit.addColorStop(0, 'rgba(0, 0, 0, 0.86)');
+  pit.addColorStop(0.34, palette.core0);
+  pit.addColorStop(0.66, palette.core1);
+  pit.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  g.fillStyle = pit;
+  drawExplosionScarPath(scar.inner, r * 0.52, g);
+  g.fill();
+
+  g.fillStyle = 'rgba(0, 0, 0, 0.66)';
+  g.beginPath();
+  g.ellipse(-r * 0.07, -r * 0.08, r * 0.24, r * 0.17, -0.12, 0, Math.PI * 2);
+  g.fill();
+
+  g.strokeStyle = palette.glint;
+  g.globalAlpha = 0.42;
+  g.lineWidth = Math.max(1.4, r * 0.035);
+  g.beginPath();
+  g.arc(-r * 0.06, -r * 0.07, r * 0.36, Math.PI * 1.08, Math.PI * 1.78);
+  g.stroke();
+  g.globalAlpha = 1;
+
+  g.strokeStyle = palette.crack;
+  g.lineCap = 'round';
+  for (const crack of Array.isArray(scar.cracks) ? scar.cracks : []) {
+    const a = Number(crack?.a) || 0;
+    const start = Math.max(1, Number(crack?.start) || r * 0.45);
+    const end = Math.max(start + 2, Number(crack?.end) || r);
+    const bend = Number(crack?.bend) || 0;
+    const mid = (start + end) * 0.5;
+    g.globalAlpha = 0.72;
+    g.lineWidth = Math.max(0.8, Number(crack?.width) || 1);
+    g.beginPath();
+    g.moveTo(Math.cos(a) * start, Math.sin(a) * start);
+    g.quadraticCurveTo(
+      Math.cos(a + bend) * mid,
+      Math.sin(a + bend) * mid,
+      Math.cos(a + bend * 0.45) * end,
+      Math.sin(a + bend * 0.45) * end,
+    );
+    g.stroke();
+  }
+  g.globalAlpha = 1;
+
+  const chips = Array.isArray(scar.chips) ? scar.chips : [];
+  for (let i = 0; i < chips.length; i += 1) {
+    const chip = chips[i];
+    const chipAlpha = Math.max(0, Math.min(1, Number(chip?.alpha) || 0.45));
+    if (chipAlpha <= 0.02) continue;
+    const a = Number(chip?.a) || 0;
+    const d = Number(chip?.d) || r;
+    const w = Math.max(1, Number(chip?.w) || 3);
+    const h = Math.max(0.7, Number(chip?.h) || 1.5);
+    const chipColor = palette.chips[i % palette.chips.length] || '#64748b';
+    g.save();
+    g.translate(Math.cos(a) * d, Math.sin(a) * d);
+    g.rotate((Number(chip?.rot) || 0) + a * 0.3);
+    g.globalAlpha = chipAlpha;
+    g.fillStyle = chipColor;
+    g.fillRect(-w * 0.5, -h * 0.5, w, h);
+    if (i % 3 === 0) {
+      g.globalAlpha = chipAlpha * 0.62;
+      g.fillStyle = palette.glint;
+      g.fillRect(-w * 0.36, -h * 0.4, w * 0.5, Math.max(0.5, h * 0.42));
+    }
+    g.restore();
+  }
+
+  scar.stamp = { canvas: c, halfW, halfH };
+  return scar.stamp;
+}
+
+function drawExplosionScars() {
+  if (!Array.isArray(visuals.explosionScars)) return;
+  for (const scar of visuals.explosionScars) {
+    const x = Number(scar?.x) || 0;
+    const y = Number(scar?.y) || 0;
+    const r = Math.max(8, Number(scar?.r) || 28);
+    if (!isVisibleWorld(x, y, r * 1.9 + 24)) continue;
+    const ttl = Math.max(0.001, Number(scar?.ttl) || 1);
+    const life = Math.max(0, Number(scar?.life) || 0);
+    const age = Math.max(0, ttl - life);
+    const fadeIn = Math.min(1, age * 4.2);
+    const fadeOut = Math.min(1, life / 8);
+    const alpha = Math.max(0, Math.min(1, fadeIn * fadeOut));
+    if (alpha <= 0.01) continue;
+    const stamp = buildExplosionScarStamp(scar);
+    if (!stamp?.canvas) continue;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(stamp.canvas, x - camera.x - stamp.halfW, y - camera.y - stamp.halfH);
+    ctx.restore();
+  }
+}
+
+function getExplosionScarAlpha(scar) {
+  const ttl = Math.max(0.001, Number(scar?.ttl) || 1);
+  const life = Math.max(0, Number(scar?.life) || 0);
+  const age = Math.max(0, ttl - life);
+  const fadeIn = Math.min(1, age * 4.2);
+  const fadeOut = Math.min(1, life / 8);
+  return Math.max(0, Math.min(1, fadeIn * fadeOut));
+}
+
+function buildGroundFragmentStamp(frag) {
+  if (frag?.stamp?.canvas) return frag.stamp;
+  const size = Math.max(1.5, Number(frag?.size) || 4);
+  const pad = Math.ceil(size * 1.7);
+  const c = document.createElement('canvas');
+  c.width = Math.max(12, pad * 2);
+  c.height = Math.max(12, pad * 2);
+  c.__cwWebglVersion = 1;
+  c.__cwWebglLinear = true;
+  const g = c.getContext('2d');
+  if (!g) return null;
+  g.translate(pad, pad);
+  g.rotate(Number(frag.rot) || 0);
+
+  const base = frag.color || '#94a3b8';
+  g.fillStyle = base;
+  g.beginPath();
+  g.moveTo(size * 0.95, -size * 0.2);
+  g.lineTo(size * 0.24, size * 0.66);
+  g.lineTo(-size * 0.9, size * 0.32);
+  g.lineTo(-size * 0.58, -size * 0.56);
+  g.closePath();
+  g.fill();
+
+  g.globalAlpha = 0.34;
+  g.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  g.beginPath();
+  g.moveTo(-size * 0.56, -size * 0.48);
+  g.lineTo(size * 0.8, -size * 0.17);
+  g.lineTo(size * 0.14, size * 0.12);
+  g.closePath();
+  g.fill();
+
+  g.globalAlpha = 0.22;
+  g.fillStyle = 'rgba(0, 0, 0, 0.8)';
+  g.beginPath();
+  g.moveTo(size * 0.2, size * 0.1);
+  g.lineTo(size * 0.26, size * 0.64);
+  g.lineTo(-size * 0.84, size * 0.3);
+  g.closePath();
+  g.fill();
+
+  frag.stamp = { canvas: c, halfW: pad, halfH: pad };
+  return frag.stamp;
+}
+
+function getGroundDecalsForRender() {
+  const out = renderScratch.groundDecals;
+  out.length = 0;
+  if (Array.isArray(visuals.explosionScars)) {
+    for (const scar of visuals.explosionScars) {
+      const x = Number(scar?.x) || 0;
+      const y = Number(scar?.y) || 0;
+      const r = Math.max(8, Number(scar?.r) || 28);
+      if (!isVisibleWorld(x, y, r * 1.9 + 24)) continue;
+      const alpha = getExplosionScarAlpha(scar);
+      if (alpha <= 0.01) continue;
+      const stamp = buildExplosionScarStamp(scar);
+      if (!stamp?.canvas) continue;
+      out.push({ canvas: stamp.canvas, x, y, halfW: stamp.halfW, halfH: stamp.halfH, alpha });
+    }
+  }
+  if (Array.isArray(visuals.groundFragments)) {
+    for (const frag of visuals.groundFragments) {
+      const x = Number(frag?.x) || 0;
+      const y = Number(frag?.y) || 0;
+      const size = Math.max(1.5, Number(frag?.size) || 4);
+      if (!isVisibleWorld(x, y, size + 14)) continue;
+      const lifeRatio = Math.max(0, Math.min(1, (Number(frag?.life) || 0) / Math.max(0.001, Number(frag?.ttl) || 1)));
+      const alpha = Math.min(1, lifeRatio * (Number(frag.alpha) || 0.82));
+      if (alpha <= 0.01) continue;
+      const stamp = buildGroundFragmentStamp(frag);
+      if (!stamp?.canvas) continue;
+      out.push({ canvas: stamp.canvas, x, y, halfW: stamp.halfW, halfH: stamp.halfH, alpha });
+    }
+  }
+  return out;
+}
+
+function drawGroundFragments() {
+  if (!Array.isArray(visuals.groundFragments)) return;
+  for (const frag of visuals.groundFragments) {
+    const x = Number(frag?.x) || 0;
+    const y = Number(frag?.y) || 0;
+    const size = Math.max(1.5, Number(frag?.size) || 4);
+    if (!isVisibleWorld(x, y, size + 14)) continue;
+    const lifeRatio = Math.max(0, Math.min(1, (Number(frag?.life) || 0) / Math.max(0.001, Number(frag?.ttl) || 1)));
+    if (lifeRatio <= 0.01) continue;
+    const stamp = buildGroundFragmentStamp(frag);
+    if (stamp?.canvas) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, lifeRatio * (Number(frag.alpha) || 0.82));
+      ctx.drawImage(stamp.canvas, x - camera.x - stamp.halfW, y - camera.y - stamp.halfH);
+      ctx.restore();
+      continue;
+    }
+    const sx = x - camera.x;
+    const sy = y - camera.y;
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(Number(frag.rot) || 0);
+    ctx.globalAlpha = Math.min(1, lifeRatio * (Number(frag.alpha) || 0.82));
+    ctx.fillStyle = frag.color || '#94a3b8';
+    ctx.beginPath();
+    ctx.moveTo(size * 0.9, -size * 0.2);
+    ctx.lineTo(size * 0.24, size * 0.62);
+    ctx.lineTo(-size * 0.82, size * 0.34);
+    ctx.lineTo(-size * 0.56, -size * 0.52);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = Math.min(1, lifeRatio * 0.32);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.78)';
+    ctx.fillRect(-size * 0.36, -size * 0.32, size * 0.54, Math.max(0.7, size * 0.16));
+    ctx.restore();
+  }
+}
+
+function drawGroundDebrisFx() {
+  if (!Array.isArray(visuals.groundDebris)) return;
+  for (const d of visuals.groundDebris) {
+    const x = Number(d?.x) || 0;
+    const y = Number(d?.y) || 0;
+    const z = Math.max(0, Number(d?.z) || 0);
+    const radius = d.kind === 'dust' ? Math.max(8, Number(d?.r) || 12) : Math.max(8, Number(d?.size) || 4) + z * 0.08;
+    if (!isVisibleWorld(x, y, radius + z + 28)) continue;
+    const lifeRatio = Math.max(0, Math.min(1, (Number(d?.life) || 0) / Math.max(0.001, Number(d?.ttl) || 1)));
+    if (lifeRatio <= 0.01) continue;
+    const sx = x - camera.x;
+    const groundY = y - camera.y;
+    const sy = groundY - z;
+
+    if (d.kind === 'dust') {
+      const r = Math.max(2, Number(d.r) || 8);
+      ctx.save();
+      ctx.globalAlpha = lifeRatio * 0.34;
+      ctx.fillStyle = hexToRgba(d.color || '#94a3b8', 0.8);
+      ctx.beginPath();
+      ctx.ellipse(sx, sy, r * 1.25, r * 0.72, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      continue;
+    }
+
+    const size = Math.max(1.8, Number(d.size) || 4);
+    if (game.shadowsEnabled && z > 2) {
+      const shadowAlpha = Math.max(0.05, Math.min(0.22, lifeRatio * (1 - Math.min(0.8, z / 260))));
+      drawShadowAtScreen(sx, groundY + 2, size * (1.7 + z * 0.01), size * 0.65, shadowAlpha);
+    }
+
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(Number(d.rot) || 0);
+    ctx.globalAlpha = Math.min(1, lifeRatio * 1.08);
+    ctx.fillStyle = d.color || '#64748b';
+    ctx.beginPath();
+    ctx.moveTo(size * 1.05, -size * 0.2);
+    ctx.lineTo(size * 0.28, size * 0.7);
+    ctx.lineTo(-size * 0.92, size * 0.36);
+    ctx.lineTo(-size * 0.64, -size * 0.58);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.globalAlpha = Math.min(1, lifeRatio * 0.42);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.78)';
+    ctx.beginPath();
+    ctx.moveTo(-size * 0.58, -size * 0.5);
+    ctx.lineTo(size * 0.88, -size * 0.18);
+    ctx.lineTo(size * 0.16, size * 0.12);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.globalAlpha = Math.min(1, lifeRatio * 0.26);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
+    ctx.beginPath();
+    ctx.moveTo(size * 0.15, size * 0.1);
+    ctx.lineTo(size * 0.28, size * 0.68);
+    ctx.lineTo(-size * 0.88, size * 0.34);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
 function drawConsumableProjectilesFx() {
   if (!Array.isArray(visuals.consumableProjectiles)) return;
   for (const p of visuals.consumableProjectiles) {
@@ -2531,6 +3161,8 @@ function drawFx() {
     ctx.arc(sx, sy, m.r * (1 + (1 - a) * 0.5), 0, Math.PI * 2);
     ctx.fill();
   }
+
+  drawGroundDebrisFx();
 
   for (const s of visuals.rocketSmoke) {
     if (!isVisibleWorld(s.x, s.y, s.r + 16)) continue;
@@ -3421,6 +4053,7 @@ function renderWebGLWorldLayer(playersByDepth, t, options = {}) {
     sprites,
     shadowsEnabled: game.shadowsEnabled,
     groundChunks: getGroundChunksForRender(),
+    groundDecals: getGroundDecalsForRender(),
     mapObjects: game.sortedMapObjects || [],
     groundOverlayEnabled: getQ().overlays,
     groundOverlayAccent: sceneTheme.accent || '#f97316',
@@ -3597,6 +4230,8 @@ function render(ts) {
     drawMapObjectHpBars(stateNowMs);
   } else {
     drawGround();
+    drawExplosionScars();
+    drawGroundFragments();
     drawBloodPuddles();
     drawMapObjects(stateNowMs);
   }

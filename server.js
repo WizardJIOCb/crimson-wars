@@ -5256,7 +5256,9 @@ function castHomingMissiles(room, player, def, st, now) {
 
   const damage = Math.max(1, Math.round(((Number(def.damage) || 34) + (Number(def.damagePerLevel) || 0) * (lvl - 1)) * Math.max(0.2, Number(player.damageMul) || 1)));
   const missileSpeed = Math.max(160, (Number(def.missileSpeed) || 320) + (Number(def.missileSpeedPerLevel) || 0) * (lvl - 1));
-  const turnRate = Math.max(1.8, (Number(def.turnRate) || 5.8) + (Number(def.turnRatePerLevel) || 0) * (lvl - 1));
+  const rawTurnRate = (Number(def.turnRate) || 5.8) + (Number(def.turnRatePerLevel) || 0) * (lvl - 1);
+  const turnRate = Math.max(1.8, rawTurnRate * 0.78);
+  const turnAccel = Math.max(10, turnRate * 4.6);
   const explosionRadius = Math.max(24, (Number(def.explosionRadius) || 58) + (Number(def.explosionRadiusPerLevel) || 0) * (lvl - 1));
   const lifeMs = Math.max(900, Number(def.lifeMs) || 2600);
   const baseAngle = Math.random() * Math.PI * 2;
@@ -5284,6 +5286,7 @@ function castHomingMissiles(room, player, def, st, now) {
       targetId: target.id,
       targetKind: target.kind || 'enemy',
       turnRate,
+      turnAccel,
       wobbleAmp: 0.28 + Math.random() * 0.16,
       wobbleFreq: 7 + Math.random() * 3.5,
       wobblePhase: Math.random() * Math.PI * 2,
@@ -5548,6 +5551,7 @@ function serializeMapObject(obj) {
     hp: Math.max(0, Number(obj.hp) || 0),
     maxHp: Math.max(1, Number(obj.maxHp) || 1),
     explosive: Boolean(obj.explosive),
+    explosionRadius: Math.max(0, Number(obj.explosionRadius) || 0),
     destroyed: Boolean(obj.destroyed),
     destroyedAt: Math.max(0, Number(obj.destroyedAt) || 0),
     explodedAt: Math.max(0, Number(obj.explodedAt) || 0),
@@ -5771,6 +5775,7 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
     players: serializedPlayers.concat(serializedCompanions),
     bullets: realtimeBullets.map((b) => {
       const radius = Math.max(2, Number(b.radius) || BULLET_RADIUS);
+      const explosionRadius = Math.max(0, Number(b.explosionRadius) || 0);
       const ownerId = b.ownerId || '';
       const ownerPlayerId = b.ownerPlayerId || '';
       const weaponKey = b.weaponKey || '';
@@ -5792,6 +5797,7 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
           radius,
           Boolean(b.fromEnemy) ? 1 : 0,
           shooterType,
+          explosionRadius,
         ];
       }
       return {
@@ -5808,6 +5814,7 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
         radius,
         fromEnemy: Boolean(b.fromEnemy),
         shooterType,
+        explosionRadius,
       };
     }),
     shotEvents: Array.isArray(room.shotEvents) && room.shotEvents.length > 0 ? room.shotEvents.map((event) => ({
@@ -5860,6 +5867,7 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
           e.color || '',
           Number(e.spriteScale) || 1,
           e.name || '',
+          Math.max(0, Number(e.explosionRadius) || 0),
         ];
       }
       return {
@@ -5878,6 +5886,7 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
         maxHp: e.maxHp,
         radius,
         spriteScale: Number(e.spriteScale) || 1,
+        explosionRadius: Math.max(0, Number(e.explosionRadius) || 0),
       };
     }),
     bossPortals: room.bossPortals.map((bp) => ({
@@ -7734,8 +7743,13 @@ function usePlayerQuickConsumable(room, player, slotKey, now = Date.now()) {
     broadcastRoom(room, { type: 'quickItemFx', event: fxEvent });
   }
   sendTo(player.ws, {
-    type: 'accountProgression',
-    progression: player.accountProgression,
+    type: 'quickItemConsumed',
+    slotKey,
+    usedItem: {
+      uid: String(usedItem.uid || ''),
+      itemId: String(usedItem.itemId || ''),
+      remainingQuantity: Math.max(0, Math.floor(Number(usedItem.remainingQuantity) || 0)),
+    },
   });
   sendTo(player.ws, { type: 'system', message: resultMessage });
   return {
@@ -9322,8 +9336,16 @@ function tickRoom(room, dtSec, now) {
       let angle = Math.atan2(Number(b.vy) || 0, Number(b.vx) || speed);
       if (target) {
         const desiredAngle = Math.atan2(target.y - b.y, target.x - b.x);
-        const maxTurn = Math.max(0.6, Number(b.turnRate) || 5.8) * dtSec;
-        angle += clamp(wrapAngleDelta(desiredAngle - angle), -maxTurn, maxTurn);
+        const turnRate = Math.max(0.6, Number(b.turnRate) || 4.5);
+        const turnAccel = Math.max(8, Number(b.turnAccel) || turnRate * 4.6);
+        const desiredTurnSpeed = clamp(wrapAngleDelta(desiredAngle - angle) / Math.max(0.001, dtSec), -turnRate, turnRate);
+        const prevTurnSpeed = Math.max(-turnRate, Math.min(turnRate, Number(b.turnSpeed) || 0));
+        const nextTurnSpeed = prevTurnSpeed + clamp(desiredTurnSpeed - prevTurnSpeed, -turnAccel * dtSec, turnAccel * dtSec);
+        b.turnSpeed = nextTurnSpeed;
+        angle += nextTurnSpeed * dtSec;
+      } else if (Number(b.turnSpeed) || 0) {
+        b.turnSpeed = Number(b.turnSpeed) * Math.pow(0.08, dtSec);
+        angle += Number(b.turnSpeed) * dtSec;
       }
       const ageSec = Math.max(0, now - (Number(b.spawnAt) || now)) / 1000;
       angle += Math.sin(ageSec * (Number(b.wobbleFreq) || 8) + (Number(b.wobblePhase) || 0)) * Math.max(0, Number(b.wobbleAmp) || 0) * dtSec;

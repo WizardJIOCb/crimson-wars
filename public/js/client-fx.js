@@ -85,6 +85,7 @@ function spawnGoreBurst(x, y, damage = 10, dirX = 0, dirY = 0, dirBias = 0.44) {
 }
 
 function spawnBossDeathExplosion(x, y) {
+  spawnGroundExplosionFx(x, y, 210, { kind: 'boss', intensity: 1.35 });
   visuals.bossBlast.push({
     x,
     y,
@@ -195,31 +196,164 @@ function triggerHitScreenFx(severity = 1, dirX = 0, dirY = 0) {
   }
 }
 
+const ROCKET_TRAIL_TTL = 0.38;
+const ROCKET_TRAIL_MAX_POINTS = 24;
+const ROCKET_TRAIL_MIN_DIST = 8.5;
+
+function getRocketTrailMap() {
+  if (!(visuals.rocketTrails instanceof Map)) visuals.rocketTrails = new Map();
+  return visuals.rocketTrails;
+}
+
+function addRocketTrailSample(id, x, y, vx, vy, color = '#fb923c', nowMs = performance.now(), options = {}) {
+  const key = String(id || '').trim();
+  if (!key) return null;
+  const px = Number(x) || 0;
+  const py = Number(y) || 0;
+  const rvx = Number(vx) || 0;
+  const rvy = Number(vy) || 0;
+  const speed = Math.hypot(rvx, rvy) || 1;
+  const dirX = rvx / speed;
+  const dirY = rvy / speed;
+  const tailOffset = Math.max(12, Math.min(22, speed * 0.019));
+  const map = getRocketTrailMap();
+  let trail = map.get(key);
+  if (!trail) {
+    const tailX = px - dirX * tailOffset;
+    const tailY = py - dirY * tailOffset;
+    trail = {
+      id: key,
+      color,
+      points: [],
+      lastX: tailX,
+      lastY: tailY,
+      lastAt: nowMs,
+      seenAt: nowMs,
+      vx: rvx,
+      vy: rvy,
+      dirX,
+      dirY,
+      seed: Math.random() * Math.PI * 2,
+      dying: false,
+    };
+    map.set(key, trail);
+  }
+
+  trail.color = color || trail.color || '#fb923c';
+  trail.vx = rvx;
+  trail.vy = rvy;
+  trail.seenAt = nowMs;
+  trail.dying = false;
+  const dirBlend = options.fromState ? 0.44 : 0.34;
+  const prevDirX = Number(trail.dirX) || dirX;
+  const prevDirY = Number(trail.dirY) || dirY;
+  let smoothDirX = prevDirX + (dirX - prevDirX) * dirBlend;
+  let smoothDirY = prevDirY + (dirY - prevDirY) * dirBlend;
+  const smoothDirLen = Math.hypot(smoothDirX, smoothDirY) || 1;
+  smoothDirX /= smoothDirLen;
+  smoothDirY /= smoothDirLen;
+  trail.dirX = smoothDirX;
+  trail.dirY = smoothDirY;
+  const sideSmoothX = -smoothDirY;
+  const sideSmoothY = smoothDirX;
+  const tailX = px - smoothDirX * tailOffset;
+  const tailY = py - smoothDirY * tailOffset;
+
+  const points = Array.isArray(trail.points) ? trail.points : [];
+  trail.points = points;
+  const last = points[points.length - 1] || null;
+  const fromX = Number(last?.x ?? trail.lastX ?? tailX) || tailX;
+  const fromY = Number(last?.y ?? trail.lastY ?? tailY) || tailY;
+  const dist = Math.hypot(tailX - fromX, tailY - fromY);
+  const elapsed = Math.max(0, nowMs - (Number(trail.lastAt) || 0));
+  const renderSample = Boolean(options.fromRender);
+  if (renderSample && nowMs - (Number(trail.lastRenderSampleAt) || 0) < 28) return trail;
+  if (dist < ROCKET_TRAIL_MIN_DIST && elapsed < (renderSample ? 34 : 28)) return trail;
+  if (renderSample) trail.lastRenderSampleAt = nowMs;
+
+  const stateSample = Boolean(options.fromState);
+  const steps = Math.min(4, Math.max(1, Math.ceil(dist / (stateSample ? 26 : 22))));
+  for (let i = 1; i <= steps; i += 1) {
+    const t = i / steps;
+    const sx = fromX + (tailX - fromX) * t;
+    const sy = fromY + (tailY - fromY) * t;
+    const wave = Math.sin(nowMs * 0.017 + trail.seed + i * 1.73);
+    const jitter = (wave * 0.65 + (Math.random() - 0.5) * 1.15) * (stateSample ? 0.24 : 0.42);
+    points.push({
+      x: sx + sideSmoothX * jitter,
+      y: sy + sideSmoothY * jitter,
+      vx: rvx * 0.12 - smoothDirX * (9 + Math.random() * 13) + sideSmoothX * (Math.random() * 10 - 5),
+      vy: rvy * 0.12 - smoothDirY * (9 + Math.random() * 13) + sideSmoothY * (Math.random() * 10 - 5),
+      age: 0,
+      ttl: ROCKET_TRAIL_TTL * (0.86 + Math.random() * 0.24),
+      size: 0.9 + Math.random() * 0.34,
+      seed: Math.random() * Math.PI * 2,
+    });
+  }
+  if (points.length > ROCKET_TRAIL_MAX_POINTS) points.splice(0, points.length - ROCKET_TRAIL_MAX_POINTS);
+  trail.lastX = tailX;
+  trail.lastY = tailY;
+  trail.lastAt = nowMs;
+  return trail;
+}
+
+function finishRocketTrail(id) {
+  const key = String(id || '').trim();
+  if (!key) return;
+  if (visuals.rocketRenderAngles instanceof Map) visuals.rocketRenderAngles.delete(key);
+  if (!(visuals.rocketTrails instanceof Map)) return;
+  const trail = visuals.rocketTrails.get(key);
+  if (!trail) return;
+  trail.dying = true;
+  trail.seenAt = performance.now() - 180;
+}
+
+function updateRocketTrails(dt) {
+  if (!(visuals.rocketTrails instanceof Map)) return;
+  const nowMs = performance.now();
+  for (const [id, trail] of visuals.rocketTrails.entries()) {
+    const points = Array.isArray(trail.points) ? trail.points : [];
+    const stale = nowMs - (Number(trail.seenAt) || 0) > 140;
+    if (stale) trail.dying = true;
+    const ageMul = trail.dying ? 1.55 : 1;
+    for (let i = points.length - 1; i >= 0; i -= 1) {
+      const p = points[i];
+      p.age = (Number(p.age) || 0) + dt * ageMul;
+      p.x += (Number(p.vx) || 0) * dt;
+      p.y += (Number(p.vy) || 0) * dt;
+      p.vx = (Number(p.vx) || 0) * Math.pow(0.36, dt);
+      p.vy = (Number(p.vy) || 0) * Math.pow(0.36, dt);
+      if (p.age >= Math.max(0.08, Number(p.ttl) || ROCKET_TRAIL_TTL)) points.splice(i, 1);
+    }
+    if (points.length <= 0 && stale) visuals.rocketTrails.delete(id);
+  }
+}
+
 function spawnRocketTrailFx(x, y, vx, vy, color = '#fb923c') {
   const speed = Math.hypot(Number(vx) || 0, Number(vy) || 0) || 1;
   const dirX = (Number(vx) || 0) / speed;
   const dirY = (Number(vy) || 0) / speed;
-  const tailX = x - dirX * 10;
-  const tailY = y - dirY * 10;
+  const tailX = x - dirX * 14;
+  const tailY = y - dirY * 14;
 
   visuals.rocketFire.push({
     x: tailX + (Math.random() * 3 - 1.5),
     y: tailY + (Math.random() * 3 - 1.5),
-    vx: -dirX * (40 + Math.random() * 55) + (Math.random() * 16 - 8),
-    vy: -dirY * (40 + Math.random() * 55) + (Math.random() * 16 - 8),
-    r: 4 + Math.random() * 3,
-    life: 0.12 + Math.random() * 0.06,
-    ttl: 0.12 + Math.random() * 0.06,
+    vx: (Number(vx) || 0) * 0.18 - dirX * (52 + Math.random() * 70) + (Math.random() * 26 - 13),
+    vy: (Number(vy) || 0) * 0.18 - dirY * (52 + Math.random() * 70) + (Math.random() * 26 - 13),
+    r: 5.5 + Math.random() * 4.5,
+    life: 0.1 + Math.random() * 0.08,
+    ttl: 0.1 + Math.random() * 0.08,
     color,
   });
   visuals.rocketSmoke.push({
     x: tailX + (Math.random() * 5 - 2.5),
     y: tailY + (Math.random() * 5 - 2.5),
-    vx: -dirX * (18 + Math.random() * 28) + (Math.random() * 10 - 5),
-    vy: -dirY * (18 + Math.random() * 28) + (Math.random() * 10 - 5),
-    r: 7 + Math.random() * 5,
-    life: 0.38 + Math.random() * 0.18,
-    ttl: 0.38 + Math.random() * 0.18,
+    vx: (Number(vx) || 0) * 0.16 - dirX * (20 + Math.random() * 30) + (Math.random() * 16 - 8),
+    vy: (Number(vy) || 0) * 0.16 - dirY * (20 + Math.random() * 30) + (Math.random() * 16 - 8),
+    r: 8 + Math.random() * 7,
+    life: 0.22 + Math.random() * 0.16,
+    ttl: 0.22 + Math.random() * 0.16,
   });
 
   if (visuals.rocketFire.length > 90) visuals.rocketFire.splice(0, visuals.rocketFire.length - 90);
@@ -253,9 +387,235 @@ function spawnRocketNovaFx(x, y) {
   if (visuals.rocketBlast.length > 520) visuals.rocketBlast.splice(0, visuals.rocketBlast.length - 520);
 }
 
-function spawnRocketExplosionFx(x, y) {
+function getExplosionSurfacePalette(material) {
+  const key = String(material || 'asphalt_wet').toLowerCase();
+  if (key === 'grass') {
+    return {
+      debris: ['#8a6a3d', '#5b4a2c', '#6f7f34', '#2f4a25'],
+      dust: ['#6b5b34', '#4d4028', '#263b20'],
+    };
+  }
+  if (key === 'dirt') {
+    return {
+      debris: ['#b77942', '#7a5230', '#d09a54', '#5b3a24'],
+      dust: ['#8b6a3c', '#6b4a2c', '#4b3321'],
+    };
+  }
+  if (key === 'concrete' || key === 'concrete_tiles') {
+    return {
+      debris: ['#d1d5db', '#aeb6bf', '#8f9aa7', '#5f6b76'],
+      dust: ['#b6bec7', '#8f99a5', '#6b7280'],
+    };
+  }
+  if (key === 'toxic') {
+    return {
+      debris: ['#c9f45c', '#a3e635', '#617326', '#2f451b'],
+      dust: ['#84cc16', '#536326', '#233514'],
+    };
+  }
+  return {
+    debris: ['#cbd5e1', '#94a3b8', '#64748b', '#334155'],
+    dust: ['#7b8490', '#535d6b', '#2f3742'],
+  };
+}
+
+function resolveExplosionGroundMaterial(x, y) {
+  const theme = game.state?.decor?.theme && typeof game.state.decor.theme === 'object'
+    ? game.state.decor.theme
+    : null;
+  const baseMaterial = String(theme?.baseMaterial || 'asphalt_wet').toLowerCase();
+  const zones = Array.isArray(game.state?.decor?.terrainZones) ? game.state.decor.terrainZones : [];
+  for (let i = zones.length - 1; i >= 0; i -= 1) {
+    const zone = zones[i];
+    const material = String(zone?.material || '').toLowerCase();
+    if (!material) continue;
+    const cx = Number(zone?.x) || 0;
+    const cy = Number(zone?.y) || 0;
+    const halfW = Math.max(10, (Number(zone?.w) || 0) * 0.5);
+    const halfH = Math.max(10, (Number(zone?.h) || 0) * 0.5);
+    const angle = -(Number(zone?.angle) || 0);
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const dx = (Number(x) || 0) - cx;
+    const dy = (Number(y) || 0) - cy;
+    const lx = dx * cos - dy * sin;
+    const ly = dx * sin + dy * cos;
+    const shape = String(zone?.shape || 'ellipse').toLowerCase();
+    if (shape === 'rect' || shape === 'band') {
+      if (Math.abs(lx) <= halfW * 1.08 && Math.abs(ly) <= halfH * 1.08) return material;
+      continue;
+    }
+    const nx = lx / Math.max(1, halfW);
+    const ny = ly / Math.max(1, halfH);
+    if ((nx * nx) + (ny * ny) <= 1.12) return material;
+  }
+  return baseMaterial;
+}
+
+function buildExplosionScarShape(radius) {
+  const outerCount = 17 + Math.floor(Math.random() * 8);
+  const innerCount = 14 + Math.floor(Math.random() * 7);
+  const cracks = [];
+  const chips = [];
+  const outer = [];
+  const inner = [];
+
+  for (let i = 0; i < outerCount; i += 1) {
+    const step = (Math.PI * 2) / outerCount;
+    outer.push({
+      a: i * step + (Math.random() - 0.5) * step * 0.42,
+      r: radius * (0.84 + Math.random() * 0.34),
+    });
+  }
+
+  for (let i = 0; i < innerCount; i += 1) {
+    const step = (Math.PI * 2) / innerCount;
+    inner.push({
+      a: i * step + (Math.random() - 0.5) * step * 0.34,
+      r: radius * (0.34 + Math.random() * 0.2),
+    });
+  }
+
+  const crackCount = Math.max(4, Math.min(12, Math.round(radius / 9) + Math.floor(Math.random() * 4)));
+  for (let i = 0; i < crackCount; i += 1) {
+    const a = Math.random() * Math.PI * 2;
+    cracks.push({
+      a,
+      start: radius * (0.4 + Math.random() * 0.22),
+      end: radius * (0.86 + Math.random() * 0.52),
+      bend: (Math.random() - 0.5) * 0.28,
+      width: 0.7 + Math.random() * 1.5,
+    });
+  }
+
+  const chipCount = Math.max(8, Math.min(28, Math.round(radius / 3.8)));
+  for (let i = 0; i < chipCount; i += 1) {
+    const a = Math.random() * Math.PI * 2;
+    chips.push({
+      a,
+      d: radius * (0.62 + Math.random() * 0.72),
+      w: 2 + Math.random() * Math.max(2, radius * 0.08),
+      h: 1.2 + Math.random() * Math.max(1.2, radius * 0.04),
+      rot: Math.random() * Math.PI,
+      alpha: 0.32 + Math.random() * 0.42,
+    });
+  }
+
+  return { outer, inner, cracks, chips };
+}
+
+function spawnGroundExplosionFx(x, y, radius = 90, options = {}) {
+  if (!Number.isFinite(Number(x)) || !Number.isFinite(Number(y))) return;
+  if (!Array.isArray(visuals.explosionScars)) visuals.explosionScars = [];
+  if (!Array.isArray(visuals.groundDebris)) visuals.groundDebris = [];
+  if (!Array.isArray(visuals.groundFragments)) visuals.groundFragments = [];
+
+  const impactRadius = Math.max(42, Math.min(320, Number(radius) || 90));
+  const intensity = Math.max(0.45, Math.min(1.8, Number(options?.intensity) || 1));
+  const scarRadius = Math.max(16, Math.min(72, impactRadius * (0.28 + intensity * 0.038)));
+  const material = String(options?.material || resolveExplosionGroundMaterial(x, y) || 'asphalt_wet').toLowerCase();
+  const palette = getExplosionSurfacePalette(material);
+  const life = Math.max(34, Math.min(180, 82 + scarRadius * 0.72 + Math.random() * 34));
+  const shape = buildExplosionScarShape(scarRadius);
+
+  visuals.explosionScars.push({
+    x: Number(x) || 0,
+    y: Number(y) || 0,
+    r: scarRadius,
+    material,
+    kind: String(options?.kind || 'explosion').toLowerCase(),
+    rot: Math.random() * Math.PI * 2,
+    life,
+    ttl: life,
+    outer: shape.outer,
+    inner: shape.inner,
+    cracks: shape.cracks,
+    chips: shape.chips,
+  });
+  if (visuals.explosionScars.length > 96) visuals.explosionScars.splice(0, visuals.explosionScars.length - 96);
+
+  const q = typeof getQ === 'function' ? getQ() : {};
+  const qualityMul = q.overlays === false ? 0.58 : 1;
+  const debrisCount = Math.max(10, Math.min(42, Math.round((11 + scarRadius * 0.3) * intensity * qualityMul)));
+  for (let i = 0; i < debrisCount; i += 1) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = (78 + Math.random() * 210) * (0.72 + intensity * 0.28);
+    const lift = (210 + Math.random() * 330) * (0.75 + intensity * 0.28);
+    const startDist = Math.random() * scarRadius * 0.34;
+    const color = palette.debris[Math.floor(Math.random() * palette.debris.length)] || '#64748b';
+    const ttl = 1.05 + Math.random() * 0.72 + intensity * 0.18;
+    visuals.groundDebris.push({
+      kind: 'chunk',
+      x: Number(x) + Math.cos(angle) * startDist,
+      y: Number(y) + Math.sin(angle) * startDist,
+      z: 8 + Math.random() * 18,
+      vx: Math.cos(angle) * speed + (Math.random() - 0.5) * 28,
+      vy: Math.sin(angle) * speed * 0.72 + (Math.random() - 0.5) * 24,
+      vz: lift,
+      size: Math.max(3.8, Math.min(12.5, scarRadius * (0.065 + Math.random() * 0.06))),
+      rot: Math.random() * Math.PI * 2,
+      spin: (Math.random() - 0.5) * 14,
+      color,
+      edge: palette.debris[(Math.floor(Math.random() * palette.debris.length) + 1) % palette.debris.length] || '#111827',
+      life: ttl,
+      ttl,
+      bounced: false,
+      material,
+    });
+  }
+
+  const dustCount = Math.max(4, Math.min(18, Math.round((5 + scarRadius * 0.11) * qualityMul)));
+  for (let i = 0; i < dustCount; i += 1) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = (18 + Math.random() * 82) * intensity;
+    const color = palette.dust[Math.floor(Math.random() * palette.dust.length)] || '#64748b';
+    const ttl = 0.5 + Math.random() * 0.42;
+    visuals.groundDebris.push({
+      kind: 'dust',
+      x: Number(x) + (Math.random() - 0.5) * scarRadius * 0.42,
+      y: Number(y) + (Math.random() - 0.5) * scarRadius * 0.26,
+      z: 2 + Math.random() * 12,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed * 0.62,
+      vz: 30 + Math.random() * 85,
+      r: 6 + Math.random() * Math.max(6, scarRadius * 0.22),
+      grow: 18 + Math.random() * 36,
+      color,
+      life: ttl,
+      ttl,
+    });
+  }
+
+  if (visuals.groundDebris.length > 260) visuals.groundDebris.splice(0, visuals.groundDebris.length - 260);
+}
+
+function spawnRocketExplosionFx(x, y, radius = 96, options = {}) {
+  spawnGroundExplosionFx(x, y, radius, {
+    kind: options?.kind || 'rocket',
+    intensity: Math.max(1, Number(options?.intensity) || 1.08),
+    material: options?.material,
+  });
   spawnSkillBurstFx(x, y, '#fb923c', 88);
   spawnRocketNovaFx(x, y);
+}
+
+function settleGroundDebrisChunk(chunk) {
+  if (!chunk || chunk.settled) return;
+  if (!Array.isArray(visuals.groundFragments)) visuals.groundFragments = [];
+  const ttl = 2.1 + Math.random() * 1.8;
+  visuals.groundFragments.push({
+    x: Number(chunk.x) || 0,
+    y: Number(chunk.y) || 0,
+    size: Math.max(2.5, Number(chunk.size) || 4) * (0.86 + Math.random() * 0.38),
+    rot: Number(chunk.rot) || 0,
+    color: chunk.color || '#94a3b8',
+    edge: chunk.edge || '#111827',
+    alpha: 0.76 + Math.random() * 0.24,
+    life: ttl,
+    ttl,
+  });
+  if (visuals.groundFragments.length > 220) visuals.groundFragments.splice(0, visuals.groundFragments.length - 220);
+  chunk.settled = true;
 }
 
 function spawnHitFx(x, y, severity = 1, isPlayerHit = false) {
@@ -536,6 +896,10 @@ function spawnConsumableImpactFx(event, x, y, radius, color, options = {}) {
     accentColor: isShock ? '#bfdbfe' : burstColor,
     innerColor: isShock ? '#dbeafe' : burstColor,
   });
+  spawnGroundExplosionFx(x, y, r, {
+    kind: useType || itemId || 'consumable',
+    intensity: isSatellite ? 1.18 : (useType === 'artillery' ? 1.12 : 0.95),
+  });
   spawnRadialHitFx(x, y, r * 0.78, {
     count: Math.max(8, Math.min(22, Math.round(r / 13))),
     severity: isSatellite ? 8 : 5,
@@ -559,6 +923,10 @@ function spawnConsumableImpactFx(event, x, y, radius, color, options = {}) {
         startRadius: 8,
         growSpeed: 460,
         life: 0.32,
+      });
+      spawnGroundExplosionFx(x + Math.cos(angle) * dist, y + Math.sin(angle) * dist, r * 0.32, {
+        kind: 'cluster',
+        intensity: 0.62,
       });
     }
   }
@@ -1091,7 +1459,16 @@ function processStateFx(nextState) {
   const nextEnemyMap = new Map();
 
   for (const e of nextState.enemies) {
-    nextEnemyMap.set(e.id, { x: e.x, y: e.y, hp: e.hp, type: e.type });
+    nextEnemyMap.set(e.id, {
+      x: e.x,
+      y: e.y,
+      hp: e.hp,
+      type: e.type,
+      mobId: e.mobId || e.type || '',
+      behavior: e.behavior || '',
+      radius: Math.max(18, Number(e.radius) || 18),
+      explosionRadius: Math.max(0, Number(e.explosionRadius) || 0),
+    });
     const prev = prevEnemyMap.get(e.id);
     if (prev && e.hp < prev.hp) {
       const hitDamage = Math.max(1, prev.hp - e.hp);
@@ -1108,6 +1485,18 @@ function processStateFx(nextState) {
         spawnBossDeathExplosion(prev.x, prev.y);
         window.cwPlaySfx?.('bossDeath', { x: prev.x, y: prev.y, key: `bossDeath:${id}`, radius: 1600, volume: 1.35 });
       } else {
+        const prevBehavior = String(prev.behavior || '').toLowerCase();
+        const prevMobId = String(prev.mobId || prev.type || '').toLowerCase();
+        const isExplosiveEnemy = prevBehavior === 'exploder' || prevMobId.includes('exploder') || Number(prev.explosionRadius) > 0;
+        if (isExplosiveEnemy) {
+          const blastRadius = Math.max(78, Number(prev.explosionRadius) || (Math.max(18, Number(prev.radius) || 18) * 4.4));
+          spawnRocketExplosionFx(prev.x, prev.y, blastRadius, { kind: 'enemy_explosion', intensity: 0.96 });
+          spawnRadialHitFx(prev.x, prev.y, blastRadius * 0.72, {
+            count: 14,
+            color: '#fde68a',
+            severity: 7,
+          });
+        }
         const hitDir = resolveImpactDir(prev.x, prev.y, false);
         spawnBlood(prev.x, prev.y, 18, hitDir.x, hitDir.y, 0.96 * (hitDir.strength || 1));
         spawnGoreBurst(prev.x, prev.y, 18, hitDir.x, hitDir.y, 0.82 * (hitDir.strength || 1));
@@ -1132,6 +1521,7 @@ function processStateFx(nextState) {
       destroyed: Boolean(obj.destroyed),
       w: Math.max(1, Number(obj.w) || 1),
       h: Math.max(1, Number(obj.h) || 1),
+      explosionRadius: Math.max(0, Number(obj.explosionRadius) || 0),
     });
     const prev = prevMapObjectMap.get(obj.id);
     if (prev && !obj.destroyed && Number(obj.hp) < Number(prev.hp)) {
@@ -1140,8 +1530,12 @@ function processStateFx(nextState) {
     }
     if (prev && !prev.destroyed && obj.destroyed) {
       if (obj.explosive) {
-        spawnRocketExplosionFx(obj.x, obj.y);
-        spawnRadialHitFx(obj.x, obj.y, Math.max(Number(obj.w) || 40, Number(obj.h) || 40) * 0.7, {
+        const propBlastRadius = Math.max(
+          72,
+          Number(obj.explosionRadius) || Number(prev.explosionRadius) || Math.max(Number(obj.w) || 40, Number(obj.h) || 40) * 0.7,
+        );
+        spawnRocketExplosionFx(obj.x, obj.y, propBlastRadius, { kind: 'prop_explosion', intensity: 1.08 });
+        spawnRadialHitFx(obj.x, obj.y, propBlastRadius, {
           count: 16,
           color: '#fdba74',
           severity: 8,
@@ -1350,16 +1744,19 @@ function processStateFx(nextState) {
     const prevRocket = visuals.rocketPrev.get(bullet.id);
     const fxX = prevRocket ? prevRocket.x : bullet.x;
     const fxY = prevRocket ? prevRocket.y : bullet.y;
-    nextRocketMap.set(bullet.id, { x: bullet.x, y: bullet.y });
+    nextRocketMap.set(bullet.id, {
+      x: bullet.x,
+      y: bullet.y,
+      explosionRadius: Math.max(54, Number(bullet.explosionRadius) || 96),
+    });
     const trailVisible = typeof isVisibleWorld !== 'function' || isVisibleWorld(fxX, fxY, 160);
-    const lastTrailAt = Math.max(0, Number(rocketTrailLastAt.get(bullet.id)) || 0);
-    if (!replayFxActive && trailVisible && nowMs - lastTrailAt >= 70) {
-      rocketTrailLastAt.set(bullet.id, nowMs);
-      spawnRocketTrailFx(fxX, fxY, bullet.vx, bullet.vy, bullet.color || '#fb923c');
+    if (!replayFxActive && trailVisible) {
+      addRocketTrailSample(bullet.id, bullet.x, bullet.y, bullet.vx, bullet.vy, bullet.color || '#fb923c', nowMs, { fromState: true });
     }
   }
   for (const [id, prev] of visuals.rocketPrev.entries()) {
     if (!nextRocketMap.has(id)) {
+      finishRocketTrail(id);
       registerImpactSource({
         x: prev.x,
         y: prev.y,
@@ -1369,7 +1766,7 @@ function processStateFx(nextState) {
         radial: true,
         target: 'both',
       });
-      spawnRocketExplosionFx(prev.x, prev.y);
+      spawnRocketExplosionFx(prev.x, prev.y, Math.max(54, Number(prev.explosionRadius) || 96));
       window.cwPlaySfx?.('rocketExplosion', {
         x: prev.x,
         y: prev.y,
@@ -1581,6 +1978,7 @@ function processReplayInterpolatedFx(previousState, nextState) {
     if (!id || nextBulletIds.has(id)) continue;
     if (visuals.rocketPrev instanceof Map) visuals.rocketPrev.delete(id);
     if (visuals.rocketTrailLastAt instanceof Map) visuals.rocketTrailLastAt.delete(id);
+    finishRocketTrail(id);
     const x = Number(bullet.x) || 0;
     const y = Number(bullet.y) || 0;
     registerImpactSource({
@@ -1592,7 +1990,7 @@ function processReplayInterpolatedFx(previousState, nextState) {
       radial: true,
       target: 'both',
     });
-    spawnRocketExplosionFx(x, y);
+    spawnRocketExplosionFx(x, y, Math.max(54, Number(bullet.explosionRadius) || 96));
     window.cwPlaySfx?.('rocketExplosion', {
       x,
       y,
@@ -1661,6 +2059,72 @@ function updateFx(dt) {
     m.vy *= 0.96;
     if (m.life <= 0) visuals.bloodMist.splice(i, 1);
   }
+
+  if (Array.isArray(visuals.explosionScars)) {
+    for (let i = visuals.explosionScars.length - 1; i >= 0; i -= 1) {
+      const scar = visuals.explosionScars[i];
+      scar.life -= dt;
+      if (scar.life <= 0) visuals.explosionScars.splice(i, 1);
+    }
+  }
+
+  if (Array.isArray(visuals.groundFragments)) {
+    for (let i = visuals.groundFragments.length - 1; i >= 0; i -= 1) {
+      const frag = visuals.groundFragments[i];
+      frag.life -= dt;
+      if (frag.life <= 0) visuals.groundFragments.splice(i, 1);
+    }
+  }
+
+  if (Array.isArray(visuals.groundDebris)) {
+    for (let i = visuals.groundDebris.length - 1; i >= 0; i -= 1) {
+      const d = visuals.groundDebris[i];
+      d.life -= dt;
+      d.x += (Number(d.vx) || 0) * dt;
+      d.y += (Number(d.vy) || 0) * dt;
+      d.z = Math.max(0, (Number(d.z) || 0) + (Number(d.vz) || 0) * dt);
+
+      if (d.kind === 'dust') {
+        d.vx = (Number(d.vx) || 0) * Math.pow(0.08, dt);
+        d.vy = (Number(d.vy) || 0) * Math.pow(0.1, dt);
+        d.vz = (Number(d.vz) || 0) - 210 * dt;
+        d.r += (Number(d.grow) || 0) * dt;
+      } else {
+        d.vx = (Number(d.vx) || 0) * Math.pow(d.z > 0.5 ? 0.56 : 0.08, dt);
+        d.vy = (Number(d.vy) || 0) * Math.pow(d.z > 0.5 ? 0.6 : 0.1, dt);
+        d.vz = (Number(d.vz) || 0) - 560 * dt;
+        d.rot += (Number(d.spin) || 0) * dt;
+        if (d.z <= 0.5 && d.vz < -80 && !d.bounced) {
+          d.z = 0;
+          d.vz = -d.vz * 0.18;
+          d.vx *= 0.42;
+          d.vy *= 0.42;
+          d.spin *= 0.38;
+          d.bounced = true;
+        } else if (d.z <= 0.5 && d.vz < 0) {
+          settleGroundDebrisChunk(d);
+          visuals.groundDebris.splice(i, 1);
+          continue;
+        } else if (d.z <= 0.5 && d.bounced && Math.abs(d.vx) + Math.abs(d.vy) < 18) {
+          settleGroundDebrisChunk(d);
+          visuals.groundDebris.splice(i, 1);
+          continue;
+        } else if (d.z <= 0.5 && d.life <= 0.18) {
+          settleGroundDebrisChunk(d);
+          visuals.groundDebris.splice(i, 1);
+          continue;
+        } else if (d.z <= 0.5) {
+          d.z = 0;
+          d.vz = 0;
+          d.spin *= 0.18;
+        }
+      }
+
+      if (d.life <= 0) visuals.groundDebris.splice(i, 1);
+    }
+  }
+
+  updateRocketTrails(dt);
 
   for (let i = visuals.rocketSmoke.length - 1; i >= 0; i -= 1) {
     const s = visuals.rocketSmoke[i];

@@ -198,9 +198,12 @@ const runStartMetaEl = document.getElementById('run-start-meta');
 const runStartImpactImgEl = document.getElementById('run-start-impact-img');
 const bottomHudEl = document.getElementById('bottom-hud');
 const skillBarEl = document.getElementById('skill-bar');
+const xpWrapEl = document.getElementById('xp-wrap');
 const xpLevelEl = document.getElementById('xp-level');
 const xpFillEl = document.getElementById('xp-fill');
+const xpGainFillEl = document.getElementById('xp-gain-fill');
 const xpTextEl = document.getElementById('xp-text');
+const xpLevelupBurstEl = document.getElementById('xp-levelup-burst');
 const levelupOverlayEl = document.getElementById('levelup-overlay');
 const levelupOptionsEl = document.getElementById('levelup-options');
 const statsToggleBtn = document.getElementById('stats-toggle');
@@ -509,6 +512,13 @@ let skillTooltipEl = null;
 let skillTooltipChip = null;
 let skillTooltipPinned = false;
 let lastSkillBarHtml = '';
+let lastSkillBarSignature = '';
+const skillHudPrevCooldowns = new Map();
+const quickHudPrevItems = new Map();
+const skillHudPulseTimers = new Map();
+const skillHudQueuedPulses = [];
+let lastBattleXpState = null;
+let battleXpFxTimer = 0;
 let devConsoleOpen = false;
 let nicknameCheckTimer = null;
 let restartReloadTimer = null;
@@ -740,8 +750,16 @@ const replayGame = {
 const RUN_START_LOADING_IMAGE = '/assets/backgrounds/screen-loading.jpg';
 const RUN_START_IMPACT_IMAGES = ['/assets/backgrounds/start-1.png', '/assets/backgrounds/start-2.png'];
 const RUN_START_MIN_LOADING_MS = 650;
-const RUN_START_ZOOM_INTRO_DURATION_MS = 2850;
-const RUN_START_SPIN_INTRO_DURATION_MS = 4300;
+const RUN_START_ZOOM_INTRO_DURATION_MS = 2200;
+const RUN_START_SPIN_INTRO_DURATION_MS = 2600;
+const RUN_START_IMPACT_DELAY_MS = 520;
+const RUN_START_REDUCED_MOTION = (() => {
+  try {
+    return Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
+  } catch {
+    return false;
+  }
+})();
 const runStartSequence = {
   token: 0,
   active: false,
@@ -2598,6 +2616,12 @@ function rarityColor(r) {
   return '#d1d5db';
 }
 
+function rarityLabel(rarity) {
+  const r = String(rarity || 'common').trim().toLowerCase();
+  const safe = ['common', 'uncommon', 'rare', 'epic', 'legendary'].includes(r) ? r : 'common';
+  return trCore(`ui.inventory.rarity.${safe}`, safe);
+}
+
 function skillBadgeLabel(skill) {
   const id = String(skill?.id || '').toLowerCase();
   const named = {
@@ -2710,15 +2734,37 @@ function positionSkillTooltipForChip(chip) {
   let x = rect.left + (rect.width * 0.5) - (tipRect.width * 0.5);
   x = Math.max(8, Math.min(window.innerWidth - tipRect.width - 8, x));
   let y = rect.top - tipRect.height - 10;
-  if (y < 8) y = rect.bottom + 10;
+  let below = false;
+  if (y < 8) {
+    y = rect.bottom + 10;
+    below = true;
+  }
   skillTooltipEl.style.left = x + 'px';
   skillTooltipEl.style.top = y + 'px';
+  skillTooltipEl.classList.toggle('is-below', below);
+  skillTooltipEl.classList.toggle('is-above', !below);
+  const arrowX = rect.left + rect.width * 0.5 - x;
+  skillTooltipEl.style.setProperty('--tooltip-arrow-x', `${Math.max(16, Math.min(tipRect.width - 16, arrowX))}px`);
 }
 
 function fmtSkillNumber(value, digits = 2) {
   const n = Number(value);
   if (!Number.isFinite(n)) return '--';
   return Number(n.toFixed(digits)).toString();
+}
+
+function hudTooltipText(ru, en) {
+  return String(window.cwI18nGetLanguage?.() || 'ru') === 'ru' ? ru : en;
+}
+
+function skillStatLine(key, fallback, value) {
+  return `${trCore(`ui.skill_stat.${key}`, fallback)}: ${value}`;
+}
+
+function formatSignedPercent(value, digits = 1) {
+  const pct = Number(value) * 100;
+  if (!Number.isFinite(pct)) return '+0%';
+  return `${pct >= 0 ? '+' : ''}${fmtSkillNumber(pct, digits)}%`;
 }
 
 function buildSkillCurrentStatLines(skill, def) {
@@ -2729,26 +2775,26 @@ function buildSkillCurrentStatLines(skill, def) {
     const damage = (Number(def?.damage) || 0) + (Number(def?.damagePerLevel) || 0) * (lvl - 1);
     const radius = (Number(def?.radius) || 0) + (Number(def?.radiusPerLevel) || 0) * (lvl - 1);
     const targets = (Number(def?.targets) || 0) + (Number(def?.targetsPerLevel) || 0) * (lvl - 1);
-    if (damage > 0) lines.push('Damage: ' + Math.round(damage));
-    if (radius > 0) lines.push('Radius: ' + Math.round(radius));
-    if (targets > 0) lines.push('Targets: ' + Math.max(1, Math.round(targets)));
-    if (Number(def?.knockbackMul) > 0) lines.push('Knockback: x' + fmtSkillNumber(Number(def?.knockbackMul), 2));
-    if (Number(def?.stunMs) > 0) lines.push('Stun: ' + Math.round(Number(def?.stunMs)) + 'ms');
+    if (damage > 0) lines.push(skillStatLine('damage', 'Damage', Math.round(damage)));
+    if (radius > 0) lines.push(skillStatLine('radius', 'Radius', Math.round(radius)));
+    if (targets > 0) lines.push(skillStatLine('targets', 'Targets', Math.max(1, Math.round(targets))));
+    if (Number(def?.knockbackMul) > 0) lines.push(skillStatLine('knockback', 'Knockback', 'x' + fmtSkillNumber(Number(def?.knockbackMul), 2)));
+    if (Number(def?.stunMs) > 0) lines.push(skillStatLine('stun', 'Stun', Math.round(Number(def?.stunMs)) + 'ms'));
 
     const baseCd = Math.max(0, Number(def?.cooldownMs) || 0);
     const cdMul = Math.max(0, Number(def?.cooldownMulPerLevel) || 0);
     if (baseCd > 0) {
       const currentCd = Math.max(220, Math.round(baseCd * Math.max(0.2, 1 - cdMul * (lvl - 1))));
-      lines.push('Cooldown: ' + fmtSkillNumber(currentCd / 1000, 2) + 's');
+      lines.push(skillStatLine('cooldown', 'Cooldown', fmtSkillNumber(currentCd / 1000, 2) + 's'));
     }
 
     if (Number(def?.missileSpeed) > 0) {
       const missileSpeed = (Number(def?.missileSpeed) || 0) + (Number(def?.missileSpeedPerLevel) || 0) * (lvl - 1);
-      lines.push('Missile speed: ' + Math.round(missileSpeed));
+      lines.push(skillStatLine('missile_speed', 'Missile speed', Math.round(missileSpeed)));
     }
     if (Number(def?.explosionRadius) > 0) {
       const explosionRadius = (Number(def?.explosionRadius) || 0) + (Number(def?.explosionRadiusPerLevel) || 0) * (lvl - 1);
-      lines.push('Explosion radius: ' + Math.round(explosionRadius));
+      lines.push(skillStatLine('explosion_radius', 'Explosion radius', Math.round(explosionRadius)));
     }
   } else {
     const dmgPct = (Number(def?.damageMulPerLevel) || 0) * lvl * 100;
@@ -2768,30 +2814,130 @@ function buildSkillCurrentStatLines(skill, def) {
     const globalPickup = (Number(def?.globalPickupRadiusPerLevel) || 0) * lvl;
     const globalRegen = (Number(def?.globalHpRegenPerSecPerLevel) || 0) * lvl;
 
-    if (dmgPct !== 0) lines.push('Damage: +' + fmtSkillNumber(dmgPct, 1) + '%');
-    if (firePct !== 0) lines.push('Fire rate: +' + fmtSkillNumber(firePct, 1) + '%');
-    if (reloadPct !== 0) lines.push('Reload speed: +' + fmtSkillNumber(reloadPct, 1) + '%');
-    if (movePct !== 0) lines.push('Move speed: +' + fmtSkillNumber(movePct, 1) + '%');
-    if (hpFlat !== 0) lines.push('Max HP: +' + Math.round(hpFlat));
-    if (pickupFlat !== 0) lines.push('Pickup radius: +' + Math.round(pickupFlat));
-    if (regen !== 0) lines.push('HP regen: +' + fmtSkillNumber(regen, 2) + '/s');
-    if (dodge !== 0) lines.push('Jump charges: +' + Math.round(dodge));
-    if (bulletPierce !== 0) lines.push('Bullet pierce: +' + Math.round(bulletPierce));
-    if (bulletDmgPct !== 0) lines.push('Bullet damage: +' + fmtSkillNumber(bulletDmgPct, 1) + '%');
-    if (globalDmgPct !== 0) lines.push('Other heroes damage: +' + fmtSkillNumber(globalDmgPct, 1) + '%');
-    if (globalFirePct !== 0) lines.push('Other heroes fire rate: +' + fmtSkillNumber(globalFirePct, 1) + '%');
-    if (globalMovePct !== 0) lines.push('Other heroes speed: +' + fmtSkillNumber(globalMovePct, 1) + '%');
-    if (globalHpFlat !== 0) lines.push('Other heroes HP: +' + Math.round(globalHpFlat));
-    if (globalPickup !== 0) lines.push('Other heroes pickup: +' + Math.round(globalPickup));
-    if (globalRegen !== 0) lines.push('Other heroes regen: +' + fmtSkillNumber(globalRegen, 2) + '/s');
+    if (dmgPct !== 0) lines.push(skillStatLine('damage', 'Damage', '+' + fmtSkillNumber(dmgPct, 1) + '%'));
+    if (firePct !== 0) lines.push(skillStatLine('fire_rate', 'Fire rate', '+' + fmtSkillNumber(firePct, 1) + '%'));
+    if (reloadPct !== 0) lines.push(skillStatLine('reload_speed', 'Reload speed', '+' + fmtSkillNumber(reloadPct, 1) + '%'));
+    if (movePct !== 0) lines.push(skillStatLine('move_speed', 'Move speed', '+' + fmtSkillNumber(movePct, 1) + '%'));
+    if (hpFlat !== 0) lines.push(skillStatLine('max_hp', 'Max HP', '+' + Math.round(hpFlat)));
+    if (pickupFlat !== 0) lines.push(skillStatLine('pickup_radius', 'Pickup radius', '+' + Math.round(pickupFlat)));
+    if (regen !== 0) lines.push(skillStatLine('hp_regen', 'HP regen', '+' + fmtSkillNumber(regen, 2) + '/s'));
+    if (dodge !== 0) lines.push(skillStatLine('jump_charges', 'Jump charges', '+' + Math.round(dodge)));
+    if (bulletPierce !== 0) lines.push(skillStatLine('bullet_pierce', 'Bullet pierce', '+' + Math.round(bulletPierce)));
+    if (bulletDmgPct !== 0) lines.push(skillStatLine('bullet_damage', 'Bullet damage', '+' + fmtSkillNumber(bulletDmgPct, 1) + '%'));
+    if (globalDmgPct !== 0) lines.push(skillStatLine('other_heroes_damage', 'Other heroes damage', '+' + fmtSkillNumber(globalDmgPct, 1) + '%'));
+    if (globalFirePct !== 0) lines.push(skillStatLine('other_heroes_fire_rate', 'Other heroes fire rate', '+' + fmtSkillNumber(globalFirePct, 1) + '%'));
+    if (globalMovePct !== 0) lines.push(skillStatLine('other_heroes_speed', 'Other heroes speed', '+' + fmtSkillNumber(globalMovePct, 1) + '%'));
+    if (globalHpFlat !== 0) lines.push(skillStatLine('other_heroes_hp', 'Other heroes HP', '+' + Math.round(globalHpFlat)));
+    if (globalPickup !== 0) lines.push(skillStatLine('other_heroes_pickup', 'Other heroes pickup', '+' + Math.round(globalPickup)));
+    if (globalRegen !== 0) lines.push(skillStatLine('other_heroes_regen', 'Other heroes regen', '+' + fmtSkillNumber(globalRegen, 2) + '/s'));
   }
 
   const cdLeft = Math.max(0, Number(skill?.cooldownMs) || 0);
   if ((skill?.kind || def?.kind) === 'active') {
-    lines.push(cdLeft > 0 ? ('Current CD: ' + fmtSkillNumber(cdLeft / 1000, 2) + 's') : 'Current CD: ready');
+    const currentCdLabel = hudTooltipText('Текущий КД', 'Current CD');
+    lines.push(cdLeft > 0 ? `${currentCdLabel}: ${fmtSkillNumber(cdLeft / 1000, 2)}s` : `${currentCdLabel}: ${trCore('ui.skill.ready', 'ready')}`);
   }
 
   return lines;
+}
+
+function getSkillTooltipIconHtml(chip, fallbackText = '') {
+  const img = chip?.querySelector?.('.skill-slot-icon img');
+  if (img instanceof HTMLImageElement && img.currentSrc) {
+    return `<span class="skill-tooltip-icon"><img src="${escapeHtml(img.currentSrc)}" alt=""></span>`;
+  }
+  const glyph = chip?.querySelector?.('.skill-slot-glyph')?.textContent || fallbackText || '?';
+  return `<span class="skill-tooltip-icon"><span>${escapeHtml(String(glyph).slice(0, 4))}</span></span>`;
+}
+
+function buildQuickItemDesc(itemDef) {
+  const use = itemDef?.combatUse && typeof itemDef.combatUse === 'object' ? itemDef.combatUse : null;
+  const type = String(use?.type || '').toLowerCase();
+  if (type === 'heal') return hudTooltipText('Мгновенно восстанавливает здоровье.', 'Instantly restores health.');
+  if (type === 'regen') return hudTooltipText('Запускает сильную регенерацию на несколько секунд.', 'Starts strong health regeneration for a few seconds.');
+  if (type === 'buff') return hudTooltipText('Временно усиливает боевые параметры героя.', 'Temporarily boosts the hero combat stats.');
+  if (type === 'grenade') return hudTooltipText('Бросает заряд в точку прицела и поражает область.', 'Throws a charge at the aim point and hits an area.');
+  if (type === 'artillery') return hudTooltipText('Вызывает серию ударов по выбранной зоне.', 'Calls a sequence of strikes on the selected zone.');
+  if (type === 'satellite') return hudTooltipText('Наводит мощный орбитальный удар по зоне.', 'Calls a powerful orbital strike on the area.');
+  return hudTooltipText('Используется из быстрого слота в бою.', 'Used from a quick slot in combat.');
+}
+
+function buildQuickItemStatLines(itemDef, quantity) {
+  const use = itemDef?.combatUse && typeof itemDef.combatUse === 'object' ? itemDef.combatUse : {};
+  const lines = [];
+  lines.push(`${hudTooltipText('Осталось', 'Quantity')}: x${Math.max(0, Number(quantity) || 0)}`);
+  if (Number(use.healFlat) > 0) lines.push(`${hudTooltipText('Лечение', 'Heal')}: +${Math.round(Number(use.healFlat))} HP`);
+  if (Number(use.hpRegenPerSec) > 0) lines.push(`${hudTooltipText('Регенерация', 'Regeneration')}: +${fmtSkillNumber(Number(use.hpRegenPerSec), 1)} HP/s`);
+  if (Number(use.damage) > 0) lines.push(skillStatLine('damage', 'Damage', Math.round(Number(use.damage))));
+  if (Number(use.radius) > 0) lines.push(skillStatLine('radius', 'Radius', Math.round(Number(use.radius))));
+  if (Number(use.waves) > 0) lines.push(`${hudTooltipText('Волны', 'Waves')}: ${Math.round(Number(use.waves))}`);
+  if (Number(use.stunMs) > 0) lines.push(skillStatLine('stun', 'Stun', `${Math.round(Number(use.stunMs))}ms`));
+  if (Number(use.damageMul) !== 0) lines.push(skillStatLine('damage', 'Damage', formatSignedPercent(use.damageMul)));
+  if (Number(use.fireRateMul) !== 0) lines.push(skillStatLine('fire_rate', 'Fire rate', formatSignedPercent(use.fireRateMul)));
+  if (Number(use.moveSpeedMul) !== 0) lines.push(skillStatLine('move_speed', 'Move speed', formatSignedPercent(use.moveSpeedMul)));
+  if (Number(use.durationMs) > 0) lines.push(`${hudTooltipText('Длительность', 'Duration')}: ${fmtSkillNumber(Number(use.durationMs) / 1000, 1)}s`);
+  return lines;
+}
+
+function getSkillTooltipInfo(chip) {
+  const sid = String(chip.dataset.skillId || '').toLowerCase();
+  if (!sid) return null;
+  const me = game.state?.players?.find((p) => p.id === game.myId);
+  const skills = Array.isArray(me?.skills) ? me.skills : [];
+  const skill = skills.find((s) => String(s.id || '').toLowerCase() === sid);
+  if (!skill) return null;
+
+  const def = game.skillCatalog?.[sid] || {};
+  const rarity = String(skill.rarity || def.rarity || 'common').toLowerCase();
+  const color = String(chip.dataset.tooltipColor || '').trim() || rarityColor(rarity);
+  const descFallback = String(skill.desc || def.desc || trCore('ui.skill.no_description', 'No description')).trim();
+  const desc = trCore(`skill.${sid}.desc`, descFallback);
+  const lines = buildSkillCurrentStatLines(skill, def);
+  const kind = String(skill?.kind || def?.kind || 'passive').toLowerCase();
+  const cooldown = Math.max(0, Number(skill?.cooldownMs) || 0);
+  const state = kind === 'active'
+    ? (cooldown > 0 ? `${formatHudCooldown(cooldown)} ${trCore('ui.skill.cooldown', 'cooldown')}` : trCore('ui.skill.ready', 'ready'))
+    : trCore('ui.skill.passive', 'passive');
+  return {
+    color,
+    title: `${trSkillNameCore(skill.id || sid, skill.name || def.name || sid)} Lv${Math.max(1, Number(skill.level) || 1)}`,
+    kicker: `${kind === 'active' ? hudTooltipText('Активное умение', 'Active skill') : hudTooltipText('Пассивное умение', 'Passive skill')} | ${rarityLabel(rarity)}`,
+    state,
+    desc,
+    lines,
+    iconHtml: getSkillTooltipIconHtml(chip, skillBadgeLabel({ ...def, ...skill })),
+  };
+}
+
+function getQuickTooltipInfo(chip) {
+  const itemId = String(chip.dataset.quickItemId || '').trim();
+  const hotkey = Math.max(1, Math.floor(Number(chip.dataset.quickHotkey) || 1));
+  const quantity = Math.max(0, Number(chip.dataset.quickQuantity) || 0);
+  if (!itemId) {
+    const title = `${hudTooltipText('Быстрый слот', 'Quick slot')} ${hotkey}`;
+    return {
+      color: '#60a5fa',
+      title,
+      kicker: hudTooltipText('Предмет', 'Item'),
+      state: hudTooltipText('Пусто', 'Empty'),
+      desc: hudTooltipText('Назначь расходник в этот слот, чтобы использовать его клавишей в бою.', 'Assign a consumable to this slot to use it with the hotkey in combat.'),
+      lines: [],
+      iconHtml: getSkillTooltipIconHtml(chip, String(hotkey)),
+    };
+  }
+  const itemDef = getProgressionCatalogItem(itemId) || {};
+  const rarity = String(itemDef?.rarity || chip.dataset.tooltipRarity || 'common').toLowerCase();
+  const color = String(chip.dataset.tooltipColor || '').trim() || rarityColor(rarity);
+  const title = trItemNameCore(itemId, String(itemDef?.name || itemId));
+  return {
+    color,
+    title,
+    kicker: `${hudTooltipText('Быстрый предмет', 'Quick item')} [${hotkey}] | ${rarityLabel(rarity)}`,
+    state: quantity > 0 ? `x${quantity}` : hudTooltipText('Закончился', 'Empty'),
+    desc: buildQuickItemDesc(itemDef),
+    lines: buildQuickItemStatLines(itemDef, quantity),
+    iconHtml: getSkillTooltipIconHtml(chip, title.slice(0, 3).toUpperCase()),
+  };
 }
 
 function showSkillTooltip(chip) {
@@ -2799,32 +2945,26 @@ function showSkillTooltip(chip) {
     hideSkillTooltip();
     return;
   }
-  const sid = String(chip.dataset.skillId || '').toLowerCase();
-  if (!sid) {
+  const kind = String(chip.dataset.tooltipKind || '').trim();
+  const info = kind === 'quick' ? getQuickTooltipInfo(chip) : getSkillTooltipInfo(chip);
+  if (!info) {
     hideSkillTooltip();
     return;
   }
-  const me = game.state?.players?.find((p) => p.id === game.myId);
-  const skills = Array.isArray(me?.skills) ? me.skills : [];
-  const skill = skills.find((s) => String(s.id || '').toLowerCase() === sid);
-  if (!skill) {
-    hideSkillTooltip();
-    return;
-  }
-
-  const def = game.skillCatalog?.[sid] || {};
-  const rarity = String(skill.rarity || def.rarity || 'common').toLowerCase();
-  const color = rarityColor(rarity);
-  const descFallback = String(skill.desc || def.desc || trCore('ui.skill.no_description', 'No description')).trim();
-  const desc = trCore(`skill.${sid}.desc`, descFallback);
-  const lines = buildSkillCurrentStatLines(skill, def);
 
   const tip = ensureSkillTooltipElement();
-  const linesHtml = lines.map((line) => '<div class="skill-tooltip-line">' + escapeHtml(line) + '</div>').join('');
-  const skillTitle = trSkillNameCore(skill.id || sid, skill.name || sid);
-  tip.innerHTML = '<div class="skill-tooltip-title" style="color:' + color + '">' + escapeHtml(skillTitle) + ' Lv' + Math.max(1, Number(skill.level) || 1) + '</div>'
-    + '<div class="skill-tooltip-desc">' + escapeHtml(desc) + '</div>'
-    + '<div class="skill-tooltip-stats">' + linesHtml + '</div>';
+  const linesHtml = info.lines.map((line) => '<div class="skill-tooltip-line">' + escapeHtml(line) + '</div>').join('');
+  tip.style.setProperty('--tooltip-color', info.color);
+  tip.innerHTML = '<div class="skill-tooltip-head">'
+    + info.iconHtml
+    + '<div class="skill-tooltip-head-copy">'
+    + '<div class="skill-tooltip-kicker">' + escapeHtml(info.kicker) + '</div>'
+    + '<div class="skill-tooltip-title">' + escapeHtml(info.title) + '</div>'
+    + '</div>'
+    + '<div class="skill-tooltip-state">' + escapeHtml(info.state) + '</div>'
+    + '</div>'
+    + '<div class="skill-tooltip-desc">' + escapeHtml(info.desc) + '</div>'
+    + (linesHtml ? '<div class="skill-tooltip-stats">' + linesHtml + '</div>' : '');
   tip.classList.remove('hidden');
   skillTooltipChip = chip;
   positionSkillTooltipForChip(chip);
@@ -2916,6 +3056,374 @@ function getBottomHudPlayer() {
     [0] || null;
 }
 
+function getSkillHudDef(skill) {
+  const sid = String(skill?.id || '').trim();
+  if (!sid) return {};
+  const lower = sid.toLowerCase();
+  return game.skillCatalog?.[sid] || game.skillCatalog?.[lower] || {};
+}
+
+function getSkillHudSearchText(skill, def) {
+  return [
+    skill?.id,
+    skill?.name,
+    skill?.desc,
+    def?.id,
+    def?.name,
+    def?.desc,
+    def?.castType,
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
+function getSkillHudRole(skill, def) {
+  const text = getSkillHudSearchText(skill, def);
+  if (/(regen|vital|heal|aid|triage|shield|plating|sterile|support|frame|hp)/.test(text)) {
+    return { key: 'support', color: '#34d399' };
+  }
+  if (/(chain|lightning|shock|storm|arc|ion|pulse|electric|matrix)/.test(text)) {
+    return { key: 'electric', color: '#22d3ee' };
+  }
+  if (/(rocket|missile|barrage|artillery|grenade|shrapnel|stomp|explosive|comet)/.test(text)) {
+    return { key: 'ordnance', color: '#fb923c' };
+  }
+  if (/(laser|beam|lance|psi|void|shadow|eclipse|night|umbral|ghost)/.test(text)) {
+    return { key: 'void', color: '#c084fc' };
+  }
+  if (/(haste|speed|reload|stride|trail|dodge|jump|drink|adrenaline)/.test(text)) {
+    return { key: 'speed', color: '#facc15' };
+  }
+  if (/(blood|rage|berserk|fang|blade|assassin|damage|weapon|firmware|slap)/.test(text)) {
+    return { key: 'damage', color: '#fb7185' };
+  }
+  if (/(magnet|gps|seeker|homing|mark|sync|cache|pickup)/.test(text)) {
+    return { key: 'tech', color: '#60a5fa' };
+  }
+  return { key: 'core', color: rarityColor(String(skill?.rarity || def?.rarity || 'common').toLowerCase()) };
+}
+
+function getSkillHudIconPath(skill, def) {
+  const explicit = String(skill?.icon || skill?.iconPath || def?.icon || def?.iconPath || '').trim();
+  if (explicit) {
+    if (/^(?:https?:)?\/\//.test(explicit) || explicit.startsWith('/') || explicit.startsWith('data:')) return explicit;
+    return `/assets/hero-skills/${explicit}`;
+  }
+  if (def?.heroId || def?.sourceHeroId) return getBattleHubHeroSkillIconPath(def);
+  return '';
+}
+
+function getQuickHudIconPath(itemDef) {
+  const explicit = String(itemDef?.icon || itemDef?.iconPath || '').trim();
+  if (explicit) {
+    if (/^(?:https?:)?\/\//.test(explicit) || explicit.startsWith('/') || explicit.startsWith('data:')) return explicit;
+    return `/assets/items/${explicit}`;
+  }
+  const id = String(itemDef?.id || '').trim();
+  return id ? `/assets/items/${id}.webp` : '';
+}
+
+function getQuickHudRole(itemDef) {
+  const type = String(itemDef?.combatUse?.type || '').toLowerCase();
+  if (type === 'heal' || type === 'regen') return { key: 'support', color: '#34d399' };
+  if (type === 'buff') return { key: 'speed', color: '#facc15' };
+  if (type === 'satellite') return { key: 'electric', color: '#22d3ee' };
+  if (type === 'grenade' || type === 'artillery') return { key: 'ordnance', color: '#fb923c' };
+  return { key: 'tech', color: '#60a5fa' };
+}
+
+function renderSkillHudIcon(iconPath, badge) {
+  const safeBadge = escapeHtml(String(badge || '?').slice(0, 4));
+  const safePath = String(iconPath || '').trim();
+  if (safePath) {
+    return `<span class="skill-slot-icon has-image"><img src="${escapeHtml(safePath)}" alt="" loading="lazy" decoding="async"><span class="skill-slot-glyph">${safeBadge}</span></span>`;
+  }
+  return `<span class="skill-slot-icon"><span class="skill-slot-glyph">${safeBadge}</span></span>`;
+}
+
+function formatHudCooldown(cdMs) {
+  const seconds = Math.max(0.1, Number(cdMs) / 1000);
+  return seconds >= 10 ? `${Math.ceil(seconds)}s` : `${seconds.toFixed(1)}s`;
+}
+
+function queueSkillHudPulse(key, className, durationMs) {
+  const safeKey = String(key || '').trim();
+  if (!safeKey) return;
+  skillHudQueuedPulses.push({ key: safeKey, className, durationMs: Math.max(120, Number(durationMs) || 800) });
+}
+
+function skillHudSelectorValue(value) {
+  return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function triggerSkillHudPulse(key, className, durationMs) {
+  if (!skillBarEl) return;
+  const safeKey = String(key || '').trim();
+  if (!safeKey) return;
+  const slot = skillBarEl.querySelector(`.skill-slot[data-skill-key="${skillHudSelectorValue(safeKey)}"]`);
+  if (!(slot instanceof HTMLElement)) return;
+  slot.classList.remove(className);
+  const timerKey = `${safeKey}:${className}`;
+  const prevTimer = skillHudPulseTimers.get(timerKey);
+  if (prevTimer) clearTimeout(prevTimer);
+  const startPulse = () => {
+    slot.classList.add(className);
+    const timer = window.setTimeout(() => {
+      slot.classList.remove(className);
+      skillHudPulseTimers.delete(timerKey);
+    }, Math.max(120, Number(durationMs) || 800));
+    skillHudPulseTimers.set(timerKey, timer);
+  };
+  if (typeof window.requestAnimationFrame === 'function') {
+    window.requestAnimationFrame(startPulse);
+  } else {
+    window.setTimeout(startPulse, 0);
+  }
+}
+
+function flushSkillHudPulses() {
+  if (!skillHudQueuedPulses.length) return;
+  const pulses = skillHudQueuedPulses.splice(0, skillHudQueuedPulses.length);
+  for (const pulse of pulses) {
+    triggerSkillHudPulse(pulse.key, pulse.className, pulse.durationMs);
+  }
+}
+
+function clearSkillHudPulseTimers() {
+  for (const timer of skillHudPulseTimers.values()) clearTimeout(timer);
+  skillHudPulseTimers.clear();
+  skillHudQueuedPulses.length = 0;
+}
+
+function renderSkillHudSlot(skill, options = {}) {
+  const sid = String(skill?.id || '').trim();
+  if (!sid) return '';
+  const def = getSkillHudDef(skill);
+  const kind = String(skill?.kind || def?.kind || 'passive').toLowerCase();
+  const isActive = kind === 'active';
+  const cd = Math.max(0, Number(skill?.cooldownMs) || 0);
+  const maxCd = Math.max(cd, Number(skill?.maxCooldownMs) || Number(def?.cooldownMs) || 0);
+  const readyProgress = maxCd > 0 ? Math.max(0, Math.min(100, 100 - (cd / maxCd) * 100)) : 100;
+  const rarity = String(skill?.rarity || def?.rarity || 'common').toLowerCase();
+  const rarityAccent = rarityColor(rarity);
+  const role = getSkillHudRole(skill, def);
+  const badge = skillBadgeLabel({ ...def, ...skill });
+  const iconPath = getSkillHudIconPath(skill, def);
+  const level = Math.max(1, Number(skill?.level) || 1);
+  const localizedSkillName = trSkillNameCore(skill.id, skill.name || def.name || sid);
+  const statusText = isActive
+    ? (cd > 0 ? `${formatHudCooldown(cd)} ${trCore('ui.skill.cooldown', 'cooldown')}` : trCore('ui.skill.ready', 'ready'))
+    : trCore('ui.skill.passive', 'passive');
+  const key = `skill:${sid.toLowerCase()}`;
+  const prevCd = skillHudPrevCooldowns.get(key);
+  const prevCdNum = Number(prevCd);
+  if (isActive && Number.isFinite(prevCdNum)) {
+    const readyThresholdMs = Math.max(80, Math.min(280, maxCd * 0.08));
+    const restartJumpMs = Math.max(160, Math.min(900, maxCd * 0.22));
+    const cooldownRestarted = cd > readyThresholdMs && cd > prevCdNum + restartJumpMs;
+    const readyCrossed = prevCdNum > readyThresholdMs && cd <= readyThresholdMs;
+    const readySkippedByRestart = cooldownRestarted && prevCdNum > readyThresholdMs;
+    const castStarted = cd > readyThresholdMs && (prevCdNum <= readyThresholdMs || cooldownRestarted);
+    if (readyCrossed || readySkippedByRestart) {
+      queueSkillHudPulse(key, 'is-ready-pulse', 1600);
+    }
+    if (castStarted) {
+      queueSkillHudPulse(key, 'is-cast-pulse', 900);
+    }
+  }
+  const stateClass = isActive ? (cd > 0 ? 'is-cooling' : 'is-ready') : 'is-passive';
+  const sizeClass = options.compact ? 'skill-slot-small' : 'skill-slot-large';
+  const label = `${localizedSkillName} Lv${level}, ${statusText}`;
+  const style = `--skill-color:${role.color};--rarity-color:${rarityAccent};--cooldown:${readyProgress.toFixed(1)}%;`;
+  const timer = isActive
+    ? (cd > 0 ? `<span class="skill-slot-timer">${escapeHtml(formatHudCooldown(cd))}</span>` : '<span class="skill-slot-ready-dot" aria-hidden="true"></span>')
+    : '';
+  skillHudPrevCooldowns.set(key, cd);
+  options.visibleKeys?.add(key);
+  options.states?.push({
+    type: 'skill',
+    key,
+    skillId: sid,
+    isActive,
+    stateClass,
+    cooldownPct: readyProgress,
+    label,
+    timerText: isActive && cd > 0 ? formatHudCooldown(cd) : '',
+  });
+  options.signatureParts?.push(['skill', sid, sizeClass, level, kind, rarity, role.key, role.color, rarityAccent, badge, iconPath].join(':'));
+  return `<div class="skill-chip skill-slot ${sizeClass} skill-slot-skill ${stateClass} role-${escapeHtml(role.key)} rarity-${escapeHtml(rarity)}" data-tooltip-kind="skill" data-tooltip-color="${escapeHtml(role.color)}" data-tooltip-rarity="${escapeHtml(rarity)}" data-skill-key="${escapeHtml(key)}" data-skill-id="${escapeHtml(sid)}" aria-label="${escapeHtml(label)}" style="${escapeHtml(style)}">`
+    + '<span class="skill-slot-ring" aria-hidden="true"></span>'
+    + '<span class="skill-slot-core">'
+    + renderSkillHudIcon(iconPath, badge)
+    + `<span class="skill-slot-level">Lv${level}</span>`
+    + timer
+    + '</span>'
+    + '</div>';
+}
+
+function renderQuickHudSlot(slot, index, options = {}) {
+  const rarity = String(slot?.rarity || 'common').toLowerCase();
+  const rarityAccent = rarityColor(rarity);
+  const quantity = Math.max(0, Number(slot?.quantity) || 0);
+  const itemId = String(slot?.itemId || '').trim();
+  const itemDef = getProgressionCatalogItem(itemId) || {};
+  const slotMatch = /^quick_(\d+)$/.exec(String(slot?.slotKey || '').trim());
+  const slotHotkey = Math.max(1, Math.floor(Number(slot?.hotkey || slotMatch?.[1] || index + 1) || 1));
+  const itemName = trItemNameCore(itemId, String(slot?.name || itemDef?.name || itemId || `Quick ${slotHotkey}`));
+  const role = getQuickHudRole(itemDef);
+  const badge = itemName.replace(/[^A-Za-z0-9]+/g, ' ').trim().slice(0, 3).toUpperCase() || 'IT';
+  const iconPath = getQuickHudIconPath({ ...itemDef, id: itemId });
+  const stateText = quantity > 0 ? `x${quantity}` : trCore('ui.inventory.empty_slot', 'Empty');
+  const label = `${slotHotkey}: ${itemName} ${stateText}`;
+  const style = `--skill-color:${role.color};--rarity-color:${rarityAccent};--cooldown:${quantity > 0 ? '100' : '0'}%;`;
+  const key = `quick:${slotHotkey}`;
+  const prev = quickHudPrevItems.get(key);
+  const prevQuantity = Math.max(0, Number(prev?.quantity) || 0);
+  const prevItemId = String(prev?.itemId || '').trim();
+  if (prev && prevQuantity > quantity && prevItemId && (prevItemId === itemId || !itemId)) {
+    queueSkillHudPulse(key, 'is-cast-pulse', 900);
+  }
+  quickHudPrevItems.set(key, { itemId, quantity });
+  options.visibleQuickKeys?.add(key);
+  options.states?.push({
+    type: 'quick',
+    key,
+    ready: quantity > 0,
+    cooldownPct: quantity > 0 ? 100 : 0,
+    label,
+    stackText: quantity > 0 ? `x${quantity}` : '-',
+  });
+  options.signatureParts?.push(['quick', slotHotkey, itemId, rarity, role.key, role.color, rarityAccent, badge, iconPath].join(':'));
+  return `<div class="skill-chip skill-slot skill-slot-large skill-slot-quick quick-chip role-${escapeHtml(role.key)} rarity-${escapeHtml(rarity)}${quantity > 0 ? ' is-ready' : ' is-empty'}" data-tooltip-kind="quick" data-tooltip-color="${escapeHtml(role.color)}" data-tooltip-rarity="${escapeHtml(rarity)}" data-skill-key="${escapeHtml(key)}" data-quick-item-id="${escapeHtml(itemId)}" data-quick-hotkey="${slotHotkey}" data-quick-quantity="${quantity}" aria-label="${escapeHtml(label)}" style="${escapeHtml(style)}">`
+    + '<span class="skill-slot-ring" aria-hidden="true"></span>'
+    + '<span class="skill-slot-core">'
+    + renderSkillHudIcon(iconPath, badge)
+    + `<span class="skill-slot-level">[${slotHotkey}]</span>`
+    + `<span class="skill-slot-stack">${quantity > 0 ? `x${quantity}` : '-'}</span>`
+    + '</span>'
+    + '</div>';
+}
+
+function setSkillSlotStatus(slot, state) {
+  const core = slot.querySelector('.skill-slot-core');
+  if (!(core instanceof HTMLElement)) return;
+  const timerEl = core.querySelector('.skill-slot-timer');
+  const readyDotEl = core.querySelector('.skill-slot-ready-dot');
+  if (state.isActive && state.timerText) {
+    if (timerEl instanceof HTMLElement) {
+      timerEl.textContent = state.timerText;
+    } else {
+      readyDotEl?.remove();
+      const nextTimer = document.createElement('span');
+      nextTimer.className = 'skill-slot-timer';
+      nextTimer.textContent = state.timerText;
+      core.appendChild(nextTimer);
+    }
+  } else if (state.isActive) {
+    timerEl?.remove();
+    if (!(readyDotEl instanceof HTMLElement)) {
+      const readyDot = document.createElement('span');
+      readyDot.className = 'skill-slot-ready-dot';
+      readyDot.setAttribute('aria-hidden', 'true');
+      core.appendChild(readyDot);
+    }
+  } else {
+    timerEl?.remove();
+    readyDotEl?.remove();
+  }
+}
+
+function syncSkillHudDynamic(states) {
+  if (!skillBarEl || !Array.isArray(states)) return;
+  for (const state of states) {
+    const key = String(state?.key || '').trim();
+    if (!key) continue;
+    const slot = skillBarEl.querySelector(`.skill-slot[data-skill-key="${skillHudSelectorValue(key)}"]`);
+    if (!(slot instanceof HTMLElement)) continue;
+    slot.style.setProperty('--cooldown', `${Math.max(0, Math.min(100, Number(state.cooldownPct) || 0)).toFixed(1)}%`);
+    if (state.label) {
+      slot.removeAttribute('title');
+      slot.setAttribute('aria-label', state.label);
+    }
+    if (state.type === 'skill') {
+      slot.classList.toggle('is-ready', state.stateClass === 'is-ready');
+      slot.classList.toggle('is-cooling', state.stateClass === 'is-cooling');
+      slot.classList.toggle('is-passive', state.stateClass === 'is-passive');
+      setSkillSlotStatus(slot, state);
+    } else if (state.type === 'quick') {
+      slot.classList.toggle('is-ready', Boolean(state.ready));
+      slot.classList.toggle('is-empty', !state.ready);
+      const stackEl = slot.querySelector('.skill-slot-stack');
+      if (stackEl instanceof HTMLElement) stackEl.textContent = state.stackText || '-';
+    }
+  }
+}
+
+function clearBattleXpFxState(resetMemory = false) {
+  if (battleXpFxTimer) {
+    window.clearTimeout(battleXpFxTimer);
+    battleXpFxTimer = 0;
+  }
+  xpWrapEl?.classList.remove('is-xp-gaining', 'is-xp-level-up');
+  if (xpGainFillEl) {
+    xpGainFillEl.style.left = '0%';
+    xpGainFillEl.style.width = '0%';
+  }
+  if (xpLevelupBurstEl) xpLevelupBurstEl.textContent = 'LEVEL UP!';
+  if (resetMemory) lastBattleXpState = null;
+}
+
+function triggerBattleXpGainFx(prevPct, nextPct, leveledUp = false, level = 0) {
+  if (!xpWrapEl) return;
+  const fromPct = Math.max(0, Math.min(100, Number(prevPct) || 0));
+  const toPct = Math.max(0, Math.min(100, Number(nextPct) || 0));
+  const gainStart = leveledUp ? Math.min(fromPct, 96) : Math.min(fromPct, toPct);
+  const gainEnd = leveledUp ? 100 : Math.max(fromPct, toPct);
+  if (xpGainFillEl) {
+    xpGainFillEl.style.left = `${gainStart.toFixed(1)}%`;
+    xpGainFillEl.style.width = `${Math.max(2, gainEnd - gainStart).toFixed(1)}%`;
+  }
+  xpWrapEl.classList.remove('is-xp-gaining', 'is-xp-level-up');
+  const startFx = () => {
+    xpWrapEl.classList.add('is-xp-gaining');
+    xpWrapEl.classList.toggle('is-xp-level-up', Boolean(leveledUp));
+    if (xpLevelupBurstEl && leveledUp) {
+      const lvl = Math.max(1, Number(level) || 1);
+      xpLevelupBurstEl.textContent = `LEVEL UP! Lv${lvl}`;
+    }
+    if (battleXpFxTimer) window.clearTimeout(battleXpFxTimer);
+    battleXpFxTimer = window.setTimeout(() => {
+      battleXpFxTimer = 0;
+      xpWrapEl?.classList.remove('is-xp-gaining', 'is-xp-level-up');
+      if (xpGainFillEl) xpGainFillEl.style.width = '0%';
+    }, leveledUp ? 1150 : 820);
+  };
+  if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(startFx);
+  else window.setTimeout(startFx, 0);
+}
+
+function updateBattleXpHud(level, xp, xpToNext) {
+  const lvl = Math.max(1, Number(level) || 1);
+  const currentXp = Math.max(0, Number(xp) || 0);
+  const nextXp = Math.max(1, Number(xpToNext) || 1);
+  const pct = Math.max(0, Math.min(100, (currentXp / nextXp) * 100));
+  const prev = lastBattleXpState;
+  const leveledUp = Boolean(prev && lvl > prev.level);
+  const gained = Boolean(prev && (leveledUp || (lvl === prev.level && currentXp > prev.xp)));
+
+  if (xpWrapEl) {
+    xpWrapEl.style.setProperty('--xp-progress', `${pct.toFixed(1)}%`);
+    xpWrapEl.style.setProperty('--xp-edge-x', `${Math.max(4, Math.min(96, pct)).toFixed(1)}%`);
+    xpWrapEl.setAttribute('aria-label', `Level ${lvl}, ${currentXp} / ${nextXp} XP`);
+  }
+  if (xpLevelEl) xpLevelEl.textContent = `Lv${lvl}`;
+  if (xpFillEl) xpFillEl.style.width = `${pct.toFixed(1)}%`;
+  if (xpTextEl) xpTextEl.textContent = `${currentXp} / ${nextXp} XP · ${Math.round(pct)}%`;
+
+  if (gained) {
+    triggerBattleXpGainFx(prev?.pct ?? 0, pct, leveledUp, lvl);
+  }
+  lastBattleXpState = { level: lvl, xp: currentXp, xpToNext: nextXp, pct };
+}
+
 function updateBottomHud() {
   if (!bottomHudEl) return;
   const inMenu = !game.state;
@@ -2924,11 +3432,21 @@ function updateBottomHud() {
   if (inMenu || !hudPlayer) {
     if (xpLevelEl) xpLevelEl.textContent = 'Lv1';
     if (xpFillEl) xpFillEl.style.width = '0%';
+    if (xpWrapEl) {
+      xpWrapEl.style.setProperty('--xp-progress', '0%');
+      xpWrapEl.style.setProperty('--xp-edge-x', '4%');
+      xpWrapEl.removeAttribute('aria-label');
+    }
     if (xpTextEl) xpTextEl.textContent = '0 / 0 XP';
+    clearBattleXpFxState(true);
     if (skillBarEl && lastSkillBarHtml !== '') {
       skillBarEl.innerHTML = '';
       lastSkillBarHtml = '';
+      lastSkillBarSignature = '';
     }
+    skillHudPrevCooldowns.clear();
+    quickHudPrevItems.clear();
+    clearSkillHudPulseTimers();
     hideSkillTooltip();
     renderLevelupChoices();
     return;
@@ -2937,51 +3455,62 @@ function updateBottomHud() {
   const lvl = Math.max(1, Number(hudPlayer.level) || 1);
   const xp = Math.max(0, Number(hudPlayer.xp) || 0);
   const xpToNext = Math.max(1, Number(hudPlayer.xpToNext) || 1);
-  if (xpLevelEl) xpLevelEl.textContent = `Lv${lvl}`;
-  if (xpFillEl) xpFillEl.style.width = `${Math.max(0, Math.min(100, (xp / xpToNext) * 100)).toFixed(1)}%`;
-  if (xpTextEl) xpTextEl.textContent = `${xp} / ${xpToNext} XP`;
+  updateBattleXpHud(lvl, xp, xpToNext);
 
   const skills = Array.isArray(hudPlayer.skills) ? hudPlayer.skills : [];
   if (skillBarEl) {
-    const compactSkills = mobile.enabled;
-    const skillChips = skills.map((s) => {
-      const cd = Math.max(0, Number(s.cooldownMs) || 0);
-      const rarity = (s.rarity || 'common').toLowerCase();
-      if (compactSkills) {
-        const badge = skillBadgeLabel(s);
-        const stateText = s.kind === 'active' ? (cd > 0 ? `${Math.max(0.1, cd / 1000).toFixed(1)}` : 'R') : '';
-        const localizedSkillName = trSkillNameCore(s.id, s.name);
-        const label = `${localizedSkillName} Lv${s.level}${stateText ? `, ${stateText === 'R' ? trCore('ui.skill.ready', 'ready') : `${stateText}s ${trCore('ui.skill.cooldown', 'cooldown')}`}` : ''}`;
-        return `<div class="skill-chip compact" data-skill-id="${s.id}" title="${label}" aria-label="${label}" style="border-color:${rarityColor(rarity)}66"><span class="skill-chip-icon">${badge}</span><span class="skill-chip-level">Lv${s.level}</span>${stateText ? `<span class="skill-chip-state${stateText === 'R' ? ' ready' : ''}">${stateText}</span>` : ''}</div>`;
+    const visibleSkillKeys = new Set();
+    const visibleQuickKeys = new Set();
+    const skillSlotStates = [];
+    const skillSignatureParts = [];
+    const activeSkills = [];
+    const passiveSkills = [];
+    for (const skill of skills) {
+      const def = getSkillHudDef(skill);
+      const kind = String(skill?.kind || def?.kind || 'passive').toLowerCase();
+      if (kind === 'active') activeSkills.push(skill);
+      else passiveSkills.push(skill);
+    }
+    const renderOptions = {
+      visibleKeys: visibleSkillKeys,
+      visibleQuickKeys,
+      states: skillSlotStates,
+      signatureParts: skillSignatureParts,
+    };
+    const activeChips = activeSkills.map((s) => renderSkillHudSlot(s, renderOptions)).filter(Boolean);
+    const quickChips = (Array.isArray(hudPlayer.quickSlots) ? hudPlayer.quickSlots : [])
+      .map((slot, index) => renderQuickHudSlot(slot, index, renderOptions))
+      .filter(Boolean);
+    const passiveChips = passiveSkills.map((s) => renderSkillHudSlot(s, { ...renderOptions, compact: true })).filter(Boolean);
+    for (const key of Array.from(skillHudPrevCooldowns.keys())) {
+      if (!visibleSkillKeys.has(key)) {
+        skillHudPrevCooldowns.delete(key);
       }
-      const localizedSkillName = trSkillNameCore(s.id, s.name);
-      const cdText = s.kind === 'active' ? (cd > 0 ? `${(cd / 1000).toFixed(1)}s` : trCore('ui.skill.ready', 'ready')) : `Lv${s.level}`;
-      return `<div class="skill-chip" data-skill-id="${s.id}" style="border-color:${rarityColor(rarity)}66"><div>${localizedSkillName} Lv${s.level}</div><div class="cd">${cdText}</div></div>`;
-    });
-    const quickChips = (Array.isArray(hudPlayer.quickSlots) ? hudPlayer.quickSlots : []).map((slot, index) => {
-      const rarity = String(slot?.rarity || 'common').toLowerCase();
-      const quantity = Math.max(0, Number(slot?.quantity) || 0);
-      const itemId = String(slot?.itemId || '').trim();
-      const itemDef = getProgressionCatalogItem(itemId) || {};
-      const slotMatch = /^quick_(\d+)$/.exec(String(slot?.slotKey || '').trim());
-      const slotHotkey = Math.max(1, Math.floor(Number(slot?.hotkey || slotMatch?.[1] || index + 1) || 1));
-      const itemName = trItemNameCore(itemId, String(slot?.name || itemDef?.name || itemId || `Quick ${slotHotkey}`));
-      const hotkey = `${slotHotkey}`;
-      const stateText = quantity > 0 ? `x${quantity}` : trCore('ui.inventory.empty_slot', 'Empty');
-      const badge = itemName.slice(0, 3).toUpperCase();
-      if (compactSkills) {
-        const label = `${hotkey}: ${itemName} ${stateText}`;
-        return `<div class="skill-chip compact quick-chip${quantity > 0 ? '' : ' empty'}" title="${label}" aria-label="${label}" style="border-color:${rarityColor(rarity)}66"><span class="skill-chip-icon">${badge}</span><span class="skill-chip-level">[${hotkey}]</span><span class="skill-chip-state${quantity > 0 ? ' ready' : ''}">${stateText}</span></div>`;
+    }
+    for (const key of Array.from(quickHudPrevItems.keys())) {
+      if (!visibleQuickKeys.has(key)) {
+        quickHudPrevItems.delete(key);
       }
-      return `<div class="skill-chip quick-chip${quantity > 0 ? '' : ' empty'}" style="border-color:${rarityColor(rarity)}66"><div>${itemName} [${hotkey}]</div><div class="cd">${stateText}</div></div>`;
-    });
-    const nextSkillBarHtml = [...skillChips, ...quickChips].join('');
-    if (nextSkillBarHtml !== lastSkillBarHtml) {
+    }
+    const rows = [];
+    const signatureRows = [];
+    if (activeChips.length || quickChips.length) {
+      rows.push(`<div class="skill-dock-row skill-dock-row-primary">${activeChips.concat(quickChips).join('')}</div>`);
+      signatureRows.push(`primary:${activeChips.length}:${quickChips.length}`);
+    }
+    if (passiveChips.length) {
+      rows.push(`<div class="skill-dock-row skill-dock-row-passive">${passiveChips.join('')}</div>`);
+      signatureRows.push(`passive:${passiveChips.length}`);
+    }
+    const nextSkillBarHtml = rows.length ? `<div class="skill-dock">${rows.join('')}</div>` : '';
+    const nextSkillBarSignature = signatureRows.concat(skillSignatureParts).join('|');
+    if (nextSkillBarSignature !== lastSkillBarSignature) {
       skillBarEl.innerHTML = nextSkillBarHtml;
       lastSkillBarHtml = nextSkillBarHtml;
+      lastSkillBarSignature = nextSkillBarSignature;
       if (skillTooltipPinned) {
-        const sid = String(skillTooltipChip?.dataset?.skillId || '').toLowerCase();
-        const nextChip = sid ? skillBarEl.querySelector('.skill-chip[data-skill-id="' + sid + '"]') : null;
+        const key = String(skillTooltipChip?.dataset?.skillKey || '').trim();
+        const nextChip = key ? skillBarEl.querySelector(`.skill-chip[data-skill-key="${skillHudSelectorValue(key)}"]`) : null;
         if (nextChip instanceof HTMLElement) {
           showSkillTooltip(nextChip);
           skillTooltipPinned = true;
@@ -2992,6 +3521,8 @@ function updateBottomHud() {
         hideSkillTooltip(false);
       }
     }
+    syncSkillHudDynamic(skillSlotStates);
+    flushSkillHudPulses();
   }
 
 
@@ -3471,6 +4002,49 @@ function updateRunStartLoadingUi() {
   }
 }
 
+function getRunStartFxProfile() {
+  const qKey = String(game.qualityKey || 'medium');
+  const lowQuality = qKey === 'low';
+  const highQuality = qKey === 'high';
+  const compactViewport = window.innerWidth < 760 || window.innerHeight < 620;
+  const lowMemory = Number(navigator.deviceMemory) > 0 && Number(navigator.deviceMemory) <= 4;
+  const constrained = RUN_START_REDUCED_MOTION || mobile.enabled || compactViewport || lowQuality || lowMemory;
+  if (RUN_START_REDUCED_MOTION) {
+    return {
+      fireworkCount: 0,
+      minSceneScale: 0.68,
+      maxSparkCount: 0,
+      trailCount: 0,
+      ringMax: 0,
+      drawStars: false,
+      smoke: false,
+      allowSpin: false,
+    };
+  }
+  if (constrained) {
+    return {
+      fireworkCount: mobile.enabled || compactViewport ? 5 : 7,
+      minSceneScale: 0.6,
+      maxSparkCount: 10,
+      trailCount: 2,
+      ringMax: 1,
+      drawStars: false,
+      smoke: false,
+      allowSpin: false,
+    };
+  }
+  return {
+    fireworkCount: highQuality ? 12 : 9,
+    minSceneScale: 0.46,
+    maxSparkCount: highQuality ? 16 : 13,
+    trailCount: highQuality ? 3 : 2,
+    ringMax: highQuality ? 2 : 1,
+    drawStars: highQuality,
+    smoke: false,
+    allowSpin: false,
+  };
+}
+
 function buildRunStartFireworks() {
   const palettes = [
     ['#facc15', '#fb923c', '#fff7ed'],
@@ -3480,34 +4054,38 @@ function buildRunStartFireworks() {
     ['#a78bfa', '#f0abfc', '#f5f3ff'],
     ['#f8fafc', '#f43f5e', '#fed7aa'],
   ];
+  const profile = getRunStartFxProfile();
   const specs = [];
-  const count = window.innerWidth < 760 ? 18 : 30;
+  const count = Math.max(0, Number(profile.fireworkCount) || 0);
   for (let i = 0; i < count; i += 1) {
     const palette = palettes[i % palettes.length];
     const sideBias = i % 2 === 0 ? -1 : 1;
     const startX = 0.08 + Math.random() * 0.84;
     const targetX = clamp(0.5 + sideBias * (0.08 + Math.random() * 0.26), 0.12, 0.88);
-    const sparkCount = 18 + Math.floor(Math.random() * 18);
-    const ringCount = 1 + Math.floor(Math.random() * 3);
+    const sparkCount = Math.max(6, Math.round((Number(profile.maxSparkCount) || 12) * (0.72 + Math.random() * 0.28)));
+    const ringCount = 1 + Math.floor(Math.random() * Math.max(1, Number(profile.ringMax) || 1));
     specs.push({
       startX,
       startY: 1.05 + Math.random() * 0.16,
       targetX,
       targetY: 0.16 + Math.random() * 0.48,
-      delay: 80 + Math.random() * 1560,
-      duration: 920 + Math.random() * 980,
-      sway: (Math.random() - 0.5) * 160,
+      delay: 70 + Math.random() * 980,
+      duration: 760 + Math.random() * 560,
+      sway: (Math.random() - 0.5) * 118,
       color: palette[0],
       color2: palette[1],
       coreColor: palette[2],
-      size: 2 + Math.random() * 3.9,
+      size: 2 + Math.random() * 2.4,
       sparkCount,
       ringCount,
-      shellRadius: 38 + Math.random() * 72,
-      crackle: 0.35 + Math.random() * 0.55,
-      gravity: 18 + Math.random() * 36,
+      shellRadius: 34 + Math.random() * 46,
+      crackle: 0.24 + Math.random() * 0.28,
+      gravity: 16 + Math.random() * 24,
       spin: Math.random() * Math.PI * 2,
       starPoints: 5 + Math.floor(Math.random() * 4),
+      trailCount: Math.max(1, Number(profile.trailCount) || 1),
+      drawStars: Boolean(profile.drawStars),
+      smoke: Boolean(profile.smoke),
     });
   }
   return specs;
@@ -3566,11 +4144,15 @@ function triggerRunStartImpact(token) {
   if (token !== runStartSequence.token || !runStartSequence.introActive || !runStartOverlayEl || !runStartImpactImgEl) return;
   runStartImpactImgEl.src = runStartSequence.impactSrc;
   runStartOverlayEl.classList.remove('impact-active');
-  void runStartOverlayEl.offsetWidth;
-  runStartOverlayEl.classList.add('impact-active');
-  runStartSequence.impactTimer = window.setTimeout(() => {
-    if (token === runStartSequence.token && runStartOverlayEl) runStartOverlayEl.classList.remove('impact-active');
-  }, 1880);
+  const startImpact = () => {
+    if (token !== runStartSequence.token || !runStartSequence.introActive || !runStartOverlayEl) return;
+    runStartOverlayEl.classList.add('impact-active');
+    runStartSequence.impactTimer = window.setTimeout(() => {
+      if (token === runStartSequence.token && runStartOverlayEl) runStartOverlayEl.classList.remove('impact-active');
+    }, 1240);
+  };
+  if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(startImpact);
+  else window.setTimeout(startImpact, 0);
 }
 
 function startRunIntroTransition(token) {
@@ -3579,7 +4161,7 @@ function startRunIntroTransition(token) {
   runStartSequence.introActive = true;
   runStartSequence.introStartedAt = performance.now();
   runStartSequence.progress = 1;
-  runStartSequence.cameraMode = Math.random() < 0.5 ? 'zoom' : 'spin';
+  runStartSequence.cameraMode = getRunStartFxProfile().allowSpin && Math.random() < 0.16 ? 'spin' : 'zoom';
   runStartSequence.impactSrc = RUN_START_IMPACT_IMAGES[Math.floor(Math.random() * RUN_START_IMPACT_IMAGES.length)] || RUN_START_IMPACT_IMAGES[0];
   visuals.runStartFireworks = buildRunStartFireworks();
   window.clearInterval(runStartSequence.progressTimer);
@@ -3590,7 +4172,7 @@ function startRunIntroTransition(token) {
     runStartOverlayEl.classList.remove('hidden');
     runStartOverlayEl.classList.add('is-intro');
   }
-  runStartSequence.impactTimer = window.setTimeout(() => triggerRunStartImpact(token), 620);
+  runStartSequence.impactTimer = window.setTimeout(() => triggerRunStartImpact(token), RUN_START_IMPACT_DELAY_MS);
   runStartSequence.finishTimer = window.setTimeout(() => finishRunStartIntro(token), getRunStartIntroDurationMs() + 320);
 }
 
@@ -3675,7 +4257,7 @@ function getRunStartMapFitScale() {
   const worldW = Math.max(1, Number(game.world?.width) || Number(game.state?.world?.width) || canvas.width);
   const worldH = Math.max(1, Number(game.world?.height) || Number(game.state?.world?.height) || canvas.height);
   const fit = Math.min(canvas.width / worldW, canvas.height / worldH, 1);
-  return clamp(fit, 0.12, 1);
+  return clamp(fit, getRunStartFxProfile().minSceneScale, 1);
 }
 
 function getRunStartSceneScale(nowMs = performance.now()) {
@@ -3698,10 +4280,10 @@ function getRunStartSceneTransform(nowMs = performance.now()) {
   const scale = getRunStartSceneScale(nowMs);
   const spinProgress = runStartEaseOutCubic(p);
   const rotation = runStartSequence.cameraMode === 'spin'
-    ? (Math.PI * 2 * (1 - spinProgress))
+    ? (Math.PI * 0.42 * (1 - spinProgress))
     : 0;
-  const impactP = clamp((Math.max(0, Number(nowMs) - runStartSequence.introStartedAt) - 620) / 520, 0, 1);
-  const shake = impactP > 0 && impactP < 1 ? (1 - impactP) * (runStartSequence.cameraMode === 'spin' ? 7 : 8) : 0;
+  const impactP = clamp((Math.max(0, Number(nowMs) - runStartSequence.introStartedAt) - RUN_START_IMPACT_DELAY_MS) / 430, 0, 1);
+  const shake = impactP > 0 && impactP < 1 ? (1 - impactP) * (runStartSequence.cameraMode === 'spin' ? 4.5 : 5.5) : 0;
   return {
     active: p < 1,
     scale,
@@ -3718,8 +4300,8 @@ function getRunStartViewportScale(nowMs = performance.now()) {
 function getRunStartViewportWorldPad(nowMs = performance.now()) {
   if (!runStartSequence.introActive) return 0;
   const scale = Math.max(0.12, getRunStartViewportScale(nowMs));
-  const rotationPad = runStartSequence.cameraMode === 'spin' ? Math.hypot(canvas.width, canvas.height) * 0.36 : 90;
-  return Math.ceil(rotationPad / scale) + 140;
+  const rotationPad = runStartSequence.cameraMode === 'spin' ? Math.min(360, Math.hypot(canvas.width, canvas.height) * 0.18) : 72;
+  return Math.ceil(rotationPad / scale) + 96;
 }
 
 function runStartColorAlpha(color, alpha = 1) {
@@ -3766,8 +4348,8 @@ function drawRunStartCinematicOverlay(nowMs = performance.now()) {
     canvas.height * 0.5,
     Math.max(canvas.width, canvas.height) * 0.78,
   );
-  vignette.addColorStop(0, `rgba(0, 0, 0, ${(0.02 * fade).toFixed(3)})`);
-  vignette.addColorStop(1, `rgba(0, 0, 0, ${(0.42 * fade).toFixed(3)})`);
+  vignette.addColorStop(0, `rgba(0, 0, 0, ${(0.015 * fade).toFixed(3)})`);
+  vignette.addColorStop(1, `rgba(0, 0, 0, ${(0.32 * fade).toFixed(3)})`);
   ctx.fillStyle = vignette;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.restore();
@@ -3787,32 +4369,33 @@ function drawRunStartCinematicOverlay(nowMs = performance.now()) {
     const y = startY + (targetY - startY) * eased - Math.sin(Math.min(1, local / 0.68) * Math.PI) * 80;
     const launchAlpha = local < 0.72 ? Math.sin(clamp(local / 0.72, 0, 1) * Math.PI) : 0;
     if (launchAlpha > 0.01) {
-      for (let t = 1; t <= 5; t += 1) {
-        const trailT = Math.max(0, local - t * 0.045);
+      const trailCount = Math.max(1, Math.min(3, Number(spec.trailCount) || 2));
+      for (let t = 1; t <= trailCount; t += 1) {
+        const trailT = Math.max(0, local - t * 0.058);
         const trailE = runStartEaseOutCubic(Math.min(trailT, 0.68) / 0.68);
         const trailArc = Math.sin(Math.min(1, trailT / 0.68) * Math.PI) * spec.sway;
         const tx = startX + (targetX - startX) * trailE + trailArc;
         const ty = startY + (targetY - startY) * trailE - Math.sin(Math.min(1, trailT / 0.68) * Math.PI) * 80;
-        const tailAlpha = launchAlpha * (1 - t / 6);
+        const tailAlpha = launchAlpha * (1 - t / (trailCount + 1));
         ctx.strokeStyle = t % 2 === 0 ? spec.color2 : spec.color;
         ctx.globalAlpha = tailAlpha * 0.38;
-        ctx.lineWidth = Math.max(1, spec.size * (1.7 - t * 0.18));
+        ctx.lineWidth = Math.max(1, spec.size * (1.5 - t * 0.16));
         ctx.lineCap = 'round';
         ctx.beginPath();
         ctx.moveTo(tx, ty);
         ctx.lineTo(x, y);
         ctx.stroke();
       }
-      const glow = ctx.createRadialGradient(x, y, 0, x, y, spec.size * 9);
-      glow.addColorStop(0, runStartColorAlpha(spec.coreColor, launchAlpha * 0.54));
-      glow.addColorStop(0.35, runStartColorAlpha(spec.color, launchAlpha * 0.24));
-      glow.addColorStop(1, runStartColorAlpha(spec.color2, 0));
       ctx.globalAlpha = 1;
-      ctx.fillStyle = glow;
+      ctx.fillStyle = runStartColorAlpha(spec.color, launchAlpha * 0.16);
       ctx.beginPath();
-      ctx.arc(x, y, spec.size * 9, 0, Math.PI * 2);
+      ctx.arc(x, y, spec.size * 6.5, 0, Math.PI * 2);
       ctx.fill();
-      drawRunStartStar(x, y, spec.size * 2.7, spec.starPoints, spec.spin + local * 10, spec.coreColor, launchAlpha);
+      ctx.fillStyle = runStartColorAlpha(spec.coreColor, launchAlpha * 0.88);
+      ctx.beginPath();
+      ctx.arc(x, y, spec.size * 1.55, 0, Math.PI * 2);
+      ctx.fill();
+      if (spec.drawStars) drawRunStartStar(x, y, spec.size * 2.2, spec.starPoints, spec.spin + local * 10, spec.coreColor, launchAlpha);
     }
     if (local > 0.54) {
       const burstT = clamp((local - 0.54) / 0.46, 0, 1);
@@ -3820,7 +4403,7 @@ function drawRunStartCinematicOverlay(nowMs = performance.now()) {
       const burstAlpha = Math.max(0, Math.pow(1 - burstT, 1.4));
       const shellR = spec.shellRadius * burstEase;
       const smokeAlpha = Math.max(0, (1 - burstT) * 0.18);
-      if (smokeAlpha > 0.005) {
+      if (spec.smoke && smokeAlpha > 0.005) {
         const smoke = ctx.createRadialGradient(x, y, shellR * 0.2, x, y, shellR * 1.45 + 24);
         smoke.addColorStop(0, `rgba(226,232,240,${smokeAlpha.toFixed(3)})`);
         smoke.addColorStop(0.45, `rgba(148,163,184,${(smokeAlpha * 0.35).toFixed(3)})`);
@@ -3858,7 +4441,7 @@ function drawRunStartCinematicOverlay(nowMs = performance.now()) {
         ctx.moveTo(px, py);
         ctx.lineTo(sx, sy);
         ctx.stroke();
-        if ((i + Math.floor(elapsed * 0.02)) % 5 === 0 && burstT < spec.crackle) {
+        if (spec.drawStars && (i + Math.floor(elapsed * 0.02)) % 6 === 0 && burstT < spec.crackle) {
           drawRunStartStar(sx, sy, spec.size * (1.6 + (i % 3) * 0.32), 5, a + elapsed * 0.018, sparkColor, burstAlpha * 0.78);
         } else {
           ctx.globalAlpha = burstAlpha * 0.66;
@@ -3870,7 +4453,7 @@ function drawRunStartCinematicOverlay(nowMs = performance.now()) {
       }
     }
   }
-  const impactT = clamp((elapsed - 620) / 680, 0, 1);
+  const impactT = clamp((elapsed - RUN_START_IMPACT_DELAY_MS) / 520, 0, 1);
   if (impactT > 0 && impactT < 1) {
     const a = Math.sin(impactT * Math.PI);
     const r = Math.max(canvas.width, canvas.height) * (0.12 + impactT * 0.48);
