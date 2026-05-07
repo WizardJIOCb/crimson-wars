@@ -3167,6 +3167,20 @@ button.rating-name:hover {
   margin-top: 0;
 }
 
+.devlog-comment-actions .devlog-meta-row {
+  flex-basis: 100%;
+  margin-top: 0;
+}
+
+.devlog-submit-hint {
+  margin-left: auto;
+  color: rgba(255, 224, 211, 0.46);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .devlog-gallery-shell {
   min-width: 0;
   display: grid;

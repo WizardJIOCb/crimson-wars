@@ -10,6 +10,7 @@
     const out = tr(key, params);
     return out === key ? String(fallback ?? key) : out;
   };
+  const NEWS_COMMENT_SHORTCUT_HINT = 'Ctrl + Enter';
   function escapeNewsHtml(raw) {
     return String(raw ?? '').replace(/[&<>"']/g, (ch) => ({
       '&': '&amp;',
@@ -335,7 +336,7 @@
     };
     input.addEventListener('input', refreshSendState);
     input.addEventListener('keydown', (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      if (!e.isComposing && (e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
         if (!sendBtn.disabled) sendBtn.click();
       }
@@ -350,9 +351,13 @@
       newsUi.replyTargetId = '';
       renderNewsFeed();
     });
+    const shortcutHint = document.createElement('span');
+    shortcutHint.className = 'news-comment-shortcut-hint';
+    shortcutHint.textContent = NEWS_COMMENT_SHORTCUT_HINT;
 
     actions.appendChild(sendBtn);
     actions.appendChild(cancelBtn);
+    actions.appendChild(shortcutHint);
     wrap.appendChild(identity);
     wrap.appendChild(input);
     wrap.appendChild(actions);
@@ -608,13 +613,17 @@
         };
         input.addEventListener('input', refreshSendState);
         input.addEventListener('keydown', (e) => {
-          if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+          if (!e.isComposing && (e.ctrlKey || e.metaKey) && e.key === 'Enter') {
             e.preventDefault();
             if (!sendBtn.disabled) sendBtn.click();
           }
         });
+        const shortcutHint = document.createElement('span');
+        shortcutHint.className = 'news-comment-shortcut-hint';
+        shortcutHint.textContent = NEWS_COMMENT_SHORTCUT_HINT;
 
         actions.appendChild(sendBtn);
+        actions.appendChild(shortcutHint);
         compose.appendChild(input);
         compose.appendChild(actions);
         newsFeedEl.appendChild(compose);

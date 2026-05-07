@@ -1908,6 +1908,15 @@ chatFormEl?.addEventListener('submit', (e) => {
 });
 
 chatInputEl?.addEventListener('keydown', (e) => {
+  if (!e.isComposing && (e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault();
+    if (typeof chatFormEl?.requestSubmit === 'function') {
+      chatFormEl.requestSubmit();
+    } else {
+      chatFormEl?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    }
+    return;
+  }
   if (e.code === 'Escape') {
     e.preventDefault();
     chatInputEl.blur();

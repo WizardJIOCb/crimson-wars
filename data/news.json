@@ -32,9 +32,9 @@
     ],
     "isPublished": true,
     "createdAt": 1778043600000,
-    "updatedAt": 1778075479765,
+    "updatedAt": 1778080567864,
     "publishedAt": 1778043600000,
-    "views": 11,
+    "views": 12,
     "reactions": {
       "heart": 5,
       "fire": 4,
@@ -66,6 +66,18 @@
         "text": "ыфы",
         "createdAt": 1778062955819,
         "updatedAt": 1778062955819,
+        "reactions": {},
+        "replies": []
+      },
+      {
+        "id": "c-1778080567864-bvvkn5",
+        "authorName": "WizardJIOCb",
+        "authorAccountId": 1,
+        "authorHeroId": "medic",
+        "authorHeroName": "Medic",
+        "text": "Привет!",
+        "createdAt": 1778080567864,
+        "updatedAt": 1778080567864,
         "reactions": {},
         "replies": []
       }

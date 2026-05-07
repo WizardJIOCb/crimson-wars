@@ -135,6 +135,7 @@ const DEVLOG_REACTIONS = [
   { key: 'idea', label: 'Идея' },
   { key: 'wait', label: 'Жду' },
 ];
+const COMMENT_SUBMIT_SHORTCUT_HINT = 'Ctrl + Enter отправит';
 const devlogState = {
   items: [],
   activeItem: null,
@@ -843,6 +844,10 @@ function escapeHtml(value) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+}
+
+function isCommentSubmitShortcut(event) {
+  return Boolean(event && !event.isComposing && (event.ctrlKey || event.metaKey) && event.key === 'Enter');
 }
 
 function setLandingCommentaryRuntime(title, text, eventKey = 'generic', cooldownMs = 5000) {
@@ -1904,6 +1909,7 @@ function renderLandingNewsComments(item) {
       <textarea data-news-comment-input="true" maxlength="1500" placeholder="Комментарий к новости"></textarea>
       <div class="devlog-comment-actions">
         <button class="devlog-submit-btn" type="submit" ${landingNewsState.postingComment ? 'disabled' : ''}>${landingNewsState.postingComment ? 'Отправка...' : 'Отправить'}</button>
+        <span class="devlog-submit-hint">${COMMENT_SUBMIT_SHORTCUT_HINT}</span>
         ${landingNewsState.commentError ? `<span class="devlog-meta-row">${escapeHtml(landingNewsState.commentError)}</span>` : ''}
       </div>
     </form>
@@ -2367,6 +2373,7 @@ function renderDevlogComments(item) {
         <textarea data-devlog-comment-input="true" maxlength="1500" placeholder="Легкий комментарий к заметке"></textarea>
         <div class="devlog-comment-actions">
           <button class="devlog-submit-btn" type="submit" data-devlog-comment-submit="${escapeHtml(item.id)}" ${devlogState.postingComment ? 'disabled' : ''}>${devlogState.postingComment ? 'Отправка...' : 'Отправить'}</button>
+          <span class="devlog-submit-hint">${COMMENT_SUBMIT_SHORTCUT_HINT}</span>
           ${devlogState.commentError ? `<span class="devlog-meta-row">${escapeHtml(devlogState.commentError)}</span>` : ''}
         </div>
       </form>
@@ -2563,6 +2570,17 @@ newsModalBody?.addEventListener('submit', (event) => {
   event.preventDefault();
   void submitLandingNewsComment(form);
 });
+newsModalBody?.addEventListener('keydown', (event) => {
+  if (!isCommentSubmitShortcut(event)) return;
+  const input = event.target;
+  if (!(input instanceof HTMLTextAreaElement) || !input.matches('[data-news-comment-input]')) return;
+  const form = input.closest('[data-news-comment-form]');
+  if (!(form instanceof HTMLFormElement)) return;
+  event.preventDefault();
+  const submitButton = form.querySelector('[type="submit"]');
+  if (submitButton instanceof HTMLButtonElement && submitButton.disabled) return;
+  void submitLandingNewsComment(form);
+});
 devlogFeature?.addEventListener('click', handleDevlogClick);
 devlogGallery?.addEventListener('click', handleDevlogClick);
 devlogTimeline?.addEventListener('click', handleDevlogClick);
@@ -2572,6 +2590,17 @@ devlogModalBody?.addEventListener('submit', (event) => {
   const form = event.target;
   if (!(form instanceof HTMLFormElement) || !form.matches('[data-devlog-comment-form]')) return;
   event.preventDefault();
+  void submitDevlogComment(form);
+});
+devlogModalBody?.addEventListener('keydown', (event) => {
+  if (!isCommentSubmitShortcut(event)) return;
+  const input = event.target;
+  if (!(input instanceof HTMLTextAreaElement) || !input.matches('[data-devlog-comment-input]')) return;
+  const form = input.closest('[data-devlog-comment-form]');
+  if (!(form instanceof HTMLFormElement)) return;
+  event.preventDefault();
+  const submitButton = form.querySelector('[type="submit"]');
+  if (submitButton instanceof HTMLButtonElement && submitButton.disabled) return;
   void submitDevlogComment(form);
 });
 document.addEventListener('keydown', (event) => {
