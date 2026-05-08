@@ -3804,6 +3804,50 @@ body.replay-game-active #scoreboard {
   animation: heroLoadoutStageEnter 760ms cubic-bezier(.16, .9, .22, 1) both;
 }
 
+.hero-profile-card {
+  --panel-accent: var(--hero-accent, #38bdf8);
+}
+
+.hero-talents-card {
+  --panel-accent: #f59e0b;
+}
+
+.hero-unique-skills-card {
+  --panel-accent: #38bdf8;
+}
+
+.hero-profile-card.is-loadout-enter,
+.hero-talents-card.is-loadout-enter,
+.hero-unique-skills-card.is-loadout-enter {
+  animation: heroCharacterPanelEnter 760ms cubic-bezier(.16, .9, .22, 1) var(--panel-enter-delay, 0ms) both;
+  will-change: opacity, transform, filter;
+}
+
+.hero-talents-card.is-loadout-enter .hero-tree-list > .hero-node,
+.hero-unique-skills-card.is-loadout-enter .hero-tree-list > .hero-node {
+  animation: heroCharacterPanelRowEnter 560ms cubic-bezier(.16, .9, .22, 1) 170ms both;
+}
+
+.hero-talents-card.is-loadout-enter .hero-tree-list > .hero-node:nth-child(2),
+.hero-unique-skills-card.is-loadout-enter .hero-tree-list > .hero-node:nth-child(2) {
+  animation-delay: 210ms;
+}
+
+.hero-talents-card.is-loadout-enter .hero-tree-list > .hero-node:nth-child(3),
+.hero-unique-skills-card.is-loadout-enter .hero-tree-list > .hero-node:nth-child(3) {
+  animation-delay: 250ms;
+}
+
+.hero-talents-card.is-loadout-enter .hero-tree-list > .hero-node:nth-child(4),
+.hero-unique-skills-card.is-loadout-enter .hero-tree-list > .hero-node:nth-child(4) {
+  animation-delay: 290ms;
+}
+
+.hero-talents-card.is-loadout-enter .hero-tree-list > .hero-node:nth-child(n + 5),
+.hero-unique-skills-card.is-loadout-enter .hero-tree-list > .hero-node:nth-child(n + 5) {
+  animation-delay: 330ms;
+}
+
 .hero-paper-doll.is-loadout-enter {
   animation: heroPaperDollEnter 820ms cubic-bezier(.16, .9, .22, 1) both;
 }
@@ -4154,6 +4198,53 @@ body.replay-game-active #scoreboard {
     opacity: 1;
     transform: translateY(0) scale(1);
     filter: blur(0) saturate(1);
+  }
+}
+
+@keyframes heroCharacterPanelEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.986);
+    filter: blur(6px) saturate(0.72);
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.02),
+      0 0 0 color-mix(in srgb, var(--panel-accent, #38bdf8) 0%, transparent);
+  }
+
+  42% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.004);
+    filter: blur(0) saturate(1.14);
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.055),
+      0 0 0 1px color-mix(in srgb, var(--panel-accent, #38bdf8) 28%, transparent),
+      0 0 28px color-mix(in srgb, var(--panel-accent, #38bdf8) 16%, transparent);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0) saturate(1);
+  }
+}
+
+@keyframes heroCharacterPanelRowEnter {
+  0% {
+    opacity: 0;
+    transform: translateX(-10px) scale(0.992);
+    filter: brightness(0.82) saturate(0.82);
+  }
+
+  70% {
+    opacity: 1;
+    transform: translateX(2px) scale(1.002);
+    filter: brightness(1.08) saturate(1.08);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    filter: brightness(1) saturate(1);
   }
 }
 
@@ -5373,22 +5464,24 @@ body.replay-game-active #scoreboard {
   min-height: 42px;
   overflow: hidden;
   isolation: isolate;
-  border-color: color-mix(in srgb, var(--skill-color) 54%, rgba(255, 255, 255, 0.16));
+  border-color: color-mix(in srgb, var(--skill-color) 34%, rgba(148, 163, 184, 0.28));
   border-radius: 9px;
   background:
-    radial-gradient(circle at 20% 0%, rgba(255, 240, 190, 0.24), transparent 34%),
-    radial-gradient(circle at 86% 100%, color-mix(in srgb, var(--skill-color) 28%, transparent), transparent 46%),
-    linear-gradient(180deg, color-mix(in srgb, var(--skill-color) 28%, #1a3027) 0%, rgba(12, 54, 30, 0.95) 48%, rgba(4, 21, 18, 0.96) 100%);
-  color: #f0fdf4;
+    radial-gradient(circle at 18% 0%, color-mix(in srgb, var(--skill-color) 16%, transparent), transparent 35%),
+    radial-gradient(circle at 100% 100%, color-mix(in srgb, var(--skill-color) 12%, transparent), transparent 48%),
+    linear-gradient(115deg, rgba(255, 255, 255, 0.11), transparent 34%),
+    linear-gradient(180deg, #171a20 0%, #080a0f 54%, #030407 100%);
+  color: #edf3fb;
   font-size: 0;
   font-weight: 950;
   letter-spacing: 0;
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.42);
   box-shadow:
-    0 0 22px color-mix(in srgb, var(--skill-color) 24%, transparent),
+    0 0 0 1px rgba(255, 255, 255, 0.025),
+    0 0 18px color-mix(in srgb, var(--skill-color) 10%, transparent),
     0 10px 20px rgba(0, 0, 0, 0.24),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2),
-    inset 0 -12px 22px rgba(0, 0, 0, 0.18);
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 -14px 24px rgba(0, 0, 0, 0.42);
   transition:
     border-color 160ms ease,
     box-shadow 160ms ease,
@@ -5402,9 +5495,9 @@ body.replay-game-active #scoreboard {
   z-index: 0;
   pointer-events: none;
   background:
-    linear-gradient(105deg, transparent 0 26%, rgba(255, 255, 255, 0.24), transparent 62%),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 10px);
-  opacity: 0.28;
+    linear-gradient(105deg, transparent 0 26%, rgba(255, 255, 255, 0.18), transparent 62%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 10px);
+  opacity: 0.22;
   transform: translateX(-18%);
   transition:
     opacity 180ms ease,
@@ -5431,25 +5524,40 @@ body.replay-game-active #scoreboard {
   place-items: center;
   width: 22px;
   height: 22px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: 1px solid color-mix(in srgb, var(--skill-color) 34%, rgba(255, 255, 255, 0.14));
   border-radius: 7px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff7ed;
+  background:
+    radial-gradient(circle at 40% 10%, color-mix(in srgb, var(--skill-color) 18%, transparent), transparent 58%),
+    linear-gradient(180deg, rgba(32, 36, 46, 0.94), rgba(5, 6, 10, 0.96));
+  color: color-mix(in srgb, var(--skill-color) 34%, #ffffff);
   font-size: 12px;
   line-height: 1;
-  box-shadow: inset 0 0 12px color-mix(in srgb, var(--skill-color) 18%, transparent);
+  box-shadow:
+    0 0 10px color-mix(in srgb, var(--skill-color) 10%, transparent),
+    inset 0 0 12px rgba(255, 255, 255, 0.035);
+}
+
+.hero-skill-upgrade-action.is-ready {
+  border-color: color-mix(in srgb, var(--skill-color) 58%, rgba(255, 255, 255, 0.18));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--skill-color) 12%, transparent),
+    0 0 22px color-mix(in srgb, var(--skill-color) 18%, transparent),
+    0 10px 20px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -14px 24px rgba(0, 0, 0, 0.4);
 }
 
 .hero-skill-upgrade-action:hover:not(:disabled),
 .hero-skill-upgrade-action:focus-visible:not(:disabled) {
-  border-color: color-mix(in srgb, var(--skill-color) 74%, rgba(255, 255, 255, 0.24));
-  filter: brightness(1.13) saturate(1.12);
+  border-color: color-mix(in srgb, var(--skill-color) 74%, rgba(255, 255, 255, 0.26));
+  filter: brightness(1.15) saturate(1.08);
   transform: translateY(-1px) scale(1.015);
   box-shadow:
-    0 0 30px color-mix(in srgb, var(--skill-color) 36%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--skill-color) 30%, transparent),
+    0 0 30px color-mix(in srgb, var(--skill-color) 28%, transparent),
     0 14px 26px rgba(0, 0, 0, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.26),
-    inset 0 -10px 20px rgba(0, 0, 0, 0.12);
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 -12px 22px rgba(0, 0, 0, 0.34);
 }
 
 .hero-skill-upgrade-action:hover:not(:disabled) .hero-skill-upgrade-action-frame,
@@ -5468,24 +5576,40 @@ body.replay-game-active #scoreboard {
 .hero-skill-upgrade-action.hero-node-up-lack:disabled {
   border-color: rgba(248, 113, 113, 0.34);
   background:
-    radial-gradient(circle at 20% 0%, rgba(254, 202, 202, 0.16), transparent 34%),
-    linear-gradient(180deg, rgba(77, 18, 27, 0.92), rgba(25, 14, 20, 0.94));
+    radial-gradient(circle at 20% 0%, rgba(254, 202, 202, 0.12), transparent 34%),
+    linear-gradient(115deg, rgba(255, 255, 255, 0.07), transparent 36%),
+    linear-gradient(180deg, rgba(37, 20, 26, 0.96), rgba(8, 7, 11, 0.98));
   color: #fecaca;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 10px 20px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
 }
 
 .hero-skill-upgrade-action.is-maxed,
 .hero-skill-upgrade-action.is-maxed:disabled {
   grid-template-columns: minmax(0, 1fr) 30px;
-  border-color: rgba(250, 204, 21, 0.38);
+  border-color: rgba(250, 204, 21, 0.48);
   background:
-    radial-gradient(circle at 20% 0%, rgba(254, 240, 138, 0.22), transparent 34%),
-    linear-gradient(180deg, rgba(84, 66, 17, 0.88), rgba(29, 24, 16, 0.94));
+    radial-gradient(circle at 18% 0%, rgba(254, 240, 138, 0.18), transparent 34%),
+    radial-gradient(circle at 88% 100%, rgba(250, 204, 21, 0.14), transparent 46%),
+    linear-gradient(115deg, rgba(255, 255, 255, 0.1), transparent 34%),
+    linear-gradient(180deg, rgba(31, 27, 17, 0.98), rgba(7, 6, 4, 0.98));
   color: #fef9c3;
+  box-shadow:
+    0 0 0 1px rgba(250, 204, 21, 0.1),
+    0 0 22px rgba(250, 204, 21, 0.16),
+    0 10px 20px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -14px 24px rgba(0, 0, 0, 0.4);
 }
 
 .hero-skill-upgrade-action.is-maxed .hero-skill-upgrade-action-mark {
   width: 30px;
+  border-color: rgba(250, 204, 21, 0.3);
+  background:
+    radial-gradient(circle at 50% 14%, rgba(254, 240, 138, 0.26), transparent 58%),
+    linear-gradient(180deg, rgba(49, 42, 20, 0.96), rgba(9, 8, 5, 0.98));
+  color: #fef3c7;
   font-size: 9px;
 }
 
@@ -7950,9 +8074,66 @@ body.levelup-open #dev-console-toggle {
 }
 
 #join-form .hero-node-up {
-  border: 1px solid rgba(74, 222, 128, 0.4) !important;
-  background: rgba(20, 83, 45, 0.76) !important;
-  color: #dcfce7 !important;
+  border: 1px solid color-mix(in srgb, var(--skill-color, #38bdf8) 34%, rgba(148, 163, 184, 0.28)) !important;
+  background:
+    radial-gradient(circle at 18% 0%, color-mix(in srgb, var(--skill-color, #38bdf8) 16%, transparent), transparent 35%),
+    radial-gradient(circle at 100% 100%, color-mix(in srgb, var(--skill-color, #38bdf8) 12%, transparent), transparent 48%),
+    linear-gradient(115deg, rgba(255, 255, 255, 0.11), transparent 34%),
+    linear-gradient(180deg, #171a20 0%, #080a0f 54%, #030407 100%) !important;
+  color: #edf3fb !important;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.025),
+    0 0 18px color-mix(in srgb, var(--skill-color, #38bdf8) 10%, transparent),
+    0 10px 20px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 -14px 24px rgba(0, 0, 0, 0.42) !important;
+}
+
+#join-form .hero-node-up.is-ready {
+  border-color: color-mix(in srgb, var(--skill-color, #38bdf8) 58%, rgba(255, 255, 255, 0.18)) !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--skill-color, #38bdf8) 12%, transparent),
+    0 0 22px color-mix(in srgb, var(--skill-color, #38bdf8) 18%, transparent),
+    0 10px 20px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -14px 24px rgba(0, 0, 0, 0.4) !important;
+}
+
+#join-form .hero-node-up:hover:not(:disabled),
+#join-form .hero-node-up:focus-visible:not(:disabled) {
+  border-color: color-mix(in srgb, var(--skill-color, #38bdf8) 74%, rgba(255, 255, 255, 0.26)) !important;
+  background:
+    radial-gradient(circle at 18% 0%, color-mix(in srgb, var(--skill-color, #38bdf8) 24%, transparent), transparent 35%),
+    radial-gradient(circle at 100% 100%, color-mix(in srgb, var(--skill-color, #38bdf8) 15%, transparent), transparent 48%),
+    linear-gradient(115deg, rgba(255, 255, 255, 0.14), transparent 34%),
+    linear-gradient(180deg, #1d222b 0%, #0a0d13 54%, #030407 100%) !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--skill-color, #38bdf8) 30%, transparent),
+    0 0 30px color-mix(in srgb, var(--skill-color, #38bdf8) 28%, transparent),
+    0 14px 26px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 -12px 22px rgba(0, 0, 0, 0.34) !important;
+}
+
+#join-form .hero-node-up.hero-node-up-lack,
+#join-form .hero-node-up.hero-node-up-lack:disabled {
+  border-color: rgba(248, 113, 113, 0.34) !important;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(254, 202, 202, 0.12), transparent 34%),
+    linear-gradient(115deg, rgba(255, 255, 255, 0.07), transparent 36%),
+    linear-gradient(180deg, rgba(37, 20, 26, 0.96), rgba(8, 7, 11, 0.98)) !important;
+  color: #fecaca !important;
+}
+
+#join-form .hero-node-up.is-maxed,
+#join-form .hero-node-up.is-maxed:disabled {
+  border-color: rgba(250, 204, 21, 0.48) !important;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(254, 240, 138, 0.18), transparent 34%),
+    radial-gradient(circle at 88% 100%, rgba(250, 204, 21, 0.14), transparent 46%),
+    linear-gradient(115deg, rgba(255, 255, 255, 0.1), transparent 34%),
+    linear-gradient(180deg, rgba(31, 27, 17, 0.98), rgba(7, 6, 4, 0.98)) !important;
+  color: #fef9c3 !important;
 }
 
 #menu-panel-play {
@@ -10325,6 +10506,11 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
   .hero-quick-belt.is-loadout-enter,
   .hero-inventory-panel.is-loadout-enter,
   .hero-inventory-panel.is-loadout-enter .inventory-item-card,
+  .hero-profile-card.is-loadout-enter,
+  .hero-talents-card.is-loadout-enter,
+  .hero-unique-skills-card.is-loadout-enter,
+  .hero-talents-card.is-loadout-enter .hero-tree-list > .hero-node,
+  .hero-unique-skills-card.is-loadout-enter .hero-tree-list > .hero-node,
   .hero-equip-slot.is-loadout-enter-slot,
   .hero-equip-slot.is-loadout-enter-slot::after,
   .hero-equip-slot.is-loadout-enter-slot .hero-equip-slot-icon,
@@ -12012,7 +12198,7 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
 }
 
 .cw-button:hover,
-#join-form button:not(.battle-hub-hero-skill):not(.hero-arena-slot):hover,
+#join-form button:not(.battle-hub-hero-skill):not(.hero-arena-slot):not(.hero-node-up):hover,
 .provider-btn:hover,
 .game-mode-option:hover,
 .auth-tab:hover {
