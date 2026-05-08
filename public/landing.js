@@ -1383,6 +1383,7 @@ function renderLatestRunsPager() {
 
 function formatRatingValue(item, categoryKey) {
   const value = Math.max(0, Number(item?.value) || 0);
+  if (categoryKey === 'global_profile') return `${value.toLocaleString('ru-RU')} idx`;
   if (categoryKey === 'best_time_run') return formatDurationSec(value);
   if (categoryKey === 'best_dps_run') return `${value.toFixed(2)} DPS`;
   if (categoryKey === 'profile_level') return `Lv${value}`;

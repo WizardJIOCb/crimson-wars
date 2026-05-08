@@ -6565,6 +6565,7 @@ message: (ev) => {
 
   if (msg.type === 'accountProgression') {
     if (msg.progression) game.playerAuth.progression = msg.progression;
+    globalThis.renderBattleHubPlayerBadge?.();
     if (msg.rewards) {
       latestRunRewards = formatRunRewardsPayload(msg.rewards);
       const cardPieces = latestRunRewards.cards.map((card) => ('+' + card.count + ' ' + card.name));

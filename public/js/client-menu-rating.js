@@ -31,7 +31,7 @@
 
   const ratingUi = {
     categories: [],
-    currentCategory: 'best_kills_run',
+    currentCategory: 'global_profile',
     modes: [
       { key: 'all', titleKey: 'ui.rating.mode.all' },
       { key: 'normal', titleKey: 'ui.rating.mode.normal' },
@@ -50,6 +50,7 @@
 
   function formatRatingValue(item, categoryKey) {
     const value = Math.max(0, Number(item?.value) || 0);
+    if (categoryKey === 'global_profile') return value.toLocaleString('ru-RU') + ' ' + trWithFallback('ui.rating.unit.index_short', 'idx');
     if (categoryKey === 'best_time_run') return formatRunDuration(value);
     if (categoryKey === 'best_dps_run') return value.toFixed(2) + ' DPS';
     if (categoryKey === 'profile_level') return 'Lv' + value + ' (XP ' + Math.max(0, Number(item?.accountXp) || 0) + ')';
@@ -68,6 +69,7 @@
       best_dps_run: 'ui.rating.category.best_dps_run',
       total_pts: 'ui.rating.category.total_pts',
       best_time_run: 'ui.rating.category.best_time_run',
+      global_profile: 'ui.rating.category.global_profile',
       profile_level: 'ui.rating.category.profile_level',
       total_kills: 'ui.rating.category.total_kills',
       shards_balance: 'ui.rating.category.shards_balance',

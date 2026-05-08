@@ -1410,11 +1410,24 @@ const BATTLE_HUB_HERO_SWAP_COVER_MS = 180;
 const BATTLE_HUB_HERO_SWAP_REVEAL_MS = 1450;
 const BATTLE_HUB_SKILL_MODAL_CLOSE_MS = 360;
 const BATTLE_HUB_SKILL_MODAL_PURCHASE_CLOSE_MS = 520;
+const BATTLE_HUB_GLOBAL_RANK_CATEGORY = 'global_profile';
 let battleHubHeroSwapTimer = 0;
 let battleHubHeroSwapToken = 0;
 let battleHubHeroSkillModalEl = null;
 let battleHubHeroSkillModalState = null;
 let battleHubHeroSkillFx = null;
+let battleHubGlobalRankFetchToken = 0;
+let battleHubGlobalRankState = {
+  playerId: 0,
+  signature: '',
+  loading: false,
+  loaded: false,
+  value: 0,
+  rank: 0,
+  total: 0,
+  profileSummary: null,
+  error: '',
+};
 const battleHubHeroSkillImagePreload = new Map();
 
 function shouldReduceBattleHubFx() {
@@ -1927,33 +1940,261 @@ document.addEventListener('keydown', (event) => {
   closeBattleHubHeroSkillModal();
 });
 
-function getBattleHubRatingSummary(progression = null, skillProgress = null, storyProgress = null) {
-  const playerId = Math.max(0, Number(game.playerAuth?.player?.id) || 0);
-  const playerName = getBattleHubPlayerName().toLowerCase();
-  const ratingState = typeof globalThis.CWRating?.getState === 'function' ? globalThis.CWRating.getState() : null;
-  const ratingItems = Array.isArray(ratingState?.items) ? ratingState.items : [];
-  const rankIndex = ratingItems.findIndex((item) => {
-    const itemPlayerId = Math.max(0, Number(item?.playerId) || 0);
-    if (playerId > 0 && itemPlayerId === playerId) return true;
-    return String(item?.nickname || '').trim().toLowerCase() === playerName;
-  });
-  if (rankIndex >= 0) {
-    const rank = ((Math.max(1, Number(ratingState?.page) || 1) - 1) * Math.max(1, Number(ratingState?.pageSize) || 10)) + rankIndex + 1;
-    const category = String(ratingState?.currentCategory || '').replace(/_/g, ' ') || 'loaded rating';
-    return { value: `#${rank}`, detail: category };
+function formatBattleHubIndexValue(value) {
+  return Math.max(0, Math.round(Number(value) || 0)).toLocaleString('ru-RU');
+}
+
+function sumBattleHubObjectValues(raw) {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  let total = 0;
+  for (const value of Object.values(source)) total += Math.max(0, Math.floor(Number(value) || 0));
+  return total;
+}
+
+function sumBattleHubNestedLevels(raw) {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  let unlocked = 0;
+  let totalLevel = 0;
+  for (const bucket of Object.values(source)) {
+    if (!bucket || typeof bucket !== 'object') continue;
+    for (const value of Object.values(bucket)) {
+      const level = Math.max(0, Math.floor(Number(value) || 0));
+      if (level <= 0) continue;
+      unlocked += 1;
+      totalLevel += level;
+    }
+  }
+  return { unlocked, totalLevel };
+}
+
+function summarizeBattleHubInventoryForGlobalRank(progression = null) {
+  const inventory = Array.isArray(progression?.inventoryItems) ? progression.inventoryItems : [];
+  const equipment = progression?.heroEquipment && typeof progression.heroEquipment === 'object' ? progression.heroEquipment : {};
+  const itemLevelByUid = new Map();
+  let inventoryCount = 0;
+  let inventoryLevels = 0;
+  let inventoryQuantity = 0;
+  for (const item of inventory) {
+    if (!item || typeof item !== 'object') continue;
+    const uid = String(item.uid || '').trim();
+    const level = Math.max(1, Math.floor(Number(item.level) || 1));
+    const quantity = Math.max(1, Math.floor(Number(item.quantity) || 1));
+    inventoryCount += 1;
+    inventoryLevels += level;
+    inventoryQuantity += quantity;
+    if (uid) itemLevelByUid.set(uid, level);
   }
 
-  const level = Math.max(1, Number(progression?.accountLevel) || 1);
-  const runs = Math.max(0, Number(progression?.totalRuns) || 0);
-  const heroesUnlocked = Array.isArray(progression?.unlockedHeroes) ? progression.unlockedHeroes.length : 1;
-  const storyDone = Math.max(0, Number(storyProgress?.completed) || 0);
-  const skillsUnlocked = Math.max(0, Number(skillProgress?.unlocked) || 0);
-  const index = (level * 100) + (storyDone * 45) + (skillsUnlocked * 35) + (heroesUnlocked * 25) + Math.min(250, runs * 5);
-  const storyTotal = Math.max(0, Number(storyProgress?.total) || 0);
-  const storyPct = storyTotal > 0 ? Math.round((storyDone / storyTotal) * 100) : 0;
+  let equippedCount = 0;
+  let equippedLevels = 0;
+  for (const slots of Object.values(equipment)) {
+    if (!slots || typeof slots !== 'object') continue;
+    for (const uidRaw of Object.values(slots)) {
+      const uid = String(uidRaw || '').trim();
+      if (!uid) continue;
+      equippedCount += 1;
+      equippedLevels += Math.max(1, itemLevelByUid.get(uid) || 1);
+    }
+  }
+  return { inventoryCount, inventoryLevels, inventoryQuantity, equippedCount, equippedLevels };
+}
+
+function computeBattleHubGlobalProfileIndex(progression = null, skillProgress = null, storyProgress = null) {
+  const accountLevel = Math.max(1, Math.floor(Number(progression?.accountLevel) || 1));
+  const accountXp = Math.max(0, Math.floor(Number(progression?.accountXp) || 0));
+  const accountSkillPoints = Math.max(0, Math.floor(Number(progression?.accountSkillPoints) || 0));
+  const shards = Math.max(0, Math.floor(Number(progression?.shards) || 0));
+  const salvage = Math.max(0, Math.floor(Number(progression?.salvage) || 0));
+  const totalRuns = Math.max(0, Math.floor(Number(progression?.totalRuns) || 0));
+  const heroesUnlocked = Array.isArray(progression?.unlockedHeroes) ? progression.unlockedHeroes.length : 0;
+  const heroLevels = progression?.heroLevels && typeof progression.heroLevels === 'object' ? progression.heroLevels : {};
+  let heroLevelPower = 0;
+  for (const levelRaw of Object.values(heroLevels)) {
+    const level = Math.max(1, Math.floor(Number(levelRaw) || 1));
+    heroLevelPower += Math.max(0, level - 1);
+  }
+  const totalHeroXp = sumBattleHubObjectValues(progression?.heroXp);
+  const heroRunsTotal = sumBattleHubObjectValues(progression?.heroRuns);
+  const skillSummary = skillProgress || sumBattleHubNestedLevels(progression?.heroSkillLevels);
+  const nodeSummary = sumBattleHubNestedLevels(progression?.heroNodes);
+  const heroCardsTotal = sumBattleHubObjectValues(progression?.heroCards);
+  const inventory = summarizeBattleHubInventoryForGlobalRank(progression);
+  const storyDone = Math.max(0, Math.floor(Number(storyProgress?.completed) || 0));
+  const storyVictories = Math.max(0, Math.floor(Number(storyProgress?.victories) || 0));
+  const storyBestScore = Math.max(0, Math.floor(Number(storyProgress?.bestScore) || 0));
+
+  return Math.max(0, Math.round(
+    accountLevel * 1000
+    + Math.floor(accountXp / 8)
+    + heroesUnlocked * 750
+    + heroLevelPower * 180
+    + Math.floor(totalHeroXp / 6)
+    + Math.max(0, Number(skillSummary?.unlocked) || 0) * 420
+    + Math.max(0, Number(skillSummary?.totalLevel) || 0) * 115
+    + nodeSummary.unlocked * 120
+    + nodeSummary.totalLevel * 65
+    + heroCardsTotal * 35
+    + storyDone * 900
+    + storyVictories * 160
+    + Math.floor(storyBestScore / 20)
+    + Math.max(totalRuns, heroRunsTotal) * 110
+    + Math.min(10000, shards * 3)
+    + Math.min(6000, salvage * 5)
+    + accountSkillPoints * 90
+    + inventory.inventoryCount * 90
+    + inventory.inventoryLevels * 85
+    + inventory.inventoryQuantity * 20
+    + inventory.equippedCount * 180
+    + inventory.equippedLevels * 120
+  ));
+}
+
+function resetBattleHubGlobalRankState() {
+  battleHubGlobalRankFetchToken += 1;
+  battleHubGlobalRankState = {
+    playerId: 0,
+    signature: '',
+    loading: false,
+    loaded: false,
+    value: 0,
+    rank: 0,
+    total: 0,
+    profileSummary: null,
+    error: '',
+  };
+}
+
+function getBattleHubGlobalRankSignature(playerId, progression, skillProgress, storyProgress, localIndex) {
+  return [
+    Math.max(0, Number(playerId) || 0),
+    Math.max(0, Number(localIndex) || 0),
+    Math.max(0, Number(progression?.accountXp) || 0),
+    Math.max(0, Number(progression?.accountLevel) || 0),
+    Math.max(0, Number(progression?.totalRuns) || 0),
+    Math.max(0, Number(progression?.shards) || 0),
+    Math.max(0, Number(progression?.salvage) || 0),
+    Math.max(0, Number(skillProgress?.unlocked) || 0),
+    Math.max(0, Number(skillProgress?.totalLevel) || 0),
+    Math.max(0, Number(storyProgress?.completed) || 0),
+    Math.max(0, Number(storyProgress?.victories) || 0),
+    Array.isArray(progression?.inventoryItems) ? progression.inventoryItems.length : 0,
+  ].join('|');
+}
+
+function requestBattleHubGlobalRank(progression = null, skillProgress = null, storyProgress = null, localIndex = 0) {
+  const playerId = Math.max(0, Number(game.playerAuth?.player?.id) || 0);
+  if (!playerId || !progression) {
+    if (battleHubGlobalRankState.playerId) resetBattleHubGlobalRankState();
+    return;
+  }
+  const signature = getBattleHubGlobalRankSignature(playerId, progression, skillProgress, storyProgress, localIndex);
+  if (battleHubGlobalRankState.playerId === playerId
+    && battleHubGlobalRankState.signature === signature
+    && (battleHubGlobalRankState.loading || battleHubGlobalRankState.loaded || battleHubGlobalRankState.error)) {
+    return;
+  }
+
+  const token = battleHubGlobalRankFetchToken + 1;
+  battleHubGlobalRankFetchToken = token;
+  battleHubGlobalRankState = {
+    playerId,
+    signature,
+    loading: true,
+    loaded: false,
+    value: localIndex,
+    rank: 0,
+    total: 0,
+    profileSummary: null,
+    error: '',
+  };
+
+  const params = new URLSearchParams({
+    category: BATTLE_HUB_GLOBAL_RANK_CATEGORY,
+    mode: 'all',
+    page: '1',
+    page_size: '10',
+    player_id: String(playerId),
+  });
+
+  fetch('/api/leaderboard?' + params.toString(), { cache: 'no-store' })
+    .then((res) => res.json().catch(() => ({})).then((payload) => ({ res, payload })))
+    .then(({ res, payload }) => {
+      if (battleHubGlobalRankFetchToken !== token) return;
+      if (!res.ok || !payload?.ok) throw new Error(payload?.message || ('HTTP ' + res.status));
+      const viewer = payload.viewer || null;
+      if (!viewer) throw new Error(trCore('ui.rating.empty', 'No data yet.'));
+      battleHubGlobalRankState = {
+        playerId,
+        signature,
+        loading: false,
+        loaded: true,
+        value: Math.max(0, Number(viewer.profileIndex ?? viewer.value) || 0),
+        rank: Math.max(0, Number(viewer.rank) || 0),
+        total: Math.max(0, Number(viewer.total || payload.total) || 0),
+        profileSummary: viewer.profileSummary || null,
+        error: '',
+      };
+      renderBattleHubPlayerBadge();
+    })
+    .catch((err) => {
+      if (battleHubGlobalRankFetchToken !== token) return;
+      battleHubGlobalRankState = {
+        playerId,
+        signature,
+        loading: false,
+        loaded: false,
+        value: localIndex,
+        rank: 0,
+        total: 0,
+        profileSummary: null,
+        error: String(err?.message || 'Failed to load global rank.'),
+      };
+      renderBattleHubPlayerBadge();
+    });
+}
+
+function getBattleHubRatingSummary(progression = null, skillProgress = null, storyProgress = null) {
+  const playerId = Math.max(0, Number(game.playerAuth?.player?.id) || 0);
+  const localIndex = computeBattleHubGlobalProfileIndex(progression, skillProgress, storyProgress);
+  if (!playerId || !progression) {
+    if (battleHubGlobalRankState.playerId) resetBattleHubGlobalRankState();
+    return {
+      value: '--',
+      detail: trCore('ui.rating.login_to_rank', 'Login to enter global rank'),
+    };
+  }
+
+  requestBattleHubGlobalRank(progression, skillProgress, storyProgress, localIndex);
+  const signature = getBattleHubGlobalRankSignature(playerId, progression, skillProgress, storyProgress, localIndex);
+  const rankState = battleHubGlobalRankState.playerId === playerId && battleHubGlobalRankState.signature === signature
+    ? battleHubGlobalRankState
+    : null;
+  const indexLabel = trCore('ui.rating.unit.index_short', 'idx');
+  if (rankState?.loaded && rankState.rank > 0) {
+    const total = Math.max(0, Number(rankState.total) || 0);
+    const topPct = total > 0 ? Math.max(1, Math.ceil((rankState.rank / total) * 100)) : 0;
+    const totalText = total > 0 ? ` · ${rankState.rank}/${total}` : '';
+    const topText = topPct > 0 ? ` · ${trCore('ui.rating.top_percent', 'top {pct}%', { pct: topPct })}` : '';
+    return {
+      value: `#${rankState.rank}`,
+      detail: `${formatBattleHubIndexValue(rankState.value)} ${indexLabel}${totalText}${topText}`,
+    };
+  }
+  if (rankState?.loading) {
+    return {
+      value: '...',
+      detail: `${formatBattleHubIndexValue(localIndex)} ${indexLabel} · ${trCore('ui.rating.rank_loading', 'loading rank')}`,
+    };
+  }
+  if (rankState?.error) {
+    return {
+      value: '#?',
+      detail: `${formatBattleHubIndexValue(localIndex)} ${indexLabel} · ${trCore('ui.rating.rank_unavailable', 'rank unavailable')}`,
+    };
+  }
   return {
-    value: String(index),
-    detail: `Story ${storyPct}% · Skills ${skillsUnlocked}`,
+    value: '...',
+    detail: `${formatBattleHubIndexValue(localIndex)} ${indexLabel} · ${trCore('ui.rating.rank_loading', 'loading rank')}`,
   };
 }
 

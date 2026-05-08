@@ -201,7 +201,7 @@
           )
         ),
         h('div', { className: 'battle-hub-profile-rating' },
-          h('span', { className: 'battle-hub-profile-rating-label' }, 'Profile Index'),
+          h('span', { className: 'battle-hub-profile-rating-label' }, tr('ui.rating.category.global_profile', 'Global Rank')),
           h('strong', { id: 'battle-hub-player-rating-value', className: 'battle-hub-profile-rating-value' }, '0'),
           h('span', { id: 'battle-hub-player-rating-detail', className: 'battle-hub-profile-rating-detail' }, 'Build profile'),
           h('div', { className: 'battle-hub-presence-block' },

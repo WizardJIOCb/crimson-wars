@@ -14,6 +14,7 @@ function createLeaderboardService({
   normalizeNickname,
 }) {
   const LEADERBOARD_CATEGORIES = {
+    global_profile: { key: 'global_profile', title: '\u0413\u043b\u043e\u0431\u0430\u043b\u044c\u043d\u044b\u0439 \u0440\u0430\u043d\u0433', source: 'account', unit: 'index' },
     best_kills_run: { key: 'best_kills_run', title: '\u0423\u0431\u0438\u0442\u043e \u0437\u0430 \u0437\u0430\u0431\u0435\u0433', source: 'runs', unit: 'kills' },
     best_pvp_kills_run: { key: 'best_pvp_kills_run', title: 'Best PvP kills run', source: 'runs', unit: 'pvp_kills' },
     runs_count: { key: 'runs_count', title: '\u041a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e \u0437\u0430\u0431\u0435\u0433\u043e\u0432', source: 'account', unit: 'runs' },
@@ -84,6 +85,208 @@ function createLeaderboardService({
     } catch {
       return null;
     }
+  }
+
+  function parseLeaderboardJson(raw, fallback) {
+    if (raw && typeof raw === 'object') return raw;
+    if (typeof raw !== 'string' || !raw.trim()) return fallback;
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function clampLeaderboardNumber(value, min = 0) {
+    return Math.max(min, Math.floor(Number(value) || 0));
+  }
+
+  function sumNestedPositiveLevels(raw) {
+    const source = raw && typeof raw === 'object' ? raw : {};
+    let unlocked = 0;
+    let totalLevel = 0;
+    for (const bucket of Object.values(source)) {
+      if (!bucket || typeof bucket !== 'object') continue;
+      for (const value of Object.values(bucket)) {
+        const level = clampLeaderboardNumber(value, 0);
+        if (level <= 0) continue;
+        unlocked += 1;
+        totalLevel += level;
+      }
+    }
+    return { unlocked, totalLevel };
+  }
+
+  function sumPositiveObjectValues(raw) {
+    const source = raw && typeof raw === 'object' ? raw : {};
+    let total = 0;
+    for (const value of Object.values(source)) total += clampLeaderboardNumber(value, 0);
+    return total;
+  }
+
+  function summarizeCampaignProgressForGlobalRank(raw) {
+    const campaigns = raw && typeof raw === 'object' ? raw : {};
+    const out = {
+      completedLevels: 0,
+      victories: 0,
+      attempts: 0,
+      bestScore: 0,
+      bestSurvivalSec: 0,
+    };
+    for (const campaign of Object.values(campaigns)) {
+      if (!campaign || typeof campaign !== 'object') continue;
+      out.victories += clampLeaderboardNumber(campaign.victories, 0);
+      out.attempts += clampLeaderboardNumber(campaign.attempts, 0);
+      out.bestScore += clampLeaderboardNumber(campaign.bestScore, 0);
+      out.bestSurvivalSec += clampLeaderboardNumber(campaign.bestSurvivalSec, 0);
+      const levels = campaign.levels && typeof campaign.levels === 'object' ? campaign.levels : {};
+      for (const level of Object.values(levels)) {
+        if (!level || typeof level !== 'object') continue;
+        const completed = clampLeaderboardNumber(level.completedAt, 0) > 0 || clampLeaderboardNumber(level.victories, 0) > 0;
+        if (completed) out.completedLevels += 1;
+        out.victories += clampLeaderboardNumber(level.victories, 0);
+        out.attempts += clampLeaderboardNumber(level.attempts, 0);
+        out.bestScore += clampLeaderboardNumber(level.bestScore, 0);
+        out.bestSurvivalSec += clampLeaderboardNumber(level.bestSurvivalSec, 0);
+      }
+    }
+    return out;
+  }
+
+  function summarizeInventoryForGlobalRank(inventoryItems, heroEquipment) {
+    const items = Array.isArray(inventoryItems) ? inventoryItems : [];
+    const equipment = heroEquipment && typeof heroEquipment === 'object' ? heroEquipment : {};
+    const itemLevelByUid = new Map();
+    let inventoryCount = 0;
+    let inventoryLevels = 0;
+    let inventoryQuantity = 0;
+    for (const item of items) {
+      if (!item || typeof item !== 'object') continue;
+      const uid = String(item.uid || '').trim();
+      const level = Math.max(1, clampLeaderboardNumber(item.level, 1) || 1);
+      const quantity = Math.max(1, clampLeaderboardNumber(item.quantity, 1) || 1);
+      inventoryCount += 1;
+      inventoryLevels += level;
+      inventoryQuantity += quantity;
+      if (uid) itemLevelByUid.set(uid, level);
+    }
+
+    let equippedCount = 0;
+    let equippedLevels = 0;
+    for (const slots of Object.values(equipment)) {
+      if (!slots || typeof slots !== 'object') continue;
+      for (const uidRaw of Object.values(slots)) {
+        const uid = String(uidRaw || '').trim();
+        if (!uid) continue;
+        equippedCount += 1;
+        equippedLevels += Math.max(1, itemLevelByUid.get(uid) || 1);
+      }
+    }
+
+    return { inventoryCount, inventoryLevels, inventoryQuantity, equippedCount, equippedLevels };
+  }
+
+  function buildGlobalProfileSummary(source) {
+    const unlockedHeroes = Array.isArray(source.unlockedHeroes)
+      ? source.unlockedHeroes
+      : parseLeaderboardJson(source.unlockedHeroesJson, []);
+    const heroLevels = source.heroLevels && typeof source.heroLevels === 'object'
+      ? source.heroLevels
+      : parseLeaderboardJson(source.heroLevelsJson, {});
+    const heroXp = source.heroXp && typeof source.heroXp === 'object'
+      ? source.heroXp
+      : parseLeaderboardJson(source.heroXpJson, {});
+    const heroSkillLevels = source.heroSkillLevels && typeof source.heroSkillLevels === 'object'
+      ? source.heroSkillLevels
+      : parseLeaderboardJson(source.heroSkillLevelsJson, {});
+    const heroNodes = source.heroNodes && typeof source.heroNodes === 'object'
+      ? source.heroNodes
+      : parseLeaderboardJson(source.heroNodesJson, {});
+    const heroCards = source.heroCards && typeof source.heroCards === 'object'
+      ? source.heroCards
+      : parseLeaderboardJson(source.heroCardsJson, {});
+    const inventoryItems = Array.isArray(source.inventoryItems)
+      ? source.inventoryItems
+      : parseLeaderboardJson(source.inventoryItemsJson, []);
+    const heroEquipment = source.heroEquipment && typeof source.heroEquipment === 'object'
+      ? source.heroEquipment
+      : parseLeaderboardJson(source.heroEquipmentJson, {});
+    const heroRuns = source.heroRuns && typeof source.heroRuns === 'object'
+      ? source.heroRuns
+      : parseLeaderboardJson(source.heroRunsJson, {});
+    const campaignProgress = source.campaignProgress && typeof source.campaignProgress === 'object'
+      ? source.campaignProgress
+      : parseLeaderboardJson(source.campaignProgressJson, {});
+
+    const accountLevel = Math.max(1, clampLeaderboardNumber(source.accountLevel, 1) || 1);
+    const accountXp = clampLeaderboardNumber(source.accountXp, 0);
+    const accountSkillPoints = clampLeaderboardNumber(source.accountSkillPoints, 0);
+    const shards = clampLeaderboardNumber(source.shards, 0);
+    const salvage = clampLeaderboardNumber(source.salvage, 0);
+    const totalRuns = clampLeaderboardNumber(source.totalRuns || sumPositiveObjectValues(heroRuns), 0);
+    const heroesUnlocked = Math.max(0, Array.isArray(unlockedHeroes) ? unlockedHeroes.length : 0);
+
+    let totalHeroLevels = 0;
+    let heroLevelPower = 0;
+    for (const levelRaw of Object.values(heroLevels && typeof heroLevels === 'object' ? heroLevels : {})) {
+      const level = Math.max(1, clampLeaderboardNumber(levelRaw, 1) || 1);
+      totalHeroLevels += level;
+      heroLevelPower += Math.max(0, level - 1);
+    }
+    const totalHeroXp = sumPositiveObjectValues(heroXp);
+    const heroRunsTotal = sumPositiveObjectValues(heroRuns);
+    const heroSkillSummary = sumNestedPositiveLevels(heroSkillLevels);
+    const heroNodeSummary = sumNestedPositiveLevels(heroNodes);
+    const heroCardsTotal = sumPositiveObjectValues(heroCards);
+    const campaignSummary = summarizeCampaignProgressForGlobalRank(campaignProgress);
+    const inventorySummary = summarizeInventoryForGlobalRank(inventoryItems, heroEquipment);
+
+    const value = Math.max(0, Math.round(
+      accountLevel * 1000
+      + Math.floor(accountXp / 8)
+      + heroesUnlocked * 750
+      + heroLevelPower * 180
+      + Math.floor(totalHeroXp / 6)
+      + heroSkillSummary.unlocked * 420
+      + heroSkillSummary.totalLevel * 115
+      + heroNodeSummary.unlocked * 120
+      + heroNodeSummary.totalLevel * 65
+      + heroCardsTotal * 35
+      + campaignSummary.completedLevels * 900
+      + campaignSummary.victories * 160
+      + Math.floor(campaignSummary.bestScore / 20)
+      + Math.floor(campaignSummary.bestSurvivalSec / 3)
+      + Math.max(totalRuns, heroRunsTotal) * 110
+      + Math.min(10000, shards * 3)
+      + Math.min(6000, salvage * 5)
+      + accountSkillPoints * 90
+      + inventorySummary.inventoryCount * 90
+      + inventorySummary.inventoryLevels * 85
+      + inventorySummary.inventoryQuantity * 20
+      + inventorySummary.equippedCount * 180
+      + inventorySummary.equippedLevels * 120
+    ));
+
+    return {
+      value,
+      components: {
+        accountLevel,
+        accountXp,
+        heroesUnlocked,
+        totalHeroLevels,
+        heroLevelPower,
+        skillsUnlocked: heroSkillSummary.unlocked,
+        skillLevels: heroSkillSummary.totalLevel,
+        talentNodes: heroNodeSummary.unlocked,
+        talentNodeLevels: heroNodeSummary.totalLevel,
+        storyCompleted: campaignSummary.completedLevels,
+        storyVictories: campaignSummary.victories,
+        totalRuns,
+        inventoryItems: inventorySummary.inventoryCount,
+        equippedItems: inventorySummary.equippedCount,
+      },
+    };
   }
 
   function buildLeaderboardReplayOrderSql(categoryKey) {
@@ -304,15 +507,72 @@ function createLeaderboardService({
     return { page: currentPage, pageSize, total, totalPages, items };
   }
 
-  function listAccountLeaderboardRows(categoryKey, page, pageSize) {
+  function getAccountLeaderboardValue(row, categoryKey) {
+    if (categoryKey === 'global_profile') return Math.max(0, Number(row?.globalProfileValue) || 0);
+    if (categoryKey === 'profile_level') return Math.max(1, Number(row?.accountLevel) || 1);
+    if (categoryKey === 'runs_count') return Math.max(0, Number(row?.totalRuns) || 0);
+    if (categoryKey === 'shards_balance') return Math.max(0, Number(row?.shards) || 0);
+    return Math.max(0, Number(row?.heroesUnlocked) || 0);
+  }
+
+  function compareAccountLeaderboardRows(categoryKey, a, b) {
+    if (categoryKey === 'profile_level') return (b.accountLevel - a.accountLevel) || (b.accountXp - a.accountXp) || (b.updatedAt - a.updatedAt);
+    if (categoryKey === 'runs_count') return (b.totalRuns - a.totalRuns) || (b.accountLevel - a.accountLevel) || (b.updatedAt - a.updatedAt);
+    if (categoryKey === 'shards_balance') return (b.shards - a.shards) || (b.accountLevel - a.accountLevel) || (b.updatedAt - a.updatedAt);
+    if (categoryKey === 'heroes_unlocked') return (b.heroesUnlocked - a.heroesUnlocked) || (b.accountLevel - a.accountLevel) || (b.updatedAt - a.updatedAt);
+    return (b.globalProfileValue - a.globalProfileValue)
+      || (b.accountLevel - a.accountLevel)
+      || (b.totalRuns - a.totalRuns)
+      || (b.skillLevels - a.skillLevels)
+      || (b.updatedAt - a.updatedAt);
+  }
+
+  function buildAccountLeaderboardItem(row, categoryKey, rank = 0, total = 0) {
+    const item = {
+      playerId: row.playerId,
+      nickname: row.nickname,
+      value: getAccountLeaderboardValue(row, categoryKey),
+      accountLevel: row.accountLevel,
+      accountXp: row.accountXp,
+      totalRuns: row.totalRuns,
+      shards: row.shards,
+      heroesUnlocked: row.heroesUnlocked,
+      at: row.updatedAt,
+    };
+    if (categoryKey === 'global_profile') {
+      item.profileIndex = row.globalProfileValue;
+      item.profileSummary = row.globalProfileSummary;
+      item.rank = Math.max(0, Number(rank) || 0);
+      item.total = Math.max(0, Number(total) || 0);
+    }
+    return item;
+  }
+
+  function listAccountLeaderboardRows(categoryKey, page, pageSize, viewerPlayerId = 0) {
     const db = getLeaderboardAuthDb();
     if (!db) return { page: 1, pageSize, total: 0, totalPages: 1, items: [] };
     const rows = db.prepare([
-      'SELECT pa.id AS playerId, pa.nickname AS nickname, ap.account_level AS accountLevel, ap.account_xp AS accountXp, ap.total_runs AS totalRuns, ap.shards AS shards, ap.unlocked_heroes_json AS unlockedHeroesJson, ap.updated_at AS updatedAt',
+      'SELECT pa.id AS playerId, pa.nickname AS nickname, ap.account_level AS accountLevel, ap.account_xp AS accountXp, ap.account_skill_points AS accountSkillPoints, ap.total_runs AS totalRuns, ap.shards AS shards, ap.salvage AS salvage, ap.unlocked_heroes_json AS unlockedHeroesJson, ap.hero_nodes_json AS heroNodesJson, ap.hero_cards_json AS heroCardsJson, ap.hero_levels_json AS heroLevelsJson, ap.hero_xp_json AS heroXpJson, ap.hero_skill_levels_json AS heroSkillLevelsJson, ap.inventory_items_json AS inventoryItemsJson, ap.hero_equipment_json AS heroEquipmentJson, ap.hero_runs_json AS heroRunsJson, ap.campaign_progress_json AS campaignProgressJson, ap.updated_at AS updatedAt',
       'FROM account_progression ap JOIN player_accounts pa ON pa.id = ap.player_id WHERE pa.is_active = 1'
     ].join('\n')).all().map((r) => {
-      let heroesUnlocked = 0;
-      try { const p = JSON.parse(String(r?.unlockedHeroesJson || '[]')); if (Array.isArray(p)) heroesUnlocked = p.length; } catch {}
+      const globalSummary = buildGlobalProfileSummary({
+        accountLevel: r?.accountLevel,
+        accountXp: r?.accountXp,
+        accountSkillPoints: r?.accountSkillPoints,
+        totalRuns: r?.totalRuns,
+        shards: r?.shards,
+        salvage: r?.salvage,
+        unlockedHeroesJson: r?.unlockedHeroesJson,
+        heroNodesJson: r?.heroNodesJson,
+        heroCardsJson: r?.heroCardsJson,
+        heroLevelsJson: r?.heroLevelsJson,
+        heroXpJson: r?.heroXpJson,
+        heroSkillLevelsJson: r?.heroSkillLevelsJson,
+        inventoryItemsJson: r?.inventoryItemsJson,
+        heroEquipmentJson: r?.heroEquipmentJson,
+        heroRunsJson: r?.heroRunsJson,
+        campaignProgressJson: r?.campaignProgressJson,
+      });
       return {
         playerId: Math.max(0, Number(r?.playerId) || 0),
         nickname: String(r?.nickname || 'Unknown').slice(0, 18),
@@ -320,33 +580,23 @@ function createLeaderboardService({
         accountXp: Math.max(0, Number(r?.accountXp) || 0),
         totalRuns: Math.max(0, Number(r?.totalRuns) || 0),
         shards: Math.max(0, Number(r?.shards) || 0),
-        heroesUnlocked: Math.max(0, Number(heroesUnlocked) || 0),
+        heroesUnlocked: Math.max(0, Number(globalSummary.components.heroesUnlocked) || 0),
+        skillLevels: Math.max(0, Number(globalSummary.components.skillLevels) || 0),
+        globalProfileValue: globalSummary.value,
+        globalProfileSummary: globalSummary.components,
         updatedAt: Math.max(0, Number(r?.updatedAt) || 0),
       };
     });
-    rows.sort((a, b) => {
-      if (categoryKey === 'profile_level') return (b.accountLevel - a.accountLevel) || (b.accountXp - a.accountXp) || (b.updatedAt - a.updatedAt);
-      if (categoryKey === 'runs_count') return (b.totalRuns - a.totalRuns) || (b.accountLevel - a.accountLevel) || (b.updatedAt - a.updatedAt);
-      if (categoryKey === 'shards_balance') return (b.shards - a.shards) || (b.accountLevel - a.accountLevel) || (b.updatedAt - a.updatedAt);
-      if (categoryKey === 'heroes_unlocked') return (b.heroesUnlocked - a.heroesUnlocked) || (b.accountLevel - a.accountLevel) || (b.updatedAt - a.updatedAt);
-      return b.updatedAt - a.updatedAt;
-    });
+    rows.sort((a, b) => compareAccountLeaderboardRows(categoryKey, a, b));
     const total = rows.length;
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     const currentPage = Math.max(1, Math.min(totalPages, Math.floor(page) || 1));
     const offset = (currentPage - 1) * pageSize;
-    const items = rows.slice(offset, offset + pageSize).map((r) => ({
-      playerId: r.playerId,
-      nickname: r.nickname,
-      value: categoryKey === 'profile_level' ? r.accountLevel : categoryKey === 'runs_count' ? r.totalRuns : categoryKey === 'shards_balance' ? r.shards : r.heroesUnlocked,
-      accountLevel: r.accountLevel,
-      accountXp: r.accountXp,
-      totalRuns: r.totalRuns,
-      shards: r.shards,
-      heroesUnlocked: r.heroesUnlocked,
-      at: r.updatedAt,
-    }));
-    return { page: currentPage, pageSize, total, totalPages, items };
+    const items = rows.slice(offset, offset + pageSize).map((r, index) => buildAccountLeaderboardItem(r, categoryKey, offset + index + 1, total));
+    const viewerId = Math.max(0, Number(viewerPlayerId) || 0);
+    const viewerIndex = viewerId > 0 ? rows.findIndex((r) => Math.max(0, Number(r.playerId) || 0) === viewerId) : -1;
+    const viewer = viewerIndex >= 0 ? buildAccountLeaderboardItem(rows[viewerIndex], categoryKey, viewerIndex + 1, total) : null;
+    return { page: currentPage, pageSize, total, totalPages, items, viewer };
   }
 
   function paginateLeaderboardItems(items, page, pageSize) {
@@ -473,41 +723,42 @@ function createLeaderboardService({
     return paginateLeaderboardItems(items, page, pageSize);
   }
 
-  function listAccountLeaderboardRowsFast(categoryKey, page, pageSize) {
+  function listAccountLeaderboardRowsFast(categoryKey, page, pageSize, viewerPlayerId = 0) {
     const progressions = typeof accountProgressionStore.listCachedProgressions === 'function'
       ? accountProgressionStore.listCachedProgressions()
       : [];
     const items = progressions.map((progression) => {
       const account = playerAuthStore.getAccountById(progression.playerId);
-      const heroesUnlocked = Array.isArray(progression.unlockedHeroes) ? progression.unlockedHeroes.length : 0;
+      const globalSummary = buildGlobalProfileSummary(progression || {});
       return {
         playerId: Math.max(0, Number(progression.playerId) || 0),
         nickname: String(account?.nickname || 'Unknown').slice(0, 18),
-        value: categoryKey === 'profile_level'
-          ? Math.max(1, Number(progression.accountLevel) || 1)
-          : categoryKey === 'runs_count'
-            ? Math.max(0, Number(progression.totalRuns) || 0)
-            : categoryKey === 'shards_balance'
-              ? Math.max(0, Number(progression.shards) || 0)
-              : heroesUnlocked,
         accountLevel: Math.max(1, Number(progression.accountLevel) || 1),
         accountXp: Math.max(0, Number(progression.accountXp) || 0),
         totalRuns: Math.max(0, Number(progression.totalRuns) || 0),
         shards: Math.max(0, Number(progression.shards) || 0),
-        heroesUnlocked,
+        heroesUnlocked: Math.max(0, Number(globalSummary.components.heroesUnlocked) || 0),
+        skillLevels: Math.max(0, Number(globalSummary.components.skillLevels) || 0),
+        globalProfileValue: globalSummary.value,
+        globalProfileSummary: globalSummary.components,
         at: Math.max(0, Number(progression.updatedAt) || 0),
+        updatedAt: Math.max(0, Number(progression.updatedAt) || 0),
       };
     }).filter((item) => item.playerId > 0);
 
-    items.sort((a, b) => {
-      if (categoryKey === 'profile_level') return (b.accountLevel - a.accountLevel) || (b.accountXp - a.accountXp) || (b.at - a.at);
-      return (b.value - a.value) || (b.accountLevel - a.accountLevel) || (b.at - a.at);
-    });
-    return paginateLeaderboardItems(items, page, pageSize);
+    items.sort((a, b) => compareAccountLeaderboardRows(categoryKey, a, b));
+    const payload = paginateLeaderboardItems(items.map((item, index) =>
+      buildAccountLeaderboardItem(item, categoryKey, index + 1, items.length)), page, pageSize);
+    const viewerId = Math.max(0, Number(viewerPlayerId) || 0);
+    const viewerIndex = viewerId > 0 ? items.findIndex((item) => Math.max(0, Number(item.playerId) || 0) === viewerId) : -1;
+    return {
+      ...payload,
+      viewer: viewerIndex >= 0 ? buildAccountLeaderboardItem(items[viewerIndex], categoryKey, viewerIndex + 1, items.length) : null,
+    };
   }
 
-  function listLeaderboardRowsFast(category, page, pageSize, modeKey) {
-    if (category?.source === 'account') return listAccountLeaderboardRowsFast(category.key, page, pageSize);
+  function listLeaderboardRowsFast(category, page, pageSize, modeKey, viewerPlayerId = 0) {
+    if (category?.source === 'account') return listAccountLeaderboardRowsFast(category.key, page, pageSize, viewerPlayerId);
     return listRunLeaderboardRowsFast(category?.key || 'best_kills_run', page, pageSize, modeKey);
   }
 
@@ -515,12 +766,15 @@ function createLeaderboardService({
     const modeKey = normalizeLeaderboardMode(query.mode);
     const availableCategories = Object.values(LEADERBOARD_CATEGORIES)
       .filter((x) => modeKey === 'all' || x.source === 'runs');
-    const fallbackCategory = availableCategories.find((x) => x.key === 'best_kills_run') || availableCategories[0] || LEADERBOARD_CATEGORIES.best_kills_run;
-    const categoryKey = String(query.category || fallbackCategory?.key || 'best_kills_run').trim();
+    const fallbackCategory = (modeKey === 'all'
+      ? (availableCategories.find((x) => x.key === 'global_profile') || availableCategories.find((x) => x.key === 'best_kills_run'))
+      : availableCategories.find((x) => x.key === 'best_kills_run')) || availableCategories[0] || LEADERBOARD_CATEGORIES.best_kills_run;
+    const categoryKey = String(query.category || fallbackCategory?.key || (modeKey === 'all' ? 'global_profile' : 'best_kills_run')).trim();
     const category = availableCategories.find((x) => x.key === categoryKey) || fallbackCategory;
     const page = Math.max(1, Number(query.page) || 1);
     const pageSize = Math.max(1, Math.min(30, Number(query.page_size) || 10));
-    const cacheKey = [category.key, modeKey, page, pageSize].join('|');
+    const viewerPlayerId = Math.max(0, Number(query.player_id || query.playerId || query.viewer_player_id) || 0);
+    const cacheKey = [category.key, modeKey, page, pageSize, viewerPlayerId].join('|');
     const cached = leaderboardResponseCache.get(cacheKey);
     if (cached && (useMysqlStore || Date.now() - cached.at < LEADERBOARD_RESPONSE_CACHE_MS)) {
       return { ...cached.payload, now: Date.now() };
@@ -538,15 +792,16 @@ function createLeaderboardService({
         pageSize,
         total: 0,
         totalPages: 1,
+        viewer: null,
         lowLatencyMode: true,
       };
       return { ...stalePayload, lowLatencyMode: true, now: Date.now() };
     }
 
     const payload = useMysqlStore
-      ? listLeaderboardRowsFast(category, page, pageSize, modeKey)
+      ? listLeaderboardRowsFast(category, page, pageSize, modeKey, viewerPlayerId)
       : category.source === 'account'
-        ? listAccountLeaderboardRows(category.key, page, pageSize)
+        ? listAccountLeaderboardRows(category.key, page, pageSize, viewerPlayerId)
         : listRunLeaderboardRows(category.key, page, pageSize, modeKey);
     const responsePayload = {
       ok: true,
@@ -559,6 +814,7 @@ function createLeaderboardService({
       pageSize: payload.pageSize,
       total: payload.total,
       totalPages: payload.totalPages,
+      viewer: payload.viewer || null,
     };
     leaderboardResponseCache.set(cacheKey, { at: Date.now(), payload: responsePayload });
     if (leaderboardResponseCache.size > 80) {
