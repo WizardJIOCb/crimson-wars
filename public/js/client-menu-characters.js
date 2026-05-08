@@ -5,6 +5,7 @@
   const HERO_LOADOUT_SWAP_FX_MS = 1350;
   const HERO_SKILL_UPGRADE_FX_MS = 1550;
   const HERO_TALENT_UPGRADE_FX_MS = 1350;
+  const HERO_ROSTER_MODE_STORAGE_KEY = 'cwHeroRosterMode';
   let heroEquipSlotFx = null;
   let heroEquipSlotFxTimer = 0;
   let heroLoadoutSwapFx = null;
@@ -676,6 +677,247 @@
   function getHeroSkillLevel(progression, heroId, skillId) {
     return Math.max(0, Number(progression?.heroSkillLevels?.[heroId]?.[skillId]) || 0);
   }
+  const HERO_PROFILE_RU = {
+    dossier: '\u0422\u0430\u043a\u0442\u0438\u0447\u0435\u0441\u043a\u043e\u0435 \u0434\u043e\u0441\u044c\u0435',
+    level: '\u0423\u0440\u043e\u0432\u0435\u043d\u044c',
+    xp: '\u041e\u043f\u044b\u0442',
+    max: '\u041c\u0430\u043a\u0441',
+    unlocked: '\u041e\u0442\u043a\u0440\u044b\u0442',
+    locked: '\u0417\u0430\u043a\u0440\u044b\u0442',
+    attributes: '\u0425\u0430\u0440\u0430\u043a\u0442\u0435\u0440\u0438\u0441\u0442\u0438\u043a\u0438',
+    bonuses: '\u0411\u043e\u0435\u0432\u044b\u0435 \u0431\u043e\u043d\u0443\u0441\u044b',
+    sources: '\u041e\u0442\u043a\u0443\u0434\u0430 \u0438\u0434\u0443\u0442 \u0431\u043e\u043d\u0443\u0441\u044b',
+    power: '\u0421\u0438\u043b\u0430',
+    agility: '\u041b\u043e\u0432\u043a\u043e\u0441\u0442\u044c',
+    vitality: '\u0416\u0438\u0432\u0443\u0447\u0435\u0441\u0442\u044c',
+    tech: '\u0422\u0435\u0445\u043d\u0438\u043a\u0430',
+    damage: '\u0423\u0440\u043e\u043d',
+    fireRate: '\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u0440\u0435\u043b\u044c\u043d\u043e\u0441\u0442\u044c',
+    reload: '\u041f\u0435\u0440\u0435\u0437\u0430\u0440\u044f\u0434\u043a\u0430',
+    moveSpeed: '\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c',
+    maxHp: '\u0417\u0434\u043e\u0440\u043e\u0432\u044c\u0435',
+    regen: '\u0420\u0435\u0433\u0435\u043d',
+    pickup: '\u041f\u043e\u0434\u0431\u043e\u0440',
+    dodge: '\u0420\u044b\u0432\u043a\u0438',
+    heroLevel: '\u0413\u0435\u0440\u043e\u0439 + \u0443\u0440\u043e\u0432\u0435\u043d\u044c',
+    talents: '\u0422\u0430\u043b\u0430\u043d\u0442\u044b',
+    passiveSkills: '\u041f\u0430\u0441\u0441\u0438\u0432\u043d\u044b\u0435 \u043d\u0430\u0432\u044b\u043a\u0438',
+    rosterAuras: '\u0410\u0443\u0440\u044b \u043e\u0442\u0440\u044f\u0434\u0430',
+    gear: '\u0421\u043d\u0430\u0440\u044f\u0436\u0435\u043d\u0438\u0435',
+    none: '\u043d\u0435\u0442',
+  };
+  function heroProfileText(key, enText) {
+    return getInventoryUiText(HERO_PROFILE_RU[key] || enText, enText);
+  }
+  function createHeroBonusBucket() {
+    return {
+      damageMul: 0,
+      fireRateMul: 0,
+      reloadSpeedMul: 0,
+      moveSpeedMul: 0,
+      maxHpFlat: 0,
+      hpRegenPerSec: 0,
+      pickupRadius: 0,
+      extraDodgeCharges: 0,
+    };
+  }
+  function addHeroBonusValue(bucket, key, value) {
+    if (!bucket || !(key in bucket)) return;
+    const n = Number(value) || 0;
+    if (Math.abs(n) < 0.0001) return;
+    bucket[key] += n;
+  }
+  function addHeroLevelBonusDef(bucket, def, level, prefix = '') {
+    const lvl = Math.max(0, Number(level) || 0);
+    if (!bucket || !def || lvl <= 0) return;
+    const prop = (name) => {
+      if (!prefix) return name;
+      return prefix + name.charAt(0).toUpperCase() + name.slice(1);
+    };
+    addHeroBonusValue(bucket, 'damageMul', (Number(def[prop('damageMulPerLevel')]) || 0) * lvl);
+    addHeroBonusValue(bucket, 'fireRateMul', (Number(def[prop('fireRateMulPerLevel')]) || 0) * lvl);
+    addHeroBonusValue(bucket, 'reloadSpeedMul', (Number(def[prop('reloadSpeedMulPerLevel')]) || 0) * lvl);
+    addHeroBonusValue(bucket, 'moveSpeedMul', (Number(def[prop('moveSpeedMulPerLevel')]) || 0) * lvl);
+    addHeroBonusValue(bucket, 'maxHpFlat', (Number(def[prop('maxHpFlatPerLevel')]) || 0) * lvl);
+    addHeroBonusValue(bucket, 'hpRegenPerSec', (Number(def[prop('hpRegenPerSecPerLevel')]) || 0) * lvl);
+    addHeroBonusValue(bucket, 'pickupRadius', (Number(def[prop('pickupRadiusPerLevel')]) || 0) * lvl);
+    addHeroBonusValue(bucket, 'extraDodgeCharges', (Number(def[prop('extraDodgeChargesPerLevel')]) || 0) * lvl);
+  }
+  function addHeroGearStats(bucket, stats, scale = 1) {
+    if (!bucket || !stats) return;
+    const mul = Number(scale) || 1;
+    addHeroBonusValue(bucket, 'damageMul', (Number(stats.damageMul) || 0) * mul);
+    addHeroBonusValue(bucket, 'fireRateMul', (Number(stats.fireRateMul) || 0) * mul);
+    addHeroBonusValue(bucket, 'reloadSpeedMul', (Number(stats.reloadSpeedMul) || 0) * mul);
+    addHeroBonusValue(bucket, 'moveSpeedMul', (Number(stats.moveSpeedMul) || 0) * mul);
+    addHeroBonusValue(bucket, 'maxHpFlat', (Number(stats.maxHpFlat) || 0) * mul);
+    addHeroBonusValue(bucket, 'hpRegenPerSec', (Number(stats.hpRegenPerSec) || 0) * mul);
+    addHeroBonusValue(bucket, 'pickupRadius', (Number(stats.pickupRadius) || 0) * mul);
+  }
+  function sumHeroBonusBuckets(buckets) {
+    const total = createHeroBonusBucket();
+    for (const bucket of Object.values(buckets || {})) {
+      for (const key of Object.keys(total)) addHeroBonusValue(total, key, bucket?.[key]);
+    }
+    return total;
+  }
+  function formatHeroProfilePercent(value) {
+    const pct = (Number(value) || 0) * 100;
+    const decimals = Math.abs(pct) > 0 && Math.abs(pct) < 10 ? 1 : 0;
+    const sign = pct > 0 ? '+' : '';
+    return `${sign}${formatInventoryNumber(pct, decimals)}%`;
+  }
+  function formatHeroProfileFlat(value, decimals = 0, suffix = '') {
+    const n = Number(value) || 0;
+    const sign = n > 0 ? '+' : '';
+    return `${sign}${formatInventoryNumber(n, decimals)}${suffix}`;
+  }
+  function getHeroProfileBonusDefs(bucket) {
+    return [
+      { key: 'damageMul', label: heroProfileText('damage', 'Damage'), value: formatHeroProfilePercent(bucket?.damageMul), tone: 'damage' },
+      { key: 'fireRateMul', label: heroProfileText('fireRate', 'Fire rate'), value: formatHeroProfilePercent(bucket?.fireRateMul), tone: 'rate' },
+      { key: 'reloadSpeedMul', label: heroProfileText('reload', 'Reload'), value: formatHeroProfilePercent(bucket?.reloadSpeedMul), tone: 'reload' },
+      { key: 'moveSpeedMul', label: heroProfileText('moveSpeed', 'Move speed'), value: formatHeroProfilePercent(bucket?.moveSpeedMul), tone: 'speed' },
+      { key: 'maxHpFlat', label: heroProfileText('maxHp', 'Max HP'), value: formatHeroProfileFlat(bucket?.maxHpFlat, 0), tone: 'guard' },
+      { key: 'hpRegenPerSec', label: heroProfileText('regen', 'Regen'), value: formatHeroProfileFlat(bucket?.hpRegenPerSec, 2, '/s'), tone: 'regen' },
+      { key: 'pickupRadius', label: heroProfileText('pickup', 'Pickup'), value: formatHeroProfileFlat(bucket?.pickupRadius, 0), tone: 'field' },
+      { key: 'extraDodgeCharges', label: heroProfileText('dodge', 'Dodge'), value: formatHeroProfileFlat(bucket?.extraDodgeCharges, 0), tone: 'dodge' },
+    ];
+  }
+  function summarizeHeroBonusBucket(bucket) {
+    const parts = getHeroProfileBonusDefs(bucket)
+      .filter((def) => Math.abs(Number(bucket?.[def.key]) || 0) >= 0.001)
+      .slice(0, 3)
+      .map((def) => `${def.label} ${def.value}`);
+    return parts.length ? parts.join(' | ') : heroProfileText('none', 'none');
+  }
+  function computeHeroProfileBonuses(catalog, progression, hero, equippedItems, itemMap) {
+    const bySource = {
+      heroLevel: createHeroBonusBucket(),
+      talents: createHeroBonusBucket(),
+      passiveSkills: createHeroBonusBucket(),
+      rosterAuras: createHeroBonusBucket(),
+      gear: createHeroBonusBucket(),
+    };
+    const heroId = String(hero?.id || '').trim();
+    const heroLevel = Math.max(1, Number(progression?.heroLevels?.[heroId]) || 1);
+    const levelFactor = Math.max(0, heroLevel - 1);
+    const baseStats = hero?.baseStats && typeof hero.baseStats === 'object' ? hero.baseStats : {};
+    const levelGrowth = hero?.levelGrowth && typeof hero.levelGrowth === 'object' ? hero.levelGrowth : {};
+    addHeroBonusValue(bySource.heroLevel, 'damageMul', ((Number(baseStats.power) || 0) * 0.012) + ((Number(levelGrowth.power) || 0) * levelFactor));
+    addHeroBonusValue(bySource.heroLevel, 'fireRateMul', ((Number(baseStats.agility) || 0) * 0.008) + ((Number(levelGrowth.agility) || 0) * levelFactor * 0.52));
+    addHeroBonusValue(bySource.heroLevel, 'moveSpeedMul', ((Number(baseStats.agility) || 0) * 0.01) + ((Number(levelGrowth.agility) || 0) * levelFactor));
+    addHeroBonusValue(bySource.heroLevel, 'maxHpFlat', ((Number(baseStats.vitality) || 0) * 9) + (((Number(levelGrowth.vitality) || 0) * levelFactor) * 28));
+    addHeroBonusValue(bySource.heroLevel, 'hpRegenPerSec', ((Number(baseStats.vitality) || 0) * 0.035) + (((Number(levelGrowth.vitality) || 0) * levelFactor) * 0.18));
+    addHeroBonusValue(bySource.heroLevel, 'pickupRadius', ((Number(baseStats.tech) || 0) * 2.8) + (((Number(levelGrowth.tech) || 0) * levelFactor) * 12));
+
+    const tree = Array.isArray(catalog?.trees?.[heroId]) ? catalog.trees[heroId] : [];
+    for (const node of tree) addHeroLevelBonusDef(bySource.talents, node, getNodeLevel(progression, heroId, node?.id));
+
+    for (const skill of (Array.isArray(hero?.uniqueSkills) ? hero.uniqueSkills : [])) {
+      const level = getHeroSkillLevel(progression, heroId, skill?.id);
+      if (level <= 0 || skill?.kind !== 'passive' || skill?.globalAura) continue;
+      addHeroLevelBonusDef(bySource.passiveSkills, skill, level);
+    }
+
+    for (const sourceHero of (Array.isArray(catalog?.heroes) ? catalog.heroes : [])) {
+      const sourceHeroId = String(sourceHero?.id || '').trim();
+      if (!sourceHeroId || sourceHeroId === heroId) continue;
+      for (const skill of (Array.isArray(sourceHero?.uniqueSkills) ? sourceHero.uniqueSkills : [])) {
+        const level = getHeroSkillLevel(progression, sourceHeroId, skill?.id);
+        if (level <= 0 || skill?.kind !== 'passive' || !skill?.globalAura) continue;
+        addHeroLevelBonusDef(bySource.rosterAuras, skill, level, 'global');
+      }
+    }
+
+    for (const item of Object.values(equippedItems || {})) {
+      const itemDef = itemMap?.[item?.itemId] || null;
+      const stats = itemDef?.stats && typeof itemDef.stats === 'object' ? itemDef.stats : null;
+      if (!item || !stats) continue;
+      const scale = 1 + Math.max(0, (Math.max(1, Number(item.level) || 1) - 1)) * 0.22;
+      addHeroGearStats(bySource.gear, stats, scale);
+    }
+
+    return {
+      bySource,
+      total: sumHeroBonusBuckets(bySource),
+    };
+  }
+  function renderHeroProfileCard(catalog, progression, hero, options = {}) {
+    const heroId = String(hero?.id || '').trim();
+    const heroLevel = Math.max(1, Number(options.heroLevel) || Number(progression?.heroLevels?.[heroId]) || 1);
+    const heroLevelCap = Math.max(1, Number(options.heroLevelCap) || Number(catalog?.heroLevelCap) || 999);
+    const heroXpValue = Math.max(0, Number(options.heroXpValue) || 0);
+    const heroXpNeed = Math.max(0, Number(options.heroXpNeed) || 0);
+    const xpPct = heroXpNeed > 0 ? Math.max(0, Math.min(100, (heroXpValue / heroXpNeed) * 100)) : 100;
+    const baseStats = hero?.baseStats && typeof hero.baseStats === 'object' ? hero.baseStats : {};
+    const levelGrowth = hero?.levelGrowth && typeof hero.levelGrowth === 'object' ? hero.levelGrowth : {};
+    const levelFactor = Math.max(0, heroLevel - 1);
+    const attrs = [
+      { key: 'power', short: 'POW', label: heroProfileText('power', 'Power') },
+      { key: 'agility', short: 'AGI', label: heroProfileText('agility', 'Agility') },
+      { key: 'vitality', short: 'VIT', label: heroProfileText('vitality', 'Vitality') },
+      { key: 'tech', short: 'TEC', label: heroProfileText('tech', 'Tech') },
+    ].map((attr) => ({
+      ...attr,
+      value: (Number(baseStats[attr.key]) || 0) + ((Number(levelGrowth[attr.key]) || 0) * levelFactor),
+      growth: Number(levelGrowth[attr.key]) || 0,
+    }));
+    const attrMax = Math.max(10, ...attrs.map((attr) => attr.value));
+    const bonuses = computeHeroProfileBonuses(catalog, progression, hero, options.equippedItems || {}, options.itemMap || {});
+    const bonusHtml = getHeroProfileBonusDefs(bonuses.total).map((def) => (
+      `<div class="hero-profile-bonus hero-profile-bonus-${escapeHtml(def.tone)}"><span>${escapeHtml(def.label)}</span><strong>${escapeHtml(def.value)}</strong></div>`
+    )).join('');
+    const sourceRows = [
+      ['heroLevel', heroProfileText('heroLevel', 'Hero + level'), '#60a5fa'],
+      ['talents', heroProfileText('talents', 'Talents'), '#f97316'],
+      ['passiveSkills', heroProfileText('passiveSkills', 'Passive skills'), '#a855f7'],
+      ['rosterAuras', heroProfileText('rosterAuras', 'Roster auras'), '#22d3ee'],
+      ['gear', heroProfileText('gear', 'Gear'), '#facc15'],
+    ].map(([key, label, color]) => (
+      `<div class="hero-profile-source" style="--source-color:${escapeHtml(color)}"><span>${escapeHtml(label)}</span><b>${escapeHtml(summarizeHeroBonusBucket(bonuses.bySource[key]))}</b></div>`
+    )).join('');
+    const tree = Array.isArray(catalog?.trees?.[heroId]) ? catalog.trees[heroId] : [];
+    const uniqueSkills = Array.isArray(hero?.uniqueSkills) ? hero.uniqueSkills : [];
+    const talentUnlocked = tree.reduce((sum, node) => sum + (getNodeLevel(progression, heroId, node?.id) > 0 ? 1 : 0), 0);
+    const skillUnlocked = uniqueSkills.reduce((sum, skill) => sum + (getHeroSkillLevel(progression, heroId, skill?.id) > 0 ? 1 : 0), 0);
+    const gearSlots = Array.isArray(options.gearSlots) ? options.gearSlots : [];
+    const equippedGear = gearSlots.reduce((sum, slot) => sum + (options.equippedItems?.[slot?.key] ? 1 : 0), 0);
+    const statusLabel = options.unlocked ? heroProfileText('unlocked', 'Unlocked') : heroProfileText('locked', 'Locked');
+    const xpLabel = heroLevel >= heroLevelCap
+      ? heroProfileText('max', 'MAX')
+      : `${heroXpValue}/${heroXpNeed || 0} XP`;
+    const attrHtml = attrs.map((attr) => {
+      const pct = Math.max(0, Math.min(100, (attr.value / attrMax) * 100));
+      const value = formatInventoryNumber(attr.value, Math.abs(attr.value - Math.round(attr.value)) < 0.05 ? 0 : 1);
+      return `<div class="hero-profile-attr" style="--attr-pct:${pct.toFixed(1)}%"><span>${escapeHtml(attr.short)}</span><strong>${escapeHtml(value)}</strong><b>${escapeHtml(attr.label)}</b></div>`;
+    }).join('');
+    const summaryChips = [
+      [heroProfileText('talents', 'Talents'), `${talentUnlocked}/${tree.length}`],
+      ['Hero Skills', `${skillUnlocked}/${uniqueSkills.length}`],
+      [heroProfileText('gear', 'Gear'), `${equippedGear}/${gearSlots.length}`],
+    ].map(([label, value]) => `<span><b>${escapeHtml(label)}</b>${escapeHtml(value)}</span>`).join('');
+    return `<div class="hero-loadout-card hero-profile-card" style="--hero-accent:${escapeHtml(options.heroAccent || '#38bdf8')};--hero-xp:${xpPct.toFixed(1)}%">`
+      + '<div class="hero-profile-head">'
+      + `<div class="hero-profile-portrait"><img src="${escapeHtml(getHeroCardImagePath(heroId))}" alt="${escapeHtml(options.heroDisplayName || hero?.name || heroId)}" /></div>`
+      + '<div class="hero-profile-main">'
+      + `<div class="hero-profile-kicker">${escapeHtml(heroProfileText('dossier', 'Tactical dossier'))}</div>`
+      + `<div class="hero-profile-title"><strong>${escapeHtml(options.heroDisplayName || hero?.name || heroId)}</strong><span class="${options.unlocked ? 'ok' : 'locked'}">${escapeHtml(statusLabel)}</span></div>`
+      + `<div class="hero-profile-tagline">${escapeHtml(options.heroTagline || '')}</div>`
+      + `<div class="hero-profile-level"><span>${escapeHtml(heroProfileText('level', 'Level'))} ${heroLevel}/${heroLevelCap}</span><b>${escapeHtml(xpLabel)}</b></div>`
+      + '<div class="hero-profile-xp"><i aria-hidden="true"></i></div>'
+      + '</div></div>'
+      + `<div class="hero-profile-summary-chips">${summaryChips}</div>`
+      + `<div class="hero-profile-section-title">${escapeHtml(heroProfileText('attributes', 'Attributes'))}</div>`
+      + `<div class="hero-profile-attr-grid">${attrHtml}</div>`
+      + `<div class="hero-profile-section-title">${escapeHtml(heroProfileText('bonuses', 'Combat bonuses'))}</div>`
+      + `<div class="hero-profile-bonus-grid">${bonusHtml}</div>`
+      + `<div class="hero-profile-section-title">${escapeHtml(heroProfileText('sources', 'Bonus sources'))}</div>`
+      + `<div class="hero-profile-source-list">${sourceRows}</div>`
+      + (!options.unlocked ? `<div class="hero-profile-unlock-meta">${options.unlockMeta || ''}</div>` : '')
+      + (options.actionBtn ? `<div class="hero-profile-action-row">${options.actionBtn}</div>` : '')
+      + '</div>';
+  }
   function heroRequirementMeta(need, have, formatter) {
     const enough = Math.max(0, Number(have) || 0) >= Math.max(0, Number(need) || 0);
     return {
@@ -898,15 +1140,36 @@
     const stageCard = layoutChildren[0] || null;
     const talentCard = layoutChildren[1] || null;
     const uniqueCard = layoutChildren[2] || null;
+    const useArenaRoster = getHeroRosterMode() === 'arena';
+    const rosterEl = heroGalleryV2El || null;
+    const charactersPanel = heroCharacterPanelEl.closest('#menu-panel-characters');
+    const directSubpanels = Array.from(charactersPanel?.children || []).filter((el) => el?.classList?.contains('cw-subpanel'));
+    const rosterPanelEl = directSubpanels.find((el) => !el.contains(heroCharacterPanelEl)) || null;
+    if (rosterPanelEl) rosterPanelEl.classList.toggle('hero-roster-panel-collapsed', useArenaRoster);
+    if (rosterEl && heroCharacterPanelEl.contains(rosterEl)) {
+      rosterEl.remove();
+    }
+    if (!useArenaRoster && rosterEl) {
+      if (rosterPanelEl && rosterEl.parentNode !== rosterPanelEl) {
+        rosterPanelEl.appendChild(rosterEl);
+      } else if (!rosterPanelEl && heroCharacterPanelEl.parentNode && rosterEl.parentNode !== heroCharacterPanelEl.parentNode) {
+        heroCharacterPanelEl.parentNode.insertBefore(rosterEl, heroCharacterPanelEl);
+      }
+    }
     heroCharacterPanelEl.innerHTML = '';
     const characterShell = document.createElement('div');
-    characterShell.className = 'hero-loadout-shell';
-    if (stageCard) characterShell.appendChild(stageCard.cloneNode(true));
+    characterShell.className = 'hero-loadout-shell hero-character-shell';
+    if (useArenaRoster && rosterEl) characterShell.appendChild(rosterEl);
+    const characterTopRow = document.createElement('div');
+    characterTopRow.className = 'hero-character-top-row';
+    if (headerCard) characterTopRow.appendChild(headerCard.cloneNode(true));
     const characterSkillsRow = document.createElement('div');
-    characterSkillsRow.className = 'hero-skill-panels-row';
+    characterSkillsRow.className = 'hero-character-skills-row';
     if (talentCard) characterSkillsRow.appendChild(talentCard.cloneNode(true));
     if (uniqueCard) characterSkillsRow.appendChild(uniqueCard.cloneNode(true));
-    if (characterSkillsRow.children.length) characterShell.appendChild(characterSkillsRow);
+    if (characterSkillsRow.children.length) characterTopRow.appendChild(characterSkillsRow);
+    if (characterTopRow.children.length) characterShell.appendChild(characterTopRow);
+    if (stageCard) characterShell.appendChild(stageCard.cloneNode(true));
     heroCharacterPanelEl.appendChild(characterShell);
     shell.innerHTML = '';
     if (headerCard) shell.appendChild(headerCard);
@@ -1108,9 +1371,6 @@
       .join('');
     const heroDisplayName = trHeroName(hero.id, hero.name);
     const heroTagline = trWithFallback(`hero.${String(hero.id || '').toLowerCase()}.tagline`, hero.tagline || '');
-    const heroStats = hero.baseStats && typeof hero.baseStats === 'object'
-      ? `POW ${Math.max(0, Number(hero.baseStats.power) || 0)} | AGI ${Math.max(0, Number(hero.baseStats.agility) || 0)} | VIT ${Math.max(0, Number(hero.baseStats.vitality) || 0)} | TEC ${Math.max(0, Number(hero.baseStats.tech) || 0)}`
-      : '';
     const heroXpLabel = heroLevel >= heroLevelCap ? `Lv ${heroLevel}/${heroLevelCap} MAX` : `Lv ${heroLevel}/${heroLevelCap} | XP ${heroXpValue}/${heroXpNeed}`;
     const heroPaperDollHtml = `<div class="hero-paper-doll${loadoutSwapClass}" style="--hero-accent:${escapeHtml(heroAccent)}"><div class="hero-paper-doll-grid">${renderPaperSlot('head', 'hero-paper-head')}${renderPaperSlot('left_hand', 'hero-paper-left-hand')}<div class="hero-paper-portrait${loadoutSwapClass}"><div class="hero-paper-portrait-ring"></div><img class="hero-loadout-portrait" src="${escapeHtml(getHeroCardImagePath(hero.id))}" alt="${escapeHtml(heroDisplayName)}" /><div class="hero-paper-portrait-name"><b>${escapeHtml(heroDisplayName)}</b><span>${escapeHtml(heroXpLabel)}</span></div></div>${renderPaperSlot('right_hand', 'hero-paper-right-hand')}${renderPaperSlot('armor', 'hero-paper-armor')}${renderPaperSlot('legs', 'hero-paper-legs')}<div class="hero-paper-rings">${ringSlotsHtml}</div></div></div>`;
     const quickBeltHtml = quickSlots.length
@@ -1226,7 +1486,22 @@
       : (!unlocked
         ? `<button type="button" class="hero-main-action" data-hero-unlock="1" ${canUnlock ? '' : 'disabled'}>${trWithFallback('ui.hero.unlock_btn', 'Unlock hero')}</button>`
         : '');
-    heroTreePanelEl.innerHTML = `<div class="hero-loadout-shell"><div class="hero-loadout-card"><div class="hero-tree-head"><div><b>${escapeHtml(heroDisplayName)}</b><div class="hero-tagline">${escapeHtml(heroTagline)}</div><div class="hero-tagline">${escapeHtml(heroXpLabel)}</div><div class="hero-tagline">${escapeHtml(heroStats)}</div></div>${unlockMeta}</div>${actionBtn}</div><div class="hero-loadout-layout"><div class="hero-loadout-card hero-loadout-stage${loadoutSwapClass}"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.inventory.equipment', 'Equipment'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.equipment_hint', 'Equipment slots surround the hero. Inventory and combat consumables are below.'))}</div></div><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.salvage', 'Salvage'))}: ${salvage}</div></div><div class="hero-paper-loadout${loadoutSwapClass}">${heroPaperDollHtml}${quickBeltHtml}<div class="hero-inventory-panel${loadoutSwapClass}"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.inventory.items', 'Inventory'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.items_hint', 'Pick items, equip them into slots, upgrade or sell them right here.'))}</div></div><div class="hero-tagline">${inventoryItems.length}</div></div>${inventoryFilterTabsHtml}<div class="inventory-category-list">${inventorySectionsHtml || `<div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.empty', 'Inventory is empty.'))}</div>`}</div></div></div></div><div class="hero-loadout-card"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.hero.talent_tree', 'Hero talents'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.hero.talent_tree_hint', 'Passive account upgrades for the selected hero.'))}</div></div></div><div class="hero-tree-list">${rows.join('')}</div></div><div class="hero-loadout-card"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.hero.unique_skills', 'Unique skills'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.hero.unique_skills_hint', 'Active skills and passive effects for the selected hero.'))}</div></div></div><div class="hero-tree-list">${skillRows || `<div class="hero-tagline">${escapeHtml(trWithFallback('ui.hero.no_unique_skills', 'No unique skills.'))}</div>`}</div></div></div>`;
+    const heroProfileHtml = renderHeroProfileCard(catalog, progression, hero, {
+      unlocked,
+      heroDisplayName,
+      heroTagline,
+      heroAccent,
+      heroLevel,
+      heroLevelCap,
+      heroXpValue,
+      heroXpNeed,
+      gearSlots,
+      equippedItems,
+      itemMap,
+      unlockMeta,
+      actionBtn,
+    });
+    heroTreePanelEl.innerHTML = `<div class="hero-loadout-shell">${heroProfileHtml}<div class="hero-loadout-layout"><div class="hero-loadout-card hero-loadout-stage${loadoutSwapClass}"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.inventory.equipment', 'Equipment'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.equipment_hint', 'Equipment slots surround the hero. Inventory and combat consumables are below.'))}</div></div><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.salvage', 'Salvage'))}: ${salvage}</div></div><div class="hero-paper-loadout${loadoutSwapClass}">${heroPaperDollHtml}${quickBeltHtml}<div class="hero-inventory-panel${loadoutSwapClass}"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.inventory.items', 'Inventory'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.items_hint', 'Pick items, equip them into slots, upgrade or sell them right here.'))}</div></div><div class="hero-tagline">${inventoryItems.length}</div></div>${inventoryFilterTabsHtml}<div class="inventory-category-list">${inventorySectionsHtml || `<div class="hero-tagline">${escapeHtml(trWithFallback('ui.inventory.empty', 'Inventory is empty.'))}</div>`}</div></div></div></div><div class="hero-loadout-card hero-talents-card"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.hero.talent_tree', 'Hero talents'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.hero.talent_tree_hint', 'Passive account upgrades for the selected hero.'))}</div></div></div><div class="hero-tree-list">${rows.join('')}</div></div><div class="hero-loadout-card hero-unique-skills-card"><div class="hero-tree-head"><div><b>${escapeHtml(trWithFallback('ui.hero.unique_skills', 'Unique skills'))}</b><div class="hero-tagline">${escapeHtml(trWithFallback('ui.hero.unique_skills_hint', 'Active skills and passive effects for the selected hero.'))}</div></div></div><div class="hero-tree-list">${skillRows || `<div class="hero-tagline">${escapeHtml(trWithFallback('ui.hero.no_unique_skills', 'No unique skills.'))}</div>`}</div></div></div>`;
     const unlockBtn = heroTreePanelEl.querySelector('[data-hero-unlock="1"]');
     unlockBtn?.addEventListener('click', async () => {
       try {
@@ -1342,7 +1617,7 @@
       markHeroLoadoutSwapFx(focusedHeroId, focusedHero?.accent || '#38bdf8');
     }
     lastHeroLoadoutRenderId = focusedHeroId;
-    renderHeroGalleryV2(heroes, progression, unlockedHeroes);
+    renderHeroRoster(heroes, progression, unlockedHeroes);
     globalThis.CWProfile?.render?.(heroes, progression, unlockedHeroes);
     renderAccountSummary(catalog, progression);
     renderHeroTreePanelV2(catalog, progression, focusedHero, focusedHero ? unlockedHeroes.has(focusedHero.id) : false);
@@ -1364,8 +1639,152 @@
     if (id === 'medic') return '/assets/characters/medis.jpg';
     return `/assets/characters/${id}.jpg`;
   }
+  function getHeroRosterMode() {
+    try {
+      return String(localStorage.getItem(HERO_ROSTER_MODE_STORAGE_KEY) || '').trim().toLowerCase() === 'classic'
+        ? 'classic'
+        : 'arena';
+    } catch (_) {
+      return 'arena';
+    }
+  }
+  function setHeroRosterMode(mode = 'arena') {
+    const nextMode = String(mode || '').trim().toLowerCase() === 'classic' ? 'classic' : 'arena';
+    try {
+      localStorage.setItem(HERO_ROSTER_MODE_STORAGE_KEY, nextMode);
+    } catch (_) {}
+    renderCharacterPicker();
+    return nextMode;
+  }
+  async function pickHeroFromRoster(hero, unlocked) {
+    if (!hero) return;
+    heroFocusId = hero.id;
+    if (!unlocked) {
+      renderCharacterPicker();
+      return;
+    }
+    const changingActiveHero = hero.id !== selectedPlayerClass;
+    const swapStarted = changingActiveHero ? await beginBattleHubHeroSwap(hero.id) : false;
+    selectedPlayerClass = hero.id;
+    localStorage.setItem(PLAYER_CLASS_STORAGE_KEY, selectedPlayerClass);
+    renderCharacterPicker();
+    endBattleHubHeroSwap(swapStarted);
+    if (game.playerAuth?.player) {
+      try {
+        await selectHeroForAccount(hero.id);
+        setHeroActionFeedback(trWithFallback('ui.hero.selected', `${hero.name} selected.`, { hero: trHeroName(hero.id, hero.name) }), 'ok');
+      } catch (err) {
+        setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to select hero.'), 'err');
+      }
+    }
+  }
+  function renderHeroRoster(heroes, progression, unlockedHeroes) {
+    if (getHeroRosterMode() === 'classic') {
+      renderHeroGalleryV2(heroes, progression, unlockedHeroes);
+      return;
+    }
+    renderHeroArenaRoster(heroes, progression, unlockedHeroes);
+  }
+  function renderHeroArenaRoster(heroes, progression, unlockedHeroes) {
+    if (!heroGalleryV2El) return;
+    heroGalleryV2El.className = 'hero-gallery-v2 hero-arena-roster';
+    heroGalleryV2El.innerHTML = '';
+    const heroLevels = progression?.heroLevels && typeof progression.heroLevels === 'object' ? progression.heroLevels : {};
+    const focusedHero = heroes.find((hero) => hero.id === heroFocusId) || heroes[0] || null;
+    const activeHero = heroes.find((hero) => hero.id === selectedPlayerClass) || focusedHero;
+    const unlockedCount = heroes.reduce((sum, hero) => sum + (unlockedHeroes.has(hero.id) ? 1 : 0), 0);
+    const accent = String(focusedHero?.accent || activeHero?.accent || '#38bdf8');
+    const shell = document.createElement('div');
+    shell.className = 'hero-arena-roster-shell';
+    shell.style.setProperty('--arena-accent', accent);
+
+    const head = document.createElement('div');
+    head.className = 'hero-arena-roster-head';
+    const titleWrap = document.createElement('div');
+    const kicker = document.createElement('span');
+    kicker.textContent = getInventoryUiText('\u0420\u043e\u0441\u0442\u0435\u0440', 'Roster');
+    const title = document.createElement('strong');
+    title.textContent = getInventoryUiText('\u041f\u0435\u0440\u0441\u043e\u043d\u0430\u0436\u0438 \u0430\u0440\u0435\u043d\u044b', 'Arena fighters');
+    titleWrap.appendChild(kicker);
+    titleWrap.appendChild(title);
+    const meta = document.createElement('div');
+    meta.className = 'hero-arena-roster-meta';
+    const activeName = trHeroName(activeHero?.id, activeHero?.name || activeHero?.id || '');
+    const activeLevel = Math.max(1, Number(heroLevels[activeHero?.id]) || 1);
+    meta.innerHTML = `<b>${escapeHtml(activeName)} LV ${activeLevel}</b><span>${unlockedCount}/${heroes.length} ${escapeHtml(trWithFallback('ui.hero.unlocked', 'Unlocked').toLowerCase())}</span>`;
+    head.appendChild(titleWrap);
+    head.appendChild(meta);
+
+    const grid = document.createElement('div');
+    grid.className = 'hero-arena-roster-grid';
+    heroes.forEach((hero, index) => {
+      const unlocked = unlockedHeroes.has(hero.id);
+      const focused = hero.id === heroFocusId;
+      const active = hero.id === selectedPlayerClass;
+      const heroLevel = Math.max(1, Number(heroLevels[hero.id]) || 1);
+      const rosterCardFx = focused ? getHeroLoadoutSwapFx(hero.id) : { active: false };
+      const slot = document.createElement('button');
+      slot.type = 'button';
+      slot.className = [
+        'hero-arena-slot',
+        active ? 'active' : '',
+        focused ? 'focused' : '',
+        unlocked ? 'unlocked' : 'locked',
+        rosterCardFx.active ? 'is-roster-select-flash' : '',
+      ].filter(Boolean).join(' ');
+      slot.style.setProperty('--accent', hero.accent || '#38bdf8');
+      slot.style.setProperty('--slot-index', index);
+      slot.setAttribute('aria-label', trWithFallback('ui.hero.aria', `Hero ${hero.name}`, { hero: trHeroName(hero.id, hero.name) }));
+
+      const portraitWrap = document.createElement('span');
+      portraitWrap.className = 'hero-arena-slot-portrait';
+      const portrait = document.createElement('img');
+      portrait.src = getHeroCardImagePath(hero.id);
+      portrait.alt = '';
+      portrait.loading = 'lazy';
+      const preview = document.createElement('canvas');
+      preview.width = 100;
+      preview.height = 108;
+      preview.className = 'hero-arena-slot-preview hidden';
+      drawCharacterPreview(preview, hero);
+      portrait.addEventListener('error', () => {
+        portrait.classList.add('hidden');
+        preview.classList.remove('hidden');
+      }, { once: true });
+      portraitWrap.appendChild(portrait);
+      portraitWrap.appendChild(preview);
+
+      const badge = document.createElement('span');
+      badge.className = 'hero-arena-slot-badge';
+      badge.textContent = String(index + 1).padStart(2, '0');
+
+      const name = document.createElement('span');
+      name.className = 'hero-arena-slot-name';
+      name.innerHTML = `<b>${escapeHtml(trHeroName(hero.id, hero.name))}</b><small>LV ${heroLevel}</small>`;
+
+      const status = document.createElement('span');
+      status.className = 'hero-arena-slot-status';
+      status.textContent = unlocked
+        ? (active ? trWithFallback('ui.hero.selected_short', 'Selected') : trWithFallback('ui.hero.unlocked', 'Unlocked'))
+        : buildHeroUnlockHint(hero, progression);
+
+      slot.appendChild(portraitWrap);
+      slot.appendChild(badge);
+      slot.appendChild(name);
+      slot.appendChild(status);
+      slot.addEventListener('click', () => {
+        pickHeroFromRoster(hero, unlocked);
+      });
+      grid.appendChild(slot);
+    });
+
+    shell.appendChild(head);
+    shell.appendChild(grid);
+    heroGalleryV2El.appendChild(shell);
+  }
   function renderHeroGalleryV2(heroes, progression, unlockedHeroes) {
     if (!heroGalleryV2El) return;
+    heroGalleryV2El.className = 'hero-gallery-v2 hero-roster-classic';
     heroGalleryV2El.innerHTML = '';
     const heroLevels = progression?.heroLevels && typeof progression.heroLevels === 'object' ? progression.heroLevels : {};
     for (const hero of heroes) {
@@ -1410,26 +1829,8 @@
       const status = document.createElement('div');
       status.className = `hero-v2-status ${active ? 'selected' : (unlocked ? 'unlocked' : 'locked')}`;
       status.textContent = unlocked ? (active ? trWithFallback('ui.hero.selected_short', 'Selected') : trWithFallback('ui.hero.unlocked', 'Unlocked')) : buildHeroUnlockHint(hero, progression);
-      cardBtn.addEventListener('click', async () => {
-        heroFocusId = hero.id;
-        if (!unlocked) {
-          renderCharacterPicker();
-          return;
-        }
-        const changingActiveHero = hero.id !== selectedPlayerClass;
-        const swapStarted = changingActiveHero ? await beginBattleHubHeroSwap(hero.id) : false;
-        selectedPlayerClass = hero.id;
-        localStorage.setItem(PLAYER_CLASS_STORAGE_KEY, selectedPlayerClass);
-        renderCharacterPicker();
-        endBattleHubHeroSwap(swapStarted);
-        if (game.playerAuth?.player) {
-          try {
-            await selectHeroForAccount(hero.id);
-            setHeroActionFeedback(trWithFallback('ui.hero.selected', `${hero.name} selected.`, { hero: trHeroName(hero.id, hero.name) }), 'ok');
-          } catch (err) {
-            setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to select hero.'), 'err');
-          }
-        }
+      cardBtn.addEventListener('click', () => {
+        pickHeroFromRoster(hero, unlocked);
       });
       const wrap = document.createElement('div');
       wrap.className = 'hero-v2-item';
@@ -1486,6 +1887,10 @@
     renderCharacterPicker,
     buildHeroUnlockHint,
     getHeroCardImagePath,
+    getHeroRosterMode,
+    setHeroRosterMode,
+    renderHeroRoster,
+    renderHeroArenaRoster,
     renderHeroGalleryV2,
   };
 
@@ -1533,6 +1938,10 @@
     renderCharacterPicker,
     buildHeroUnlockHint,
     getHeroCardImagePath,
+    getHeroRosterMode,
+    setHeroRosterMode,
+    renderHeroRoster,
+    renderHeroArenaRoster,
     renderHeroGalleryV2,
   });
   globalThis.CWCharacters = api;
