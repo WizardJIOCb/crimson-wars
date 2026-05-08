@@ -2530,6 +2530,7 @@ renderPlayerAuthUi();
 renderInstanceMeta();
 renderDeploySelectionSummary();
 consumeAuthRedirectFeedback();
+globalThis.CWPageLoader?.mark?.('core', 'Runtime core online');
 window.cwSetStoredActiveRunResume = setStoredActiveRunResume;
 window.cwClearStoredActiveRunResume = clearStoredActiveRunResume;
 window.cwSetSelectedRunType = setSelectedRunType;
@@ -2554,7 +2555,12 @@ window.cwGetRunSelection = () => ({
   gameMode: selectedGameMode,
   pvpDurationMin: selectedPvpDurationMin,
 });
-void refreshPlayerAuthSession({ silent: true });
+const playerAuthReadyPromise = refreshPlayerAuthSession({ silent: true });
+window.cwPlayerAuthReady = playerAuthReadyPromise;
+void playerAuthReadyPromise.finally(() => {
+  globalThis.CWPageLoader?.mark?.('profile', 'Profile relay synced');
+  globalThis.CWPageLoader?.requestReady?.();
+});
 
 function formatMissionObjectiveText(mission) {
   if (!mission || mission.runType !== 'campaign') return '';

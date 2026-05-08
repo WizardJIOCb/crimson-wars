@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Crimson Wars</title>
   <link rel="icon" type="image/png" href="/assets/other/favicon.png" />
-  <link rel="stylesheet" href="/style.css?v=20260508panelanim1" />
+  <script>document.documentElement.classList.add('cw-app-booting');</script>
+  <link rel="stylesheet" href="/style.css?v=20260509skillmodal-loaderfx9" />
   <!-- Yandex.Metrika counter -->
   <script type="text/javascript">
     (function(m,e,t,r,i,k,a){
@@ -21,6 +22,83 @@
 </head>
 <body>
   <noscript><div><img src="https://mc.yandex.ru/watch/107267514" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+  <div id="cw-page-loader" class="cw-page-loader" role="status" aria-live="polite" aria-label="Loading Crimson Wars">
+    <div class="cw-loader-scene" aria-hidden="true">
+      <div class="cw-loader-backdrop"></div>
+      <div class="cw-loader-grid"></div>
+      <div class="cw-loader-scan"></div>
+      <div class="cw-loader-blood">
+        <span></span><span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span>
+      </div>
+      <div class="cw-loader-electric">
+        <svg class="cw-loader-bolts" viewBox="0 0 1000 620" preserveAspectRatio="none" focusable="false" aria-hidden="true">
+          <defs>
+            <filter id="cwLoaderArcGlow" x="-20%" y="-70%" width="140%" height="240%">
+              <feGaussianBlur stdDeviation="5" result="softGlow" />
+              <feGaussianBlur stdDeviation="14" in="SourceGraphic" result="wideGlow" />
+              <feMerge>
+                <feMergeNode in="wideGlow" />
+                <feMergeNode in="softGlow" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+          <g class="cw-loader-bolt-set bolt-a">
+            <path class="cw-loader-bolt-halo" pathLength="1000" d="M24 130 L116 102 L176 136 L248 112 L332 144 L406 96 L478 126 L558 86 L636 114 L714 82 L794 112 L974 78" />
+            <path class="cw-loader-bolt-line" pathLength="1000" d="M24 130 L116 102 L176 136 L248 112 L332 144 L406 96 L478 126 L558 86 L636 114 L714 82 L794 112 L974 78" />
+            <path class="cw-loader-bolt-core" pathLength="1000" d="M24 130 L116 102 L176 136 L248 112 L332 144 L406 96 L478 126 L558 86 L636 114 L714 82 L794 112 L974 78" />
+            <path class="cw-loader-bolt-branch" pathLength="300" d="M406 96 L358 62 L318 72 M558 86 L604 46 L660 50 M794 112 L838 150 L902 142" />
+          </g>
+          <g class="cw-loader-bolt-set bolt-b">
+            <path class="cw-loader-bolt-halo" pathLength="1000" d="M-20 406 L74 382 L142 424 L218 390 L292 418 L360 366 L452 394 L522 350 L608 386 L698 342 L780 372 L1030 330" />
+            <path class="cw-loader-bolt-line" pathLength="1000" d="M-20 406 L74 382 L142 424 L218 390 L292 418 L360 366 L452 394 L522 350 L608 386 L698 342 L780 372 L1030 330" />
+            <path class="cw-loader-bolt-core" pathLength="1000" d="M-20 406 L74 382 L142 424 L218 390 L292 418 L360 366 L452 394 L522 350 L608 386 L698 342 L780 372 L1030 330" />
+            <path class="cw-loader-bolt-branch" pathLength="300" d="M292 418 L246 470 L204 472 M522 350 L498 294 L452 280 M698 342 L748 292 L810 304" />
+          </g>
+          <g class="cw-loader-bolt-set bolt-c">
+            <path class="cw-loader-bolt-halo" pathLength="1000" d="M206 -20 L234 64 L210 126 L250 198 L224 272 L266 342 L244 420 L284 506 L258 646" />
+            <path class="cw-loader-bolt-line" pathLength="1000" d="M206 -20 L234 64 L210 126 L250 198 L224 272 L266 342 L244 420 L284 506 L258 646" />
+            <path class="cw-loader-bolt-core" pathLength="1000" d="M206 -20 L234 64 L210 126 L250 198 L224 272 L266 342 L244 420 L284 506 L258 646" />
+            <path class="cw-loader-bolt-branch" pathLength="300" d="M250 198 L320 180 L356 128 M224 272 L154 296 L106 350 M244 420 L332 446 L382 512" />
+          </g>
+        </svg>
+      </div>
+      <div class="cw-loader-muzzle">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <div class="cw-loader-hit-flash"></div>
+      <div class="cw-loader-rig">
+        <span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span>
+      </div>
+      <div class="cw-loader-dossier">
+        <span class="cw-loader-dossier-card is-wide"></span>
+        <span class="cw-loader-dossier-card"></span>
+        <span class="cw-loader-dossier-card"></span>
+        <span class="cw-loader-dossier-card is-tall"></span>
+      </div>
+    </div>
+    <div class="cw-loader-panel">
+      <div class="cw-loader-kicker">CRIMSON WARS</div>
+      <div class="cw-loader-title">Battle hub assembly</div>
+      <div id="cw-page-loader-stage" class="cw-loader-stage">Booting arena shell</div>
+      <div class="cw-loader-track" aria-hidden="true">
+        <span id="cw-page-loader-fill" class="cw-loader-fill">
+          <i class="cw-loader-fill-veins"></i>
+          <i class="cw-loader-fill-hot"></i>
+        </span>
+      </div>
+      <div class="cw-loader-steps" aria-hidden="true">
+        <span data-loader-step="shell">Shell</span>
+        <span data-loader-step="core">Core</span>
+        <span data-loader-step="route">Route</span>
+        <span data-loader-step="profile">Profile</span>
+        <span data-loader-step="characters">Heroes</span>
+      </div>
+      <div id="cw-page-loader-console" class="cw-loader-console" aria-hidden="true"></div>
+    </div>
+  </div>
   <div id="hud">
     <div id="info-panel-hud-host">
     <div class="panel" id="info-panel">
@@ -597,14 +675,15 @@
   </div>
   <script src="/vendor/react.production.min.js"></script>
   <script src="/vendor/react-dom.production.min.js"></script>
+  <script src="/js/client-page-loader.js?v=20260509loaderfx5"></script>
   <script src="/js/cw-menu-react.js?v=20260505storyside1"></script>
-  <script src="/js/client-i18n.js?v=20260506quickslots1"></script>
+  <script src="/js/client-i18n.js?v=20260509loaderi18n1"></script>
   <script src="/js/client-core.js?v=20260508skillcolors1"></script>
   <script src="/js/client-net-input.js?v=20260506craterlayer1"></script>
   <script src="/js/client-menu-runs.js?v=20260506storylevelstatus1"></script>
   <script src="/js/client-death.js?v=20260506defeat1"></script>
-  <script src="/js/client-menu-characters.js?v=20260508panelanim1"></script>
-  <script src="/js/client-rooms-list.js?v=20260504presence2"></script>
+  <script src="/js/client-menu-characters.js?v=20260509skillmodal1"></script>
+  <script src="/js/client-rooms-list.js?v=20260508profilefx1"></script>
   <script src="/js/client-records-list.js?v=20260429refactor1"></script>
   <script src="/js/client-profile-modal.js?v=20260504duration1"></script>
   <script src="/js/client-hero-equip-modal.js?v=20260505equipmodal5"></script>

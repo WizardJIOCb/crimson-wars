@@ -278,6 +278,17 @@ function makeHeroUniqueSkills(heroId, defs) {
   });
 }
 
+function makeHeroTalentTree(defs) {
+  return defs.map((def) => {
+    const id = String(def?.id || '').trim();
+    return {
+      ...def,
+      id,
+      icon: `/assets/hero-talents/${id}.webp`,
+    };
+  });
+}
+
 const HERO_DEFS = [
   {
     id: 'cyber',
@@ -435,36 +446,36 @@ const HERO_UNIQUE_SKILL_DEFS = {
 };
 
 const HERO_SKILL_TREE_DEFS = {
-  cyber: [
+  cyber: makeHeroTalentTree([
     { id: 'cyber_overclock', name: 'Overclock', desc: '+fire rate', maxLevel: 5, cost: 1, fireRateMulPerLevel: 0.03 },
     { id: 'cyber_nano_core', name: 'Nano Core', desc: '+damage', maxLevel: 5, cost: 1, damageMulPerLevel: 0.03 },
     { id: 'cyber_barrier', name: 'Barrier Matrix', desc: '+max HP', maxLevel: 5, cost: 1, maxHpFlatPerLevel: 8 },
     { id: 'cyber_magnet', name: 'Mag Sweep', desc: '+pickup radius', maxLevel: 5, cost: 1, pickupRadiusPerLevel: 6 },
-  ],
-  scout: [
+  ]),
+  scout: makeHeroTalentTree([
     { id: 'scout_stride', name: 'Long Stride', desc: '+move speed', maxLevel: 5, cost: 1, moveSpeedMulPerLevel: 0.04 },
     { id: 'scout_reload', name: 'Quick Hands', desc: '+fire rate', maxLevel: 5, cost: 1, fireRateMulPerLevel: 0.025 },
     { id: 'scout_dodge', name: 'Evasive Roll', desc: '+dodge charge', maxLevel: 2, cost: 1, extraDodgeChargesPerLevel: 1 },
     { id: 'scout_shots', name: 'Steady Burst', desc: '+damage', maxLevel: 4, cost: 1, damageMulPerLevel: 0.025 },
-  ],
-  shadow: [
+  ]),
+  shadow: makeHeroTalentTree([
     { id: 'shadow_killer', name: 'Killer Instinct', desc: '+damage', maxLevel: 6, cost: 1, damageMulPerLevel: 0.035 },
     { id: 'shadow_haste', name: 'Dark Tempo', desc: '+fire rate', maxLevel: 4, cost: 1, fireRateMulPerLevel: 0.03 },
     { id: 'shadow_blink', name: 'Blink Step', desc: '+move speed', maxLevel: 4, cost: 1, moveSpeedMulPerLevel: 0.03 },
     { id: 'shadow_sting', name: 'Venom Edge', desc: '+damage +speed', maxLevel: 3, cost: 1, damageMulPerLevel: 0.02, moveSpeedMulPerLevel: 0.02 },
-  ],
-  medic: [
+  ]),
+  medic: makeHeroTalentTree([
     { id: 'medic_aid', name: 'Field Aid', desc: '+regen', maxLevel: 5, cost: 1, hpRegenPerSecPerLevel: 0.42 },
     { id: 'medic_plating', name: 'Vital Plating', desc: '+max HP', maxLevel: 6, cost: 1, maxHpFlatPerLevel: 10 },
     { id: 'medic_focus', name: 'Combat Focus', desc: '+damage', maxLevel: 4, cost: 1, damageMulPerLevel: 0.025 },
     { id: 'medic_aura', name: 'Recovery Aura', desc: '+pickup radius', maxLevel: 4, cost: 1, pickupRadiusPerLevel: 7 },
-  ],
-  raider: [
+  ]),
+  raider: makeHeroTalentTree([
     { id: 'raider_rage', name: 'Battle Rage', desc: '+damage', maxLevel: 6, cost: 1, damageMulPerLevel: 0.035 },
     { id: 'raider_armor', name: 'Iron Skin', desc: '+max HP', maxLevel: 6, cost: 1, maxHpFlatPerLevel: 11 },
     { id: 'raider_push', name: 'Relentless Push', desc: '+move speed', maxLevel: 4, cost: 1, moveSpeedMulPerLevel: 0.025 },
     { id: 'raider_charge', name: 'War Charge', desc: '+dodge charge', maxLevel: 2, cost: 1, extraDodgeChargesPerLevel: 1 },
-  ],
+  ]),
 };
 
 module.exports = {

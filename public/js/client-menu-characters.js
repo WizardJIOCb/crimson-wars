@@ -5,6 +5,9 @@
   const HERO_LOADOUT_SWAP_FX_MS = 1350;
   const HERO_SKILL_UPGRADE_FX_MS = 1550;
   const HERO_TALENT_UPGRADE_FX_MS = 1350;
+  const HERO_PROGRESSION_MODAL_CLOSE_MS = 360;
+  const HERO_PROGRESSION_MODAL_PULSE_MS = 620;
+  const HERO_ROSTER_DESELECT_FX_MS = 680;
   const HERO_ROSTER_MODE_STORAGE_KEY = 'cwHeroRosterMode';
   let heroEquipSlotFx = null;
   let heroEquipSlotFxTimer = 0;
@@ -14,6 +17,12 @@
   let heroSkillUpgradeFxTimer = 0;
   let heroTalentUpgradeFx = null;
   let heroTalentUpgradeFxTimer = 0;
+  let heroProgressionModalEl = null;
+  let heroProgressionModalState = null;
+  let heroProgressionModalCloseTimer = 0;
+  let heroProgressionModalPulseTimer = 0;
+  let heroRosterDeselectFx = null;
+  let heroRosterDeselectFxTimer = 0;
   let lastHeroLoadoutRenderId = '';
 
   function getPlayerVariant(id) {
@@ -132,6 +141,28 @@
       ? { active: true, color: heroLoadoutSwapFx.color || '' }
       : { active: false, color: '' };
   }
+  function markHeroRosterDeselectFx(heroId, color = '') {
+    const nextHeroId = normalizeHeroEquipFxKey(heroId);
+    if (!nextHeroId) return;
+    heroRosterDeselectFx = {
+      heroId: nextHeroId,
+      color: String(color || '').trim() || '#38bdf8',
+      at: getHeroEquipFxNow(),
+    };
+    if (heroRosterDeselectFxTimer) clearTimeout(heroRosterDeselectFxTimer);
+    heroRosterDeselectFxTimer = setTimeout(() => {
+      heroRosterDeselectFx = null;
+      heroRosterDeselectFxTimer = 0;
+    }, HERO_ROSTER_DESELECT_FX_MS);
+  }
+  function getHeroRosterDeselectFx(heroId) {
+    if (!heroRosterDeselectFx) return { active: false, color: '' };
+    const active = normalizeHeroEquipFxKey(heroId) === heroRosterDeselectFx.heroId
+      && (getHeroEquipFxNow() - Number(heroRosterDeselectFx.at || 0)) < HERO_ROSTER_DESELECT_FX_MS;
+    return active
+      ? { active: true, color: heroRosterDeselectFx.color || '' }
+      : { active: false, color: '' };
+  }
   function getHeroSkillFxColor(heroId, skillId) {
     const nextHeroId = normalizeHeroEquipFxKey(heroId);
     const nextSkillId = String(skillId || '').trim();
@@ -188,6 +219,86 @@
     if (/pickup|magnet|sweep|aura/.test(probe)) return { key: 'field', color: '#14b8a6' };
     return { key: 'core', color: String(hero?.accent || '').trim() || '#38bdf8' };
   }
+  function getHeroTalentIconPath(node) {
+    const explicit = String(node?.icon || node?.iconPath || '').trim();
+    if (explicit) {
+      if (/^(?:https?:)?\/\//.test(explicit) || explicit.startsWith('/') || explicit.startsWith('data:')) return explicit;
+      return `/assets/hero-talents/${explicit}`;
+    }
+    return '';
+  }
+  function renderHeroTalentIconHtml(talentVisual, imagePath, options = {}) {
+    const path = String(imagePath || '').trim();
+    const className = [
+      'hero-talent-icon',
+      `hero-talent-icon-${talentVisual.key}`,
+      path ? 'has-image' : '',
+      options.detail ? 'hero-detail-icon-button' : '',
+    ].filter(Boolean).join(' ');
+    const content = path
+      ? `<img src="${escapeHtml(path)}" alt="" loading="lazy" decoding="async"><span class="hero-talent-icon-core"></span>`
+      : '<span class="hero-talent-icon-core"></span>';
+    if (options.detail) {
+      const title = String(options.title || '').trim();
+      const detailLabel = `${getInventoryUiText('\u041f\u043e\u0434\u0440\u043e\u0431\u043d\u0435\u0435', 'Details')}: ${title || String(options.nodeId || '')}`;
+      return `<button type="button" class="${escapeHtml(className)}" data-hero-detail-kind="talent" data-hero-detail-hero="${escapeHtml(options.heroId || '')}" data-hero-detail-id="${escapeHtml(options.nodeId || '')}" title="${escapeHtml(detailLabel)}" aria-label="${escapeHtml(detailLabel)}">${content}</button>`;
+    }
+    if (path) {
+      return `<span class="${escapeHtml(className)}" aria-hidden="true">${content}</span>`;
+    }
+    return `<span class="${escapeHtml(className)}" aria-hidden="true">${content}</span>`;
+  }
+  function getHeroUniqueSkillIconPath(hero, skill) {
+    const explicit = String(skill?.icon || skill?.iconPath || '').trim();
+    if (explicit) {
+      if (/^(?:https?:)?\/\//.test(explicit) || explicit.startsWith('/') || explicit.startsWith('data:')) return explicit;
+      return `/assets/hero-skills/${explicit}`;
+    }
+    const skillId = String(skill?.id || '').trim();
+    if (!skillId) return '';
+    const heroId = String(skill?.heroId || skill?.sourceHeroId || hero?.id || '').trim().toLowerCase();
+    return heroId ? `/assets/hero-skills/${heroId}_${skillId}.webp` : `/assets/hero-skills/${skillId}.webp`;
+  }
+  function getHeroUniqueSkillGlyph(skill) {
+    const id = String(skill?.id || '').toLowerCase();
+    const named = {
+      pulse_wave: 'PW',
+      ion_lance: 'IL',
+      arc_matrix: 'AM',
+      seeker_protocol: 'SP',
+      adaptive_frame: 'AF',
+      combat_firmware: 'CF',
+      sync_link: 'SL',
+      razor_wind: 'RW',
+      hunter_mark: 'HM',
+      storm_net: 'SN',
+      sky_chasers: 'SK',
+      long_stride: 'LS',
+      vital_sight: 'VS',
+      trailblazer: 'TB',
+      energy_drink_iv: 'IV',
+    };
+    if (named[id]) return named[id];
+    const name = String(skill?.name || id || '?').replace(/[^A-Za-z0-9]+/g, ' ').trim();
+    if (!name) return '?';
+    const parts = name.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return parts[0].slice(0, 3).toUpperCase();
+  }
+  function renderHeroUniqueSkillDetailIconHtml(hero, skill, title) {
+    const imagePath = getHeroUniqueSkillIconPath(hero, skill);
+    const className = [
+      'battle-hub-hero-skill-icon',
+      imagePath ? 'has-image' : '',
+      'hero-unique-skill-icon',
+      'hero-detail-icon-button',
+    ].filter(Boolean).join(' ');
+    const detailLabel = `${getInventoryUiText('\u041f\u043e\u0434\u0440\u043e\u0431\u043d\u0435\u0435', 'Details')}: ${title || String(skill?.id || '')}`;
+    if (imagePath) {
+      return `<button type="button" class="${escapeHtml(className)}" data-hero-detail-kind="skill" data-hero-detail-hero="${escapeHtml(hero?.id || '')}" data-hero-detail-id="${escapeHtml(skill?.id || '')}" title="${escapeHtml(detailLabel)}" aria-label="${escapeHtml(detailLabel)}"><img src="${escapeHtml(imagePath)}" alt="" loading="lazy" decoding="async"></button>`;
+    }
+    return `<button type="button" class="${escapeHtml(className)}" data-hero-detail-kind="skill" data-hero-detail-hero="${escapeHtml(hero?.id || '')}" data-hero-detail-id="${escapeHtml(skill?.id || '')}" title="${escapeHtml(detailLabel)}" aria-label="${escapeHtml(detailLabel)}">${escapeHtml(getHeroUniqueSkillGlyph(skill))}</button>`;
+  }
   function getHeroTalentFxColor(heroId, nodeId) {
     const nextHeroId = normalizeHeroEquipFxKey(heroId);
     const nextNodeId = String(nodeId || '').trim();
@@ -225,6 +336,404 @@
       color: heroTalentUpgradeFx.color || '',
     };
   }
+  function getHeroProgressionSkillTypeLabel(skill) {
+    if (skill?.kind === 'active') return trWithFallback('ui.hero.skill_type_active', 'Active');
+    if (skill?.globalAura) return trWithFallback('ui.hero.skill_type_passive_aura', 'Passive Aura');
+    return trWithFallback('ui.hero.skill_type_passive', 'Passive');
+  }
+  function formatHeroProgressionCurrency(kind, amount) {
+    const value = Math.max(0, Math.floor(Number(amount) || 0));
+    if (kind === 'points') {
+      return `${value} ${getInventoryUiText('\u043e\u0447\u043a.', 'pts')}`;
+    }
+    return `${value} ${trWithFallback('ui.profile.shards', 'Shards').toLowerCase()}`;
+  }
+  function formatHeroProgressionPercent(value) {
+    const pct = (Number(value) || 0) * 100;
+    if (Math.abs(pct) < 0.05) return '';
+    const decimals = Math.abs(pct) > 0 && Math.abs(pct) < 10 ? 1 : 0;
+    return `${pct > 0 ? '+' : ''}${formatInventoryNumber(pct, decimals)}%`;
+  }
+  function formatHeroProgressionFlat(value, decimals = 0, suffix = '') {
+    const n = Number(value) || 0;
+    if (Math.abs(n) < 0.001) return '';
+    return `${n > 0 ? '+' : ''}${formatInventoryNumber(n, decimals)}${suffix}`;
+  }
+  function getHeroProgressionStatRows(def, level) {
+    const lvl = Math.max(0, Number(level) || 0);
+    if (!def || lvl <= 0) return [];
+    const rows = [];
+    const add = (label, value) => {
+      const text = String(value || '').trim();
+      if (!text) return;
+      rows.push({ label, value: text });
+    };
+    const addActive = (labelRu, labelEn, baseKey, perKey, decimals = 0, suffix = '') => {
+      const base = Number(def?.[baseKey]) || 0;
+      const per = Number(def?.[perKey]) || 0;
+      const value = base + per * Math.max(0, lvl - 1);
+      if (Math.abs(value) < 0.001) return;
+      add(getInventoryUiText(labelRu, labelEn), `${formatInventoryNumber(value, decimals)}${suffix}`);
+    };
+    const addPassivePct = (label, key) => add(label, formatHeroProgressionPercent((Number(def?.[key]) || 0) * lvl));
+    const addPassiveFlat = (label, key, decimals = 0, suffix = '') => add(label, formatHeroProgressionFlat((Number(def?.[key]) || 0) * lvl, decimals, suffix));
+
+    if (def?.kind === 'active') {
+      addActive('\u0423\u0440\u043e\u043d', 'Damage', 'damage', 'damagePerLevel', 0);
+      addActive('\u0420\u0430\u0434\u0438\u0443\u0441', 'Radius', 'radius', 'radiusPerLevel', 0);
+      addActive('\u0426\u0435\u043b\u0438', 'Targets', 'targets', 'targetsPerLevel', 0);
+      const cooldownMs = Math.max(0, Number(def?.cooldownMs) || 0);
+      if (cooldownMs > 0) {
+        const cooldownMul = Math.max(0, Number(def?.cooldownMulPerLevel) || 0);
+        const currentCd = Math.max(220, Math.round(cooldownMs * Math.max(0.2, 1 - cooldownMul * Math.max(0, lvl - 1))));
+        add(getInventoryUiText('\u041f\u0435\u0440\u0435\u0437\u0430\u0440\u044f\u0434\u043a\u0430', 'Cooldown'), `${formatInventoryNumber(currentCd / 1000, 2)}s`);
+      }
+      addActive('\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c \u0441\u043d\u0430\u0440\u044f\u0434\u0430', 'Missile speed', 'missileSpeed', 'missileSpeedPerLevel', 0);
+      addActive('\u0420\u0430\u0434\u0438\u0443\u0441 \u0432\u0437\u0440\u044b\u0432\u0430', 'Explosion radius', 'explosionRadius', 'explosionRadiusPerLevel', 0);
+      addActive('\u041f\u043e\u0432\u043e\u0440\u043e\u0442', 'Turn rate', 'turnRate', 'turnRatePerLevel', 1);
+      if (Number(def?.knockbackMul) > 0) add(getInventoryUiText('\u041e\u0442\u0431\u0440\u043e\u0441', 'Knockback'), `x${formatInventoryNumber(Number(def.knockbackMul), 1)}`);
+      if (Number(def?.stunMs) > 0) add(getInventoryUiText('\u0421\u0442\u0430\u043d', 'Stun'), `${formatInventoryNumber(Number(def.stunMs) / 1000, 1)}s`);
+      if (Number(def?.lifeMs) > 0) add(getInventoryUiText('\u0412\u0440\u0435\u043c\u044f \u0436\u0438\u0437\u043d\u0438', 'Lifetime'), `${formatInventoryNumber(Number(def.lifeMs) / 1000, 1)}s`);
+      return rows;
+    }
+
+    addPassivePct(heroProfileText('damage', 'Damage'), 'damageMulPerLevel');
+    addPassivePct(heroProfileText('fireRate', 'Fire rate'), 'fireRateMulPerLevel');
+    addPassivePct(heroProfileText('reload', 'Reload'), 'reloadSpeedMulPerLevel');
+    addPassivePct(heroProfileText('moveSpeed', 'Move speed'), 'moveSpeedMulPerLevel');
+    addPassiveFlat(heroProfileText('maxHp', 'Max HP'), 'maxHpFlatPerLevel', 0);
+    addPassiveFlat(heroProfileText('regen', 'Regen'), 'hpRegenPerSecPerLevel', 2, '/s');
+    addPassiveFlat(heroProfileText('pickup', 'Pickup'), 'pickupRadiusPerLevel', 0);
+    addPassiveFlat(heroProfileText('dodge', 'Dodge'), 'extraDodgeChargesPerLevel', 0);
+
+    addPassivePct(`${heroProfileText('rosterAuras', 'Roster auras')}: ${heroProfileText('damage', 'Damage')}`, 'globalDamageMulPerLevel');
+    addPassivePct(`${heroProfileText('rosterAuras', 'Roster auras')}: ${heroProfileText('fireRate', 'Fire rate')}`, 'globalFireRateMulPerLevel');
+    addPassivePct(`${heroProfileText('rosterAuras', 'Roster auras')}: ${heroProfileText('reload', 'Reload')}`, 'globalReloadSpeedMulPerLevel');
+    addPassivePct(`${heroProfileText('rosterAuras', 'Roster auras')}: ${heroProfileText('moveSpeed', 'Move speed')}`, 'globalMoveSpeedMulPerLevel');
+    addPassiveFlat(`${heroProfileText('rosterAuras', 'Roster auras')}: ${heroProfileText('maxHp', 'Max HP')}`, 'globalMaxHpFlatPerLevel', 0);
+    addPassiveFlat(`${heroProfileText('rosterAuras', 'Roster auras')}: ${heroProfileText('regen', 'Regen')}`, 'globalHpRegenPerSecPerLevel', 2, '/s');
+    addPassiveFlat(`${heroProfileText('rosterAuras', 'Roster auras')}: ${heroProfileText('pickup', 'Pickup')}`, 'globalPickupRadiusPerLevel', 0);
+    return rows;
+  }
+  function formatHeroTalentCurrentEffectText(node, level) {
+    const rows = getHeroProgressionStatRows(node, level);
+    if (!rows.length) return '';
+    const valueText = rows.length === 1
+      ? rows[0].value
+      : rows.map((row) => `${row.label} ${row.value}`).join(' \u00b7 ');
+    return `${getInventoryUiText('\u0441\u0435\u0439\u0447\u0430\u0441', 'now')} ${valueText}`;
+  }
+  function formatHeroUniqueSkillInlineEffectText(skill, level) {
+    const currentLevel = Math.max(0, Number(level) || 0);
+    const previewLevel = currentLevel > 0 ? currentLevel : 1;
+    const rows = getHeroProgressionStatRows(skill, previewLevel);
+    if (!rows.length) return '';
+    const visibleRows = rows.slice(0, 4);
+    const valueText = visibleRows.length === 1
+      ? visibleRows[0].value
+      : visibleRows.map((row) => `${row.label} ${row.value}`).join(' \u00b7 ');
+    const suffix = rows.length > visibleRows.length ? ' ...' : '';
+    const prefix = currentLevel > 0
+      ? getInventoryUiText('\u0441\u0435\u0439\u0447\u0430\u0441', 'now')
+      : getInventoryUiText('\u0443\u0440. 1', 'lv. 1');
+    return `${prefix} ${valueText}${suffix}`;
+  }
+  function getHeroProgressionModalData(kind, heroId, itemId) {
+    const normalizedKind = String(kind || '').trim().toLowerCase();
+    const nextHeroId = normalizeHeroEquipFxKey(heroId);
+    const nextItemId = String(itemId || '').trim();
+    if (!nextHeroId || !nextItemId) return null;
+    const catalog = getProgressionCatalog();
+    const progression = getProgressionState();
+    const catalogHero = (Array.isArray(catalog?.heroes) ? catalog.heroes : [])
+      .find((entry) => normalizeHeroEquipFxKey(entry?.id) === nextHeroId);
+    if (!catalogHero) return null;
+    const hero = { ...getPlayerVariant(catalogHero.id), ...catalogHero };
+    const unlocked = getUnlockedHeroSet(catalog, progression).has(hero.id);
+    const loggedIn = Boolean(game.playerAuth?.player);
+    const heroName = trHeroName(hero.id, hero.name || hero.id);
+
+    if (normalizedKind === 'talent') {
+      const node = (Array.isArray(catalog?.trees?.[hero.id]) ? catalog.trees[hero.id] : [])
+        .find((entry) => String(entry?.id || '').trim() === nextItemId);
+      if (!node) return null;
+      const level = getNodeLevel(progression, hero.id, node.id);
+      const maxLevel = Math.max(1, Number(node.maxLevel) || 1);
+      const cost = Math.max(1, Number(node.cost) || 1);
+      const points = Math.max(0, Number(progression?.accountSkillPoints) || 0);
+      const visual = getHeroTalentNodeVisual(hero, node);
+      const title = trWithFallback(`hero.node.${String(node.id || '').toLowerCase()}.name`, node.name || node.id);
+      return {
+        kind: 'talent',
+        hero,
+        heroName,
+        item: node,
+        itemId: node.id,
+        title,
+        desc: trWithFallback(`hero.node.${String(node.id || '').toLowerCase()}.desc`, node.desc || ''),
+        subtitle: trWithFallback('ui.hero.talent_tree', 'Hero talents'),
+        level,
+        maxLevel,
+        nextLevel: Math.min(maxLevel, level + 1),
+        cost,
+        resourceKind: 'points',
+        resourceValue: points,
+        action: level >= maxLevel ? 'maxed' : 'upgrade',
+        canUse: loggedIn && unlocked && level < maxLevel && points >= cost,
+        loggedIn,
+        unlocked,
+        color: visual.color,
+        imagePath: getHeroTalentIconPath(node),
+        glyph: getHeroUniqueSkillGlyph(node),
+      };
+    }
+
+    if (normalizedKind === 'skill') {
+      const skill = (Array.isArray(hero?.uniqueSkills) ? hero.uniqueSkills : [])
+        .find((entry) => String(entry?.id || '').trim() === nextItemId);
+      if (!skill) return null;
+      const level = getHeroSkillLevel(progression, hero.id, skill.id);
+      const maxLevel = Math.max(1, Number(skill.maxLevel) || 1);
+      const shards = Math.max(0, Number(progression?.shards) || 0);
+      const action = level >= maxLevel ? 'maxed' : (level > 0 ? 'upgrade' : 'unlock');
+      const cost = action === 'unlock'
+        ? Math.max(1, Number(skill.unlockCostShards) || 1)
+        : action === 'upgrade'
+          ? Math.max(1, (Number(skill.upgradeCostShardsBase) || 1) + (Math.max(0, level - 1) * Math.max(0, Number(skill.upgradeCostShardsStep) || 0)))
+          : 0;
+      const title = trWithFallback(`skill.${String(skill.id || '').toLowerCase()}.name`, skill.name || skill.id);
+      return {
+        kind: 'skill',
+        hero,
+        heroName,
+        item: skill,
+        itemId: skill.id,
+        title,
+        desc: trWithFallback(`skill.${String(skill.id || '').toLowerCase()}.desc`, skill.desc || ''),
+        subtitle: getHeroProgressionSkillTypeLabel(skill),
+        level,
+        maxLevel,
+        nextLevel: action === 'unlock' ? 1 : Math.min(maxLevel, level + 1),
+        cost,
+        resourceKind: 'shards',
+        resourceValue: shards,
+        action,
+        canUse: loggedIn && unlocked && action !== 'maxed' && shards >= cost,
+        loggedIn,
+        unlocked,
+        color: getInventoryRarityFxColor(skill.rarity),
+        imagePath: getHeroUniqueSkillIconPath(hero, skill),
+        glyph: getHeroUniqueSkillGlyph(skill),
+        rarity: String(skill.rarity || 'common').trim().toLowerCase(),
+      };
+    }
+
+    return null;
+  }
+  function renderHeroProgressionStatSection(title, rows, emptyText) {
+    const list = Array.isArray(rows) ? rows : [];
+    const body = list.length
+      ? list.map((row) => `<span class="hero-progression-stat-row"><b>${escapeHtml(row.label)}</b><strong>${escapeHtml(row.value)}</strong></span>`).join('')
+      : `<span>${escapeHtml(emptyText)}</span>`;
+    return `<section><b>${escapeHtml(title)}</b><div>${body}</div></section>`;
+  }
+  function renderHeroProgressionModalArt(data) {
+    const imagePath = String(data?.imagePath || '').trim();
+    const className = `battle-hub-skill-modal-art hero-progression-modal-art ${data?.kind === 'talent' ? 'is-talent' : 'is-skill'}${imagePath ? ' has-image' : ''}`;
+    if (imagePath) {
+      return `<div class="${escapeHtml(className)}"><img src="${escapeHtml(imagePath)}" alt="" loading="eager" decoding="async" fetchpriority="high"></div>`;
+    }
+    return `<div class="${escapeHtml(className)}"><span>${escapeHtml(data?.glyph || '?')}</span></div>`;
+  }
+  function ensureHeroProgressionModalElement() {
+    if (heroProgressionModalEl) return heroProgressionModalEl;
+    const el = document.createElement('div');
+    el.className = 'battle-hub-skill-modal hero-progression-modal hidden';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-modal', 'true');
+    el.setAttribute('aria-live', 'polite');
+    el.innerHTML = '<div class="battle-hub-skill-modal-backdrop" data-hero-progression-modal-close="1"></div>'
+      + '<div class="battle-hub-skill-modal-card hero-progression-modal-card" role="document">'
+      + `<button class="battle-hub-skill-modal-close" type="button" data-hero-progression-modal-close="1" aria-label="${escapeHtml(trWithFallback('ui.skill_modal.close_aria', 'Close skill details'))}"></button>`
+      + '<div class="battle-hub-skill-modal-content"></div>'
+      + '</div>';
+    el.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (target.closest('[data-hero-progression-modal-close]')) closeHeroProgressionModal();
+    });
+    document.body.appendChild(el);
+    heroProgressionModalEl = el;
+    return el;
+  }
+  function closeHeroProgressionModal() {
+    if (!heroProgressionModalEl) return;
+    if (heroProgressionModalEl.classList.contains('hidden') || heroProgressionModalEl.classList.contains('is-closing')) return;
+    if (heroProgressionModalCloseTimer) clearTimeout(heroProgressionModalCloseTimer);
+    if (heroProgressionModalPulseTimer) clearTimeout(heroProgressionModalPulseTimer);
+    heroProgressionModalEl.classList.remove('is-open', 'is-busy', 'is-purchased');
+    heroProgressionModalEl.classList.add('is-closing');
+    heroProgressionModalCloseTimer = setTimeout(() => {
+      if (!heroProgressionModalEl) return;
+      heroProgressionModalEl.classList.add('hidden');
+      heroProgressionModalEl.classList.remove('is-open', 'is-closing', 'is-purchased', 'is-busy');
+      heroProgressionModalState = null;
+      heroProgressionModalCloseTimer = 0;
+      heroProgressionModalPulseTimer = 0;
+    }, HERO_PROGRESSION_MODAL_CLOSE_MS);
+  }
+  function renderHeroProgressionModal() {
+    if (!heroProgressionModalState) return;
+    const data = getHeroProgressionModalData(
+      heroProgressionModalState.kind,
+      heroProgressionModalState.heroId,
+      heroProgressionModalState.itemId,
+    );
+    const modal = ensureHeroProgressionModalElement();
+    const content = modal.querySelector('.battle-hub-skill-modal-content');
+    if (!(content instanceof HTMLElement) || !data) {
+      closeHeroProgressionModal();
+      return;
+    }
+
+    const currentRows = data.level > 0
+      ? getHeroProgressionStatRows(data.item, data.level)
+      : [];
+    const nextRows = data.action !== 'maxed'
+      ? getHeroProgressionStatRows(data.item, data.nextLevel)
+      : [];
+    const emptyCurrent = data.level > 0
+      ? getInventoryUiText('\u0425\u0430\u0440\u0430\u043a\u0442\u0435\u0440\u0438\u0441\u0442\u0438\u043a\u0438 \u043d\u0435 \u0437\u0430\u0434\u0430\u043d\u044b', 'No stats configured')
+      : getInventoryUiText('\u0415\u0449\u0435 \u043d\u0435 \u0438\u0437\u0443\u0447\u0435\u043d\u043e', 'Not learned yet');
+    const emptyNext = getInventoryUiText('\u041f\u0440\u0438\u0440\u043e\u0441\u0442 \u0443\u0436\u0435 \u043d\u0430 \u043c\u0430\u043a\u0441\u0438\u043c\u0443\u043c\u0435', 'Already at maximum');
+    const levelText = data.level > 0
+      ? `Lv ${data.level}/${data.maxLevel}`
+      : `${trWithFallback('ui.hero.locked', 'Locked')} / ${data.maxLevel}`;
+    const nextTitle = data.action === 'unlock'
+      ? getInventoryUiText('\u041f\u043e\u0441\u043b\u0435 \u043e\u0442\u043a\u0440\u044b\u0442\u0438\u044f', 'After unlock')
+      : getInventoryUiText('\u0421\u043b\u0435\u0434\u0443\u044e\u0449\u0438\u0439 \u0443\u0440\u043e\u0432\u0435\u043d\u044c', 'Next level');
+    const levelPct = Math.max(0, Math.min(100, (data.level / Math.max(1, data.maxLevel)) * 100));
+    const afterValue = data.action === 'maxed' ? data.resourceValue : Math.max(0, data.resourceValue - data.cost);
+    const actionLabel = data.action === 'unlock'
+      ? `${trWithFallback('ui.hero.unlock', 'Unlock')} | ${formatHeroProgressionCurrency(data.resourceKind, data.cost)}`
+      : data.action === 'upgrade'
+        ? `${trWithFallback('ui.inventory.action_upgrade', 'Upgrade')} | ${formatHeroProgressionCurrency(data.resourceKind, data.cost)}`
+        : trWithFallback('ui.common.max', 'MAX');
+    const statusText = !data.loggedIn
+      ? trWithFallback('ui.profile.login_required', 'Login required.')
+      : !data.unlocked
+        ? trWithFallback('ui.hero.locked', 'Hero locked')
+        : data.action === 'maxed'
+          ? trWithFallback('ui.skill_modal.maxed', 'Maxed')
+          : data.resourceValue >= data.cost
+            ? getInventoryUiText('\u0413\u043e\u0442\u043e\u0432\u043e \u043a \u043f\u0440\u043e\u043a\u0430\u0447\u043a\u0435', 'Ready to upgrade')
+            : `${getInventoryUiText('\u041d\u0435 \u0445\u0432\u0430\u0442\u0430\u0435\u0442', 'Need more')}: ${formatHeroProgressionCurrency(data.resourceKind, Math.max(0, data.cost - data.resourceValue))}`;
+    const desc = String(data.desc || '').trim() || data.subtitle;
+    const rarityLabel = data.kind === 'skill' ? ` | ${getItemRarityLabel(data.rarity || 'common')}` : '';
+
+    modal.style.setProperty('--avatar-accent', String(data.hero?.accent || data.color || '#38bdf8'));
+    modal.style.setProperty('--skill-color', String(data.color || data.hero?.accent || '#38bdf8'));
+    modal.setAttribute('aria-label', data.title);
+    content.innerHTML = '<div class="battle-hub-skill-modal-hero hero-progression-modal-hero">'
+      + renderHeroProgressionModalArt(data)
+      + '<div class="battle-hub-skill-modal-head hero-progression-modal-head">'
+      + `<span class="battle-hub-skill-modal-kicker">${escapeHtml(data.subtitle)}${escapeHtml(rarityLabel)}</span>`
+      + `<strong>${escapeHtml(data.title)}</strong>`
+      + `<small>${escapeHtml(data.heroName)} | ${escapeHtml(levelText)}</small>`
+      + `<div class="hero-progression-level-track" style="--progress:${levelPct.toFixed(1)}%"><i></i></div>`
+      + '</div>'
+      + '</div>'
+      + `<p class="battle-hub-skill-modal-desc">${escapeHtml(desc)}</p>`
+      + '<div class="battle-hub-skill-modal-stats hero-progression-modal-stats">'
+      + renderHeroProgressionStatSection(getInventoryUiText('\u0421\u0435\u0439\u0447\u0430\u0441', 'Current'), currentRows, emptyCurrent)
+      + (data.action !== 'maxed' ? renderHeroProgressionStatSection(nextTitle, nextRows, emptyNext) : '')
+      + '</div>'
+      + '<div class="battle-hub-skill-modal-economy">'
+      + `<span><b>${escapeHtml(trWithFallback('ui.skill_modal.cost', 'Cost'))}</b><strong>${escapeHtml(data.action === 'maxed' ? trWithFallback('ui.skill_modal.done', 'Done') : formatHeroProgressionCurrency(data.resourceKind, data.cost))}</strong></span>`
+      + `<span class="${data.resourceValue > 0 ? 'has-value' : ''}"><b>${escapeHtml(getInventoryUiText('\u0423 \u0432\u0430\u0441', 'You have'))}</b><strong>${escapeHtml(formatHeroProgressionCurrency(data.resourceKind, data.resourceValue))}</strong></span>`
+      + `<span><b>${escapeHtml(trWithFallback('ui.skill_modal.after', 'After'))}</b><strong>${escapeHtml(formatHeroProgressionCurrency(data.resourceKind, afterValue))}</strong></span>`
+      + '</div>'
+      + `<div class="battle-hub-skill-modal-status ${data.canUse ? 'ok' : 'warn'}">${escapeHtml(statusText)}</div>`
+      + `<button class="battle-hub-skill-modal-action hero-progression-modal-action" type="button" data-hero-progression-modal-action="${escapeHtml(data.action)}"${data.canUse ? '' : ' disabled'}>${escapeHtml(actionLabel)}</button>`;
+
+    const actionBtn = content.querySelector('.hero-progression-modal-action');
+    actionBtn?.addEventListener('click', () => {
+      void purchaseHeroProgressionDetail();
+    }, { once: true });
+  }
+  function openHeroProgressionModal(kind, heroId, itemId) {
+    const nextKind = String(kind || '').trim().toLowerCase();
+    const nextHeroId = normalizeHeroEquipFxKey(heroId);
+    const nextItemId = String(itemId || '').trim();
+    if (!nextKind || !nextHeroId || !nextItemId) return;
+    heroProgressionModalState = { kind: nextKind, heroId: nextHeroId, itemId: nextItemId };
+    const modal = ensureHeroProgressionModalElement();
+    if (heroProgressionModalCloseTimer) {
+      clearTimeout(heroProgressionModalCloseTimer);
+      heroProgressionModalCloseTimer = 0;
+    }
+    renderHeroProgressionModal();
+    modal.classList.remove('hidden', 'is-closing', 'is-purchased', 'is-busy');
+    void modal.offsetWidth;
+    modal.classList.add('is-open');
+  }
+  async function purchaseHeroProgressionDetail() {
+    if (!heroProgressionModalState || !heroProgressionModalEl) return;
+    const data = getHeroProgressionModalData(
+      heroProgressionModalState.kind,
+      heroProgressionModalState.heroId,
+      heroProgressionModalState.itemId,
+    );
+    if (!data || !data.canUse || data.action === 'maxed') return;
+    heroProgressionModalEl.classList.add('is-busy');
+    try {
+      if (data.kind === 'talent') {
+        await upgradeHeroNodeForAccount(data.hero.id, data.item.id);
+      } else if (data.action === 'unlock') {
+        await unlockHeroSkillForAccount(data.hero.id, data.item.id);
+      } else {
+        await upgradeHeroSkillForAccount(data.hero.id, data.item.id);
+      }
+      setHeroActionFeedback(`${data.heroName}: ${data.title} ${data.action === 'unlock' ? 'unlocked' : 'upgraded'}`, 'ok');
+      renderCharacterPicker();
+      renderHeroProgressionModal();
+      heroProgressionModalEl.classList.remove('is-busy');
+      heroProgressionModalEl.classList.add('is-purchased');
+      if (heroProgressionModalPulseTimer) clearTimeout(heroProgressionModalPulseTimer);
+      heroProgressionModalPulseTimer = setTimeout(() => {
+        heroProgressionModalEl?.classList?.remove('is-purchased');
+        heroProgressionModalPulseTimer = 0;
+      }, HERO_PROGRESSION_MODAL_PULSE_MS);
+    } catch (err) {
+      const msg = humanizeHeroApiError(err, 'Failed to upgrade.');
+      heroProgressionModalEl.classList.remove('is-busy');
+      renderHeroProgressionModal();
+      const status = heroProgressionModalEl.querySelector('.battle-hub-skill-modal-status');
+      if (status instanceof HTMLElement) {
+        status.textContent = msg;
+        status.className = 'battle-hub-skill-modal-status warn';
+      }
+      setHeroActionFeedback(msg, 'err');
+    }
+  }
+  document.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const detailBtn = target.closest('[data-hero-detail-kind]');
+    if (!(detailBtn instanceof HTMLElement)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    openHeroProgressionModal(
+      detailBtn.getAttribute('data-hero-detail-kind') || '',
+      detailBtn.getAttribute('data-hero-detail-hero') || '',
+      detailBtn.getAttribute('data-hero-detail-id') || '',
+    );
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    if (!heroProgressionModalEl || heroProgressionModalEl.classList.contains('hidden')) return;
+    closeHeroProgressionModal();
+  });
   function getUnlockedHeroSet(catalog, progression) {
     if (progression?.unlockedHeroes && Array.isArray(progression.unlockedHeroes)) {
       return new Set(progression.unlockedHeroes.map((id) => String(id || '').trim()).filter(Boolean));
@@ -946,6 +1455,8 @@
     const canUseAction = unlockedSkill ? canUpgradeSkill : canUnlockSkill;
     const skillName = trWithFallback(`skill.${String(skill.id || '').toLowerCase()}.name`, skill.name || skill.id);
     const skillDesc = trWithFallback(`skill.${String(skill.id || '').toLowerCase()}.desc`, skill.desc || '');
+    const skillEffectText = formatHeroUniqueSkillInlineEffectText(skill, lvl);
+    const skillDescHtml = `${escapeHtml(skillDesc)}${skillEffectText ? ` <span class="hero-node-current-effect">${escapeHtml(skillEffectText)}</span>` : ''}`;
     const skillType = skill.kind === 'active'
       ? trWithFallback('ui.hero.skill_type_active', 'Active')
       : (skill.globalAura ? trWithFallback('ui.hero.skill_type_passive_aura', 'Passive Aura') : trWithFallback('ui.hero.skill_type_passive', 'Passive'));
@@ -953,9 +1464,7 @@
       ? (maxedSkill ? trWithFallback('ui.common.max', 'MAX') : costReq.text)
       : costReq.text;
     const requirementClass = (costReq.enough || maxedSkill) ? 'ok' : 'lack';
-    const skillIconHtml = typeof globalThis.renderBattleHubHeroSkillIcon === 'function'
-      ? globalThis.renderBattleHubHeroSkillIcon(skill, skill.kind === 'active' ? 'A' : 'P', 'hero-unique-skill-icon')
-      : '';
+    const skillIconHtml = renderHeroUniqueSkillDetailIconHtml(hero, skill, skillName);
     const skillFx = getHeroSkillUpgradeFx(hero.id, skill.id);
     const skillColor = skillFx.color || getInventoryRarityFxColor(skill.rarity);
     const rowClasses = [
@@ -978,10 +1487,11 @@
     const actionVerb = maxedSkill
       ? trWithFallback('ui.common.max', 'MAX')
       : (unlockedSkill ? trWithFallback('ui.inventory.action_upgrade', 'Upgrade') : trWithFallback('ui.hero.unlock', 'Unlock'));
-    const levelLabel = `LV ${lvl}/${maxLevel}`;
+    const levelLabel = `${lvl}/${maxLevel}`;
     const actionTitle = `${actionVerb}: ${skillName}. ${levelLabel}. ${requirementLabel}`;
-    const actionGlyph = maxedSkill ? 'MAX' : '+';
-    return `<div class="${escapeHtml(rowClasses)}" data-hero-skill-row="${escapeHtml(skill.id)}" style="--skill-color:${escapeHtml(skillColor)}">${skillIconHtml}<div class="hero-unique-skill-copy"><div class="hero-node-name">${escapeHtml(skillName)} <span class="muted">(${escapeHtml(skillType)})</span></div><div class="hero-node-desc">${escapeHtml(skillDesc)}</div><div class="hero-node-desc hero-req ${requirementClass}">${escapeHtml(requirementLabel)}</div></div><button type="button" class="${escapeHtml(buttonClasses)}" data-hero-skill-id="${escapeHtml(skill.id)}" data-hero-skill-action="${unlockedSkill ? 'upgrade' : 'unlock'}" title="${escapeHtml(actionTitle)}" aria-label="${escapeHtml(actionTitle)}" ${canUseAction ? '' : 'disabled'}><span class="hero-skill-upgrade-action-frame" aria-hidden="true"></span><span class="hero-skill-upgrade-action-level">${escapeHtml(levelLabel)}</span><span class="hero-skill-upgrade-action-mark" aria-hidden="true">${escapeHtml(actionGlyph)}</span></button></div>`;
+    const detailTitle = `${getInventoryUiText('\u041f\u043e\u0434\u0440\u043e\u0431\u043d\u0435\u0435', 'Details')}: ${skillName}`;
+    const actionMarkHtml = maxedSkill ? '' : '<span class="hero-skill-upgrade-action-mark" aria-hidden="true">+</span>';
+    return `<div class="${escapeHtml(rowClasses)}" data-hero-skill-row="${escapeHtml(skill.id)}" style="--skill-color:${escapeHtml(skillColor)}">${skillIconHtml}<div class="hero-unique-skill-copy"><button type="button" class="hero-node-detail-hit" data-hero-detail-kind="skill" data-hero-detail-hero="${escapeHtml(hero.id)}" data-hero-detail-id="${escapeHtml(skill.id)}" title="${escapeHtml(detailTitle)}" aria-label="${escapeHtml(detailTitle)}"><span class="hero-node-name">${escapeHtml(skillName)} <span class="muted">(${escapeHtml(skillType)})</span></span><span class="hero-node-desc">${skillDescHtml}</span></button><div class="hero-node-desc hero-req ${requirementClass}">${escapeHtml(requirementLabel)}</div></div><button type="button" class="${escapeHtml(buttonClasses)}" data-hero-skill-id="${escapeHtml(skill.id)}" data-hero-skill-action="${unlockedSkill ? 'upgrade' : 'unlock'}" title="${escapeHtml(actionTitle)}" aria-label="${escapeHtml(actionTitle)}" ${canUseAction ? '' : 'disabled'}><span class="hero-skill-upgrade-action-frame" aria-hidden="true"></span><span class="hero-skill-upgrade-action-level">${escapeHtml(levelLabel)}</span>${actionMarkHtml}</button></div>`;
   }
   function renderHeroTalentNodeRow(hero, node, progression, points, unlocked) {
     const lvl = getNodeLevel(progression, hero.id, node.id);
@@ -992,11 +1502,19 @@
     const canUpgrade = Boolean(game.playerAuth?.player && unlocked && !maxedNode && pointReq.enough);
     const nodeName = trWithFallback(`hero.node.${String(node.id || '').toLowerCase()}.name`, node.name || node.id);
     const nodeDesc = trWithFallback(`hero.node.${String(node.id || '').toLowerCase()}.desc`, node.desc || '');
+    const currentEffectText = formatHeroTalentCurrentEffectText(node, lvl);
+    const nodeDescHtml = `${escapeHtml(nodeDesc)}${currentEffectText ? ` <span class="hero-node-current-effect">${escapeHtml(currentEffectText)}</span>` : ''}`;
     const requirementLabel = maxedNode ? trWithFallback('ui.common.max', 'MAX') : pointReq.text;
     const requirementClass = (pointReq.enough || maxedNode) ? 'ok' : 'lack';
     const talentVisual = getHeroTalentNodeVisual(hero, node);
     const talentFx = getHeroTalentUpgradeFx(hero.id, node.id);
     const talentColor = talentFx.color || talentVisual.color;
+    const talentIconHtml = renderHeroTalentIconHtml(talentVisual, getHeroTalentIconPath(node), {
+      detail: true,
+      heroId: hero.id,
+      nodeId: node.id,
+      title: nodeName,
+    });
     const rowClasses = [
       'hero-node',
       'hero-talent-node',
@@ -1015,10 +1533,11 @@
       maxedNode ? 'is-maxed' : '',
     ].filter(Boolean).join(' ');
     const actionVerb = maxedNode ? trWithFallback('ui.common.max', 'MAX') : trWithFallback('ui.inventory.action_upgrade', 'Upgrade');
-    const levelLabel = `LV ${lvl}/${maxLevel}`;
+    const levelLabel = `${lvl}/${maxLevel}`;
     const actionTitle = `${actionVerb}: ${nodeName}. ${levelLabel}. ${requirementLabel}`;
-    const actionGlyph = maxedNode ? 'MAX' : '+';
-    return `<div class="${escapeHtml(rowClasses)}" data-hero-talent-row="${escapeHtml(node.id)}" style="--skill-color:${escapeHtml(talentColor)};--talent-color:${escapeHtml(talentColor)}"><span class="hero-talent-icon hero-talent-icon-${escapeHtml(talentVisual.key)}" aria-hidden="true"><span class="hero-talent-icon-core"></span></span><div class="hero-talent-copy"><div class="hero-node-name">${escapeHtml(nodeName)}</div><div class="hero-node-desc">${escapeHtml(nodeDesc)}</div><div class="hero-node-desc hero-req ${requirementClass}">${escapeHtml(requirementLabel)}</div></div><button type="button" class="${escapeHtml(buttonClasses)}" data-node-id="${escapeHtml(node.id)}" title="${escapeHtml(actionTitle)}" aria-label="${escapeHtml(actionTitle)}" ${canUpgrade ? '' : 'disabled'}><span class="hero-skill-upgrade-action-frame" aria-hidden="true"></span><span class="hero-skill-upgrade-action-level">${escapeHtml(levelLabel)}</span><span class="hero-skill-upgrade-action-mark" aria-hidden="true">${escapeHtml(actionGlyph)}</span></button></div>`;
+    const detailTitle = `${getInventoryUiText('\u041f\u043e\u0434\u0440\u043e\u0431\u043d\u0435\u0435', 'Details')}: ${nodeName}`;
+    const actionMarkHtml = maxedNode ? '' : '<span class="hero-skill-upgrade-action-mark" aria-hidden="true">+</span>';
+    return `<div class="${escapeHtml(rowClasses)}" data-hero-talent-row="${escapeHtml(node.id)}" style="--skill-color:${escapeHtml(talentColor)};--talent-color:${escapeHtml(talentColor)}">${talentIconHtml}<div class="hero-talent-copy"><button type="button" class="hero-node-detail-hit" data-hero-detail-kind="talent" data-hero-detail-hero="${escapeHtml(hero.id)}" data-hero-detail-id="${escapeHtml(node.id)}" title="${escapeHtml(detailTitle)}" aria-label="${escapeHtml(detailTitle)}"><span class="hero-node-name">${escapeHtml(nodeName)}</span><span class="hero-node-desc">${nodeDescHtml}</span></button><div class="hero-node-desc hero-req ${requirementClass}">${escapeHtml(requirementLabel)}</div></div><button type="button" class="${escapeHtml(buttonClasses)}" data-node-id="${escapeHtml(node.id)}" title="${escapeHtml(actionTitle)}" aria-label="${escapeHtml(actionTitle)}" ${canUpgrade ? '' : 'disabled'}><span class="hero-skill-upgrade-action-frame" aria-hidden="true"></span><span class="hero-skill-upgrade-action-level">${escapeHtml(levelLabel)}</span>${actionMarkHtml}</button></div>`;
   }
   function bindHeroUnlockButton(targetEl, hero) {
     const unlockBtn = targetEl?.querySelector?.('[data-hero-unlock="1"]');
@@ -1165,14 +1684,14 @@
     if (useArenaRoster && rosterEl) characterShell.appendChild(rosterEl);
     const characterTopRow = document.createElement('div');
     characterTopRow.className = 'hero-character-top-row';
-    if (headerCard) characterTopRow.appendChild(headerCard.cloneNode(true));
-    const characterSkillsRow = document.createElement('div');
-    characterSkillsRow.className = 'hero-character-skills-row';
-    if (talentCard) characterSkillsRow.appendChild(talentCard.cloneNode(true));
-    if (uniqueCard) characterSkillsRow.appendChild(uniqueCard.cloneNode(true));
-    if (characterSkillsRow.children.length) characterTopRow.appendChild(characterSkillsRow);
+    const characterDossierStack = document.createElement('div');
+    characterDossierStack.className = 'hero-character-dossier-stack';
+    if (headerCard) characterDossierStack.appendChild(headerCard.cloneNode(true));
+    if (talentCard) characterDossierStack.appendChild(talentCard.cloneNode(true));
+    if (characterDossierStack.children.length) characterTopRow.appendChild(characterDossierStack);
+    if (stageCard) characterTopRow.appendChild(stageCard.cloneNode(true));
+    if (uniqueCard) characterTopRow.appendChild(uniqueCard.cloneNode(true));
     if (characterTopRow.children.length) characterShell.appendChild(characterTopRow);
-    if (stageCard) characterShell.appendChild(stageCard.cloneNode(true));
     heroCharacterPanelEl.appendChild(characterShell);
     shell.innerHTML = '';
     if (headerCard) shell.appendChild(headerCard);
@@ -1628,6 +2147,8 @@
     renderHeroTreePanelV2(catalog, progression, focusedHero, focusedHero ? unlockedHeroes.has(focusedHero.id) : false);
     if (focusedHero) splitHeroPanelsBetweenMenus(focusedHero);
     globalThis.renderBattleHubPlayerBadge?.();
+    globalThis.CWPageLoader?.mark?.('characters', 'Hero dossier assembled');
+    globalThis.CWPageLoader?.requestReady?.();
   }
   function buildHeroUnlockHint(hero, progression) {
     const needLevel = Math.max(1, Number(hero.unlockLevel) || 1);
@@ -1669,6 +2190,11 @@
       return;
     }
     const changingActiveHero = hero.id !== selectedPlayerClass;
+    if (changingActiveHero) {
+      const previousHero = (Array.isArray(getProgressionCatalog()?.heroes) ? getProgressionCatalog().heroes : [])
+        .find((entry) => String(entry?.id || '') === String(selectedPlayerClass || ''));
+      markHeroRosterDeselectFx(selectedPlayerClass, previousHero?.accent || '#38bdf8');
+    }
     const swapStarted = changingActiveHero ? await beginBattleHubHeroSwap(hero.id) : false;
     selectedPlayerClass = hero.id;
     localStorage.setItem(PLAYER_CLASS_STORAGE_KEY, selectedPlayerClass);
@@ -1697,6 +2223,7 @@
     const heroLevels = progression?.heroLevels && typeof progression.heroLevels === 'object' ? progression.heroLevels : {};
     const focusedHero = heroes.find((hero) => hero.id === heroFocusId) || heroes[0] || null;
     const activeHero = heroes.find((hero) => hero.id === selectedPlayerClass) || focusedHero;
+    const selectedHero = focusedHero || activeHero || null;
     const unlockedCount = heroes.reduce((sum, hero) => sum + (unlockedHeroes.has(hero.id) ? 1 : 0), 0);
     const accent = String(focusedHero?.accent || activeHero?.accent || '#38bdf8');
     const shell = document.createElement('div');
@@ -1720,6 +2247,52 @@
     head.appendChild(titleWrap);
     head.appendChild(meta);
 
+    let spotlight = null;
+    if (selectedHero) {
+      const selectedHeroFx = getHeroLoadoutSwapFx(selectedHero.id);
+      const selectedHeroName = trHeroName(selectedHero.id, selectedHero.name || selectedHero.id || '');
+      const selectedHeroLevel = Math.max(1, Number(heroLevels[selectedHero.id]) || 1);
+      const selectedHeroUnlocked = unlockedHeroes.has(selectedHero.id);
+      const selectedHeroIsActive = selectedHero.id === selectedPlayerClass;
+      const selectedHeroState = selectedHeroUnlocked
+        ? (selectedHeroIsActive ? trWithFallback('ui.hero.selected_short', 'Selected') : trWithFallback('ui.hero.unlocked', 'Unlocked'))
+        : trWithFallback('ui.hero.locked', 'Locked');
+      const selectedHeroKicker = selectedHeroIsActive
+        ? getInventoryUiText('\u0421\u0435\u0439\u0447\u0430\u0441 \u0432\u044b\u0431\u0440\u0430\u043d', 'Selected now')
+        : getInventoryUiText('\u0412 \u0444\u043e\u043a\u0443\u0441\u0435', 'In focus');
+      spotlight = document.createElement('div');
+      spotlight.className = `hero-arena-selected-hero${selectedHeroFx.active ? ' is-name-reveal' : ''}`;
+      spotlight.style.setProperty('--name-accent', selectedHeroFx.color || selectedHero.accent || accent);
+      spotlight.setAttribute('aria-live', 'polite');
+
+      const lineStart = document.createElement('span');
+      lineStart.className = 'hero-arena-selected-line';
+      lineStart.setAttribute('aria-hidden', 'true');
+      const lineEnd = document.createElement('span');
+      lineEnd.className = 'hero-arena-selected-line';
+      lineEnd.setAttribute('aria-hidden', 'true');
+
+      const copy = document.createElement('span');
+      copy.className = 'hero-arena-selected-copy';
+      const kickerEl = document.createElement('span');
+      kickerEl.className = 'hero-arena-selected-kicker';
+      kickerEl.textContent = selectedHeroKicker;
+      const titleEl = document.createElement('strong');
+      titleEl.className = 'hero-arena-selected-title';
+      titleEl.textContent = selectedHeroName;
+      titleEl.setAttribute('data-text', selectedHeroName);
+      const subEl = document.createElement('span');
+      subEl.className = 'hero-arena-selected-sub';
+      subEl.textContent = `LV ${selectedHeroLevel} | ${selectedHeroState}`;
+
+      copy.appendChild(kickerEl);
+      copy.appendChild(titleEl);
+      copy.appendChild(subEl);
+      spotlight.appendChild(lineStart);
+      spotlight.appendChild(copy);
+      spotlight.appendChild(lineEnd);
+    }
+
     const grid = document.createElement('div');
     grid.className = 'hero-arena-roster-grid';
     heroes.forEach((hero, index) => {
@@ -1728,6 +2301,7 @@
       const active = hero.id === selectedPlayerClass;
       const heroLevel = Math.max(1, Number(heroLevels[hero.id]) || 1);
       const rosterCardFx = focused ? getHeroLoadoutSwapFx(hero.id) : { active: false };
+      const rosterDeselectFx = !active ? getHeroRosterDeselectFx(hero.id) : { active: false, color: '' };
       const slot = document.createElement('button');
       slot.type = 'button';
       slot.className = [
@@ -1736,8 +2310,9 @@
         focused ? 'focused' : '',
         unlocked ? 'unlocked' : 'locked',
         rosterCardFx.active ? 'is-roster-select-flash' : '',
+        rosterDeselectFx.active ? 'is-roster-deselect-flash' : '',
       ].filter(Boolean).join(' ');
-      slot.style.setProperty('--accent', hero.accent || '#38bdf8');
+      slot.style.setProperty('--accent', rosterDeselectFx.color || hero.accent || '#38bdf8');
       slot.style.setProperty('--slot-index', index);
       slot.setAttribute('aria-label', trWithFallback('ui.hero.aria', `Hero ${hero.name}`, { hero: trHeroName(hero.id, hero.name) }));
 
@@ -1784,6 +2359,7 @@
     });
 
     shell.appendChild(head);
+    if (spotlight) shell.appendChild(spotlight);
     shell.appendChild(grid);
     heroGalleryV2El.appendChild(shell);
   }
@@ -1797,10 +2373,11 @@
       const focused = hero.id === heroFocusId;
       const active = hero.id === selectedPlayerClass;
       const rosterCardFx = focused ? getHeroLoadoutSwapFx(hero.id) : { active: false };
+      const rosterDeselectFx = !active ? getHeroRosterDeselectFx(hero.id) : { active: false, color: '' };
       const cardBtn = document.createElement('button');
       cardBtn.type = 'button';
-      cardBtn.className = `hero-v2-card${active ? ' active' : ''}${focused ? ' focused' : ''}${rosterCardFx.active ? ' is-roster-select-flash' : ''}${unlocked ? '' : ' locked'}`;
-      cardBtn.style.setProperty('--accent', hero.accent || '#38bdf8');
+      cardBtn.className = `hero-v2-card${active ? ' active' : ''}${focused ? ' focused' : ''}${rosterCardFx.active ? ' is-roster-select-flash' : ''}${rosterDeselectFx.active ? ' is-roster-deselect-flash' : ''}${unlocked ? '' : ' locked'}`;
+      cardBtn.style.setProperty('--accent', rosterDeselectFx.color || hero.accent || '#38bdf8');
       cardBtn.setAttribute('aria-label', trWithFallback('ui.hero.aria', `Hero ${hero.name}`, { hero: trHeroName(hero.id, hero.name) }));
       const inner = document.createElement('div');
       inner.className = 'hero-v2-inner';
@@ -1957,5 +2534,7 @@
     renderCharacterPicker();
   } catch (err) {
     console.error('Failed to initialize character menu', err);
+    globalThis.CWPageLoader?.mark?.('characters', 'Hero dossier fallback ready');
+    globalThis.CWPageLoader?.requestReady?.({ force: true });
   }
 })();

@@ -1493,13 +1493,14 @@
     for (const node of nodes) {
       const parent = node.parentElement;
       if (!parent) continue;
-      if (parent.closest('script, style')) continue;
+      if (parent.closest('script, style, .cw-page-loader')) continue;
       const next = phraseTranslate(node.nodeValue || '');
       if (next !== node.nodeValue) node.nodeValue = next;
     }
     const attrs = ['placeholder', 'title', 'aria-label'];
     const all = root.querySelectorAll ? root.querySelectorAll('*') : [];
     for (const el of all) {
+      if (el.closest('.cw-page-loader')) continue;
       for (const attr of attrs) {
         const v = el.getAttribute(attr);
         if (!v) continue;

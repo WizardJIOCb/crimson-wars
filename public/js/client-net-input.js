@@ -311,7 +311,9 @@ let heroFocusId = selectedPlayerClass;
 let selectedInventoryFilterKey = 'all';
 let currentMainMenuTab = 'run';
 const MAIN_MENU_TAB_SELECT_FX_MS = 1350;
+const MAIN_MENU_PANEL_REVEAL_MS = 720;
 const mainMenuTabSelectFxTimers = new WeakMap();
+const mainMenuPanelRevealTimers = new WeakMap();
 let tabScoreboardVisible = false;
 let lastTabScoreboardHtml = '';
 let lastBattlePlayers = [];
@@ -1957,20 +1959,41 @@ function playMainMenuTabSelectFx(tabBtn) {
   mainMenuTabSelectFxTimers.set(tabBtn, timer);
 }
 
+function playMainMenuPanelReveal(panel) {
+  if (!(panel instanceof HTMLElement)) return;
+  const prevTimer = mainMenuPanelRevealTimers.get(panel);
+  if (prevTimer) clearTimeout(prevTimer);
+  panel.classList.remove('is-menu-panel-reveal');
+  void panel.offsetWidth;
+  panel.classList.add('is-menu-panel-reveal');
+  const timer = setTimeout(() => {
+    panel.classList.remove('is-menu-panel-reveal');
+    mainMenuPanelRevealTimers.delete(panel);
+  }, MAIN_MENU_PANEL_REVEAL_MS);
+  mainMenuPanelRevealTimers.set(panel, timer);
+}
+
 function setMainMenuTab(tabId) {
   const normalizedTab = String(tabId || '').trim().toLowerCase();
   const nextTab = normalizedTab === 'play' ? 'run' : (normalizedTab || 'run');
   const prevTab = currentMainMenuTab;
   currentMainMenuTab = nextTab;
+  globalThis.CWPageLoader?.setTargetTab?.(nextTab);
+  globalThis.CWPageLoader?.mark?.('route', nextTab === 'characters' ? 'Opening hero dossier' : 'Opening battle hub');
   for (const btn of mainMenuTabButtons) {
     const active = btn.getAttribute('data-menu-tab') === nextTab;
     btn.classList.toggle('active', active);
     btn.setAttribute('aria-selected', active ? 'true' : 'false');
   }
   const nextPanelId = nextTab === 'run' || nextTab === 'story' ? 'play' : nextTab;
+  let activePanelEl = null;
   for (const panel of mainMenuPanels) {
     const active = panel.getAttribute('data-menu-panel') === nextPanelId;
     panel.classList.toggle('active', active);
+    if (active) activePanelEl = panel;
+  }
+  if (activePanelEl && prevTab !== nextTab && !document.documentElement.classList.contains('cw-app-booting')) {
+    playMainMenuPanelReveal(activePanelEl);
   }
   if (battleMenuPanelEl) {
     const battleTab = nextTab === 'story' ? 'story' : 'run';

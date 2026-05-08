@@ -1,6 +1,45 @@
 (function initClientRoomsList() {
+  const BATTLE_HUB_PRESENCE_REFRESH_MIN_MS = 520;
   const battleHubPresenceEl = document.getElementById('battle-hub-presence');
   const battleHubPresenceRefreshBtn = document.getElementById('battle-hub-presence-refresh');
+  let roomsRequestSeq = 0;
+  let battleHubPresenceRefreshStartedAt = 0;
+  let battleHubPresenceRefreshHideTimer = 0;
+
+  function getPresenceRefreshNow() {
+    return typeof performance !== 'undefined' && typeof performance.now === 'function'
+      ? performance.now()
+      : Date.now();
+  }
+
+  function applyBattleHubPresenceRefreshing(refreshing) {
+    if (!battleHubPresenceRefreshBtn) return;
+    battleHubPresenceRefreshBtn.classList.toggle('is-refreshing', Boolean(refreshing));
+    battleHubPresenceRefreshBtn.setAttribute('aria-busy', refreshing ? 'true' : 'false');
+  }
+
+  function setBattleHubPresenceRefreshing(refreshing) {
+    if (!battleHubPresenceRefreshBtn) return;
+    if (battleHubPresenceRefreshHideTimer) {
+      clearTimeout(battleHubPresenceRefreshHideTimer);
+      battleHubPresenceRefreshHideTimer = 0;
+    }
+    if (refreshing) {
+      battleHubPresenceRefreshStartedAt = getPresenceRefreshNow();
+      applyBattleHubPresenceRefreshing(true);
+      return;
+    }
+    const elapsed = getPresenceRefreshNow() - battleHubPresenceRefreshStartedAt;
+    const hideDelay = Math.max(0, BATTLE_HUB_PRESENCE_REFRESH_MIN_MS - elapsed);
+    if (hideDelay > 0) {
+      battleHubPresenceRefreshHideTimer = setTimeout(() => {
+        battleHubPresenceRefreshHideTimer = 0;
+        applyBattleHubPresenceRefreshing(false);
+      }, hideDelay);
+      return;
+    }
+    applyBattleHubPresenceRefreshing(false);
+  }
 
   function renderPresence(presence) {
     const online = Number(presence?.online) || 0;
@@ -77,6 +116,8 @@
 
   async function requestRoomsList() {
     if (!roomsListEl) return;
+    const requestId = ++roomsRequestSeq;
+    setBattleHubPresenceRefreshing(true);
     try {
       const res = await fetch('/api/rooms', { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -92,6 +133,10 @@
         battleHubPresenceEl.innerHTML = '<span><b>Online</b><strong>--</strong></span><span><b>In game</b><strong>--</strong></span><span><b>In menu</b><strong>--</strong></span><span><b>Registered</b><strong>--</strong></span>';
       }
       roomsListEl.textContent = 'Failed to load rooms.';
+    } finally {
+      if (requestId === roomsRequestSeq) {
+        setBattleHubPresenceRefreshing(false);
+      }
     }
   }
 

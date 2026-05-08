@@ -410,7 +410,7 @@
         h(CwPanel, { tag: 'div', className: 'cw-subpanel' },
           h('div', { className: 'cw-subpanel-head' },
             h('span', { className: 'cw-kicker', 'data-i18n-key': 'ui.characters.loadout' }, tr('ui.characters.loadout', 'Loadout')),
-            h('strong', { 'data-i18n-key': 'ui.characters.tactical_dossier' }, tr('ui.characters.tactical_dossier', 'Тактическое досье'))
+            h('strong', { 'data-i18n-key': 'ui.inventory.equipment' }, tr('ui.inventory.equipment', '\u042d\u043a\u0438\u043f\u0438\u0440\u043e\u0432\u043a\u0430'))
           ),
           h('div', { id: 'hero-character-panel', className: 'hero-tree-panel' })
         )
@@ -514,6 +514,7 @@
   }
 
   ReactDomGlobal.render(h(CwShell), mountNode);
+  globalThis.CWPageLoader?.mark?.('shell', 'Battle hub shell assembled');
 
   const versionTrigger = document.getElementById('menu-version-trigger');
   const versionSlot = document.getElementById('menu-version-slot');
