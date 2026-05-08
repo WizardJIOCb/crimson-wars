@@ -1555,9 +1555,23 @@ function getBattleHubHeroSkillLevel(progression = null, heroId = '', skillId = '
 }
 
 function getBattleHubHeroSkillType(skill) {
-  if (skill?.kind === 'active') return 'Active';
-  if (skill?.globalAura) return 'Aura';
+  const key = getBattleHubHeroSkillTypeKey(skill);
+  if (key === 'active') return 'Active';
+  if (key === 'aura') return 'Aura';
   return 'Passive';
+}
+
+function getBattleHubHeroSkillTypeKey(skill) {
+  if (skill?.kind === 'active') return 'active';
+  if (skill?.globalAura) return 'aura';
+  return 'passive';
+}
+
+function getBattleHubHeroSkillTypeAccent(skill) {
+  const key = getBattleHubHeroSkillTypeKey(skill);
+  if (key === 'active') return '#38bdf8';
+  if (key === 'aura') return '#c084fc';
+  return '#4ade80';
 }
 
 function getBattleHubHeroSkillTypeLabel(skill) {
@@ -1866,9 +1880,12 @@ function renderBattleHubHeroSkills(heroId, progression = null, catalog = null, l
     const level = loggedIn ? getBattleHubHeroSkillLevel(progression, heroId, skillId) : 0;
     const maxLevel = Math.max(1, Number(skill?.maxLevel) || 1);
     const unlocked = level > 0;
+    const maxed = unlocked && level >= maxLevel;
     const rarityRaw = String(skill?.rarity || 'common').trim().toLowerCase();
     const rarity = ['common', 'uncommon', 'rare', 'epic', 'legendary'].includes(rarityRaw) ? rarityRaw : 'common';
     const color = rarityColor(rarity);
+    const hoverColor = battleHubHeroSkillHoverColor(rarity);
+    const typeAccent = getBattleHubHeroSkillTypeAccent(skill);
     const skillName = trSkillNameCore(skillId, skill?.name || skillId || 'Skill');
     const skillType = getBattleHubHeroSkillTypeLabel(skill);
     const icon = skillBadgeLabel(skill);
@@ -1885,7 +1902,7 @@ function renderBattleHubHeroSkills(heroId, progression = null, catalog = null, l
     const cost = getBattleHubHeroSkillCost(skill, level);
     const shards = Math.max(0, Number(progression?.shards) || 0);
     const canAfford = loggedIn && cost.action !== 'maxed' && shards >= cost.cost;
-    return `<button type="button" class="battle-hub-hero-skill ${unlocked ? 'is-unlocked' : 'is-locked'} ${canAfford ? 'can-afford' : ''} ${flash ? 'is-skill-flash' : ''} rarity-${rarity}" data-battle-hub-hero-id="${escapeHtml(heroId)}" data-battle-hub-skill-id="${escapeHtml(skillId)}" style="--skill-color:${color}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">`
+    return `<button type="button" class="battle-hub-hero-skill ${unlocked ? 'is-unlocked' : 'is-locked'} ${maxed ? 'is-maxed' : ''} ${canAfford ? 'can-afford' : ''} ${flash ? 'is-skill-flash' : ''} rarity-${rarity}" data-battle-hub-hero-id="${escapeHtml(heroId)}" data-battle-hub-skill-id="${escapeHtml(skillId)}" style="--skill-color:${color};--skill-hover-color:${hoverColor};--skill-type-color:${typeAccent}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">`
       + renderBattleHubHeroSkillIcon(skill, icon)
       + '<span class="battle-hub-hero-skill-copy">'
       + `<span class="battle-hub-hero-skill-name">${escapeHtml(skillName)}</span>`
@@ -2622,6 +2639,16 @@ function rarityColor(r) {
   if (r === 'rare') return '#93c5fd';
   if (r === 'uncommon') return '#86efac';
   return '#d1d5db';
+}
+
+function battleHubHeroSkillHoverColor(rarity) {
+  switch (String(rarity || '').trim().toLowerCase()) {
+    case 'legendary': return '#fbbf24';
+    case 'epic': return '#a78bfa';
+    case 'rare': return '#38bdf8';
+    case 'uncommon': return '#4ade80';
+    default: return '#cbd5e1';
+  }
 }
 
 function rarityLabel(rarity) {
