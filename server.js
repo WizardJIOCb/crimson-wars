@@ -636,6 +636,55 @@ function buildRuntimeSkillFxPayload(def) {
   return buildRuntimeSkillFxRef(def, { heroId });
 }
 
+function buildSkillFxTargetsPayload(targets) {
+  if (!Array.isArray(targets)) return [];
+  return targets.slice(0, 16).map((target) => ({
+    id: String(target?.id || ''),
+    kind: String(target?.kind || 'enemy'),
+    x: Math.round(Number(target?.x) || 0),
+    y: Math.round(Number(target?.y) || 0),
+  })).filter((target) => Number.isFinite(target.x) && Number.isFinite(target.y));
+}
+
+function broadcastSkillFx(room, player, def, st, now, options = {}) {
+  if (!room || !player || !def) return;
+  const fx = buildRuntimeSkillFxPayload(def);
+  const lvl = Math.max(1, Number(st?.level) || 1);
+  const radius = Math.max(0, Math.round(Number(options.radius)
+    || ((Number(def.radius) || 0) + (Number(def.radiusPerLevel) || 0) * (lvl - 1))));
+  const baseDamage = (Number(def.damage) || 0) + (Number(def.damagePerLevel) || 0) * (lvl - 1);
+  const targets = buildSkillFxTargetsPayload(options.targets);
+  const castType = getSkillCastType(def);
+  broadcastRoom(room, {
+    type: 'skillFx',
+    event: {
+      id: `sf${now.toString(36)}${Math.random().toString(36).slice(2, 7)}`,
+      playerId: String(player.id || ''),
+      playerName: String(player.name || ''),
+      heroId: String(player.playerClass || def.sourceHeroId || def.heroId || ''),
+      skillId: String(def.id || castType || ''),
+      skillName: String(def.name || def.id || castType || 'Skill'),
+      castType,
+      level: lvl,
+      x: Math.round(Number(player.x) || 0),
+      y: Math.round(Number(player.y) || 0),
+      aimX: Math.round(Number(player.aimX) || Number(player.x) || 0),
+      aimY: Math.round(Number(player.aimY) || Number(player.y) || 0),
+      radius,
+      damage: Math.max(0, Math.round(Number(options.damage) || baseDamage)),
+      hitCount: Math.max(0, Math.round(Number(options.hitCount) || targets.length)),
+      projectileCount: Math.max(0, Math.round(Number(options.projectileCount) || 0)),
+      targetCount: targets.length,
+      targets,
+      color: fx?.color || '',
+      secondaryColor: fx?.secondaryColor || '',
+      fxKey: fx?.key || getSkillFxKey(def, def.sourceHeroId || def.heroId || ''),
+      fx,
+      at: now,
+    },
+  });
+}
+
 function normalizePublicRarity(raw) {
   const rarity = String(raw || '').trim().toLowerCase();
   return ['common', 'uncommon', 'rare', 'epic', 'legendary'].includes(rarity) ? rarity : 'common';
@@ -5821,6 +5870,13 @@ function castHomingMissiles(room, player, def, st, now) {
     });
   }
 
+  broadcastSkillFx(room, player, def, st, now, {
+    targets,
+    radius,
+    damage,
+    hitCount: targets.length,
+    projectileCount: targets.length,
+  });
   return true;
 }
 
@@ -5838,6 +5894,12 @@ function castLaserStrike(room, player, def, st, now) {
   for (const target of targets) {
     applySkillDamageToTarget(room, target, damage, player.id, now);
   }
+  broadcastSkillFx(room, player, def, st, now, {
+    targets,
+    radius,
+    damage,
+    hitCount: targets.length,
+  });
   return true;
 }
 
@@ -5957,6 +6019,12 @@ function castPlayerActiveSkill(room, player, def, st, now) {
     damageSceneObjectsInRadius(room, player.x, player.y, radius * 0.92, damage * player.damageMul * 0.72, player.id, now, {
       cause: 'shockwave',
     });
+    broadcastSkillFx(room, player, def, st, now, {
+      targets,
+      radius,
+      damage: damage * player.damageMul,
+      hitCount: targets.length,
+    });
     return true;
   }
 
@@ -5976,6 +6044,12 @@ function castPlayerActiveSkill(room, player, def, st, now) {
     damageSceneObjectsInRadius(room, player.x, player.y, radius * 0.88, damage * player.damageMul * 0.64, player.id, now, {
       cause: 'psi_blast',
     });
+    broadcastSkillFx(room, player, def, st, now, {
+      targets,
+      radius,
+      damage: damage * player.damageMul,
+      hitCount: targets.length,
+    });
     return true;
   }
 
@@ -5986,6 +6060,12 @@ function castPlayerActiveSkill(room, player, def, st, now) {
   for (const target of targets) {
     applySkillDamageToTarget(room, target, damage * player.damageMul, player.id, now);
   }
+  broadcastSkillFx(room, player, def, st, now, {
+    targets,
+    radius,
+    damage: damage * player.damageMul,
+    hitCount: targets.length,
+  });
   return true;
 }
 
