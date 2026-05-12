@@ -1717,35 +1717,129 @@ function drawWeaponPickupSilhouette(x, y, weaponKey, color, nowMs) {
   ctx.restore();
 }
 
-function drawXpVacuumPickup(x, y, blink, ttlMs, nowMs) {
-  const color = '#a78bfa';
-  const pulse = 1 + Math.sin(nowMs / 160) * 0.14;
-  drawShadowAtScreen(x, y + 10, 11, 4.5, blink ? 0.14 : 0.24);
+function drawXpVacuumPickup(x, y, blink, ttlMs, nowMs, drop = null) {
+  const color = blink ? '#fca5a5' : '#a855f7';
+  const coreColor = '#f5d0fe';
+  const tetherColor = '#67e8f9';
+  const idText = String(drop?.id || '');
+  const seed = (Number(drop?.id) || idText.length * 17 || 11) * 0.13;
+  const pulse = 1 + Math.sin(nowMs / 150 + seed) * 0.13;
+  const spin = nowMs * 0.0022 + seed;
+  const hover = Math.sin(nowMs / 230 + seed) * 2.4;
+  const cx = x;
+  const cy = y + hover;
+
+  drawShadowAtScreen(x, y + 16, 18, 6.5, blink ? 0.16 : 0.3);
+
+  const xpOrbs = Array.isArray(game.state?.xpOrbs) ? game.state.xpOrbs : [];
+  const nearby = xpOrbs
+    .map((orb) => {
+      const rp = typeof getXpOrbRenderPos === 'function' ? getXpOrbRenderPos(orb) : orb;
+      const sx = (Number(rp?.x) || 0) - camera.x;
+      const sy = (Number(rp?.y) || 0) - camera.y;
+      const dx = sx - cx;
+      const dy = sy - cy;
+      return { sx, sy, d2: dx * dx + dy * dy };
+    })
+    .filter((orb) => orb.d2 > 16 && orb.d2 < 360 * 360)
+    .sort((a, b) => a.d2 - b.d2)
+    .slice(0, 9);
+
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
-  const aura = ctx.createRadialGradient(x, y, 2, x, y, 24 * pulse);
-  aura.addColorStop(0, 'rgba(221, 214, 254, 0.58)');
-  aura.addColorStop(0.55, 'rgba(167, 139, 250, 0.24)');
-  aura.addColorStop(1, 'rgba(167, 139, 250, 0)');
+  for (let i = 0; i < nearby.length; i += 1) {
+    const orb = nearby[i];
+    const dist = Math.sqrt(Math.max(1, orb.d2));
+    const alpha = Math.max(0.05, Math.min(0.24, (1 - dist / 380) * 0.22));
+    const midX = (orb.sx + cx) * 0.5 + Math.sin(nowMs / 240 + i + seed) * 12;
+    const midY = (orb.sy + cy) * 0.5 + Math.cos(nowMs / 260 + i * 0.7 + seed) * 12;
+    ctx.strokeStyle = hexToRgba(i % 2 ? tetherColor : color, alpha);
+    ctx.lineWidth = 1.1 + (i % 3) * 0.25;
+    ctx.beginPath();
+    ctx.moveTo(orb.sx, orb.sy);
+    ctx.quadraticCurveTo(midX, midY, cx, cy);
+    ctx.stroke();
+  }
+
+  const aura = ctx.createRadialGradient(cx, cy, 2, cx, cy, 42 * pulse);
+  aura.addColorStop(0, hexToRgba(coreColor, 0.62));
+  aura.addColorStop(0.28, hexToRgba(color, 0.38));
+  aura.addColorStop(0.66, hexToRgba(tetherColor, 0.13));
+  aura.addColorStop(1, hexToRgba(color, 0));
   ctx.fillStyle = aura;
   ctx.beginPath();
-  ctx.arc(x, y, 24 * pulse, 0, Math.PI * 2);
+  ctx.arc(cx, cy, 42 * pulse, 0, Math.PI * 2);
   ctx.fill();
-  ctx.globalCompositeOperation = 'source-over';
-  ctx.strokeStyle = blink ? '#fca5a5' : color;
-  ctx.lineWidth = 2;
+
+  ctx.translate(cx, cy);
+  ctx.rotate(spin * 0.34);
+
+  ctx.setLineDash([6, 7]);
+  ctx.strokeStyle = hexToRgba(tetherColor, blink ? 0.62 : 0.42);
+  ctx.lineWidth = 1.3;
   ctx.beginPath();
-  ctx.arc(x, y, 10, 0, Math.PI * 2);
+  ctx.ellipse(0, 0, 30 * pulse, 14 * pulse, 0, 0, Math.PI * 2);
   ctx.stroke();
-  ctx.fillStyle = '#ddd6fe';
+  ctx.setLineDash([3, 9]);
+  ctx.strokeStyle = hexToRgba(color, blink ? 0.8 : 0.56);
+  ctx.lineWidth = 1.7;
   ctx.beginPath();
-  ctx.arc(x, y, 6.5, 0, Math.PI * 2);
+  ctx.ellipse(0, 0, 18 * pulse, 31 * pulse, Math.PI / 2, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  for (let i = 0; i < 7; i += 1) {
+    const a = (Math.PI * 2 * i) / 7 - spin * 0.62;
+    const r = 24 + Math.sin(nowMs / 120 + i) * 2.5;
+    ctx.fillStyle = hexToRgba(i % 2 ? tetherColor : coreColor, 0.8);
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r - 2.5);
+    ctx.lineTo(Math.cos(a + 0.12) * (r + 4), Math.sin(a + 0.12) * (r + 4));
+    ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r + 2.5);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.globalCompositeOperation = 'source-over';
+  const crystalGrad = ctx.createLinearGradient(-12, -18, 12, 18);
+  crystalGrad.addColorStop(0, '#ffffff');
+  crystalGrad.addColorStop(0.2, coreColor);
+  crystalGrad.addColorStop(0.55, color);
+  crystalGrad.addColorStop(1, '#4c1d95');
+  ctx.fillStyle = crystalGrad;
+  ctx.strokeStyle = blink ? '#fecdd3' : '#d8b4fe';
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(0, -19);
+  ctx.lineTo(12, -6);
+  ctx.lineTo(8, 12);
+  ctx.lineTo(0, 20);
+  ctx.lineTo(-8, 12);
+  ctx.lineTo(-12, -6);
+  ctx.closePath();
   ctx.fill();
+  ctx.stroke();
+
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.strokeStyle = hexToRgba('#ffffff', 0.68);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, -17);
+  ctx.lineTo(0, 18);
+  ctx.moveTo(-11, -6);
+  ctx.lineTo(0, 1);
+  ctx.lineTo(12, -6);
+  ctx.moveTo(-7, 12);
+  ctx.lineTo(0, 1);
+  ctx.lineTo(8, 12);
+  ctx.stroke();
+
   ctx.fillStyle = '#ffffff';
   ctx.beginPath();
-  ctx.arc(x - 2.5, y - 3, 2, 0, Math.PI * 2);
+  ctx.arc(-4, -9, 2.1, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
+
   drawPickupLabel(x, y, 'XP Surge', blink, ttlMs, color);
 }
 
@@ -1803,7 +1897,7 @@ function drawDropPickup(d, nowMs) {
   const x = d.x - camera.x;
   const y = d.y - camera.y;
   if (d.kind === 'xp_vacuum') {
-    drawXpVacuumPickup(x, y, blink, ttlMs, nowMs);
+    drawXpVacuumPickup(x, y, blink, ttlMs, nowMs, d);
   } else {
     drawWeaponPickup(d, x, y, blink, ttlMs, nowMs);
   }
@@ -2341,9 +2435,6 @@ function drawSkillOfferOrbs(orbs, nowMs) {
     const baseColor = own ? info.color : '#9ca3af';
     const ttlMs = Math.max(0, Number(orb.ttlMs) || 0);
     const ttlMaxMs = Math.max(1, Number(orb.ttlMaxMs) || 15000);
-    const lowTtl = ttlMs <= 3500;
-    const blinkHidden = lowTtl && Math.sin(nowMs / 85 + (Number(orb.id) || 0)) < -0.28;
-    if (blinkHidden) continue;
     const sx = orb.x - camera.x;
     const sy = orb.y - camera.y;
     const seed = Number(orb.id) || 0;
@@ -2359,7 +2450,7 @@ function drawSkillOfferOrbs(orbs, nowMs) {
     ctx.strokeStyle = 'rgba(7, 12, 20, 0.88)';
     ctx.lineWidth = 3;
     ctx.strokeText(label, sx, sy - 22);
-    ctx.fillStyle = lowTtl ? '#fecaca' : (own ? baseColor : '#cbd5e1');
+    ctx.fillStyle = own ? baseColor : '#cbd5e1';
     ctx.fillText(label, sx, sy - 22);
     ctx.restore();
   }
@@ -3122,6 +3213,177 @@ function drawConsumableAuraFx() {
   }
 }
 
+function drawMeleeSwingsFx() {
+  if (!Array.isArray(visuals.meleeSwings)) return;
+  for (const s of visuals.meleeSwings) {
+    const ttl = Math.max(0.001, Number(s.ttl) || 0.3);
+    const alpha = Math.max(0, Math.min(1, (Number(s.life) || 0) / ttl));
+    if (alpha <= 0.01) continue;
+    const progress = Math.max(0, Math.min(1, 1 - alpha));
+    const x = Number(s.x) || 0;
+    const y = Number(s.y) || 0;
+    const impactX = Number(s.impactX) || x;
+    const impactY = Number(s.impactY) || y;
+    const range = Math.max(28, Number(s.range) || 100);
+    const width = Math.max(18, Number(s.width) || 52);
+    if (!isVisibleWorld(x, y, range + width + 36) && !isVisibleWorld(impactX, impactY, width + 84)) continue;
+
+    const sx = x - camera.x;
+    const sy = y - camera.y;
+    const ix = impactX - camera.x;
+    const iy = impactY - camera.y;
+    const angle = Number(s.angle) || 0;
+    const style = String(s.style || 'sword').toLowerCase();
+    const color = s.color || '#fda4af';
+    const secondaryColor = s.secondaryColor || '#ffffff';
+    const pulse = 0.84 + Math.sin(performance.now() / 32 + (Number(s.phase) || 0)) * 0.16;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    if (style === 'hammer') {
+      const handleX = sx + Math.cos(angle) * range * 0.34;
+      const handleY = sy + Math.sin(angle) * range * 0.34;
+      const ringR = Math.max(18, width * (0.34 + progress * 0.44));
+      ctx.globalAlpha = Math.min(1, alpha * 0.58);
+      ctx.strokeStyle = hexToRgba(secondaryColor, 0.74);
+      ctx.lineWidth = Math.max(10, width * 0.12);
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(handleX, handleY);
+      ctx.lineTo(ix, iy);
+      ctx.stroke();
+
+      ctx.globalAlpha = Math.min(1, alpha * 0.86);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = Math.max(4, width * 0.045);
+      ctx.beginPath();
+      ctx.arc(ix, iy, ringR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = hexToRgba(secondaryColor, alpha * 0.82);
+      for (let i = 0; i < 7; i += 1) {
+        const crack = angle + Math.PI + (i - 3) * 0.34;
+        const inner = ringR * 0.36;
+        const outer = ringR * (0.9 + (i % 2) * 0.28);
+        ctx.lineWidth = 1.4 + (i % 3);
+        ctx.beginPath();
+        ctx.moveTo(ix + Math.cos(crack) * inner, iy + Math.sin(crack) * inner);
+        ctx.lineTo(ix + Math.cos(crack) * outer, iy + Math.sin(crack) * outer);
+        ctx.stroke();
+      }
+      ctx.restore();
+      continue;
+    }
+
+    if (style === 'whip') {
+      const wave = Math.sin(progress * Math.PI) * width * 0.58;
+      const midX = sx + Math.cos(angle) * range * 0.52 + Math.cos(angle + Math.PI / 2) * wave;
+      const midY = sy + Math.sin(angle) * range * 0.52 + Math.sin(angle + Math.PI / 2) * wave;
+      const endX = sx + Math.cos(angle) * range;
+      const endY = sy + Math.sin(angle) * range;
+      ctx.globalAlpha = Math.min(1, alpha * 0.34);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = Math.max(10, width * 0.32);
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.quadraticCurveTo(midX, midY, endX, endY);
+      ctx.stroke();
+      ctx.globalAlpha = Math.min(1, alpha);
+      ctx.strokeStyle = secondaryColor;
+      ctx.lineWidth = Math.max(1.6, width * 0.08);
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.quadraticCurveTo(midX, midY, endX, endY);
+      ctx.stroke();
+      ctx.restore();
+      continue;
+    }
+
+    const halfArc = Math.max(0.16, Math.min(Math.PI, (Number(s.arcDeg) || 90) * Math.PI / 360));
+    const radius = range * (0.58 + progress * 0.34);
+    const start = angle - halfArc;
+    const end = angle + halfArc;
+    const glowWidth = Math.max(12, width * (style === 'chainsaw' ? 0.34 : 0.24)) * pulse;
+
+    ctx.globalAlpha = Math.min(1, alpha * 0.22);
+    const glow = ctx.createRadialGradient(sx, sy, Math.max(4, radius * 0.28), sx, sy, range + width);
+    glow.addColorStop(0, hexToRgba(color, 0));
+    glow.addColorStop(0.5, hexToRgba(color, 0.18));
+    glow.addColorStop(1, hexToRgba(color, 0));
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.arc(sx, sy, range + width * 0.24, start, end);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.globalAlpha = Math.min(1, alpha * 0.82);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = glowWidth;
+    ctx.beginPath();
+    ctx.arc(sx, sy, radius, start, end);
+    ctx.stroke();
+
+    ctx.globalAlpha = Math.min(1, alpha * 0.95);
+    ctx.strokeStyle = secondaryColor;
+    ctx.lineWidth = Math.max(1.8, glowWidth * 0.24);
+    ctx.beginPath();
+    ctx.arc(sx, sy, radius + glowWidth * 0.18, start + 0.04, end - 0.04);
+    ctx.stroke();
+
+    if (style === 'chainsaw') {
+      ctx.globalAlpha = Math.min(1, alpha * 0.9);
+      ctx.strokeStyle = secondaryColor;
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 9; i += 1) {
+        const t = i / 8;
+        const a = start + (end - start) * t + Math.sin(performance.now() / 22 + i) * 0.03;
+        const r1 = radius - glowWidth * 0.48;
+        const r2 = radius + glowWidth * 0.46;
+        ctx.beginPath();
+        ctx.moveTo(sx + Math.cos(a) * r1, sy + Math.sin(a) * r1);
+        ctx.lineTo(sx + Math.cos(a) * r2, sy + Math.sin(a) * r2);
+        ctx.stroke();
+      }
+    } else if (style === 'bat' || style === 'baton') {
+      ctx.globalAlpha = Math.min(1, alpha * 0.72);
+      ctx.strokeStyle = style === 'baton' ? '#f8fafc' : '#fed7aa';
+      ctx.lineWidth = 2.4;
+      for (let i = 0; i < 5; i += 1) {
+        const sparkAngle = angle + (i - 2) * 0.22;
+        const sparkR = range * (0.72 + i * 0.035);
+        ctx.beginPath();
+        ctx.moveTo(sx + Math.cos(sparkAngle) * sparkR, sy + Math.sin(sparkAngle) * sparkR);
+        ctx.lineTo(sx + Math.cos(sparkAngle) * (sparkR + 14), sy + Math.sin(sparkAngle) * (sparkR + 14));
+        ctx.stroke();
+      }
+    } else if (style === 'cryo') {
+      ctx.globalAlpha = Math.min(1, alpha * 0.72);
+      ctx.strokeStyle = '#e0f2fe';
+      ctx.lineWidth = 1.8;
+      for (let i = 0; i < 6; i += 1) {
+        const shardAngle = start + (end - start) * (i / 5);
+        const shardR = radius + 8 + (i % 2) * 8;
+        ctx.beginPath();
+        ctx.moveTo(sx + Math.cos(shardAngle) * (shardR - 12), sy + Math.sin(shardAngle) * (shardR - 12));
+        ctx.lineTo(sx + Math.cos(shardAngle) * (shardR + 8), sy + Math.sin(shardAngle) * (shardR + 8));
+        ctx.stroke();
+      }
+    } else if (style === 'glaive' || style === 'scythe') {
+      ctx.globalAlpha = Math.min(1, alpha * 0.38);
+      ctx.strokeStyle = secondaryColor;
+      ctx.lineWidth = Math.max(5, glowWidth * 0.42);
+      ctx.beginPath();
+      ctx.arc(sx, sy, Math.max(4, radius - glowWidth * 0.5), start + 0.1, end - 0.1);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+}
+
 function drawFx() {
   for (const b of visuals.bossBlast) {
     if (!isVisibleWorld(b.x, b.y, b.maxR + 12)) continue;
@@ -3201,6 +3463,7 @@ function drawFx() {
 
   drawConsumableProjectilesFx();
   drawConsumableAuraFx();
+  drawMeleeSwingsFx();
 
   for (const s of visuals.skillBursts) {
     if (!isVisibleWorld(s.x, s.y, s.maxR + 12)) continue;
@@ -4106,6 +4369,14 @@ function render(ts) {
   lastFrameTs = ts;
   const simDt = replayGame.active ? (dt * Math.max(1, Number(replayGame.speed) || 1)) : dt;
   const overlayOpen = getComputedStyle(joinOverlay).display !== 'none';
+
+  if (window.cwNativeRendererActive) {
+    fpsFrameCount = 0;
+    fpsAccumSec = 0;
+    renderDiagReset();
+    scheduleNextFrame(MENU_IDLE_FRAME_MS);
+    return;
+  }
 
   if (overlayOpen) {
     fpsFrameCount = 0;

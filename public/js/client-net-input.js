@@ -247,9 +247,29 @@ function setInfoPanelHidden(hidden) {
   localStorage.setItem('cw:infoPanelHidden', infoPanelHidden ? '1' : '0');
 }
 
+function openBattleInfoMenu() {
+  setInfoPanelHidden(false);
+  return true;
+}
+
+function closeBattleInfoMenu() {
+  setInfoPanelHidden(true);
+  return true;
+}
+
+function toggleBattleInfoMenu() {
+  setInfoPanelHidden(!infoPanelHidden);
+  return !infoPanelHidden;
+}
+
+window.cwOpenBattleInfoMenu = openBattleInfoMenu;
+window.cwCloseBattleInfoMenu = closeBattleInfoMenu;
+window.cwToggleBattleInfoMenu = toggleBattleInfoMenu;
+window.cwSetInfoPanelHidden = setInfoPanelHidden;
+
 if (toggleInfoBtn) {
   toggleInfoBtn.addEventListener('click', () => {
-    setInfoPanelHidden(!infoPanelHidden);
+    toggleBattleInfoMenu();
   });
 }
 
@@ -2115,7 +2135,12 @@ async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
   clearJoinFeedback();
   clearReplayUrlIntent();
   const runStartToken = typeof window.cwBeginRunStartLoading === 'function'
-    ? window.cwBeginRunStartLoading({ mode, source, resumeOnly })
+    ? window.cwBeginRunStartLoading({
+      mode,
+      source,
+      resumeOnly,
+      runType: mode === 'create' ? selectedRunType : undefined,
+    })
     : 0;
   if (!skipRouting) {
     try {
@@ -2615,6 +2640,7 @@ function seekReplayGame(elapsedMs, { keepPaused = null } = {}) {
   visuals.consumableProjectiles = [];
   visuals.consumableAuras = [];
   visuals.skillBursts = [];
+  visuals.meleeSwings = [];
   visuals.xpCharge = [];
   visuals.skillArcs = [];
   visuals.skillLinks = [];
@@ -3663,6 +3689,14 @@ function buildReplayState(payload, elapsedMs) {
       kind: skill[4] || 'passive',
       rarity: skill[5] || 'common',
       name: skill[6] || skill[0] || 'Skill',
+      castType: skill[7] || '',
+      fxKey: skill[8] || '',
+      radius: Math.max(0, Number(skill[9]) || 0),
+      radiusPerLevel: Math.max(0, Number(skill[10]) || 0),
+      targets: Math.max(0, Number(skill[11]) || 0),
+      targetsPerLevel: Math.max(0, Number(skill[12]) || 0),
+      explosionRadius: Math.max(0, Number(skill[13]) || 0),
+      explosionRadiusPerLevel: Math.max(0, Number(skill[14]) || 0),
       desc: '',
     }));
     const dodgeInvulnLeftMs = Math.max(0, Number(player[19]) || 0);
@@ -3985,6 +4019,12 @@ function startReplayGame(payload, record) {
   game.connected = false;
   game.myId = payload.playerId || 'replay-player';
   game.roomCode = payload.roomCode || 'REPLAY';
+  if (Array.isArray(payload.skillCatalog)) {
+    game.skillCatalog = {};
+    for (const skill of payload.skillCatalog) {
+      if (skill?.id) game.skillCatalog[skill.id] = skill;
+    }
+  }
   visuals.enemyPrev = new Map();
   visuals.playerPrev = new Map();
   visuals.rocketPrev = new Map();
@@ -4011,6 +4051,7 @@ function startReplayGame(payload, record) {
   visuals.consumableProjectiles = [];
   visuals.consumableAuras = [];
   visuals.skillBursts = [];
+  visuals.meleeSwings = [];
   visuals.xpCharge = [];
   visuals.skillArcs = [];
   visuals.skillLinks = [];
@@ -5670,17 +5711,36 @@ function ageLiveTimedList(list, deltaMs, options = {}) {
   return out;
 }
 
+function getRealtimeCollectionVersion(state, key) {
+  const realtime = state?.realtime && typeof state.realtime === 'object' ? state.realtime : null;
+  if (!realtime) return 0;
+  const value = Number(realtime[`${key}Version`]);
+  return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+}
+
+function shouldCarryOmittedRealtimeCollection(state, previousState, key) {
+  const nextVersion = getRealtimeCollectionVersion(state, key);
+  const prevVersion = getRealtimeCollectionVersion(previousState, key);
+  return nextVersion <= 0 || prevVersion <= 0 || nextVersion === prevVersion;
+}
+
 function carryForwardOmittedRealtimeCollections(state, previousState = null) {
   if (!state || typeof state !== 'object' || !previousState || typeof previousState !== 'object') return state;
   const deltaMs = Math.max(0, (Number(state.now) || 0) - (Number(previousState.now) || 0));
   if (!Array.isArray(state.drops) && Array.isArray(previousState.drops)) {
-    state.drops = ageLiveTimedList(previousState.drops, deltaMs, { ttlMaxMsDefault: 20000 });
+    state.drops = shouldCarryOmittedRealtimeCollection(state, previousState, 'drops')
+      ? ageLiveTimedList(previousState.drops, deltaMs, { ttlMaxMsDefault: 20000 })
+      : [];
   }
   if (!Array.isArray(state.xpOrbs) && Array.isArray(previousState.xpOrbs)) {
-    state.xpOrbs = ageLiveTimedList(previousState.xpOrbs, deltaMs, { ttlMaxMsDefault: 14000 });
+    state.xpOrbs = shouldCarryOmittedRealtimeCollection(state, previousState, 'xpOrbs')
+      ? ageLiveTimedList(previousState.xpOrbs, deltaMs, { ttlMaxMsDefault: 14000 })
+      : [];
   }
   if (!Array.isArray(state.skillOrbs) && Array.isArray(previousState.skillOrbs)) {
-    state.skillOrbs = ageLiveTimedList(previousState.skillOrbs, deltaMs, { ttlMaxMsDefault: 15000 });
+    state.skillOrbs = shouldCarryOmittedRealtimeCollection(state, previousState, 'skillOrbs')
+      ? ageLiveTimedList(previousState.skillOrbs, deltaMs, { ttlMaxMsDefault: 15000 })
+      : [];
   }
   return state;
 }
@@ -5795,7 +5855,7 @@ function normalizeLiveStatePayload(state) {
         x: Number(orb[3]) || 0,
         y: Number(orb[4]) || 0,
         ttlMs: Math.max(0, Number(orb[5]) || 0),
-        ttlMaxMs: 15000,
+        ttlMaxMs: Math.max(1, Number(orb[6]) || 15000),
       };
     });
   }
@@ -6399,6 +6459,7 @@ function clearLocalSessionState() {
   visuals.consumableProjectiles = [];
   visuals.consumableAuras = [];
   visuals.skillBursts = [];
+  visuals.meleeSwings = [];
   visuals.xpCharge = [];
   visuals.skillArcs = [];
   visuals.skillLinks = [];
@@ -6529,6 +6590,16 @@ message: (ev) => {
     return;
   }
 
+  if (msg.type === 'meleeFx') {
+    window.spawnMeleeFx?.(msg.event || {});
+    return;
+  }
+
+  if (msg.type === 'worldFx') {
+    window.spawnWorldFx?.(msg.event || {});
+    return;
+  }
+
   if (msg.type === 'quickItemConsumed') {
     const progression = game.playerAuth?.progression;
     const usedItem = msg.usedItem || {};
@@ -6650,6 +6721,7 @@ message: (ev) => {
     visuals.consumableProjectiles = [];
     visuals.consumableAuras = [];
     visuals.skillBursts = [];
+    visuals.meleeSwings = [];
     visuals.xpCharge = [];
     visuals.skillArcs = [];
     visuals.skillLinks = [];
@@ -6954,7 +7026,12 @@ message: (ev) => {
       const reserve = me.reserveAmmo === null ? '∞' : Math.max(0, Number(me.reserveAmmo) || 0);
       const reloadLeft = Math.max(0, Number(me.reloadLeftMs) || 0);
       const reloadText = reloadLeft > 0 ? ` | Reload ${(reloadLeft / 1000).toFixed(1)}s` : '';
-      weaponMetaEl.textContent = `Weapon: ${me.weaponLabel} | Mag: ${mag}/${magSize} | Ammo: ${reserve}${reloadText} | Jump: ${jumpMeta}`;
+      const melee = me.melee && typeof me.melee === 'object' ? me.melee : null;
+      const meleeLeft = Math.max(0, Number(melee?.cooldownLeftMs) || 0);
+      const meleeText = melee
+        ? ` | Melee: ${String(melee.name || 'Melee')} Lv${Math.max(1, Number(melee.level) || 1)} ${meleeLeft > 0 ? `${(meleeLeft / 1000).toFixed(1)}s` : 'ready'}`
+        : '';
+      weaponMetaEl.textContent = `Weapon: ${me.weaponLabel} | Mag: ${mag}/${magSize} | Ammo: ${reserve}${reloadText}${meleeText} | Jump: ${jumpMeta}`;
       if (movementMetaEl) {
         const nowMs = Date.now();
         const slowed = (Number(me.slowUntil) || 0) > nowMs;
@@ -7204,6 +7281,10 @@ function buildCurrentInputPayload(includeJump = true) {
 
 function sendInput() {
   if (!game.connected || !game.myId || ws.readyState !== WebSocket.OPEN || !game.state) return;
+  if (window.cwNativeRendererActive) {
+    input.jumpQueued = false;
+    return;
+  }
   const payload = buildCurrentInputPayload(true);
   if (!payload) return;
   const seq = game.nextInputSeq + 1;

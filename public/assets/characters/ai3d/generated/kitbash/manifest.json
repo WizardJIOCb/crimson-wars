@@ -1,0 +1,61 @@
+{
+  "generator": "Blender procedural kitbash",
+  "kind": "clean_static_prototype_with_reference_skeleton",
+  "characters": {
+    "cyber": {
+      "vertices": 3929,
+      "faces": 4001,
+      "meshes": 65,
+      "id": "cyber",
+      "name": "Cyber",
+      "role": "Heavy assault",
+      "glb": "public/assets/characters/ai3d/generated/kitbash/cyber/cyber.glb",
+      "fbx": "public/assets/characters/ai3d/generated/kitbash/cyber/cyber.fbx",
+      "blend": "public/assets/characters/ai3d/generated/kitbash/cyber/cyber.blend"
+    },
+    "medis": {
+      "vertices": 3278,
+      "faces": 3284,
+      "meshes": 59,
+      "id": "medis",
+      "name": "Medis",
+      "role": "Field medic",
+      "glb": "public/assets/characters/ai3d/generated/kitbash/medis/medis.glb",
+      "fbx": "public/assets/characters/ai3d/generated/kitbash/medis/medis.fbx",
+      "blend": "public/assets/characters/ai3d/generated/kitbash/medis/medis.blend"
+    },
+    "raider": {
+      "vertices": 4379,
+      "faces": 4473,
+      "meshes": 68,
+      "id": "raider",
+      "name": "Raider",
+      "role": "Heavy raider",
+      "glb": "public/assets/characters/ai3d/generated/kitbash/raider/raider.glb",
+      "fbx": "public/assets/characters/ai3d/generated/kitbash/raider/raider.fbx",
+      "blend": "public/assets/characters/ai3d/generated/kitbash/raider/raider.blend"
+    },
+    "scout": {
+      "vertices": 3430,
+      "faces": 3424,
+      "meshes": 55,
+      "id": "scout",
+      "name": "Scout",
+      "role": "Marksman scout",
+      "glb": "public/assets/characters/ai3d/generated/kitbash/scout/scout.glb",
+      "fbx": "public/assets/characters/ai3d/generated/kitbash/scout/scout.fbx",
+      "blend": "public/assets/characters/ai3d/generated/kitbash/scout/scout.blend"
+    },
+    "shadow": {
+      "vertices": 3274,
+      "faces": 3270,
+      "meshes": 54,
+      "id": "shadow",
+      "name": "Shadow",
+      "role": "Stealth assassin",
+      "glb": "public/assets/characters/ai3d/generated/kitbash/shadow/shadow.glb",
+      "fbx": "public/assets/characters/ai3d/generated/kitbash/shadow/shadow.fbx",
+      "blend": "public/assets/characters/ai3d/generated/kitbash/shadow/shadow.blend"
+    }
+  }
+}

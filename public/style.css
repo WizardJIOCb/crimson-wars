@@ -1030,6 +1030,7 @@ body.live-embed #xp-levelup-burst {
 }
 
 .run-start-overlay {
+  --run-start-bg-image: url('/assets/backgrounds/screen-loading.jpg');
   position: fixed;
   inset: 0;
   z-index: 96;
@@ -1051,7 +1052,7 @@ body.live-embed #xp-levelup-burst {
   inset: 0;
   background:
     linear-gradient(180deg, rgba(0, 0, 0, 0.06), rgba(3, 6, 10, 0.68)),
-    url('/assets/backgrounds/screen-loading.jpg') center / cover no-repeat;
+    var(--run-start-bg-image) center / cover no-repeat;
   transform: scale(1.035);
   animation: runStartBgDrift 5.2s ease-in-out infinite alternate;
 }
@@ -3536,7 +3537,7 @@ body.replay-game-active #scoreboard {
     ". head ."
     "left portrait right"
     "armor portrait rings"
-    ". legs .";
+    "melee legs rings";
   gap: 8px;
   align-items: center;
   justify-content: center;
@@ -3550,6 +3551,7 @@ body.replay-game-active #scoreboard {
 .hero-paper-left-hand { grid-area: left; }
 .hero-paper-right-hand { grid-area: right; }
 .hero-paper-armor { grid-area: armor; }
+.hero-paper-melee { grid-area: melee; }
 .hero-paper-legs { grid-area: legs; }
 
 .hero-paper-head,
@@ -3559,7 +3561,8 @@ body.replay-game-active #scoreboard {
 }
 
 .hero-paper-left-hand,
-.hero-paper-armor {
+.hero-paper-armor,
+.hero-paper-melee {
   justify-self: end;
 }
 
@@ -4762,6 +4765,7 @@ body.replay-game-active #scoreboard {
 .inventory-item-icon-armor { color: #ffd9a0; }
 .inventory-item-icon-legs { color: #d8c8ff; }
 .inventory-item-icon-hands { color: #ffaf98; }
+.inventory-item-icon-melee { color: #fda4af; }
 .inventory-item-icon-ring { color: #f7d775; }
 .inventory-item-icon-consumable { color: #80f0bc; }
 .inventory-item-icon-other { color: #c4c8d1; }
@@ -4971,6 +4975,7 @@ body.replay-game-active #scoreboard {
       "portrait portrait"
       "head armor"
       "left right"
+      "melee rings"
       "legs rings";
     justify-content: center;
   }
@@ -15055,6 +15060,32 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
   display: none;
 }
 
+#menu-panel-characters .hero-ai3d-preview-link {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid rgba(103, 248, 255, 0.34);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(9, 20, 28, 0.96), rgba(4, 8, 13, 0.98)),
+    radial-gradient(circle at top left, rgba(103, 248, 255, 0.18), transparent 46%);
+  color: #dffbff;
+  font-size: 12px;
+  font-weight: 950;
+  line-height: 1;
+  text-decoration: none;
+  text-transform: uppercase;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05), 0 10px 28px rgba(2, 8, 16, 0.28);
+}
+
+#menu-panel-characters .hero-ai3d-preview-link:hover {
+  border-color: rgba(103, 248, 255, 0.62);
+  color: #ffffff;
+}
+
 /* Play tab: normalize panel rhythm. */
 #menu-panel-play {
   gap: 16px;
@@ -15584,6 +15615,7 @@ body.battle-hub-embed #join-overlay.death-cinematic-active #join-form.cw-shell {
       "armor"
       "left"
       "right"
+      "melee"
       "legs"
       "rings";
   }

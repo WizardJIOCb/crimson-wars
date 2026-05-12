@@ -9,6 +9,12 @@
   const HERO_PROGRESSION_MODAL_PULSE_MS = 620;
   const HERO_ROSTER_DESELECT_FX_MS = 680;
   const HERO_ROSTER_MODE_STORAGE_KEY = 'cwHeroRosterMode';
+  const MELEE_SLOT_FALLBACK = Object.freeze({
+    key: 'melee',
+    name: '\u0411\u043b\u0438\u0436\u043d\u0438\u0439 \u0431\u043e\u0439',
+    kind: 'gear',
+    category: 'melee',
+  });
   let heroEquipSlotFx = null;
   let heroEquipSlotFxTimer = 0;
   let heroLoadoutSwapFx = null;
@@ -43,7 +49,7 @@
       tagline: '',
     }));
     const catalog = game.playerAuth?.progressionCatalog || null;
-    return {
+    const normalizedCatalog = {
       baseHeroId: catalog?.baseHeroId || 'cyber',
       heroLevelCap: Math.max(1, Number(catalog?.heroLevelCap) || 999),
       heroes: Array.isArray(catalog?.heroes) && catalog.heroes.length > 0 ? catalog.heroes : fallbackHeroes,
@@ -52,6 +58,13 @@
       items: Array.isArray(catalog?.items) ? catalog.items : [],
       trees: catalog?.trees && typeof catalog.trees === 'object' ? catalog.trees : {},
     };
+    normalizedCatalog.itemSlots = getEffectiveItemSlots(normalizedCatalog);
+    return normalizedCatalog;
+  }
+  function getEffectiveItemSlots(catalog) {
+    const slots = (Array.isArray(catalog?.itemSlots) ? catalog.itemSlots : []).filter(Boolean);
+    const hasMeleeSlot = slots.some((slot) => String(slot?.key || '').trim().toLowerCase() === 'melee');
+    return hasMeleeSlot ? slots : slots.concat([MELEE_SLOT_FALLBACK]);
   }
   function getProgressionState() {
     return game.playerAuth?.progression || null;
@@ -932,6 +945,9 @@
     return trWithFallback(`ui.inventory.slot.${String(slot?.key || '').toLowerCase()}`, slot?.name || slot?.key || '-');
   }
   function getItemCategoryLabel(category) {
+    if (String(category || '').trim().toLowerCase() === 'melee') {
+      return trWithFallback('ui.inventory.category.melee', getInventoryUiText('\u0411\u043b\u0438\u0436\u043d\u0438\u0439 \u0431\u043e\u0439', 'Melee'));
+    }
     const key = String(category || '').trim().toLowerCase();
     const fallbackMap = {
       head: 'Шапка',
@@ -963,6 +979,14 @@
     const pct = (Number(value) || 0) * 100;
     if (Math.abs(pct) < 0.05) return '';
     return `${pct > 0 ? '+' : ''}${formatInventoryNumber(pct, Math.abs(pct) < 10 ? 1 : 0)}%`;
+  }
+  function formatInventoryUpgradeCost(salvageCost, shardCost = 0) {
+    const parts = [];
+    const salvage = Math.max(0, Math.round(Number(salvageCost) || 0));
+    const shards = Math.max(0, Math.round(Number(shardCost) || 0));
+    if (salvage > 0) parts.push(`${salvage} ${trWithFallback('ui.inventory.salvage', 'Salvage').toLowerCase()}`);
+    if (shards > 0) parts.push(`${shards} ${trWithFallback('ui.profile.shards', 'Shards').toLowerCase()}`);
+    return parts.length ? parts.join(' + ') : '0';
   }
   function scaleInventoryConsumableMagnitude(base, item, step = 0.22) {
     const level = Math.max(1, Number(item?.level) || 1);
@@ -1019,8 +1043,29 @@
         : '';
     }
 
+    const melee = itemDef.melee && typeof itemDef.melee === 'object' ? itemDef.melee : null;
+    const meleeParts = [];
+    if (melee) {
+      const level = Math.max(1, Number(item?.level) || 1);
+      const levelSteps = Math.max(0, Math.floor(level) - 1);
+      const damage = Math.max(1, Math.round((Number(melee.damage) || 0) + (Number(melee.damagePerLevel) || 0) * levelSteps));
+      const range = Math.max(1, Math.round((Number(melee.range) || 0) + (Number(melee.rangePerLevel) || 0) * levelSteps));
+      const cooldownBase = Math.max(180, Number(melee.cooldownMs) || 800);
+      const cooldownScale = 1 - Math.min(0.42, levelSteps * Math.max(0, Number(melee.cooldownMulPerLevel) || 0.02));
+      const cooldownSec = Math.max(0.1, cooldownBase * cooldownScale / 1000);
+      const skillName = String(melee.skillName || itemDef.name || '').trim();
+      meleeParts.push(`${getInventoryUiText('\u0423\u0440\u043e\u043d', 'Damage')} ${damage}`);
+      meleeParts.push(`${getInventoryUiText('\u0414\u0430\u043b\u044c\u043d\u043e\u0441\u0442\u044c', 'Range')} ${range}`);
+      meleeParts.push(`${getInventoryUiText('\u041a\u0414', 'CD')} ${formatInventoryNumber(cooldownSec, 1)}${isRu ? '\u0441' : 's'}`);
+      if (skillName) meleeParts.push(`${getInventoryUiText('\u0421\u043a\u0438\u043b\u043b', 'Skill')} ${skillName}`);
+    }
+
     const stats = itemDef.stats && typeof itemDef.stats === 'object' ? itemDef.stats : null;
-    if (!stats) return '';
+    if (!stats) {
+      return meleeParts.length
+        ? `${getInventoryUiText('\u0411\u043b\u0438\u0436\u043d\u0438\u0439 \u0431\u043e\u0439:', 'Melee:')} ${meleeParts.join(' | ')}`
+        : '';
+    }
     const levelScale = 1 + Math.max(0, (Math.max(1, Number(item?.level) || 1) - 1)) * 0.22;
     addPct('Урон', 'Damage', (Number(stats.damageMul) || 0) * levelScale);
     addPct('Скорострельность', 'Fire rate', (Number(stats.fireRateMul) || 0) * levelScale);
@@ -1030,9 +1075,13 @@
     const regen = (Number(stats.hpRegenPerSec) || 0) * levelScale;
     if (Math.abs(regen) >= 0.001) addPart('Реген', 'Regen', `${formatInventorySignedNumber(regen, 2)}/s`);
     addFlat('Подбор', 'Pickup', (Number(stats.pickupRadius) || 0) * levelScale, 0);
-    return parts.length
+    const statsText = parts.length
       ? `${getInventoryUiText('Даёт:', 'Gives:')} ${parts.join(' · ')}`
       : '';
+    if (meleeParts.length) {
+      return `${getInventoryUiText('\u0411\u043b\u0438\u0436\u043d\u0438\u0439 \u0431\u043e\u0439:', 'Melee:')} ${meleeParts.join(' | ')}${statsText ? ` | ${statsText}` : ''}`;
+    }
+    return statsText;
   }
   function getItemIconPath(itemDef) {
     const icon = String(itemDef?.icon || itemDef?.iconPath || '').trim();
@@ -1054,6 +1103,7 @@
     if (slotCategory === 'armor') return withImage({ glyph: 'AR', className: 'armor' });
     if (slotCategory === 'legs') return withImage({ glyph: 'LG', className: 'legs' });
     if (slotCategory === 'ring') return withImage({ glyph: 'RG', className: 'ring' });
+    if (slotCategory === 'melee') return withImage({ glyph: 'MW', className: 'melee' });
     const hasLeftHand = equipTargets.some((slot) => String(slot?.key || '').trim().toLowerCase() === 'left_hand');
     const hasRightHand = equipTargets.some((slot) => String(slot?.key || '').trim().toLowerCase() === 'right_hand');
     if (hasLeftHand && hasRightHand) return withImage({ glyph: 'WP', className: 'hands' });
@@ -1080,7 +1130,7 @@
   }
   function getInventorySlotTargets(catalog, itemDef) {
     const slotCategory = String(itemDef?.slotCategory || '').trim();
-    return (Array.isArray(catalog?.itemSlots) ? catalog.itemSlots : []).filter((slot) => String(slot?.category || '').trim() === slotCategory);
+    return getEffectiveItemSlots(catalog).filter((slot) => String(slot?.category || '').trim() === slotCategory);
   }
   function getHeroEquipmentItemMap(catalog, progression, heroId) {
     const inventoryItems = Array.isArray(progression?.inventoryItems) ? progression.inventoryItems : [];
@@ -1692,6 +1742,13 @@
     if (stageCard) characterTopRow.appendChild(stageCard.cloneNode(true));
     if (uniqueCard) characterTopRow.appendChild(uniqueCard.cloneNode(true));
     if (characterTopRow.children.length) characterShell.appendChild(characterTopRow);
+    const ai3dPreviewLink = document.createElement('a');
+    ai3dPreviewLink.className = 'hero-ai3d-preview-link';
+    ai3dPreviewLink.href = `/ai3d-viewer.html?character=${encodeURIComponent(hero.id || 'cyber')}`;
+    ai3dPreviewLink.target = '_blank';
+    ai3dPreviewLink.rel = 'noopener';
+    ai3dPreviewLink.textContent = trWithFallback('ui.characters.preview_3d', 'Open 3D preview');
+    characterShell.appendChild(ai3dPreviewLink);
     heroCharacterPanelEl.appendChild(characterShell);
     shell.innerHTML = '';
     if (headerCard) shell.appendChild(headerCard);
@@ -1837,8 +1894,9 @@
       rows.push(renderHeroTalentNodeRow(hero, node, progression, points, unlocked));
     }
     const skillRows = uniqueSkills.map((skill) => renderHeroUniqueSkillRow(hero, skill, progression, shards, unlocked)).join('');
-    const gearSlots = (Array.isArray(catalog.itemSlots) ? catalog.itemSlots : []).filter((slot) => slot?.kind === 'gear');
-    const quickSlots = (Array.isArray(catalog.itemSlots) ? catalog.itemSlots : []).filter((slot) => slot?.kind === 'consumable');
+    const itemSlots = getEffectiveItemSlots(catalog);
+    const gearSlots = itemSlots.filter((slot) => slot?.kind === 'gear');
+    const quickSlots = itemSlots.filter((slot) => slot?.kind === 'consumable');
     const heroAccent = String(hero?.accent || '').trim() || '#e11d2e';
     const loadoutSwapFx = getHeroLoadoutSwapFx(hero.id);
     const loadoutSwapClass = loadoutSwapFx.active ? ' is-loadout-enter' : '';
@@ -1894,12 +1952,13 @@
     const heroDisplayName = trHeroName(hero.id, hero.name);
     const heroTagline = trWithFallback(`hero.${String(hero.id || '').toLowerCase()}.tagline`, hero.tagline || '');
     const heroXpLabel = heroLevel >= heroLevelCap ? `Lv ${heroLevel}/${heroLevelCap} MAX` : `Lv ${heroLevel}/${heroLevelCap} | XP ${heroXpValue}/${heroXpNeed}`;
-    const heroPaperDollHtml = `<div class="hero-paper-doll${loadoutSwapClass}" style="--hero-accent:${escapeHtml(heroAccent)}"><div class="hero-paper-doll-grid">${renderPaperSlot('head', 'hero-paper-head')}${renderPaperSlot('left_hand', 'hero-paper-left-hand')}<div class="hero-paper-portrait${loadoutSwapClass}"><div class="hero-paper-portrait-ring"></div><img class="hero-loadout-portrait" src="${escapeHtml(getHeroCardImagePath(hero.id))}" alt="${escapeHtml(heroDisplayName)}" /><div class="hero-paper-portrait-name"><b>${escapeHtml(heroDisplayName)}</b><span>${escapeHtml(heroXpLabel)}</span></div></div>${renderPaperSlot('right_hand', 'hero-paper-right-hand')}${renderPaperSlot('armor', 'hero-paper-armor')}${renderPaperSlot('legs', 'hero-paper-legs')}<div class="hero-paper-rings">${ringSlotsHtml}</div></div></div>`;
+    const heroPaperDollHtml = `<div class="hero-paper-doll${loadoutSwapClass}" style="--hero-accent:${escapeHtml(heroAccent)}"><div class="hero-paper-doll-grid">${renderPaperSlot('head', 'hero-paper-head')}${renderPaperSlot('left_hand', 'hero-paper-left-hand')}<div class="hero-paper-portrait${loadoutSwapClass}"><div class="hero-paper-portrait-ring"></div><img class="hero-loadout-portrait" src="${escapeHtml(getHeroCardImagePath(hero.id))}" alt="${escapeHtml(heroDisplayName)}" /><div class="hero-paper-portrait-name"><b>${escapeHtml(heroDisplayName)}</b><span>${escapeHtml(heroXpLabel)}</span></div></div>${renderPaperSlot('right_hand', 'hero-paper-right-hand')}${renderPaperSlot('armor', 'hero-paper-armor')}${renderPaperSlot('melee', 'hero-paper-melee')}${renderPaperSlot('legs', 'hero-paper-legs')}<div class="hero-paper-rings">${ringSlotsHtml}</div></div></div>`;
     const quickBeltHtml = quickSlots.length
       ? `<div class="hero-quick-belt${loadoutSwapClass}"><div class="hero-slot-group-title">${escapeHtml(trWithFallback('ui.inventory.quick_slots', 'Combat consumables'))}</div><div class="hero-quick-belt-grid">${quickSlotsHtml}</div></div>`
       : '';
     const inventoryGroupOrder = [
       ['consumable', trWithFallback('ui.inventory.group_consumables', 'Расходники')],
+      ['melee', trWithFallback('ui.inventory.group_melee', getInventoryUiText('\u0411\u043b\u0438\u0436\u043d\u0438\u0439 \u0431\u043e\u0439', 'Melee'))],
       ['armor', trWithFallback('ui.inventory.group_armor', 'Броня')],
       ['hands', trWithFallback('ui.inventory.group_hands', 'Руки и оружие')],
       ['rings', trWithFallback('ui.inventory.group_rings', 'Кольца')],
@@ -1908,6 +1967,7 @@
     const inventoryFilterOptions = [
       ['all', trWithFallback('ui.inventory.filter_all', 'Все')],
       ['consumable', trWithFallback('ui.inventory.group_consumables', 'Расходники')],
+      ['melee', trWithFallback('ui.inventory.group_melee', getInventoryUiText('\u0411\u043b\u0438\u0436\u043d\u0438\u0439 \u0431\u043e\u0439', 'Melee'))],
       ['head', trWithFallback('ui.inventory.filter_head', 'Шапка')],
       ['weapon', trWithFallback('ui.inventory.filter_weapon', 'Оружие')],
       ['armor', trWithFallback('ui.inventory.filter_armor', 'Броня')],
@@ -1919,6 +1979,7 @@
       if (itemDef?.combatUse) return 'consumable';
       const slotCategory = String(itemDef?.slotCategory || '').trim().toLowerCase();
       if (['head', 'armor', 'legs'].includes(slotCategory)) return 'armor';
+      if (slotCategory === 'melee') return 'melee';
       if (slotCategory === 'ring') return 'rings';
       if (equipTargets.some((slot) => ['left_hand', 'right_hand'].includes(String(slot?.key || '').trim().toLowerCase()))) return 'hands';
       return 'other';
@@ -1932,18 +1993,21 @@
       const iconMeta = getInventoryItemIconMeta(itemDef, equipTargets);
       const equippedIn = Object.keys(equippedItems).filter((slotKey) => equippedItems[slotKey]?.uid === item.uid);
       const upgradeCost = Math.max(0, Number(item.upgradeCost) || 0);
-      const canUpgradeItem = !itemDef.combatUse && Math.max(1, Number(item.level) || 1) < 10 && salvage >= upgradeCost;
+      const upgradeShardCost = Math.max(0, Number(item.upgradeShardCost) || 0);
+      const canUpgradeItem = !itemDef.combatUse && Math.max(1, Number(item.level) || 1) < 10 && salvage >= upgradeCost && shards >= upgradeShardCost;
       const upgradeLabel = trWithFallback('ui.inventory.action_upgrade', 'Upgrade');
       const sellLabel = trWithFallback('ui.inventory.action_sell', 'Sell');
-      const upgradeCostLabel = trWithFallback('ui.inventory.action_cost', '{action} • {cost}', { action: upgradeLabel, cost: upgradeCost });
+      const upgradeCostLabel = trWithFallback('ui.inventory.action_cost', '{action} • {cost}', { action: upgradeLabel, cost: formatInventoryUpgradeCost(upgradeCost, upgradeShardCost) });
       const sellCostLabel = trWithFallback('ui.inventory.action_cost', '{action} • {cost}', { action: sellLabel, cost: Math.max(0, Number(item.sellValue) || 0) });
+      const canSellItem = item.unsellable !== true && itemDef.unsellable !== true;
       const equipButtons = equipTargets.map((slot, slotIndex) => `<button type="button" class="inventory-mini-btn inventory-text-action${equippedIn.includes(slot.key) ? ' active' : ''}" data-item-equip="${escapeHtml(item.uid)}" data-slot-key="${escapeHtml(slot.key)}" title="${escapeHtml(`${trWithFallback('ui.inventory.equip_to_slot', 'Снарядить в слот')}: ${getItemSlotLabel(slot)}`)}" aria-label="${escapeHtml(`${trWithFallback('ui.inventory.equip_to_slot', 'Снарядить в слот')}: ${getItemSlotLabel(slot)}`)}">${escapeHtml(`${trWithFallback('ui.inventory.slot_short', 'Slot')} ${slotIndex + 1}`)}</button>`).join('');
       const categoryLabel = getItemCategoryLabel(itemDef.slotCategory);
       const equippedMeta = equippedIn.length
-        ? `<div class="inventory-item-chip inventory-item-chip-eq">${escapeHtml(equippedIn.map((slotKey) => getItemSlotLabel((catalog.itemSlots || []).find((slot) => slot.key === slotKey) || { key: slotKey })).join(', '))}</div>`
+        ? `<div class="inventory-item-chip inventory-item-chip-eq">${escapeHtml(equippedIn.map((slotKey) => getItemSlotLabel(getEffectiveItemSlots(catalog).find((slot) => slot.key === slotKey) || { key: slotKey })).join(', '))}</div>`
         : '';
       const itemStats = formatInventoryItemEffectText(itemDef, item);
-      const actionButtonsHtml = `${equipButtons || ''}${!itemDef.combatUse ? `<button type="button" class="inventory-mini-btn inventory-text-action upgrade${canUpgradeItem ? '' : ' disabled-like'}" data-item-upgrade="${escapeHtml(item.uid)}" title="${escapeHtml(upgradeCostLabel)}" aria-label="${escapeHtml(upgradeCostLabel)}">${escapeHtml(upgradeLabel)}</button>` : ''}<button type="button" class="inventory-mini-btn inventory-text-action danger" data-item-sell="${escapeHtml(item.uid)}" title="${escapeHtml(sellCostLabel)}" aria-label="${escapeHtml(sellCostLabel)}">${escapeHtml(sellLabel)}</button>`;
+      const sellButtonHtml = canSellItem ? `<button type="button" class="inventory-mini-btn inventory-text-action danger" data-item-sell="${escapeHtml(item.uid)}" title="${escapeHtml(sellCostLabel)}" aria-label="${escapeHtml(sellCostLabel)}">${escapeHtml(sellLabel)}</button>` : '';
+      const actionButtonsHtml = `${equipButtons || ''}${!itemDef.combatUse ? `<button type="button" class="inventory-mini-btn inventory-text-action upgrade${canUpgradeItem ? '' : ' disabled-like'}" data-item-upgrade="${escapeHtml(item.uid)}" title="${escapeHtml(upgradeCostLabel)}" aria-label="${escapeHtml(upgradeCostLabel)}">${escapeHtml(upgradeLabel)}</button>` : ''}${sellButtonHtml}`;
       const cardHtml = `<div class="inventory-item-card inventory-item-card-compact rarity-${escapeHtml(String(itemDef.rarity || 'common').toLowerCase())}"><div class="inventory-item-layout">${renderInventoryItemIconHtml(iconMeta)}<div class="inventory-item-main"><div class="inventory-item-name">${escapeHtml(getItemDisplayName(itemDef))}</div><div class="inventory-item-meta">${escapeHtml(getItemRarityLabel(itemDef.rarity))} • ${escapeHtml(categoryLabel)}</div><div class="inventory-item-chip-row"><div class="inventory-item-chip">Lv ${Math.max(1, Number(item.level) || 1)}</div>${quantity > 1 ? `<div class="inventory-item-chip">x${quantity}</div>` : ''}<div class="inventory-item-chip">${escapeHtml(trWithFallback('ui.inventory.sell_value_short', 'Продажа'))}: ${Math.max(0, Number(item.sellValue) || 0)}</div>${equippedMeta}</div>${itemStats ? `<div class="inventory-item-stats">${escapeHtml(itemStats)}</div>` : ''}${itemDef.combatUse ? `<div class="inventory-item-consumable">${escapeHtml(trWithFallback('ui.inventory.consumable_hint_keys', 'Клавиши 1/2/3 в бою'))}</div>` : ''}</div><div class="inventory-item-actions-compact">${actionButtonsHtml}</div></div></div>`;
       const groupKey = getInventoryGroupKey(itemDef, equipTargets);
       inventoryCardsByGroup.get(groupKey)?.push(cardHtml);
@@ -1956,10 +2020,11 @@
       if (slotCategory === 'armor') filterTags.add('armor');
       if (slotCategory === 'legs') filterTags.add('legs');
       if (slotCategory === 'ring') filterTags.add('ring');
+      if (slotCategory === 'melee') filterTags.add('melee');
       if (equipTargets.some((slot) => ['left_hand', 'right_hand'].includes(String(slot?.key || '').trim().toLowerCase()))) {
         filterTags.add('weapon');
       }
-      if (!itemDef?.combatUse && !filterTags.has('head') && !filterTags.has('armor') && !filterTags.has('legs') && !filterTags.has('ring') && !filterTags.has('weapon')) {
+      if (!itemDef?.combatUse && !filterTags.has('head') && !filterTags.has('armor') && !filterTags.has('legs') && !filterTags.has('ring') && !filterTags.has('melee') && !filterTags.has('weapon')) {
         filterTags.add('other');
       }
       inventoryEntries.push({ cardHtml, filterTags });
@@ -1995,10 +2060,13 @@
       const equipTargets = getInventorySlotTargets(catalog, itemDef);
       const equippedIn = Object.keys(equippedItems).filter((slotKey) => equippedItems[slotKey]?.uid === item.uid);
       const upgradeCost = Math.max(0, Number(item.upgradeCost) || 0);
-      const canUpgradeItem = !itemDef.combatUse && Math.max(1, Number(item.level) || 1) < 10 && salvage >= upgradeCost;
+      const upgradeShardCost = Math.max(0, Number(item.upgradeShardCost) || 0);
+      const canUpgradeItem = !itemDef.combatUse && Math.max(1, Number(item.level) || 1) < 10 && salvage >= upgradeCost && shards >= upgradeShardCost;
+      const canSellItem = item.unsellable !== true && itemDef.unsellable !== true;
       const equipButtons = equipTargets.map((slot) => `<button type="button" class="inventory-mini-btn${equippedIn.includes(slot.key) ? ' active' : ''}" data-item-equip="${escapeHtml(item.uid)}" data-slot-key="${escapeHtml(slot.key)}">${escapeHtml(getItemSlotLabel(slot))}</button>`).join('');
       const categoryLabel = getItemCategoryLabel(itemDef.slotCategory);
-      return `<div class="inventory-item-card rarity-${escapeHtml(String(itemDef.rarity || 'common').toLowerCase())}"><div class="inventory-item-head"><div><div class="inventory-item-name">${escapeHtml(getItemDisplayName(itemDef))}</div><div class="inventory-item-meta">${escapeHtml(getItemRarityLabel(itemDef.rarity))} • ${escapeHtml(categoryLabel)} • Lv ${Math.max(1, Number(item.level) || 1)}${quantity > 1 ? ` • x${quantity}` : ''}${equippedIn.length ? ` • ${escapeHtml(trWithFallback('ui.inventory.equipped_in', 'Equipped'))}: ${escapeHtml(equippedIn.map((slotKey) => getItemSlotLabel((catalog.itemSlots || []).find((slot) => slot.key === slotKey) || { key: slotKey })).join(', '))}` : ''}</div></div><div class="inventory-item-values">${escapeHtml(trWithFallback('ui.inventory.sell_value_short', 'Sell'))}: ${Math.max(0, Number(item.sellValue) || 0)}</div></div>${equipButtons ? `<div class="inventory-item-actions-line">${equipButtons}</div>` : ''}<div class="inventory-item-actions-line">${!itemDef.combatUse ? `<button type="button" class="inventory-mini-btn${canUpgradeItem ? '' : ' disabled-like'}" data-item-upgrade="${escapeHtml(item.uid)}">${escapeHtml(trWithFallback('ui.inventory.upgrade_cost_have', 'Upgrade: {cost} salvage • You have: {have}', { cost: upgradeCost, have: salvage }))}</button>` : `<span class="inventory-item-consumable">${escapeHtml(trWithFallback('ui.inventory.consumable_hint_keys', 'Keys 1/2/3 in battle'))}</span>`}<button type="button" class="inventory-mini-btn danger" data-item-sell="${escapeHtml(item.uid)}">${escapeHtml(trWithFallback('ui.inventory.sell_for', 'Sell for {value}', { value: Math.max(0, Number(item.sellValue) || 0) }))}</button></div></div>`;
+      const sellButtonHtml = canSellItem ? `<button type="button" class="inventory-mini-btn danger" data-item-sell="${escapeHtml(item.uid)}">${escapeHtml(trWithFallback('ui.inventory.sell_for', 'Sell for {value}', { value: Math.max(0, Number(item.sellValue) || 0) }))}</button>` : '';
+      return `<div class="inventory-item-card rarity-${escapeHtml(String(itemDef.rarity || 'common').toLowerCase())}"><div class="inventory-item-head"><div><div class="inventory-item-name">${escapeHtml(getItemDisplayName(itemDef))}</div><div class="inventory-item-meta">${escapeHtml(getItemRarityLabel(itemDef.rarity))} • ${escapeHtml(categoryLabel)} • Lv ${Math.max(1, Number(item.level) || 1)}${quantity > 1 ? ` • x${quantity}` : ''}${equippedIn.length ? ` • ${escapeHtml(trWithFallback('ui.inventory.equipped_in', 'Equipped'))}: ${escapeHtml(equippedIn.map((slotKey) => getItemSlotLabel(getEffectiveItemSlots(catalog).find((slot) => slot.key === slotKey) || { key: slotKey })).join(', '))}` : ''}</div></div><div class="inventory-item-values">${escapeHtml(trWithFallback('ui.inventory.sell_value_short', 'Sell'))}: ${Math.max(0, Number(item.sellValue) || 0)}</div></div>${equipButtons ? `<div class="inventory-item-actions-line">${equipButtons}</div>` : ''}<div class="inventory-item-actions-line">${!itemDef.combatUse ? `<button type="button" class="inventory-mini-btn${canUpgradeItem ? '' : ' disabled-like'}" data-item-upgrade="${escapeHtml(item.uid)}">${escapeHtml(trWithFallback('ui.inventory.upgrade_cost_have', 'Upgrade: {cost} salvage • You have: {have}', { cost: formatInventoryUpgradeCost(upgradeCost, upgradeShardCost), have: `${salvage} / ${shards}` }))}</button>` : `<span class="inventory-item-consumable">${escapeHtml(trWithFallback('ui.inventory.consumable_hint_keys', 'Keys 1/2/3 in battle'))}</span>`}${sellButtonHtml}</div></div>`;
     }).join('');
     const unlockMeta = !unlocked
       ? `<div class="hero-lock-meta"><span class="hero-req ${accountLevelReq.enough ? 'ok' : 'lack'}">${escapeHtml(accountLevelReq.text)}</span><span class="hero-req ${cardsReq.enough ? 'ok' : 'lack'}">${escapeHtml(cardsReq.text)}</span><span class="hero-req ${shardsReq.enough ? 'ok' : 'lack'}">${escapeHtml(shardsReq.text)}</span></div>`
@@ -2314,6 +2382,7 @@
       ].filter(Boolean).join(' ');
       slot.style.setProperty('--accent', rosterDeselectFx.color || hero.accent || '#38bdf8');
       slot.style.setProperty('--slot-index', index);
+      slot.dataset.heroId = hero.id;
       slot.setAttribute('aria-label', trWithFallback('ui.hero.aria', `Hero ${hero.name}`, { hero: trHeroName(hero.id, hero.name) }));
 
       const portraitWrap = document.createElement('span');
@@ -2378,6 +2447,7 @@
       cardBtn.type = 'button';
       cardBtn.className = `hero-v2-card${active ? ' active' : ''}${focused ? ' focused' : ''}${rosterCardFx.active ? ' is-roster-select-flash' : ''}${rosterDeselectFx.active ? ' is-roster-deselect-flash' : ''}${unlocked ? '' : ' locked'}`;
       cardBtn.style.setProperty('--accent', rosterDeselectFx.color || hero.accent || '#38bdf8');
+      cardBtn.dataset.heroId = hero.id;
       cardBtn.setAttribute('aria-label', trWithFallback('ui.hero.aria', `Hero ${hero.name}`, { hero: trHeroName(hero.id, hero.name) }));
       const inner = document.createElement('div');
       inner.className = 'hero-v2-inner';

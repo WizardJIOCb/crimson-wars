@@ -155,6 +155,7 @@
     if (category === 'head') return '#38bdf8';
     if (category === 'armor') return '#22c55e';
     if (category === 'legs') return '#a3e635';
+    if (category === 'melee') return '#fb7185';
     if (category === 'quick') return '#fb7185';
     return '#39c1d9';
   }
@@ -167,6 +168,7 @@
     if (category === 'head') return 'HD';
     if (category === 'armor') return 'AR';
     if (category === 'legs') return 'LG';
+    if (category === 'melee') return 'MW';
     if (category === 'ring') return 'RG';
     if (category === 'quick') return 'FX';
     return 'EQ';

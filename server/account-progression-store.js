@@ -112,6 +112,10 @@ function createAccountProgressionStore({
   const itemSlotMap = Object.fromEntries(itemSlots.map((slot) => [slot.key, slot]));
   const items = Array.isArray(itemDefs) ? itemDefs.map((item) => ({ ...item })) : [];
   const itemMap = Object.fromEntries(items.map((item) => [item.id, item]));
+  const starterMeleeSlotKey = itemSlotMap.melee ? 'melee' : '';
+  const starterMeleeItemId = itemMap.melee_sword
+    ? 'melee_sword'
+    : (items.find((item) => String(item?.slotCategory || '') === 'melee')?.id || '');
 
   const cardDefs = [];
   for (const hero of heroes) {
@@ -500,7 +504,7 @@ function createAccountProgressionStore({
 
   function createDefaultProgression(playerId) {
     const now = nowMs();
-    return {
+    return ensureStarterMeleeLoadout({
       playerId: clampInt(playerId, 1),
       accountXp: 0,
       accountLevel: 1,
@@ -521,7 +525,7 @@ function createAccountProgressionStore({
       campaignProgress: {},
       createdAt: now,
       updatedAt: now,
-    };
+    }, { equipIfAdded: true });
   }
 
   function normalizeUnlockedHeroes(raw) {
@@ -627,6 +631,49 @@ function createAccountProgressionStore({
     return itemMap[String(itemId || '').trim()] || null;
   }
 
+  function isMeleeItemDef(itemDef) {
+    return String(itemDef?.slotCategory || '').trim() === 'melee';
+  }
+
+  function ensureStarterMeleeLoadout(progression, options = {}) {
+    if (!progression || !starterMeleeSlotKey || !starterMeleeItemId || !itemMap[starterMeleeItemId]) return progression;
+    progression.inventoryItems = normalizeInventoryItems(progression.inventoryItems);
+    progression.heroEquipment = normalizeHeroEquipment(progression.heroEquipment, progression.inventoryItems);
+
+    let meleeItems = progression.inventoryItems.filter((item) => isMeleeItemDef(getItemDef(item.itemId)));
+    const addedStarter = meleeItems.length <= 0;
+    if (addedStarter) {
+      const starter = {
+        uid: makeUid(starterMeleeItemId),
+        itemId: starterMeleeItemId,
+        level: 1,
+        quantity: 1,
+      };
+      progression.inventoryItems.push(starter);
+      meleeItems = [starter];
+    }
+
+    const shouldEquipMissing = options?.equipMissing === true || (options?.equipIfAdded === true && addedStarter);
+    if (!shouldEquipMissing) return progression;
+
+    const fallbackItem = meleeItems.find((item) => item.itemId === starterMeleeItemId) || meleeItems[0];
+    if (!fallbackItem?.uid) return progression;
+    const unlocked = normalizeUnlockedHeroes(progression.unlockedHeroes);
+    progression.unlockedHeroes = unlocked;
+    if (!progression.heroEquipment || typeof progression.heroEquipment !== 'object') progression.heroEquipment = {};
+    const inventoryByUid = new Map(progression.inventoryItems.map((item) => [String(item.uid || ''), item]));
+
+    for (const heroId of unlocked) {
+      if (!progression.heroEquipment[heroId]) progression.heroEquipment[heroId] = {};
+      const currentUid = String(progression.heroEquipment[heroId][starterMeleeSlotKey] || '').trim();
+      const currentItem = inventoryByUid.get(currentUid);
+      if (currentItem && isMeleeItemDef(getItemDef(currentItem.itemId))) continue;
+      progression.heroEquipment[heroId][starterMeleeSlotKey] = fallbackItem.uid;
+    }
+    progression.heroEquipment = normalizeHeroEquipment(progression.heroEquipment, progression.inventoryItems);
+    return progression;
+  }
+
   function getRarityRank(rarity) {
     switch (String(rarity || '').trim().toLowerCase()) {
       case 'uncommon': return 2;
@@ -714,7 +761,15 @@ function createAccountProgressionStore({
       + Math.max(0, level - 1) * clampInt(itemDef?.upgradeSalvageStep, 4));
   }
 
+  function getItemUpgradeShardCost(item, itemDef) {
+    const level = Math.max(1, clampInt(item?.level, 1) || 1);
+    return Math.max(0,
+      clampInt(itemDef?.upgradeShardBase, 0)
+      + Math.max(0, level - 1) * clampInt(itemDef?.upgradeShardStep, 0));
+  }
+
   function getItemSellValue(item, itemDef) {
+    if (itemDef?.unsellable === true) return 0;
     const base = clampInt(itemDef?.sellSalvage, 0);
     const bonus = Math.max(0, (Math.max(1, clampInt(item?.level, 1) || 1) - 1) * Math.max(1, Math.round(base * 0.45)));
     return base + bonus;
@@ -733,8 +788,10 @@ function createAccountProgressionStore({
         slotCategory: String(def.slotCategory || ''),
         stackable: !!def.stackable,
         maxStack: clampInt(def.maxStack, 0),
+        unsellable: def.unsellable === true,
         sellValue: getItemSellValue(item, def),
         upgradeCost: def.combatUse ? 0 : getItemUpgradeCost(item, def),
+        upgradeShardCost: def.combatUse ? 0 : getItemUpgradeShardCost(item, def),
       };
     });
   }
@@ -753,7 +810,7 @@ function createAccountProgressionStore({
     const campaignProgress = normalizeCampaignProgress(safeJsonParse(row.campaign_progress_json, {}));
     const activeHeroRaw = String(row.active_hero || '').trim();
     const activeHero = unlockedHeroes.includes(activeHeroRaw) ? activeHeroRaw : unlockedHeroes[0];
-    return {
+    return ensureStarterMeleeLoadout({
       playerId: clampInt(row.player_id, 1),
       accountXp: clampInt(row.account_xp, 0),
       accountLevel: Math.max(1, clampInt(row.account_level, 1)),
@@ -774,7 +831,7 @@ function createAccountProgressionStore({
       campaignProgress,
       createdAt: clampInt(row.created_at, 0),
       updatedAt: clampInt(row.updated_at, 0),
-    };
+    }, { equipIfAdded: true });
   }
 
   function saveProgression(progression) {
@@ -816,7 +873,7 @@ function createAccountProgressionStore({
     const unlockedHeroes = normalizeUnlockedHeroes(raw?.unlockedHeroes || base.unlockedHeroes);
     const heroLevels = normalizeHeroLevels(raw?.heroLevels || base.heroLevels);
     const activeHeroRaw = String(raw?.activeHero || base.activeHero || fallbackHeroId).trim();
-    return {
+    return ensureStarterMeleeLoadout({
       ...base,
       accountXp: clampInt(raw?.accountXp, 0),
       accountLevel: Math.max(1, clampInt(raw?.accountLevel, 1)),
@@ -837,7 +894,7 @@ function createAccountProgressionStore({
       campaignProgress: normalizeCampaignProgress(raw?.campaignProgress || base.campaignProgress),
       createdAt: clampInt(raw?.createdAt || base.createdAt, 0),
       updatedAt: clampInt(raw?.updatedAt || base.updatedAt, 0),
-    };
+    }, { equipIfAdded: true });
   }
 
   function getOrCreateProgression(playerId) {
@@ -900,6 +957,9 @@ function createAccountProgressionStore({
         sellSalvage: clampInt(item.sellSalvage, 0),
         upgradeSalvageBase: clampInt(item.upgradeSalvageBase, 0),
         upgradeSalvageStep: clampInt(item.upgradeSalvageStep, 0),
+        upgradeShardBase: clampInt(item.upgradeShardBase, 0),
+        upgradeShardStep: clampInt(item.upgradeShardStep, 0),
+        unsellable: item.unsellable === true,
       })),
       maps: mapDefs.map((mapDef) => ({
         id: mapDef.id,
@@ -1353,6 +1413,7 @@ function createAccountProgressionStore({
     if (!item) return { ok: false, code: 404, message: 'Item not found' };
     const itemDef = getItemDef(item.itemId);
     if (!itemDef) return { ok: false, code: 404, message: 'Item definition not found' };
+    if (itemDef.unsellable === true) return { ok: false, code: 403, message: 'Starter item cannot be sold' };
 
     progression.salvage = clampInt(progression.salvage, 0) + getItemSellValue(item, itemDef);
     progression.inventoryItems = normalizeInventoryItems(progression.inventoryItems).filter((entry) => entry.uid !== targetUid);
@@ -1374,9 +1435,12 @@ function createAccountProgressionStore({
     if (Math.max(1, clampInt(item.level, 1)) >= 10) return { ok: false, code: 409, message: 'Item maxed out' };
 
     const cost = getItemUpgradeCost(item, itemDef);
+    const shardCost = getItemUpgradeShardCost(item, itemDef);
     if (clampInt(progression.salvage, 0) < cost) return { ok: false, code: 403, message: `Need ${cost} salvage` };
+    if (clampInt(progression.shards, 0) < shardCost) return { ok: false, code: 403, message: `Need ${shardCost} shards` };
 
     progression.salvage -= cost;
+    progression.shards -= shardCost;
     item.level = Math.max(1, clampInt(item.level, 1)) + 1;
     progression.inventoryItems = normalizeInventoryItems(progression.inventoryItems);
     const saved = saveProgression(progression);
@@ -1481,6 +1545,7 @@ function createAccountProgressionStore({
     progression.heroLevels[targetHero] = Math.max(1, clampInt(progression.heroLevels[targetHero], 1) || 1);
     progression.heroXp[targetHero] = clampInt(progression.heroXp[targetHero], 0);
     progression.activeHero = targetHero;
+    ensureStarterMeleeLoadout(progression, { equipMissing: true });
     const saved = saveProgression(progression);
     return { ok: true, progression: toPublicProgression(saved) };
   }

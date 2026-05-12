@@ -287,11 +287,11 @@ const mobile = {
 };
 
 const PLAYER_VARIANTS = [
-  { id: 'cyber', name: 'Cyber', accent: '#8ec5ff', tint: '#9ec5ff', sprite: '/assets/sprites/player_cyber.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.88, fps: 10, idleFrame: 1 },
-  { id: 'scout', name: 'Scout', accent: '#a7e7c5', tint: '#bdf0d4', sprite: '/assets/sprites/player_cyber.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.88, fps: 10, idleFrame: 1 },
-  { id: 'shadow', name: 'Shadow', accent: '#d4c1ff', tint: '#dccbff', sprite: '/assets/sprites/player_cyber.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.88, fps: 10, idleFrame: 1 },
-  { id: 'medic', name: 'Medic', accent: '#ffd1dc', tint: '#ffdbe4', sprite: '/assets/sprites/player_cyber.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.88, fps: 10, idleFrame: 1 },
-  { id: 'raider', name: 'Raider', accent: '#ffe4b5', tint: '#ffe9c9', sprite: '/assets/sprites/player_cyber.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.88, fps: 10, idleFrame: 1 },
+  { id: 'cyber', name: 'Cyber', accent: '#8ec5ff', tint: '#9ec5ff', sprite: '/assets/sprites/player_cyber_3d.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.94, fps: 10, idleFrame: 1 },
+  { id: 'scout', name: 'Scout', accent: '#a7e7c5', tint: '#bdf0d4', sprite: '/assets/sprites/player_scout_3d.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.94, fps: 10, idleFrame: 1 },
+  { id: 'shadow', name: 'Shadow', accent: '#d4c1ff', tint: '#dccbff', sprite: '/assets/sprites/player_shadow_3d.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.94, fps: 10, idleFrame: 1 },
+  { id: 'medic', name: 'Medic', accent: '#ffd1dc', tint: '#ffdbe4', sprite: '/assets/sprites/player_medic_3d.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.94, fps: 10, idleFrame: 1 },
+  { id: 'raider', name: 'Raider', accent: '#ffe4b5', tint: '#ffe9c9', sprite: '/assets/sprites/player_raider_3d.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.94, fps: 10, idleFrame: 1 },
 ];
 
 
@@ -419,6 +419,7 @@ const visuals = {
   bossBlast: [],
   bloodMist: [],
   skillBursts: [],
+  meleeSwings: [],
   xpCharge: [],
   skillArcs: [],
   skillLinks: [],
@@ -467,6 +468,7 @@ const gameAudio = {
   activeVoicesByGroup: new Map(),
   missingAssets: new Set(),
   warmupStarted: false,
+  nativeSuppressed: false,
 };
 
 let joinMode = 'create';
@@ -747,7 +749,8 @@ const replayGame = {
   chatShownCount: -1,
   chatPayloadRef: null,
 };
-const RUN_START_LOADING_IMAGE = '/assets/backgrounds/screen-loading.jpg';
+const RUN_START_DEFAULT_LOADING_IMAGE = '/assets/backgrounds/screen-loading.jpg';
+const RUN_START_FREE_LOADING_IMAGE = '/assets/backgrounds/fight-1.png';
 const RUN_START_IMPACT_IMAGES = ['/assets/backgrounds/start-1.png', '/assets/backgrounds/start-2.png'];
 const RUN_START_MIN_LOADING_MS = 650;
 const RUN_START_ZOOM_INTRO_DURATION_MS = 2200;
@@ -773,6 +776,7 @@ const runStartSequence = {
   introActive: false,
   introStartedAt: 0,
   cameraMode: 'zoom',
+  loadingSrc: RUN_START_DEFAULT_LOADING_IMAGE,
   impactSrc: RUN_START_IMPACT_IMAGES[0],
   impactTimer: 0,
   finishTimer: 0,
@@ -3860,6 +3864,12 @@ function updateStatsPanel(me, options = {}) {
   const moveSpeedMul = Math.max(0.2, Number(me.moveSpeedMul) || 1);
   const enemyKills = Math.max(0, Number(me.enemyKills) || 0);
   const bossKills = Math.max(0, Number(me.bossKills) || 0);
+  const melee = me.melee && typeof me.melee === 'object' ? me.melee : null;
+  const meleeRows = melee ? [
+    `<div class="stats-row"><span>Melee</span><b>${String(melee.name || 'Melee')} Lv ${Math.max(1, Number(melee.level) || 1)}</b></div>`,
+    `<div class="stats-row"><span>Melee damage</span><b>${Math.round(Math.max(1, Number(melee.damage) || 1))}</b></div>`,
+    `<div class="stats-row"><span>Melee cooldown</span><b>${fmtStatNum(Math.max(0, Number(melee.cooldownLeftMs) || 0) / 1000, 1)}s / ${fmtStatNum(Math.max(0, Number(melee.cooldownMs) || 0) / 1000, 1)}s</b></div>`,
+  ] : [];
 
   const nextHtml = [
     `<div class="stats-row"><span>Monsters killed</span><b>${enemyKills}</b></div>`,
@@ -3871,6 +3881,7 @@ function updateStatsPanel(me, options = {}) {
     `<div class="stats-row"><span>Pickup radius</span><b>${Math.round(pickupRadius)}</b></div>`,
     `<div class="stats-row"><span>HP regen</span><b>${fmtStatNum(hpRegen, 2)}/s</b></div>`,
     `<div class="stats-row"><span>Jump charges</span><b>${dodgeMax}</b></div>`,
+    ...meleeRows,
     `<div class="stats-row"><span>Damage multiplier</span><b>x${fmtStatNum(damageMul, 2)}</b></div>`,
     `<div class="stats-row"><span>Fire-rate multiplier</span><b>x${fmtStatNum(fireRateMul, 2)}</b></div>`,
     `<div class="stats-row"><span>Speed multiplier</span><b>x${fmtStatNum(moveSpeedMul, 2)}</b></div>`,
@@ -4023,6 +4034,7 @@ function sendJson(payload) {
   markTxBytes(raw.length);
   return true;
 }
+window.sendJson = sendJson;
 
 function sendNetPing() {
   if (ws.readyState !== WebSocket.OPEN) return;
@@ -4190,7 +4202,8 @@ const sprites = {
     build_7: loadImage('/assets/buildings/build-7.png'),
   },
   backgrounds: {
-    runLoading: loadImage(RUN_START_LOADING_IMAGE),
+    runLoading: loadImage(RUN_START_DEFAULT_LOADING_IMAGE),
+    freeRunLoading: loadImage(RUN_START_FREE_LOADING_IMAGE),
     start1: loadImage(RUN_START_IMPACT_IMAGES[0]),
     start2: loadImage(RUN_START_IMPACT_IMAGES[1]),
   },
@@ -4392,6 +4405,24 @@ function hideRunStartOverlay() {
   if (runStartImpactImgEl) runStartImpactImgEl.removeAttribute('src');
 }
 
+function getRunStartLoadingImage(options = {}) {
+  const mode = String(options?.mode || '').trim().toLowerCase();
+  const explicitRunType = String(options?.runType || '').trim().toLowerCase();
+  const fallbackRunType = mode === 'create' && typeof selectedRunType !== 'undefined'
+    ? String(selectedRunType || '').trim().toLowerCase()
+    : '';
+  const runType = explicitRunType || fallbackRunType;
+  return mode === 'create' && runType === 'free'
+    ? RUN_START_FREE_LOADING_IMAGE
+    : RUN_START_DEFAULT_LOADING_IMAGE;
+}
+
+function setRunStartLoadingBackground(src) {
+  const safeSrc = String(src || RUN_START_DEFAULT_LOADING_IMAGE).replace(/"/g, '%22');
+  runStartSequence.loadingSrc = safeSrc;
+  if (runStartOverlayEl) runStartOverlayEl.style.setProperty('--run-start-bg-image', `url("${safeSrc}")`);
+}
+
 function cancelRunStartLoading(options = {}) {
   const targetToken = Math.max(0, Number(options?.token) || 0);
   if (targetToken > 0 && targetToken !== runStartSequence.token) return;
@@ -4405,6 +4436,7 @@ function cancelRunStartLoading(options = {}) {
   runStartSequence.resourceLoaded = 0;
   runStartSequence.resourceTotal = 0;
   runStartSequence.progress = 0;
+  runStartSequence.loadingSrc = RUN_START_DEFAULT_LOADING_IMAGE;
   visuals.runStartFireworks = [];
   clearRunStartTimers();
   hideRunStartOverlay();
@@ -4502,6 +4534,7 @@ function beginRunStartLoading(options = {}) {
   runStartSequence.introActive = false;
   runStartSequence.introStartedAt = 0;
   runStartSequence.cameraMode = 'zoom';
+  setRunStartLoadingBackground(getRunStartLoadingImage(options));
   runStartSequence.impactSrc = RUN_START_IMPACT_IMAGES[Math.floor(Math.random() * RUN_START_IMPACT_IMAGES.length)] || RUN_START_IMPACT_IMAGES[0];
   visuals.runStartFireworks = [];
   clearRunStartTimers();
@@ -5200,7 +5233,7 @@ function setGameSfxVolume(percent) {
   localStorage.setItem('cw:sfxVolume', String(value));
   if (gameSfxVolumeEl) gameSfxVolumeEl.value = String(value);
   if (gameSfxVolumeValueEl) gameSfxVolumeValueEl.textContent = `${value}%`;
-  if (gameAudio.master) gameAudio.master.gain.value = 0.6 * game.sfxVolume;
+  applyGameAudioMasterGain();
 }
 
 function applyGameSfxVolume(percent, { persist = true } = {}) {
@@ -5209,7 +5242,7 @@ function applyGameSfxVolume(percent, { persist = true } = {}) {
   if (persist) localStorage.setItem('cw:sfxVolume', String(value));
   if (gameSfxVolumeEl) gameSfxVolumeEl.value = String(value);
   if (gameSfxVolumeValueEl) gameSfxVolumeValueEl.textContent = `${value}%`;
-  if (gameAudio.master) gameAudio.master.gain.value = 0.6 * game.sfxVolume;
+  applyGameAudioMasterGain();
 }
 
 window.cwSetGameSfxEnabled = setGameSfxEnabled;
@@ -5228,14 +5261,38 @@ function getGameSfxVolume() {
   return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0.7;
 }
 
+function applyGameAudioMasterGain() {
+  if (gameAudio.master) {
+    gameAudio.master.gain.value = gameAudio.nativeSuppressed ? 0 : 0.6 * getGameSfxVolume();
+  }
+}
+
+function stopActiveHtmlSfx() {
+  for (const audio of Array.from(gameAudio.activeHtmlAudios)) {
+    try {
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
+    } catch {}
+  }
+  gameAudio.activeHtmlAudios.clear();
+  gameAudio.activeVoicesByGroup.clear();
+}
+
+window.cwSetNativeAudioSuppressed = (suppressed) => {
+  gameAudio.nativeSuppressed = Boolean(suppressed);
+  applyGameAudioMasterGain();
+  if (gameAudio.nativeSuppressed) stopActiveHtmlSfx();
+};
+
 function getGameAudioContext() {
-  if (!game.sfxEnabled || typeof window === 'undefined') return null;
+  if (!game.sfxEnabled || gameAudio.nativeSuppressed || typeof window === 'undefined') return null;
   const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextCtor) return null;
   if (!gameAudio.ctx) {
     gameAudio.ctx = new AudioContextCtor();
     gameAudio.master = gameAudio.ctx.createGain();
-    gameAudio.master.gain.value = 0.6 * getGameSfxVolume();
+    applyGameAudioMasterGain();
     gameAudio.master.connect(gameAudio.ctx.destination);
   }
   return gameAudio.ctx;
@@ -5518,6 +5575,13 @@ const SFX_ASSET_VARIANTS = {
   weaponReload: [
     `${SFX_ROOT}/sfx-pack-gun_sfx/v1/gunready/ogg/gunready_08.ogg`,
   ],
+  melee: [
+    `${SFX_ROOT}/Survival Effects ogg/Tools/DesignedAxe1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Tools/DesignedAxe2.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Tools/DesignedPickaxe1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Tools/Hammer1.ogg`,
+    `${SFX_ROOT}/Survival Effects ogg/Tools/WoodMovement1.ogg`,
+  ],
 };
 
 function chooseSfxAssetUrl(name, options = {}) {
@@ -5773,6 +5837,7 @@ function playProceduralSfx(name, options, volume) {
 }
 
 function playVictoryFanfare(options = {}) {
+  if (gameAudio.nativeSuppressed) return;
   if (!game.sfxEnabled || (game.embedMode && !game.liveAudioEnabled && !options.replay)) return;
   unlockGameAudio();
   const ctxAudio = getGameAudioContext();
@@ -5799,6 +5864,7 @@ function playVictoryFanfare(options = {}) {
 }
 
 function playGameSfx(name, options = {}) {
+  if (gameAudio.nativeSuppressed) return;
   const replayAudio = Boolean(replayGame.active || options.replay);
   if (!game.sfxEnabled || (game.embedMode && !game.liveAudioEnabled && !replayAudio)) return;
   if (name !== 'shot' && name !== 'weaponReload') return;

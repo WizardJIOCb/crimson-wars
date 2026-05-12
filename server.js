@@ -24,6 +24,18 @@ const { createLeaderboardService } = require('./server/services/leaderboard-serv
 const { registerLeaderboardRoutes } = require('./server/http/leaderboard-routes');
 const { registerNewsRoutes } = require('./server/http/news-routes');
 const { clamp, segmentIntersectsCircle, wrapAngleDelta } = require('./server/game/math');
+const {
+  buildNativeGameplayFxManifest,
+  buildNativeSkillFxManifest,
+  buildRuntimeMeleeFxRef,
+  buildRuntimeProjectileFxRef,
+  buildRuntimeSkillFxRef,
+  buildRuntimeWorldFxRef,
+  buildSkillCatalogWithFx,
+  getProjectileFxKey,
+  getSkillCastType,
+  getSkillFxKey,
+} = require('./server/native-fx');
 const PORT = process.env.PORT || 8080;
 const IS_PROD = process.env.NODE_ENV === 'production';
 
@@ -231,8 +243,10 @@ const WS_STATE_BACKPRESSURE_BYTES = Math.max(64 * 1024, Number(process.env.WS_ST
 const XP_SURGE_DURATION_MS = 3200;
 const XP_SURGE_PULL_MIN_MUL = 0.22;
 const XP_SURGE_PULL_MAX_MUL = 3.9;
-const XP_ORB_COLLECT_RADIUS = Math.max(12, Math.round(PLAYER_RADIUS * 0.9));
+const XP_ORB_COLLECT_RADIUS = Math.max(24, Math.round(PLAYER_RADIUS + 10));
 const XP_ORB_COLLECT_FINISH_MARGIN = Math.max(2, Math.round(PLAYER_RADIUS * 0.18));
+const DROP_COLLECT_RADIUS = PLAYER_RADIUS + Math.max(DROP_RADIUS, 26);
+const SKILL_ORB_COLLECT_RADIUS = PLAYER_RADIUS + Math.max(30, Number(SKILL_OFFER_PICKUP_RADIUS) || 22);
 const XP_ORB_PULL_SPEED_MUL = 1.16;
 const XP_ORB_TARGET_SPEED_GRACE = Math.max(80, PLAYER_SPEED * PLAYER_MOVE_SPEED_GLOBAL_MUL * 0.45);
 const XP_ORB_TARGET_SPEED_BONUS_MUL = 0.9;
@@ -609,6 +623,19 @@ function getCombatSkillDef(skillId, playerClass = '') {
   return heroUniqueSkillDefsById[id] || skillsStore.getById(id) || null;
 }
 
+function buildPublicSkillCatalog() {
+  return buildSkillCatalogWithFx(skillsStore.getList(), {
+    defaultSkillDefs: DEFAULT_SKILL_DEFS,
+    heroUniqueSkillDefs: HERO_UNIQUE_SKILL_DEFS,
+  });
+}
+
+function buildRuntimeSkillFxPayload(def) {
+  if (!def) return null;
+  const heroId = String(def?.sourceHeroId || def?.heroId || '').trim().toLowerCase();
+  return buildRuntimeSkillFxRef(def, { heroId });
+}
+
 function normalizePublicRarity(raw) {
   const rarity = String(raw || '').trim().toLowerCase();
   return ['common', 'uncommon', 'rare', 'epic', 'legendary'].includes(rarity) ? rarity : 'common';
@@ -777,6 +804,245 @@ function sanitizeHeroId(rawHeroId) {
   const id = (rawHeroId || '').toString().trim();
   if (heroDefsById[id]) return id;
   return progressionCatalog.baseHeroId || ACCOUNT_BASE_HERO_ID;
+}
+
+function buildPlayerVisualLoadout(player) {
+  const heroId = sanitizeHeroId(player?.playerClass || player?.accountProgression?.activeHero || ACCOUNT_BASE_HERO_ID);
+  const progression = player?.accountProgression && typeof player.accountProgression === 'object'
+    ? player.accountProgression
+    : null;
+  const inventory = Array.isArray(progression?.inventoryItems) ? progression.inventoryItems : [];
+  const inventoryByUid = new Map(inventory.map((item) => [String(item?.uid || '').trim(), item]));
+  const equipmentByHero = progression?.heroEquipment && typeof progression.heroEquipment === 'object'
+    ? progression.heroEquipment
+    : {};
+  const activeEquipment = equipmentByHero[heroId] && typeof equipmentByHero[heroId] === 'object'
+    ? equipmentByHero[heroId]
+    : {};
+  const slots = {};
+
+  for (const slotDef of ITEM_SLOT_DEFS || []) {
+    const slotKey = String(slotDef?.key || '').trim();
+    if (!slotKey || String(slotDef?.kind || '').trim() === 'consumable') continue;
+    const uid = String(activeEquipment[slotKey] || '').trim();
+    if (!uid) continue;
+    const item = inventoryByUid.get(uid);
+    if (!item) continue;
+    const itemId = String(item?.itemId || '').trim();
+    if (!itemId) continue;
+    const itemDef = itemDefsById[itemId] || {};
+    slots[slotKey] = {
+      itemId,
+      assetId: `items/${itemId}`,
+      slotCategory: String(slotDef?.category || itemDef?.slotCategory || item?.slotCategory || '').trim(),
+      rarity: normalizePublicRarity(item?.rarity || itemDef?.rarity),
+      level: Math.max(1, Math.floor(Number(item?.level) || 1)),
+      icon: normalizePublicAssetPath(itemDef?.icon || item?.icon, '/assets/items', itemId),
+    };
+  }
+
+  return {
+    heroId,
+    bodyMesh: `heroes/${heroId}/body`,
+    skin: 'default',
+    weaponKey: String(player?.weaponKey || 'pistol').trim() || 'pistol',
+    slots,
+  };
+}
+
+function buildNativeHeroCatalog(catalog) {
+  const heroes = Array.isArray(catalog?.heroes) ? catalog.heroes : [];
+  return heroes.map((hero) => {
+    const id = String(hero?.id || '').trim();
+    return {
+      ...hero,
+      id,
+      native: {
+        portrait: `/assets/characters/${id || 'cyber'}.jpg`,
+        avatar: getPublicHeroAvatarPath(id),
+        bodyMesh: `heroes/${id || ACCOUNT_BASE_HERO_ID}/body`,
+        defaultSkin: 'default',
+      },
+    };
+  });
+}
+
+function buildNativeItemCatalog(catalog) {
+  const items = Array.isArray(catalog?.items) ? catalog.items : [];
+  return items.map((item) => {
+    const id = String(item?.id || '').trim();
+    return {
+      ...item,
+      id,
+      native: {
+        icon: normalizePublicAssetPath(item?.icon, '/assets/items', id),
+        equipMesh: item?.slotCategory ? `equipment/${item.slotCategory}/${id}` : `items/${id}`,
+      },
+    };
+  });
+}
+
+function buildNativeWeaponCatalog() {
+  return Object.entries(WEAPONS || {}).map(([key, weapon]) => ({
+    key,
+    label: String(weapon?.label || key).trim(),
+    cooldownMs: Math.max(1, Math.round(Number(weapon?.cooldownMs) || 1)),
+    pellets: Math.max(1, Math.round(Number(weapon?.pellets) || 1)),
+    spreadDeg: Math.max(0, Number(weapon?.spreadDeg) || 0),
+    bulletSpeed: Math.max(1, Math.round(Number(weapon?.bulletSpeed) || 1)),
+    bulletLifeMs: Math.max(1, Math.round(Number(weapon?.bulletLifeMs) || 1)),
+    bulletDamage: Math.max(1, Math.round(Number(weapon?.bulletDamage) || 1)),
+    magazineSize: Math.max(1, Math.round(Number(weapon?.magazineSize) || 1)),
+    reserveAmmo: weapon?.reserveAmmo == null ? null : Math.max(0, Math.round(Number(weapon.reserveAmmo) || 0)),
+    pickupAmmo: weapon?.pickupAmmo == null ? null : Math.max(0, Math.round(Number(weapon.pickupAmmo) || 0)),
+    reloadMs: Math.max(1, Math.round(Number(weapon?.reloadMs) || 1)),
+    color: String(weapon?.color || '#ffffff').trim(),
+    native: {
+      mesh: `weapons/${key}`,
+      material: `weapons/${key}/default`,
+      muzzleSocket: 'Muzzle',
+    },
+  }));
+}
+
+function buildNativeMobCatalog() {
+  const mobs = getMobDefs();
+  return (Array.isArray(mobs) ? mobs : []).map((mob) => {
+    const id = String(mob?.id || '').trim();
+    return {
+      id,
+      name: String(mob?.name || id).trim(),
+      behavior: String(mob?.behavior || 'melee').trim(),
+      rarity: String(mob?.rarity || 'common').trim(),
+      color: String(mob?.color || '#ffffff').trim(),
+      radius: Math.max(1, Number(mob?.radius) || ENEMY_RADIUS),
+      spriteScale: Math.max(0.1, Number(mob?.spriteScale) || 1),
+      description: String(mob?.description || '').trim(),
+      boss: id === getDefaultBossMobIdForMap('default') || Number(mob?.radius) >= BOSS_RADIUS,
+      native: {
+        skeletalMesh: `monsters/${id}/body`,
+        physicsAsset: `monsters/${id}/ragdoll`,
+        animationSet: `monsters/${id}/anim`,
+      },
+    };
+  });
+}
+
+function buildNativeAssetManifest(catalog) {
+  const heroes = buildNativeHeroCatalog(catalog);
+  const items = buildNativeItemCatalog(catalog);
+  const defaultRunLoadingBackground = '/assets/backgrounds/screen-loading.jpg';
+  const freeRunLoadingBackground = '/assets/backgrounds/fight-1.png';
+  return {
+    root: '/assets',
+    backgrounds: {
+      landing: '/assets/other/landing-image.jpg',
+      start: '/assets/backgrounds/start-1.png',
+      runLoading: defaultRunLoadingBackground,
+      singleRunLoading: freeRunLoadingBackground,
+      runLoadingByType: {
+        free: freeRunLoadingBackground,
+        campaign: defaultRunLoadingBackground,
+      },
+      heroes: '/assets/other/heroes-v2.jpg',
+    },
+    logo: '/assets/other/crimson wars logo.png',
+    heroes: Object.fromEntries(heroes.map((hero) => [hero.id, hero.native])),
+    items: Object.fromEntries(items.map((item) => [item.id, item.native])),
+    ui: {
+      rarityFrame: '/assets/ui/rarity-frame.png',
+      slotFrame: '/assets/ui/slot-frame.png',
+      buttonGlow: '/assets/ui/button-glow.png',
+    },
+  };
+}
+
+function buildNativeRoomsPreview() {
+  return listRoomsForLobby().map((room) => ({
+    ...room,
+    redirectUrl: buildRoomRedirectUrl(room.publicBaseUrl || PUBLIC_BASE_URL, room.code, 'join'),
+  }));
+}
+
+function buildNativeLeaderboardPreview() {
+  try {
+    const payload = leaderboardService.buildResponse({
+      mode: 'all',
+      category: 'global_profile',
+      page: 1,
+      page_size: 6,
+    }, { activeGameplay: hasActiveGameplay() });
+    return {
+      ...payload,
+      items: Array.isArray(payload?.items) ? payload.items.slice(0, 6) : [],
+    };
+  } catch (err) {
+    console.warn('Native bootstrap leaderboard preview failed:', err?.message || err);
+    return { ok: false, items: [], page: 1, pageSize: 6, total: 0, totalPages: 1 };
+  }
+}
+
+function buildNativeNewsPreview() {
+  try {
+    return newsStore.listPublic({ kind: 'news' }).slice(0, 6);
+  } catch (err) {
+    console.warn('Native bootstrap news preview failed:', err?.message || err);
+    return [];
+  }
+}
+
+function buildNativeBootstrapPayload(req) {
+  const catalog = accountProgressionStore.getCatalogPayload();
+  const skillCatalog = buildPublicSkillCatalog();
+  const gameplayFxManifest = buildNativeGameplayFxManifest({ skills: skillCatalog, items: catalog.items });
+  const skillFxManifest = gameplayFxManifest.skillFx || buildNativeSkillFxManifest(skillCatalog);
+  const baseUrl = getRequestBaseUrl(req) || PUBLIC_BASE_URL;
+  const wsBaseUrl = baseUrl.replace(/^http:/i, 'ws:').replace(/^https:/i, 'wss:').replace(/\/+$/, '');
+  return {
+    ok: true,
+    schemaVersion: 1,
+    now: Date.now(),
+    instance: {
+      instanceId: INSTANCE_ID,
+      publicBaseUrl: PUBLIC_BASE_URL,
+      requestBaseUrl: baseUrl,
+      isProd: IS_PROD,
+      isShuttingDown,
+      presence: getPresenceStats(),
+    },
+    websocket: {
+      path: '/ws',
+      defaultUrl: wsBaseUrl ? `${wsBaseUrl}/ws` : '',
+    },
+    assets: buildNativeAssetManifest(catalog),
+    catalog: {
+      baseHeroId: catalog.baseHeroId,
+      heroLevelCap: catalog.heroLevelCap,
+      heroes: buildNativeHeroCatalog(catalog),
+      cards: Array.isArray(catalog.cards) ? catalog.cards : [],
+      itemSlots: Array.isArray(catalog.itemSlots) ? catalog.itemSlots : [],
+      items: buildNativeItemCatalog(catalog),
+      maps: Array.isArray(catalog.maps) ? catalog.maps : [],
+      campaigns: Array.isArray(catalog.campaigns) ? catalog.campaigns : [],
+      trees: catalog.trees && typeof catalog.trees === 'object' ? catalog.trees : {},
+      skills: skillCatalog,
+      skillFx: skillFxManifest,
+      fx: gameplayFxManifest,
+      weapons: buildNativeWeaponCatalog(),
+      mobs: buildNativeMobCatalog(),
+    },
+    rooms: buildNativeRoomsPreview(),
+    leaderboardPreview: buildNativeLeaderboardPreview(),
+    newsPreview: buildNativeNewsPreview(),
+    native: {
+      worldUnitsPerWebPixel: 1,
+      zUp: true,
+      equipmentAttachmentPolicy: 'slotMeshByItem',
+      ragdollPolicy: 'serverDeathEventClientPhysics',
+      skillFx: skillFxManifest,
+      fx: gameplayFxManifest,
+    },
+  };
 }
 
 function resolveJoinHeroForPlayer(playerAccountId, requestedHeroId) {
@@ -1226,6 +1492,7 @@ function shouldSkipGlobalAuth(req) {
   if (method !== 'GET' && method !== 'HEAD') return false;
   const reqPath = String(req?.path || '').split('?')[0];
   if (reqPath === '/healthz' || reqPath === '/readyz') return true;
+  if (reqPath === '/api/native/bootstrap') return true;
   if (reqPath === '/api/rooms' || reqPath === '/api/records' || reqPath === '/api/leaderboard') return true;
   if (reqPath.startsWith('/api/landing/')) return true;
   if (reqPath.startsWith('/api/news')) return true;
@@ -2279,6 +2546,15 @@ registerNewsRoutes(app, {
   accountProgressionStore,
 });
 
+app.get('/api/native/bootstrap', (req, res) => {
+  try {
+    res.json(buildNativeBootstrapPayload(req));
+  } catch (err) {
+    console.error('Native bootstrap API failed:', err?.message || err);
+    res.status(500).json({ ok: false, message: 'Failed to build native bootstrap payload' });
+  }
+});
+
 app.get('/api/rooms', (_req, res) => {
   const rooms = listRoomsForLobby().map((room) => ({
     ...room,
@@ -2427,8 +2703,13 @@ app.get('/api/player/run-history/:id/replay', (req, res) => {
 
 app.get('/api/skills', (_req, res) => {
   const active = skillsStore.getActiveCollection();
+  const skillCatalog = buildPublicSkillCatalog();
+  const catalog = accountProgressionStore.getCatalogPayload();
+  const fxManifest = buildNativeGameplayFxManifest({ skills: skillCatalog, items: catalog.items });
   res.json({
-    skills: skillsStore.getList(),
+    skills: skillCatalog,
+    skillFx: fxManifest.skillFx || buildNativeSkillFxManifest(skillCatalog),
+    fx: fxManifest,
     activeCollection: active ? { id: active.id, name: active.name, updatedAt: active.updatedAt } : null,
     instanceId: INSTANCE_ID,
     now: Date.now(),
@@ -4833,6 +5114,7 @@ function pushRoomObjectImpactEvent(room, obj, hit, bullet, now = Date.now()) {
     id: room.nextObjectImpactEventId++,
     at: now,
     objectId: String(obj.id || ''),
+    bulletId: String(bullet?.id || ''),
     kind: String(obj.kind || ''),
     spriteKey: String(obj.spriteKey || ''),
     material: getMapObjectImpactMaterial(obj),
@@ -5464,7 +5746,7 @@ function applySkillDamageToTarget(room, target, damage, ownerId, now, options = 
   if (target.kind === 'player' && target.player) {
     const attacker = ownerId ? room.players.get(ownerId) : null;
     if (!attacker) return false;
-    return applyPlayerHitToPlayer(room, attacker, target.player, damage, now);
+    return applyPlayerHitToPlayer(room, attacker, target.player, damage, now, options);
   }
   return false;
 }
@@ -5505,6 +5787,8 @@ function castHomingMissiles(room, player, def, st, now) {
       damage,
       radius: 6,
       color: '#fb923c',
+      fxKey: getProjectileFxKey({ kind: 'rocket', weaponKey: 'homing_missiles' }),
+      fx: buildRuntimeProjectileFxRef({ kind: 'rocket', weaponKey: 'homing_missiles' }),
       targetId: target.id,
       targetKind: target.kind || 'enemy',
       turnRate,
@@ -5530,6 +5814,9 @@ function castHomingMissiles(room, player, def, st, now) {
       vy: rocket.vy,
       color: rocket.color || '#fb923c',
       radius: Math.max(2, Number(rocket.radius) || 6),
+      explosionRadius: Math.max(0, Number(rocket.explosionRadius) || 0),
+      fxKey: rocket.fxKey || getProjectileFxKey(rocket),
+      fx: rocket.fx || buildRuntimeProjectileFxRef(rocket),
       at: now,
     });
   }
@@ -5788,11 +6075,12 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
   const difficulty = getRoomDifficulty(room, now);
   const nextPortal = room.bossPortals.length > 0 ? room.bossPortals[0] : null;
   const mission = buildRoomMissionState(room, now);
+  const realtimeDropsState = ensureRealtimeCollectionState(room, 'drops');
+  const realtimeXpOrbsState = ensureRealtimeCollectionState(room, 'xpOrbs');
+  const realtimeSkillOrbsState = ensureRealtimeCollectionState(room, 'skillOrbs');
   const includeRealtimeDrops = true;
   const includeRealtimeXpOrbs = true;
-  const includeRealtimeSkillOrbs = !compactRealtime || shouldIncludeRealtimeCollection(room, 'skillOrbs', now, {
-    resendMs: REALTIME_STATIC_COLLECTION_RESEND_MS,
-  });
+  const includeRealtimeSkillOrbs = true;
   const realtimeXpAlwaysIncludeRadius = Math.max(
     PLAYER_PICKUP_RADIUS_BASE + 96,
     ...Array.from(room.players.values()).map((player) => Math.max(0, Number(player?.pickupRadius) || PLAYER_PICKUP_RADIUS_BASE) + 96),
@@ -5867,7 +6155,9 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
     moveSpeed: Math.max(1, Math.round(PLAYER_SPEED * PLAYER_MOVE_SPEED_GLOBAL_MUL * Math.max(0.2, Number(p.moveSpeedMul) || 1))),
     shotDamage: Math.max(1, Math.round((WEAPONS[p.weaponKey]?.bulletDamage || WEAPONS.pistol.bulletDamage) * Math.max(0.2, Number(p.damageMul) || 1) * getPlayerBulletSkillStats(p).damageMul)),
     shotIntervalMs: Math.max(35, Math.round((WEAPONS[p.weaponKey]?.cooldownMs || WEAPONS.pistol.cooldownMs) / Math.max(0.2, Number(p.fireRateMul) || 1))),
+    melee: getPlayerMeleeState(p),
     playerClass: p.playerClass || 'cyber',
+    visualLoadout: buildPlayerVisualLoadout(p),
     netQuality: p.netQuality || 0,
     netPingMs: p.netPingMs || 0,
     slowUntil: Number(p.slowUntil) || 0,
@@ -5891,15 +6181,26 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
     skills: (p.skillOrder || []).map((sid) => {
       const st = p.skills?.[sid] || { level: 0, cooldownMs: 0, maxCooldownMs: 0 };
       const def = getCombatSkillDef(sid, p.playerClass) || { id: sid, name: sid, kind: 'passive', rarity: 'common', desc: '' };
+      const castType = getSkillCastType(def);
+      const fx = buildRuntimeSkillFxPayload(def);
       return {
         id: sid,
         name: def.name,
         kind: def.kind,
         rarity: def.rarity,
         desc: def.desc || '',
+        castType,
+        fxKey: getSkillFxKey(def, def.sourceHeroId || def.heroId || ''),
+        fx,
         level: Math.max(0, Math.floor(Number(st.level) || 0)),
         cooldownMs: Math.max(0, Math.round(Number(st.cooldownMs) || 0)),
         maxCooldownMs: Math.max(0, Math.round(Number(st.maxCooldownMs) || 0)),
+        radius: Math.max(0, Math.round(Number(def.radius) || 0)),
+        radiusPerLevel: Math.max(0, Math.round(Number(def.radiusPerLevel) || 0)),
+        targets: Math.max(0, Math.round(Number(def.targets) || 0)),
+        targetsPerLevel: Math.max(0, Math.round(Number(def.targetsPerLevel) || 0)),
+        explosionRadius: Math.max(0, Math.round(Number(def.explosionRadius) || 0)),
+        explosionRadiusPerLevel: Math.max(0, Math.round(Number(def.explosionRadiusPerLevel) || 0)),
       };
     }),
     quickSlots: getPlayerQuickSlotsState(p),
@@ -5940,7 +6241,9 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
     moveSpeed: Math.max(1, Math.round(Math.hypot(Number(companion.vx) || 0, Number(companion.vy) || 0))),
     shotDamage: Math.max(1, Math.round(WEAPONS[companion.weaponKey]?.bulletDamage || WEAPONS.pistol.bulletDamage)),
     shotIntervalMs: Math.max(35, Math.round(WEAPONS[companion.weaponKey]?.cooldownMs || WEAPONS.pistol.cooldownMs)),
+    melee: null,
     playerClass: companion.playerClass || 'cyber',
+    visualLoadout: buildPlayerVisualLoadout(companion),
     netQuality: 0,
     netPingMs: 0,
     slowUntil: 0,
@@ -5990,6 +6293,11 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
       attackRateMul: Number(difficulty.attackRateMul.toFixed(3)),
       spawnIntervalMs: Math.round(difficulty.spawnIntervalMs),
     },
+    realtime: {
+      dropsVersion: Math.max(1, Number(realtimeDropsState.version) || 1),
+      xpOrbsVersion: Math.max(1, Number(realtimeXpOrbsState.version) || 1),
+      skillOrbsVersion: Math.max(1, Number(realtimeSkillOrbsState.version) || 1),
+    },
     mission,
     mobCatalog: includeDecor ? cloneMobCatalog(room.mobCatalog || []) : undefined,
     world,
@@ -6004,6 +6312,7 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
       const color = b.color || '';
       const kind = b.kind || 'bullet';
       const shooterType = b.shooterType || (b.fromEnemy ? 'enemy' : '');
+      const fx = buildRuntimeProjectileFxRef(b);
       if (compactRealtime) {
         return [
           b.id,
@@ -6037,6 +6346,8 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
         fromEnemy: Boolean(b.fromEnemy),
         shooterType,
         explosionRadius,
+        fxKey: fx?.key || '',
+        fx,
       };
     }),
     shotEvents: Array.isArray(room.shotEvents) && room.shotEvents.length > 0 ? room.shotEvents.map((event) => ({
@@ -6053,11 +6364,15 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
       vy: event.vy,
       color: event.color || '#f59e0b',
       radius: Math.max(2, Number(event.radius) || BULLET_RADIUS),
+      explosionRadius: Math.max(0, Number(event.explosionRadius) || 0),
+      fxKey: event.fxKey || getProjectileFxKey(event),
+      fx: event.fx || buildRuntimeProjectileFxRef(event),
       at: Math.max(0, Number(event.at) || 0),
     })) : undefined,
     objectImpactEvents: Array.isArray(room.objectImpactEvents) && room.objectImpactEvents.length > 0 ? room.objectImpactEvents.map((event) => ({
       id: event.id,
       objectId: event.objectId || '',
+      bulletId: event.bulletId || '',
       kind: event.kind || '',
       spriteKey: event.spriteKey || '',
       material: event.material || 'concrete',
@@ -6122,6 +6437,7 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
       const ttlMs = Math.max(0, Math.round(d.ttlMs || 0));
       const kind = d.kind || 'weapon';
       const weaponKey = d.weaponKey || null;
+      const fx = kind === 'xp_vacuum' ? buildRuntimeWorldFxRef('xp_vacuum') : null;
       if (compactRealtime) return [d.id, d.x, d.y, kind, weaponKey, ttlMs];
       return {
         id: d.id,
@@ -6130,6 +6446,8 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
         kind,
         weaponKey,
         weaponLabel: kind === 'xp_vacuum' ? 'XP Surge' : (WEAPONS[d.weaponKey]?.label || 'Drop'),
+        fxKey: fx?.key || '',
+        fx,
         ttlMs,
         ttlMaxMs: DROP_LIFETIME_MS,
       };
@@ -6148,7 +6466,8 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
     }) : undefined,
     skillOrbs: includeRealtimeSkillOrbs ? room.skillOrbs.map((o) => {
       const ttlMs = Math.max(0, Math.round(o.ttlMs || 0));
-      if (compactRealtime) return [o.id, o.ownerId, o.skillId, o.x, o.y, ttlMs];
+      const ttlMaxMs = Math.max(1, Math.round(o.ttlMaxMs || SKILL_OFFER_TTL_MS));
+      if (compactRealtime) return [o.id, o.ownerId, o.skillId, o.x, o.y, ttlMs, ttlMaxMs];
       return {
         id: o.id,
         ownerId: o.ownerId,
@@ -6156,7 +6475,7 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
         x: o.x,
         y: o.y,
         ttlMs,
-        ttlMaxMs: Math.max(1, Math.round(o.ttlMaxMs || SKILL_OFFER_TTL_MS)),
+        ttlMaxMs,
       };
     }) : undefined,
     decor: {
@@ -7079,6 +7398,319 @@ function scaleConsumableMagnitude(base, level, step = 0.22) {
   return Number(base || 0) * (1 + Math.max(0, Math.floor(Number(level) || 1) - 1) * step);
 }
 
+const DEFAULT_MELEE_ITEM_ID = 'melee_sword';
+const DEFAULT_MELEE_SLOT_KEY = 'melee';
+
+function isMeleeItemDef(itemDef) {
+  return String(itemDef?.slotCategory || '').trim() === 'melee';
+}
+
+function getPlayerMeleeItem(player) {
+  const progression = player?.accountProgression && typeof player.accountProgression === 'object'
+    ? player.accountProgression
+    : null;
+  const inventory = Array.isArray(progression?.inventoryItems) ? progression.inventoryItems : [];
+  const heroId = String(player?.playerClass || progression?.activeHero || ACCOUNT_BASE_HERO_ID).trim();
+  const equipment = progression?.heroEquipment?.[heroId] && typeof progression.heroEquipment[heroId] === 'object'
+    ? progression.heroEquipment[heroId]
+    : {};
+  const equippedUid = String(equipment[DEFAULT_MELEE_SLOT_KEY] || '').trim();
+
+  let item = equippedUid
+    ? inventory.find((entry) => String(entry?.uid || '').trim() === equippedUid)
+    : null;
+  let itemDef = itemDefsById[String(item?.itemId || '').trim()] || null;
+  if (!itemDef || !isMeleeItemDef(itemDef)) {
+    item = inventory.find((entry) => isMeleeItemDef(itemDefsById[String(entry?.itemId || '').trim()])) || null;
+    itemDef = itemDefsById[String(item?.itemId || '').trim()] || null;
+  }
+  if (!itemDef || !isMeleeItemDef(itemDef)) {
+    itemDef = itemDefsById[DEFAULT_MELEE_ITEM_ID] || null;
+    item = itemDef ? { uid: '', itemId: DEFAULT_MELEE_ITEM_ID, level: 1, quantity: 1 } : null;
+  }
+  if (!item || !itemDef?.melee) return null;
+  return { item, itemDef };
+}
+
+function scaleMeleeValue(base, perLevel, level) {
+  return (Number(base) || 0) + (Math.max(0, Math.floor(Number(level) || 1) - 1) * (Number(perLevel) || 0));
+}
+
+function getPlayerMeleeRuntime(player) {
+  const equipped = getPlayerMeleeItem(player);
+  if (!equipped?.itemDef?.melee) return null;
+  const { item, itemDef } = equipped;
+  const melee = itemDef.melee;
+  const level = Math.max(1, Math.min(10, Math.floor(Number(item.level) || 1)));
+  const cooldownBase = Math.max(180, Math.round(Number(melee.cooldownMs) || 800));
+  const cooldownScale = 1 - Math.min(0.42, Math.max(0, level - 1) * Math.max(0, Number(melee.cooldownMulPerLevel) || 0.02));
+  const targetEveryLevels = Math.max(0, Math.floor(Number(melee.targetEveryLevels) || 0));
+  const bonusTargets = targetEveryLevels > 0 ? Math.floor(Math.max(0, level - 1) / targetEveryLevels) : 0;
+  return {
+    itemId: String(item.itemId || itemDef.id || DEFAULT_MELEE_ITEM_ID),
+    uid: String(item.uid || ''),
+    name: String(itemDef.name || item.itemId || 'Melee'),
+    rarity: String(itemDef.rarity || 'common'),
+    level,
+    style: String(melee.style || 'sword').trim().toLowerCase() || 'sword',
+    skillName: String(melee.skillName || itemDef.name || 'Melee'),
+    skillDesc: String(melee.skillDesc || ''),
+    damage: Math.max(1, Math.round(scaleMeleeValue(melee.damage, melee.damagePerLevel, level))),
+    range: Math.max(34, Math.round(scaleMeleeValue(melee.range, melee.rangePerLevel, level))),
+    width: Math.max(18, Math.round(scaleMeleeValue(melee.width, melee.widthPerLevel, level))),
+    arcDeg: Math.max(8, Math.min(360, Number(melee.arcDeg) || 90)),
+    cooldownMs: Math.max(160, Math.round(cooldownBase * cooldownScale)),
+    maxTargets: Math.max(1, Math.round(Number(melee.maxTargets) || 1) + bonusTargets),
+    knockback: Math.max(0, Number(melee.knockback) || 0),
+    stunMs: Math.max(0, Number(melee.stunMs) || 0),
+    playerSlowMs: Math.max(0, Number(melee.playerSlowMs) || 0),
+    executeHpPct: Math.max(0, Math.min(0.95, Number(melee.executeHpPct) || 0)),
+    executeDamageMul: Math.max(1, Number(melee.executeDamageMul) || 1),
+    firstTargetDamageMul: Math.max(1, Number(melee.firstTargetDamageMul) || 1),
+    closeDamageMul: Math.max(1, Number(melee.closeDamageMul) || 1),
+    pierceDamageMul: Math.max(1, Number(melee.pierceDamageMul) || 1),
+    chainTargets: Math.max(0, Math.round(Number(melee.chainTargets) || 0)),
+    chainRadius: Math.max(0, Math.round(Number(melee.chainRadius) || 0)),
+    chainDamageMul: Math.max(0, Number(melee.chainDamageMul) || 0),
+    echoRadius: Math.max(0, Math.round(Number(melee.echoRadius) || 0)),
+    echoDamageMul: Math.max(0, Number(melee.echoDamageMul) || 0),
+    color: String(melee.color || '#e5e7eb'),
+    secondaryColor: String(melee.secondaryColor || melee.color || '#f8fafc'),
+  };
+}
+
+function getMeleeTargetRadius(target) {
+  if (target?.kind === 'enemy') return Math.max(8, Number(target.enemy?.radius) || ENEMY_RADIUS);
+  return PLAYER_RADIUS;
+}
+
+function getPlayerMeleeDirection(room, player, melee) {
+  let dx = (Number(player?.aimX) || 0) - (Number(player?.x) || 0);
+  let dy = (Number(player?.aimY) || 0) - (Number(player?.y) || 0);
+  if (Math.hypot(dx, dy) < 0.05) {
+    const target = nearestHostileTargetTo(room, player.x, player.y, Math.max(180, Number(melee?.range) || 120), { excludePlayerId: player.id });
+    if (target) {
+      dx = target.x - player.x;
+      dy = target.y - player.y;
+    }
+  }
+  if (Math.hypot(dx, dy) < 0.05 && Math.hypot(Number(player?.moveX) || 0, Number(player?.moveY) || 0) > 0.05) {
+    dx = Number(player.moveX) || 0;
+    dy = Number(player.moveY) || 0;
+  }
+  if (Math.hypot(dx, dy) < 0.05) dx = 1;
+  const len = Math.hypot(dx, dy) || 1;
+  return { x: dx / len, y: dy / len, angle: Math.atan2(dy, dx) };
+}
+
+function getRoomMeleeCandidateTargets(room, player) {
+  const out = [];
+  for (const enemy of room.enemies || []) {
+    if (!enemy || Number(enemy.hp) <= 0) continue;
+    out.push({ kind: 'enemy', id: enemy.id, x: Number(enemy.x) || 0, y: Number(enemy.y) || 0, enemy });
+  }
+  if (isPvpRoom(room)) {
+    for (const other of room.players.values()) {
+      if (!other || !other.alive || other.id === player.id) continue;
+      out.push({ kind: 'player', id: other.id, x: Number(other.x) || 0, y: Number(other.y) || 0, player: other });
+    }
+  }
+  return out;
+}
+
+function collectMeleeAttackTargets(room, player, melee, dir) {
+  const range = Math.max(24, Number(melee.range) || 90);
+  const width = Math.max(18, Number(melee.width) || 60);
+  const style = String(melee.style || 'sword');
+  const isLine = style === 'whip';
+  const isSlam = style === 'hammer';
+  const impactX = (Number(player.x) || 0) + dir.x * range * (isSlam ? 0.62 : 0.56);
+  const impactY = (Number(player.y) || 0) + dir.y * range * (isSlam ? 0.62 : 0.56);
+  const halfArc = (Math.max(8, Math.min(360, Number(melee.arcDeg) || 90)) * Math.PI / 180) * 0.5;
+  const cosHalf = Math.cos(halfArc);
+  const entries = [];
+
+  for (const target of getRoomMeleeCandidateTargets(room, player)) {
+    const dx = target.x - player.x;
+    const dy = target.y - player.y;
+    const dist = Math.hypot(dx, dy);
+    const targetRadius = getMeleeTargetRadius(target);
+    if (dist > range + targetRadius + Math.max(0, width * 0.25)) continue;
+    const forward = dx * dir.x + dy * dir.y;
+    const side = Math.abs(dx * -dir.y + dy * dir.x);
+    let ok = false;
+    let score = dist;
+
+    if (isLine) {
+      ok = forward >= -targetRadius && forward <= range + targetRadius && side <= (width * 0.5 + targetRadius);
+      score = Math.max(0, forward) + side * 3.2;
+    } else if (isSlam) {
+      const idist = Math.hypot(target.x - impactX, target.y - impactY);
+      ok = idist <= (width * 0.5 + targetRadius);
+      score = idist + Math.max(0, dist - range * 0.25) * 0.4;
+    } else if (Number(melee.arcDeg) >= 330) {
+      ok = dist <= range + targetRadius;
+    } else {
+      const dot = dist > 0.001 ? ((dx / dist) * dir.x + (dy / dist) * dir.y) : 1;
+      ok = dist <= range + targetRadius && (dot >= cosHalf || dist <= PLAYER_RADIUS + targetRadius + 12);
+      score = dist + Math.max(0, Math.acos(Math.max(-1, Math.min(1, dot))) - halfArc) * range;
+    }
+
+    if (ok) entries.push({ target, dist, score });
+  }
+
+  entries.sort((a, b) => a.score - b.score);
+  return {
+    impactX,
+    impactY,
+    targets: entries.slice(0, Math.max(1, Math.round(Number(melee.maxTargets) || 1))),
+  };
+}
+
+function getMeleeTargetKey(target) {
+  return `${String(target?.kind || '')}:${String(target?.id || '')}`;
+}
+
+function applyMeleeDamageToTarget(room, player, melee, target, damage, now, dir) {
+  if (!target) return false;
+  if (target.kind === 'player' && target.player && melee.playerSlowMs > 0) {
+    target.player.slowUntil = Math.max(Number(target.player.slowUntil) || 0, now + melee.playerSlowMs);
+  }
+  applySkillDamageToTarget(room, target, damage, player.id, now, {
+    damageSource: 'melee',
+    sourceX: player.x,
+    sourceY: player.y,
+    dirX: dir.x,
+    dirY: dir.y,
+    stunMs: melee.stunMs,
+    knockback: melee.knockback,
+  });
+  return true;
+}
+
+function applyPlayerMeleeAttack(room, player, now = Date.now()) {
+  if (!room || !player || !player.alive) return false;
+  const melee = getPlayerMeleeRuntime(player);
+  if (!melee) return false;
+  if (Math.max(0, Number(player.meleeCooldownLeft) || 0) > 0) return false;
+
+  const dir = getPlayerMeleeDirection(room, player, melee);
+  const attack = collectMeleeAttackTargets(room, player, melee, dir);
+  if (!attack.targets.length) return false;
+
+  const baseDamage = Math.max(1, Math.round(melee.damage * Math.max(0.2, Number(player.damageMul) || 1)));
+  const hitKeys = new Set();
+  let hitCount = 0;
+
+  attack.targets.forEach((entry, index) => {
+    const target = entry.target;
+    let damage = baseDamage;
+    if (index === 0) damage *= melee.firstTargetDamageMul;
+    if (melee.style === 'sword' && target.kind === 'enemy' && melee.executeHpPct > 0) {
+      const maxHp = Math.max(1, Number(target.enemy?.maxHp) || Number(target.enemy?.hp) || 1);
+      if ((Number(target.enemy?.hp) || 0) / maxHp <= melee.executeHpPct) damage *= melee.executeDamageMul;
+    }
+    if (melee.closeDamageMul > 1 && entry.dist <= melee.range * 0.58) damage *= melee.closeDamageMul;
+    if (melee.style === 'whip') damage *= melee.pierceDamageMul;
+    applyMeleeDamageToTarget(room, player, melee, target, Math.max(1, Math.round(damage)), now, dir);
+    hitKeys.add(getMeleeTargetKey(target));
+    hitCount += 1;
+  });
+
+  if (melee.chainTargets > 0 && melee.chainRadius > 0 && melee.chainDamageMul > 0) {
+    const chainSeeds = attack.targets.map((entry) => entry.target).slice(0, melee.chainTargets);
+    let chainsLeft = melee.chainTargets;
+    for (const seed of chainSeeds) {
+      if (chainsLeft <= 0) break;
+      const chainTargets = collectEnemiesInRadius(room, seed.x, seed.y, melee.chainRadius, player.id)
+        .filter((target) => !hitKeys.has(getMeleeTargetKey(target)))
+        .slice(0, chainsLeft);
+      for (const target of chainTargets) {
+        applyMeleeDamageToTarget(room, player, melee, target, Math.max(1, Math.round(baseDamage * melee.chainDamageMul)), now, dir);
+        hitKeys.add(getMeleeTargetKey(target));
+        hitCount += 1;
+        chainsLeft -= 1;
+      }
+    }
+  }
+
+  if (melee.echoRadius > 0 && melee.echoDamageMul > 0) {
+    const echoTargets = collectEnemiesInRadius(room, attack.impactX, attack.impactY, melee.echoRadius, player.id)
+      .filter((target) => !hitKeys.has(getMeleeTargetKey(target)))
+      .slice(0, 3);
+    for (const target of echoTargets) {
+      applyMeleeDamageToTarget(room, player, melee, target, Math.max(1, Math.round(baseDamage * melee.echoDamageMul)), now, dir);
+      hitKeys.add(getMeleeTargetKey(target));
+      hitCount += 1;
+    }
+  }
+
+  damageSceneObjectsInRadius(room, attack.impactX, attack.impactY, Math.max(36, melee.width * 0.62), baseDamage * 0.58, player.id, now, {
+    cause: 'melee',
+  });
+
+  player.meleeCooldownLeft = melee.cooldownMs;
+  player.lastMeleeAt = now;
+  const fx = buildRuntimeMeleeFxRef(melee);
+  broadcastRoom(room, {
+    type: 'meleeFx',
+    event: {
+      id: `mw${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+      playerId: player.id,
+      itemId: melee.itemId,
+      itemName: melee.name,
+      skillName: melee.skillName,
+      style: melee.style,
+      level: melee.level,
+      x: Math.round(Number(player.x) || 0),
+      y: Math.round(Number(player.y) || 0),
+      impactX: Math.round(attack.impactX),
+      impactY: Math.round(attack.impactY),
+      angle: Number(dir.angle.toFixed(4)),
+      range: melee.range,
+      width: melee.width,
+      arcDeg: melee.arcDeg,
+      cooldownMs: melee.cooldownMs,
+      damage: baseDamage,
+      hitCount,
+      color: melee.color,
+      secondaryColor: melee.secondaryColor,
+      fxKey: fx?.key || '',
+      fx,
+    },
+  });
+  return true;
+}
+
+function updatePlayerMeleeCooldown(player, dtMs) {
+  if (!player) return;
+  player.meleeCooldownLeft = Math.max(0, (Number(player.meleeCooldownLeft) || 0) - Math.max(0, Number(dtMs) || 0));
+}
+
+function getPlayerMeleeState(player) {
+  const melee = getPlayerMeleeRuntime(player);
+  if (!melee) return null;
+  const fx = buildRuntimeMeleeFxRef(melee);
+  return {
+    itemId: melee.itemId,
+    name: melee.name,
+    skillName: melee.skillName,
+    rarity: melee.rarity,
+    level: melee.level,
+    style: melee.style,
+    damage: Math.max(1, Math.round(melee.damage * Math.max(0.2, Number(player?.damageMul) || 1))),
+    range: melee.range,
+    width: melee.width,
+    arcDeg: melee.arcDeg,
+    cooldownMs: melee.cooldownMs,
+    cooldownLeftMs: Math.max(0, Math.round(Number(player?.meleeCooldownLeft) || 0)),
+    color: melee.color,
+    secondaryColor: melee.secondaryColor,
+    fxKey: fx?.key || '',
+    fx,
+  };
+}
+
 function roundReplayCoord(value) {
   return Math.max(0, Math.round(Number(value) || 0));
 }
@@ -7112,7 +7744,7 @@ function buildReplayMapObjectStates(room) {
 
 function createRunReplay(room, player, now) {
   return {
-    version: 2,
+    version: 3,
     captureIntervalMs: REPLAY_CAPTURE_INTERVAL_MS,
     startedAt: now,
     endedAt: now,
@@ -7127,6 +7759,7 @@ function createRunReplay(room, player, now) {
     campaignId: String(room.campaignId || ''),
     campaignLevelId: String(room.campaignLevelId || ''),
     mission: buildRoomMissionState(room, now),
+    skillCatalog: buildPublicSkillCatalog(),
     mobCatalog: cloneMobCatalog(room.mobCatalog || []),
     world: getRoomWorld(room),
     decor: {
@@ -7228,6 +7861,7 @@ function buildReplayFrameBase(room, now) {
         const st = p.skills[sid];
         if (!st) continue;
         const def = getCombatSkillDef(sid, p.playerClass);
+        const castType = getSkillCastType(def);
         skills.push([
           sid,
           Math.max(0, Math.floor(Number(st.level) || 0)),
@@ -7236,6 +7870,14 @@ function buildReplayFrameBase(room, now) {
           def?.kind || 'passive',
           def?.rarity || 'common',
           def?.name || sid,
+          castType,
+          def ? getSkillFxKey(def, def.sourceHeroId || def.heroId || '') : '',
+          Math.max(0, Math.round(Number(def?.radius) || 0)),
+          Math.max(0, Math.round(Number(def?.radiusPerLevel) || 0)),
+          Math.max(0, Math.round(Number(def?.targets) || 0)),
+          Math.max(0, Math.round(Number(def?.targetsPerLevel) || 0)),
+          Math.max(0, Math.round(Number(def?.explosionRadius) || 0)),
+          Math.max(0, Math.round(Number(def?.explosionRadiusPerLevel) || 0)),
         ]);
       }
     }
@@ -7468,6 +8110,7 @@ function finalizeRunReplay(room, replay, now) {
     campaignId: replay.campaignId || '',
     campaignLevelId: replay.campaignLevelId || '',
     mission: replay.mission || null,
+    skillCatalog: Array.isArray(replay.skillCatalog) ? replay.skillCatalog.slice() : buildPublicSkillCatalog(),
     mobCatalog: Array.isArray(replay.mobCatalog) ? replay.mobCatalog.slice() : [],
     world: replay.world,
     decor: replay.decor,
@@ -8853,7 +9496,7 @@ function joinRoom(ws, join) {
       maxPlayers: roomMaxPlayers,
       gameMode: normalizeGameMode(room.gameMode || 'normal'),
       spectator: true,
-      skillCatalog: skillsStore.getList(),
+      skillCatalog: buildPublicSkillCatalog(),
       chatHistory: Array.isArray(room.chatHistory) ? room.chatHistory.slice(-CHAT_WELCOME_LIMIT) : [],
     });
     sendTo(ws, { type: 'state', payload: serializeRoom(room) });
@@ -8862,6 +9505,79 @@ function joinRoom(ws, join) {
       message: `Spectating room ${room.code} (${room.players.size}/${roomMaxPlayers})`,
     });
     return spectator;
+  }
+  const nativeHandoffToken = String(join?.nativeHandoffToken || join?.handoffToken || '').trim().slice(0, 96);
+  const nativeHandoffPlayerId = String(join?.nativePlayerId || join?.nativeHandoffPlayerId || join?.handoffPlayerId || join?.playerId || '').trim();
+  if (nativeHandoffToken && nativeHandoffPlayerId && requestedCode) {
+    const room = rooms.get(requestedCode);
+    const currentPlayer = room?.players?.get(nativeHandoffPlayerId) || null;
+    const now = Date.now();
+    const isValidHandoff = currentPlayer
+      && String(currentPlayer.nativeHandoffToken || '') === nativeHandoffToken
+      && Math.max(0, Number(currentPlayer.nativeHandoffExpiresAt) || 0) >= now;
+    if (!room || !currentPlayer || !isValidHandoff) {
+      sendTo(ws, {
+        type: 'joinError',
+        message: requestedCode ? `Native handoff for room ${requestedCode} is no longer valid.` : 'Native handoff is no longer valid.',
+        code: 409,
+        roomCode: requestedCode,
+      });
+      return null;
+    }
+
+    const previousWs = currentPlayer.ws;
+    if (previousWs && previousWs !== ws && isSocketOpen(previousWs)) {
+      currentPlayer.nativePreviousWs = previousWs;
+      sendTo(previousWs, {
+        type: 'system',
+        message: 'Native renderer took control. Press F10 again to return to web controls.',
+      });
+    }
+    currentPlayer.ws = ws;
+    currentPlayer.nativeHandoffActive = true;
+    currentPlayer.nativeHandoffToken = '';
+    currentPlayer.nativeHandoffExpiresAt = 0;
+    currentPlayer.moveX = 0;
+    currentPlayer.moveY = 0;
+    currentPlayer.shooting = false;
+    currentPlayer.jumpQueued = false;
+    currentPlayer.netQuality = 0;
+    currentPlayer.netPingMs = 0;
+    currentPlayer.disconnectedAt = 0;
+    currentPlayer.resumeExpiresAt = 0;
+    publishRuntimeRegistry();
+
+    const roomMaxPlayers = Math.max(1, Number(room.maxPlayers) || getRoomMaxPlayers(room.gameMode));
+    sendTo(ws, {
+      type: 'welcome',
+      id: currentPlayer.id,
+      roomCode: room.code,
+      instanceId: room.instanceId || INSTANCE_ID,
+      runType: String(room.runType || 'free'),
+      mapId: String(room.mapId || ''),
+      campaignId: String(room.campaignId || ''),
+      campaignLevelId: String(room.campaignLevelId || ''),
+      gameMode: normalizeGameMode(room.gameMode || 'normal'),
+      spectators: Math.max(0, Number(room.spectators?.size) || 0),
+      spectatorCount: Math.max(0, Number(room.spectators?.size) || 0),
+      tickRate: room.sync.tickRate,
+      sync: room.sync,
+      maxPlayers: roomMaxPlayers,
+      skillCatalog: buildPublicSkillCatalog(),
+      me: {
+        name: currentPlayer.name,
+        playerAccountId: currentPlayer.playerAccountId,
+        isRegisteredNickname: currentPlayer.isRegisteredNickname,
+        activeHero: currentPlayer.playerClass,
+      },
+      progression: currentPlayer.accountProgression,
+      progressionCatalog,
+      chatHistory: Array.isArray(room.chatHistory) ? room.chatHistory.slice(-CHAT_WELCOME_LIMIT) : [],
+      resumed: true,
+      nativeHandoff: true,
+    });
+    sendTo(ws, { type: 'state', payload: serializeRoom(room) });
+    return currentPlayer;
   }
   let resumable = sessionAccountId
     ? (findRoomPlayerByAccount(sessionAccountId, requestedCode) || findRoomPlayerByAccount(sessionAccountId))
@@ -8915,7 +9631,7 @@ function joinRoom(ws, join) {
         tickRate: currentRoom.sync.tickRate,
         sync: currentRoom.sync,
         maxPlayers: roomMaxPlayers,
-        skillCatalog: skillsStore.getList(),
+        skillCatalog: buildPublicSkillCatalog(),
         me: {
           name: currentPlayer.name,
           playerAccountId: currentPlayer.playerAccountId,
@@ -9027,6 +9743,8 @@ function joinRoom(ws, join) {
     weaponMagazine: Math.max(1, Math.floor(Number(WEAPONS.pistol.magazineSize) || 12)),
     weaponReserveAmmo: null,
     weaponReloadLeftMs: 0,
+    meleeCooldownLeft: 0,
+    lastMeleeAt: 0,
     playerClass,
     netQuality: 0,
     netPingMs: 0,
@@ -9087,6 +9805,10 @@ function joinRoom(ws, join) {
     } : null,
     disconnectedAt: 0,
     resumeExpiresAt: 0,
+    nativeHandoffToken: '',
+    nativeHandoffExpiresAt: 0,
+    nativeHandoffActive: false,
+    nativePreviousWs: null,
   };
 
   applyPersistentHeroSkillsToPlayer(player);
@@ -9113,7 +9835,7 @@ function joinRoom(ws, join) {
     tickRate: room.sync.tickRate,
     sync: room.sync,
     maxPlayers: roomMaxPlayers,
-    skillCatalog: skillsStore.getList(),
+    skillCatalog: buildPublicSkillCatalog(),
     me: {
       name,
       playerAccountId: player.playerAccountId,
@@ -9282,13 +10004,15 @@ wss.on('connection', (ws, req) => {
       return;
     }
 
-    if (msg.type === 'join' && client) {
+    const isNativeHandoffJoin = msg.type === 'join' && Boolean(msg.nativeHandoff || msg.nativeHandoffToken || msg.handoffToken);
+    if (msg.type === 'join' && client && !isNativeHandoffJoin) {
       removeRoomClient(client, { force: true });
       client = null;
     }
 
-    if (msg.type === 'join' && !client) {
-      client = joinRoom(ws, msg);
+    if (msg.type === 'join' && (!client || isNativeHandoffJoin)) {
+      const nextClient = joinRoom(ws, msg);
+      if (nextClient) client = nextClient;
       return;
     }
 
@@ -9310,6 +10034,46 @@ wss.on('connection', (ws, req) => {
     const current = room.players.get(client.id);
     if (!current) return;
 
+    if (msg.type === 'nativeHandoffPrepare') {
+      const token = String(msg.token || '').trim().slice(0, 96);
+      const requestedPlayerId = String(msg.playerId || '').trim();
+      const requestedRoomCode = cleanRoomCodeForLookup(msg.roomCode);
+      if (!token || (requestedPlayerId && requestedPlayerId !== current.id) || (requestedRoomCode && requestedRoomCode !== room.code)) {
+        return;
+      }
+      current.nativeHandoffToken = token;
+      current.nativeHandoffExpiresAt = Date.now() + 20000;
+      sendTo(ws, {
+        type: 'nativeHandoffReady',
+        roomCode: room.code,
+        playerId: current.id,
+        expiresAt: current.nativeHandoffExpiresAt,
+      });
+      return;
+    }
+
+    if (msg.type === 'nativeHandoffRelease') {
+      if (current.ws === ws) {
+        const previousWs = current.nativePreviousWs;
+        current.moveX = 0;
+        current.moveY = 0;
+        current.shooting = false;
+        current.jumpQueued = false;
+        current.nativeHandoffActive = false;
+        if (previousWs && previousWs !== ws && isSocketOpen(previousWs)) {
+          current.ws = previousWs;
+          current.nativePreviousWs = null;
+          sendTo(previousWs, {
+            type: 'nativeHandoffReturned',
+            roomCode: room.code,
+            playerId: current.id,
+          });
+          sendTo(previousWs, { type: 'state', payload: serializeRoom(room) });
+        }
+      }
+      return;
+    }
+
     if (msg.type === 'netStats') {
       current.netQuality = parseNetQualityLevel(msg);
       current.netPingMs = parseNetPingMs(msg);
@@ -9317,6 +10081,7 @@ wss.on('connection', (ws, req) => {
     }
 
     if (msg.type === 'input') {
+      if (current.ws !== ws) return;
       const world = getRoomWorld(room);
       current.lastReceivedInputSeq = Math.max(0, Number(msg.seq) || current.lastReceivedInputSeq || 0);
       current.moveX = clamp(Number(msg.moveX) || 0, -1, 1);
@@ -9342,7 +10107,15 @@ wss.on('connection', (ws, req) => {
       return;
     }
 
-    
+    if (msg.type === 'skillPick') {
+      const skillId = String(msg.skillId || '').trim().toLowerCase();
+      if (!skillId) return;
+      const picked = playerSelectSkill(room, current, skillId, Date.now());
+      if (picked) {
+        sendTo(current.ws, { type: 'system', message: 'Skill upgraded.' });
+      }
+      return;
+    }
 
     if (msg.type === 'chatSend') {
       handleRoomChatMessage(room, current, msg, Date.now());
@@ -9355,6 +10128,10 @@ wss.on('connection', (ws, req) => {
     }
 
     if (msg.type === 'leave') {
+      if (current.ws !== ws) {
+        client = null;
+        return;
+      }
       removeRoomClient(current, { force: true });
       client = null;
     }
@@ -9485,6 +10262,7 @@ function tickRoom(room, dtSec, now) {
     const previousX = Number(p.x) || 0;
     const previousY = Number(p.y) || 0;
     updatePlayerReload(p, dtMs);
+    updatePlayerMeleeCooldown(p, dtMs);
     updatePlayerDodgeRecharge(p, dtMs);
     if (p.jumpQueued) {
       performPlayerDodge(p, now);
@@ -9524,6 +10302,7 @@ function tickRoom(room, dtSec, now) {
       fireFromPlayer(room, p, now);
     }
 
+    applyPlayerMeleeAttack(room, p, now);
     tickPlayerSkills(room, p, dtSec, now);
   }
   phaseEnd('playersMs', phaseStartedNs);
@@ -10063,12 +10842,32 @@ function tickRoom(room, dtSec, now) {
       if (!p.alive) continue;
       const dx = p.x - drop.x;
       const dy = p.y - drop.y;
-      const rr = PLAYER_RADIUS + DROP_RADIUS;
+      const rr = DROP_COLLECT_RADIUS;
       if (dx * dx + dy * dy <= rr * rr) {
         if (drop.kind === 'xp_vacuum') {
           room.xpMagnetPlayerId = p.id;
           room.xpMagnetStartedAt = now;
           room.xpMagnetUntil = now + XP_SURGE_DURATION_MS;
+          const fx = buildRuntimeWorldFxRef('xp_surge_pull', {
+            radius: Math.max(world.width || 0, world.height || 0),
+            durationMs: XP_SURGE_DURATION_MS,
+          });
+          broadcastRoom(room, {
+            type: 'worldFx',
+            event: {
+              id: `xps${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+              kind: 'xp_surge_pull',
+              playerId: p.id,
+              x: Math.round(Number(p.x) || 0),
+              y: Math.round(Number(p.y) || 0),
+              radius: Math.max(world.width || 0, world.height || 0),
+              durationMs: XP_SURGE_DURATION_MS,
+              color: fx?.color || '#c084fc',
+              secondaryColor: fx?.secondaryColor || '#67e8f9',
+              fxKey: fx?.key || '',
+              fx,
+            },
+          });
           sendTo(p.ws, { type: 'system', message: 'XP Surge: all XP crystals are flying to you!' });
           broadcastRoom(room, { type: 'system', message: `${p.name} activated XP Surge.` });
         } else {
@@ -10101,7 +10900,7 @@ function tickRoom(room, dtSec, now) {
     }
   }
 
-  const pickupReach = PLAYER_RADIUS + Math.max(6, Number(SKILL_OFFER_PICKUP_RADIUS) || 22);
+  const pickupReach = SKILL_ORB_COLLECT_RADIUS;
   const pickupReachSq = pickupReach * pickupReach;
   for (const p of room.players.values()) {
     if (!p.alive) continue;

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Crimson Wars - AI 3D Viewer</title>
+  <link rel="icon" href="/favicon.svg">
+  <link rel="stylesheet" href="/ai3d-viewer.css">
+  <script type="module" src="https://unpkg.com/@google/model-viewer@4.1.0/dist/model-viewer.min.js"></script>
+</head>
+<body>
+  <main class="viewer-shell">
+    <aside class="roster-panel" aria-label="AI 3D roster">
+      <div class="brand-strip">
+        <span class="brand-kicker">Crimson Wars</span>
+        <h1>AI 3D Preview</h1>
+      </div>
+      <div id="character-buttons" class="character-buttons"></div>
+    </aside>
+
+    <section class="stage-panel" aria-label="3D character preview">
+      <model-viewer
+        id="character-model"
+        class="character-model"
+        camera-controls
+        auto-rotate
+        interaction-prompt="none"
+        shadow-intensity="0.7"
+        exposure="1.1"
+        environment-image="neutral"
+        ar
+      ></model-viewer>
+      <div class="stage-status" id="stage-status">Loading preview...</div>
+    </section>
+
+    <aside class="details-panel" aria-label="Asset details">
+      <div class="details-header">
+        <span id="character-role" class="role-pill">Prototype</span>
+        <h2 id="character-name">Cyber</h2>
+      </div>
+      <img id="character-sheet" class="character-sheet" src="/assets/characters/cyber-pos.png" alt="">
+      <dl class="asset-stats">
+        <div>
+          <dt>Vertices</dt>
+          <dd id="stat-vertices">6953</dd>
+        </div>
+        <div>
+          <dt>Faces</dt>
+          <dd id="stat-faces">8094</dd>
+        </div>
+        <div>
+          <dt>Meshes</dt>
+          <dd id="stat-maps">7 PBR</dd>
+        </div>
+      </dl>
+      <div class="asset-links">
+        <a id="open-glb" href="/assets/characters/ai3d/generated/kitbash/cyber/cyber.glb">GLB</a>
+        <a id="open-fbx" href="/assets/characters/ai3d/generated/kitbash/cyber/cyber.fbx">FBX</a>
+        <a id="open-blend" href="/assets/characters/ai3d/generated/kitbash/cyber/cyber.blend">Blend</a>
+        <a id="open-ai" href="/assets/characters/ai3d/generated/triposr/cyber/0/cyber-preview.glb">AI Raw</a>
+      </div>
+    </aside>
+  </main>
+
+  <script src="/js/ai3d-viewer.js"></script>
+</body>
+</html>

@@ -1,0 +1,60 @@
+{
+  "characters": {
+    "cyber": {
+      "displayName": "Cyber",
+      "sourceImage": "public/assets/characters/cyber-pos.png",
+      "triposrCrop": [872, 18, 1412, 1032],
+      "accent": "cyan_red",
+      "bodyClass": "heavy",
+      "meshIntent": "Heavy male cybernetic assault trooper with black layered exo armor, white spiky hair, exposed cybernetic face implants, shoulder plates, backpack reactor, rifle, red and cyan emissive armor strips.",
+      "materials": ["black_gunmetal_armor", "dark_fabric", "pale_skin", "white_hair", "cyan_emissive_core", "red_warning_leds"],
+      "ueSockets": ["weapon_rifle", "backpack_reactor", "chest_core"]
+    },
+    "medis": {
+      "displayName": "Medis",
+      "sourceImage": "public/assets/characters/medis-pos.png",
+      "triposrCrop": [872, 18, 1438, 1032],
+      "accent": "cyan",
+      "bodyClass": "medium",
+      "meshIntent": "Female battlefield medic in black and white tactical armor, short silver bob hair, glowing cyan medical crosses, compact backpack, syringe injector, medical hard case attachment.",
+      "materials": ["matte_black_fabric", "white_armor_panels", "gunmetal_armor", "silver_hair", "cyan_medical_emissive", "glass_vial"],
+      "ueSockets": ["right_hand_injector", "left_hand_medcase", "backpack_medkit"]
+    },
+    "raider": {
+      "displayName": "Raider",
+      "sourceImage": "public/assets/characters/raider-pos.png",
+      "triposrCrop": [828, 34, 1408, 1036],
+      "accent": "red",
+      "bodyClass": "heavy",
+      "meshIntent": "Brutal male raider in massive black armor with skull pauldrons, red glowing chest reactor, scarred face, white hair, heavy rifle and combat knife.",
+      "materials": ["blackened_metal", "worn_leather", "bone_skull_armor", "scarred_skin", "red_emissive_core", "dirty_fabric"],
+      "ueSockets": ["weapon_heavy_rifle", "weapon_knife", "skull_pauldrons"]
+    },
+    "scout": {
+      "displayName": "Scout",
+      "sourceImage": "public/assets/characters/scout-pos.png",
+      "triposrCrop": [872, 10, 1408, 1048],
+      "accent": "green",
+      "bodyClass": "light",
+      "meshIntent": "Hooded scout marksman in dark tactical armor, black hood and coat, green cybernetic optics, slim backpack, long rifle with green energy details.",
+      "materials": ["dark_cloth_hood", "black_tactical_armor", "worn_boots", "green_emissive_lenses", "gunmetal_rifle"],
+      "ueSockets": ["weapon_sniper_rifle", "backpack_sensor", "hood_cloth"]
+    },
+    "shadow": {
+      "displayName": "Shadow",
+      "sourceImage": "public/assets/characters/shadow-pos.png",
+      "triposrCrop": [844, 12, 1418, 1052],
+      "accent": "blue",
+      "bodyClass": "light",
+      "meshIntent": "Masked hooded assassin in black stealth armor, deep hood, blue glowing eyes and armor LEDs, leather straps, dual blue energy knives.",
+      "materials": ["black_stealth_fabric", "dark_leather_straps", "gunmetal_plates", "blue_emissive_lights", "blue_energy_blades"],
+      "ueSockets": ["weapon_left_knife", "weapon_right_knife", "hood_cloth"]
+    }
+  },
+  "common": {
+    "targetSkeleton": "UE5 Manny compatible humanoid skeleton",
+    "textureMaps": ["BaseColor", "Normal", "Roughness", "Metallic", "AO", "Emissive", "Height"],
+    "importScale": "centimeters",
+    "sourcePoseGoal": "A-pose or T-pose for final skeletal mesh; current sheets are reference and image-to-3D input only."
+  }
+}

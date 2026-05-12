@@ -765,6 +765,85 @@ function spawnSkillBurstFx(x, y, color = '#7dd3fc', radius = 100, options = {}) 
   if (visuals.skillBursts.length > 36) visuals.skillBursts.splice(0, visuals.skillBursts.length - 36);
 }
 
+function spawnMeleeFx(event = {}) {
+  const x = Number(event?.x) || 0;
+  const y = Number(event?.y) || 0;
+  const impactX = Number(event?.impactX) || x;
+  const impactY = Number(event?.impactY) || y;
+  let angle = Number(event?.angle);
+  if (!Number.isFinite(angle)) angle = 0;
+  const range = Math.max(28, Number(event?.range) || 120);
+  const width = Math.max(18, Number(event?.width) || 48);
+  const arcDeg = Math.max(18, Math.min(180, Number(event?.arcDeg) || 78));
+  const style = String(event?.style || 'slash').trim().toLowerCase();
+  const hitCount = Math.max(0, Math.round(Number(event?.hitCount) || 0));
+  const color = String(event?.color || '').trim() || (style === 'cryo_axe' ? '#67e8f9' : (style === 'void_scythe' ? '#c084fc' : '#fda4af'));
+  const secondaryColor = String(event?.secondaryColor || '').trim() || (style === 'hammer' ? '#facc15' : '#ffffff');
+  const life = style === 'hammer' ? 0.44 : (style === 'chainsaw' ? 0.36 : 0.3);
+  const key = `melee:${String(event?.playerId || '')}:${String(event?.id || Date.now())}`;
+  window.cwPlaySfx?.('melee', {
+    x,
+    y,
+    key,
+    minGapMs: 70,
+    radius: 900,
+    volume: Math.min(0.92, 0.38 + hitCount * 0.08),
+    rateMin: style === 'hammer' ? 0.82 : 0.94,
+    rateMax: style === 'chainsaw' ? 1.18 : 1.06,
+  });
+
+  if (!game.hitEffectsEnabled) return;
+  if (!Array.isArray(visuals.meleeSwings)) visuals.meleeSwings = [];
+  visuals.meleeSwings.push({
+    id: String(event?.id || `${Date.now()}:${Math.random()}`),
+    playerId: String(event?.playerId || ''),
+    itemId: String(event?.itemId || ''),
+    style,
+    x,
+    y,
+    impactX,
+    impactY,
+    angle,
+    range,
+    width,
+    arcDeg,
+    hitCount,
+    color,
+    secondaryColor,
+    phase: Math.random() * Math.PI * 2,
+    life,
+    ttl: life,
+  });
+  if (visuals.meleeSwings.length > 70) visuals.meleeSwings.splice(0, visuals.meleeSwings.length - 70);
+
+  if (style === 'hammer') {
+    spawnSkillBurstFx(impactX, impactY, color, Math.max(width * 1.35, range * 0.46), {
+      style: 'shockwave',
+      life: 0.32,
+      growSpeed: 620,
+      trailRings: 3,
+      accentColor: secondaryColor,
+      innerColor: color,
+      spikeCount: 10,
+    });
+    spawnRadialHitFx(impactX, impactY, Math.max(36, width * 0.72), { color: secondaryColor, count: 14, severity: 6 });
+  } else if (style === 'glaive' || style === 'scythe' || style === 'void_scythe') {
+    spawnSkillBurstFx(impactX, impactY, color, Math.max(42, width * 0.9), {
+      style: 'default',
+      life: 0.24,
+      growSpeed: 520,
+      accentColor: secondaryColor,
+    });
+  } else if (hitCount > 0) {
+    spawnRadialHitFx(impactX, impactY, Math.max(26, width * 0.44), { color, count: 8 + Math.min(8, hitCount * 2), severity: 4 });
+  }
+
+  if (hitCount > 0) {
+    const label = String(event?.skillName || event?.itemName || '').trim();
+    if (label) spawnSkillLabel(label, impactX, impactY - 12);
+  }
+}
+
 function spawnXpChargeFx(player, options = {}) {
   if (!player || player.alive === false) return;
   if (!Array.isArray(visuals.xpCharge)) visuals.xpCharge = [];
@@ -1048,13 +1127,98 @@ function spawnQuickItemFx(event = {}) {
   spawnSkillLabel(label, x, y - 10);
 }
 
+function spawnWorldFx(event = {}) {
+  const kind = String(event?.kind || '').trim().toLowerCase();
+  const x = Number(event?.x) || 0;
+  const y = Number(event?.y) || 0;
+  const color = String(event?.color || '').trim() || '#c084fc';
+  const secondaryColor = String(event?.secondaryColor || '').trim() || '#67e8f9';
+  const radius = Math.max(140, Math.min(1200, Number(event?.radius) || 520));
+
+  if (kind === 'xp_surge_pull') {
+    window.cwPlaySfx?.('xpSurge', {
+      x,
+      y,
+      key: `worldFx:${String(event?.id || Date.now())}`,
+      minGapMs: 180,
+      radius: 1400,
+      volume: 0.78,
+      rateMin: 0.94,
+      rateMax: 1.04,
+    });
+
+    spawnSkillBurstFx(x, y, color, Math.min(520, radius * 0.36), {
+      style: 'psi_blast',
+      startRadius: 20,
+      growSpeed: 980,
+      trailRings: 7,
+      spikeCount: 18,
+      life: 0.74,
+      accentColor: secondaryColor,
+      innerColor: '#f5d0fe',
+    });
+    spawnRadialHitFx(x, y, Math.min(280, radius * 0.2), {
+      color: secondaryColor,
+      count: 24,
+      severity: 4,
+    });
+
+    const fakePlayer = {
+      id: String(event?.playerId || 'xp-surge'),
+      x,
+      y,
+      alive: true,
+    };
+    spawnXpChargeFx(fakePlayer, { count: 64, xp: 180 });
+    spawnSkillLabel('XP Surge', x, y - 18);
+  }
+}
+
 window.spawnQuickItemFx = spawnQuickItemFx;
+window.spawnMeleeFx = spawnMeleeFx;
+window.spawnWorldFx = spawnWorldFx;
+
+function getSkillCatalogDefForFx(skill, castType = '') {
+  const sid = String(skill?.id || '').toLowerCase();
+  const fxCastType = String(castType || skill?.castType || skill?.fx?.castType || '').toLowerCase();
+  return game.skillCatalog?.[sid] || game.skillCatalog?.[fxCastType] || {};
+}
+
+function getSkillFxNumber(skill, castType, key, fallback = 0) {
+  const def = getSkillCatalogDefForFx(skill, castType);
+  const direct = Number(skill?.[key]);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const fromDef = Number(def?.[key]);
+  if (Number.isFinite(fromDef) && fromDef > 0) return fromDef;
+  return fallback;
+}
+
+function getSkillFxColor(skill, castType, fallback = '#a5b4fc') {
+  const def = getSkillCatalogDefForFx(skill, castType);
+  return skill?.fx?.color || def?.fx?.colors?.primary || def?.fx?.color || fallback;
+}
+
+function getSkillFxSecondaryColor(skill, castType, fallback = '#f8fafc') {
+  const def = getSkillCatalogDefForFx(skill, castType);
+  return skill?.fx?.secondaryColor || def?.fx?.colors?.secondary || def?.fx?.secondaryColor || fallback;
+}
+
+function getSkillFxLabel(skill, castType, fallback = 'Skill') {
+  const sid = String(skill?.id || '').toLowerCase();
+  const fxCastType = String(castType || skill?.castType || skill?.fx?.castType || '').toLowerCase();
+  const def = getSkillCatalogDefForFx(skill, fxCastType);
+  const fallbackName = String(skill?.name || def?.name || fallback || sid || fxCastType || 'Skill');
+  if (sid) {
+    const translated = trFx(`skill.${sid}.name`, fallbackName);
+    if (translated && translated !== `skill.${sid}.name`) return translated;
+  }
+  return fxCastType ? trFx(`skill.${fxCastType}.name`, fallbackName) : fallbackName;
+}
 
 function psiBlastFxRadius(skill) {
-  const def = game.skillCatalog?.psi_blast || {};
   const lvl = Math.max(1, Number(skill?.level) || 1);
-  const base = Math.max(120, Number(def.radius) || 760);
-  const perLevel = Math.max(0, Number(def.radiusPerLevel) || 48);
+  const base = Math.max(120, getSkillFxNumber(skill, 'psi_blast', 'radius', 760));
+  const perLevel = Math.max(0, getSkillFxNumber(skill, 'psi_blast', 'radiusPerLevel', 48));
   return Math.max(220, base + perLevel * (lvl - 1));
 }
 
@@ -1123,8 +1287,10 @@ function spawnForceShieldFx(player, previous = null) {
   if (visuals.forceShield.length > 80) visuals.forceShield.splice(0, visuals.forceShield.length - 80);
 }
 
-function spawnBladeOrbitFx(x, y) {
+function spawnBladeOrbitFx(x, y, skill = null) {
   const bladeCount = 5;
+  const primaryColor = getSkillFxColor(skill, 'blade_orbit', '#fde68a');
+  const secondaryColor = getSkillFxSecondaryColor(skill, 'blade_orbit', '#fca5a5');
   for (let i = 0; i < bladeCount; i += 1) {
     const radius = 92 + Math.random() * 34;
     const life = 0.62 + Math.random() * 0.12;
@@ -1147,13 +1313,17 @@ function spawnBladeOrbitFx(x, y) {
       phase: Math.random() * Math.PI * 2,
       life,
       ttl: life,
-      color: Math.random() > 0.4 ? '#fde68a' : '#fca5a5',
+      color: Math.random() > 0.4 ? primaryColor : secondaryColor,
     });
   }
   if (visuals.skillArcs.length > 140) visuals.skillArcs.splice(0, visuals.skillArcs.length - 140);
 }
 
-function spawnChainLightningFx(caster, nextState) {
+function spawnChainLightningFx(caster, nextState, skill = null) {
+  const lvl = Math.max(1, Number(skill?.level) || 1);
+  const radius = Math.max(90, getSkillFxNumber(skill, 'chain_lightning', 'radius', 430) + getSkillFxNumber(skill, 'chain_lightning', 'radiusPerLevel', 0) * (lvl - 1));
+  const maxTargets = Math.max(1, Math.round(getSkillFxNumber(skill, 'chain_lightning', 'targets', 5) + getSkillFxNumber(skill, 'chain_lightning', 'targetsPerLevel', 0) * (lvl - 1)));
+  const color = getSkillFxColor(skill, 'chain_lightning', '#67e8f9');
   const enemies = Array.isArray(nextState?.enemies) ? nextState.enemies : [];
   const targets = enemies
     .map((e) => {
@@ -1161,9 +1331,9 @@ function spawnChainLightningFx(caster, nextState) {
       const dy = e.y - caster.y;
       return { e, d2: dx * dx + dy * dy };
     })
-    .filter((it) => it.d2 <= 430 * 430)
+    .filter((it) => it.d2 <= radius * radius)
     .sort((a, b) => a.d2 - b.d2)
-    .slice(0, 5);
+    .slice(0, maxTargets);
 
   for (const t of targets) {
     const dx = t.e.x - caster.x;
@@ -1186,20 +1356,21 @@ function spawnChainLightningFx(caster, nextState) {
       y2: t.e.y - 10,
       life: 0.2,
       ttl: 0.2,
-      color: '#67e8f9',
+      color,
       phase: Math.random() * Math.PI * 2,
     });
     spawnHitFx(t.e.x, t.e.y, 6, false);
   }
-  spawnSkillBurstFx(caster.x, caster.y, '#67e8f9', 132);
+  spawnSkillBurstFx(caster.x, caster.y, color, Math.min(180, 108 + maxTargets * 12));
   if (visuals.skillLinks.length > 60) visuals.skillLinks.splice(0, visuals.skillLinks.length - 60);
 }
 
 function spawnLaserStrikeFx(caster, nextState, skill) {
-  const def = game.skillCatalog?.laser_strike || {};
   const lvl = Math.max(1, Number(skill?.level) || 1);
-  const radius = Math.max(90, (Number(def.radius) || 320) + (Number(def.radiusPerLevel) || 0) * (lvl - 1));
-  const maxTargets = Math.max(1, Math.round((Number(def.targets) || 1) + (Number(def.targetsPerLevel) || 0) * (lvl - 1)));
+  const radius = Math.max(90, getSkillFxNumber(skill, 'laser_strike', 'radius', 320) + getSkillFxNumber(skill, 'laser_strike', 'radiusPerLevel', 0) * (lvl - 1));
+  const maxTargets = Math.max(1, Math.round(getSkillFxNumber(skill, 'laser_strike', 'targets', 1) + getSkillFxNumber(skill, 'laser_strike', 'targetsPerLevel', 0) * (lvl - 1)));
+  const color = getSkillFxColor(skill, 'laser_strike', '#f472b6');
+  const secondaryColor = getSkillFxSecondaryColor(skill, 'laser_strike', '#f9a8d4');
   const enemies = Array.isArray(nextState?.enemies) ? nextState.enemies : [];
   const targets = enemies
     .map((e) => {
@@ -1211,7 +1382,7 @@ function spawnLaserStrikeFx(caster, nextState, skill) {
     .sort((a, b) => a.d2 - b.d2)
     .slice(0, maxTargets);
 
-  spawnSkillBurstFx(caster.x, caster.y, '#f9a8d4', Math.min(170, 80 + maxTargets * 14));
+  spawnSkillBurstFx(caster.x, caster.y, secondaryColor, Math.min(170, 80 + maxTargets * 14));
   for (const t of targets) {
     const dx = t.e.x - caster.x;
     const dy = t.e.y - caster.y;
@@ -1233,7 +1404,7 @@ function spawnLaserStrikeFx(caster, nextState, skill) {
       y2: t.e.y - 10,
       life: 0.14,
       ttl: 0.14,
-      color: '#f472b6',
+      color,
       phase: Math.random() * Math.PI * 2,
     });
     spawnHitFx(t.e.x, t.e.y, 8, false);
@@ -1242,10 +1413,9 @@ function spawnLaserStrikeFx(caster, nextState, skill) {
 }
 
 function shockwaveFxRadius(skill) {
-  const def = game.skillCatalog?.shockwave || {};
   const lvl = Math.max(1, Number(skill?.level) || 1);
-  const base = Math.max(40, Number(def.radius) || 170);
-  const perLevel = Math.max(0, Number(def.radiusPerLevel) || 14);
+  const base = Math.max(40, getSkillFxNumber(skill, 'shockwave', 'radius', 170));
+  const perLevel = Math.max(0, getSkillFxNumber(skill, 'shockwave', 'radiusPerLevel', 14));
   return Math.max(70, base + perLevel * (lvl - 1));
 }
 
@@ -1268,23 +1438,25 @@ function registerImpactSource(options = {}) {
 }
 
 function spawnSkillCastFx(skillId, caster, nextState, skill) {
-  const sid = String(skillId || '').toLowerCase();
+  const sid = String(skillId || skill?.castType || skill?.fx?.castType || skill?.id || '').toLowerCase();
   if (sid === 'shockwave') {
     const radius = shockwaveFxRadius(skill);
-    spawnSkillBurstFx(caster.x, caster.y, '#86efac', radius, {
+    const color = getSkillFxColor(skill, sid, '#86efac');
+    const secondaryColor = getSkillFxSecondaryColor(skill, sid, '#bbf7d0');
+    spawnSkillBurstFx(caster.x, caster.y, color, radius, {
       style: 'shockwave',
       startRadius: 10,
       growSpeed: Math.max(880, radius * 6.2),
       trailRings: 4,
       spikeCount: Math.max(10, Math.min(20, Math.round(radius / 18))),
       life: 0.42,
-      accentColor: '#dcfce7',
-      innerColor: '#bbf7d0',
+      accentColor: secondaryColor,
+      innerColor: secondaryColor,
     });
     spawnRadialHitFx(caster.x, caster.y, radius * 0.9, {
       count: Math.max(8, Math.min(18, Math.round(radius / 16))),
       severity: 5,
-      color: '#bbf7d0',
+      color: secondaryColor,
     });
     registerImpactSource({
       x: caster.x,
@@ -1296,11 +1468,11 @@ function spawnSkillCastFx(skillId, caster, nextState, skill) {
       target: 'enemy',
     });
     spawnHitFx(caster.x, caster.y, 12, caster.id === game.myId);
-    spawnSkillLabel(trFx('skill.shockwave.name', 'Shockwave'), caster.x, caster.y - 12);
+    spawnSkillLabel(getSkillFxLabel(skill, sid, 'Shockwave'), caster.x, caster.y - 12);
     return;
   }
   if (sid === 'blade_orbit') {
-    spawnBladeOrbitFx(caster.x, caster.y);
+    spawnBladeOrbitFx(caster.x, caster.y, skill);
     registerImpactSource({
       x: caster.x,
       y: caster.y,
@@ -1310,27 +1482,27 @@ function spawnSkillCastFx(skillId, caster, nextState, skill) {
       radial: true,
       target: 'enemy',
     });
-    spawnSkillLabel(trFx('skill.blade_orbit.name', 'Blade Orbit'), caster.x, caster.y - 10);
+    spawnSkillLabel(getSkillFxLabel(skill, sid, 'Blade Orbit'), caster.x, caster.y - 10);
     return;
   }
   if (sid === 'chain_lightning') {
-    spawnChainLightningFx(caster, nextState);
-    spawnSkillLabel(trFx('skill.chain_lightning.name', 'Chain Lightning'), caster.x, caster.y - 10);
+    spawnChainLightningFx(caster, nextState, skill);
+    spawnSkillLabel(getSkillFxLabel(skill, sid, 'Chain Lightning'), caster.x, caster.y - 10);
     return;
   }
   if (sid === 'laser_strike') {
     spawnLaserStrikeFx(caster, nextState, skill);
-    spawnSkillLabel(trFx('skill.laser_strike.name', 'Laser Strike'), caster.x, caster.y - 10);
+    spawnSkillLabel(getSkillFxLabel(skill, sid, 'Laser Strike'), caster.x, caster.y - 10);
     return;
   }
   if (sid === 'homing_missiles') {
-    spawnSkillBurstFx(caster.x, caster.y, '#fb923c', 102);
-    spawnSkillLabel(trFx('skill.homing_missiles.name', 'Homing Missiles'), caster.x, caster.y - 10);
+    spawnSkillBurstFx(caster.x, caster.y, getSkillFxColor(skill, sid, '#fb923c'), 102);
+    spawnSkillLabel(getSkillFxLabel(skill, sid, 'Homing Missiles'), caster.x, caster.y - 10);
     return;
   }
   if (sid === 'psi_blast') {
     const radius = psiBlastFxRadius(skill);
-    spawnSkillBurstFx(caster.x, caster.y, '#60a5fa', radius, {
+    spawnSkillBurstFx(caster.x, caster.y, getSkillFxColor(skill, sid, '#60a5fa'), radius, {
       style: 'psi_blast',
       growSpeed: 3900,
       trailRings: 6,
@@ -1344,13 +1516,12 @@ function spawnSkillCastFx(skillId, caster, nextState, skill) {
       radial: true,
       target: 'enemy',
     });
-    spawnSkillLabel(trFx('skill.psi_blast.name', 'Psi Blast'), caster.x, caster.y - 12);
+    spawnSkillLabel(getSkillFxLabel(skill, sid, 'Psi Blast'), caster.x, caster.y - 12);
     return;
   }
 
-  spawnSkillBurstFx(caster.x, caster.y, '#a5b4fc', 120);
-  const skillName = game.skillCatalog[sid]?.name || sid || 'Skill';
-  spawnSkillLabel(skillName, caster.x, caster.y - 10);
+  spawnSkillBurstFx(caster.x, caster.y, getSkillFxColor(skill, sid, '#a5b4fc'), 120);
+  spawnSkillLabel(getSkillFxLabel(skill, sid, 'Skill'), caster.x, caster.y - 10);
 }
 
 function processSkillCastFx(nextState) {
@@ -1369,8 +1540,9 @@ function processSkillCastFx(nextState) {
       if (Number.isFinite(prev)) {
         const casted = cur > 180 && (prev <= 120 || (cur - prev) > 220);
         if (casted) {
-          spawnSkillCastFx(sid, p, nextState, s);
-          window.cwPlaySfx?.('skill', { x: p.x, y: p.y, key: `skill:${p.id}:${sid}`, skillId: sid, minGapMs: 140, volume: p.id === game.myId ? 1.1 : 0.72 });
+          const castType = String(s.castType || s.fx?.castType || game.skillCatalog?.[sid]?.castType || sid).toLowerCase();
+          spawnSkillCastFx(castType, p, nextState, s);
+          window.cwPlaySfx?.('skill', { x: p.x, y: p.y, key: `skill:${p.id}:${sid}`, skillId: sid, castType, minGapMs: 140, volume: p.id === game.myId ? 1.1 : 0.72 });
         }
       }
       visuals.skillCdPrev.set(key, cur);
@@ -2189,6 +2361,14 @@ function updateFx(dt) {
     const growSpeed = Math.max(120, Number(s.growSpeed) || 420);
     s.r += Math.min(grow, growSpeed * dt);
     if (s.life <= 0 || s.r >= s.maxR - 1) visuals.skillBursts.splice(i, 1);
+  }
+
+  if (Array.isArray(visuals.meleeSwings)) {
+    for (let i = visuals.meleeSwings.length - 1; i >= 0; i -= 1) {
+      const s = visuals.meleeSwings[i];
+      s.life -= dt;
+      if (s.life <= 0) visuals.meleeSwings.splice(i, 1);
+    }
   }
 
   if (Array.isArray(visuals.xpCharge)) {
