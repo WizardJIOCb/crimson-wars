@@ -2946,7 +2946,7 @@ function getBattleHubHeroSkillIconPath(skill) {
   const skillId = String(skill?.id || '').trim();
   if (!skillId) return '';
   const heroId = String(skill?.heroId || skill?.sourceHeroId || '').trim().toLowerCase();
-  return heroId ? `/assets/hero-skills/${heroId}_${skillId}.webp` : `/assets/hero-skills/${skillId}.webp`;
+  return heroId ? `/assets/hero-skills/${heroId}_${skillId}.webp` : '';
 }
 
 function renderBattleHubHeroSkillIcon(skill, fallbackIcon, extraClass = '') {
