@@ -252,6 +252,15 @@ const XP_ORB_TARGET_SPEED_GRACE = Math.max(80, PLAYER_SPEED * PLAYER_MOVE_SPEED_
 const XP_ORB_TARGET_SPEED_BONUS_MUL = 0.9;
 const XP_ORB_TARGET_SPEED_MAX_BONUS = Math.max(260, XP_ORB_PULL_SPEED * 2.1);
 const XP_ORB_TARGET_SPEED_CAP = Math.max(900, XP_ORB_PULL_SPEED * 3.4);
+const HORDE_FIRST_SPAWN_MS = Math.max(12000, Number(process.env.HORDE_FIRST_SPAWN_MS) || 22000);
+const HORDE_BASE_INTERVAL_MS = Math.max(14000, Number(process.env.HORDE_BASE_INTERVAL_MS) || 38000);
+const HORDE_MIN_INTERVAL_MS = Math.max(9000, Number(process.env.HORDE_MIN_INTERVAL_MS) || 15500);
+const HORDE_INTERVAL_REDUCTION_MS = Math.max(250, Number(process.env.HORDE_INTERVAL_REDUCTION_MS) || 1850);
+const HORDE_BASE_SIZE = Math.max(4, Number(process.env.HORDE_BASE_SIZE) || 7);
+const HORDE_MAX_SIZE = Math.max(10, Number(process.env.HORDE_MAX_SIZE) || 36);
+const HORDE_FORMATION_HOLD_MS = Math.max(6000, Number(process.env.HORDE_FORMATION_HOLD_MS) || 26000);
+const HORDE_FORMATION_SPACING = Math.max(26, Number(process.env.HORDE_FORMATION_SPACING) || 43);
+const HORDE_SOFT_ENEMY_CAP = Math.max(48, Number(process.env.HORDE_SOFT_ENEMY_CAP) || 138);
 const partnerRunSessions = new Map();
 const GOOGLE_OAUTH_STATE_COOKIE = 'cw_google_oauth_state';
 const VK_OAUTH_STATE_COOKIE = 'cw_vk_oauth_state';
@@ -4738,6 +4747,7 @@ function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode, reques
       scores: new Map(),
       kills: new Map(),
       nextEnemyId: 1,
+      nextHordeId: 1,
       nextCompanionId: 1,
       nextBulletId: 1,
       nextShotEventId: 1,
@@ -4747,12 +4757,15 @@ function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode, reques
       nextSkillOrbId: 1,
       nextPortalId: 1,
       bossPortals: [],
+      hordeFormations: [],
       totalEnemyKills: 0,
       totalBossKills: 0,
       nextBossAtKills: Math.max(4, Number(content.bossKillInterval) || BOSS_KILL_INTERVAL),
       bossKillInterval: Math.max(4, Number(content.bossKillInterval) || BOSS_KILL_INTERVAL),
       bossMobId: String(content.bossMobId || 'boss'),
       lastEnemySpawnAt: 0,
+      nextHordeAt: startedAt + HORDE_FIRST_SPAWN_MS + Math.round(Math.random() * 6500),
+      lastHordeSpawnAt: 0,
       lastCompanionSyncAt: 0,
       startedAt,
       completedAt: 0,
@@ -6835,7 +6848,7 @@ function spawnBossEnemy(room, x, y, now, difficulty = null, forcedBossMobId = ''
   if (getMobBehaviorFromDef(bossDef) !== 'boss') bossDef = getRoomMobDef(room, 'boss') || {};
   const bossId = String(bossDef.id || 'boss');
   const hp = Math.round(BOSS_HP_BASE * elapsedMul * (0.95 + diff.hpMul * 0.7) * hpMul * Math.max(0.05, Number(bossDef.hpMul) || 1));
-  room.enemies.push({
+  const boss = {
     id: room.nextEnemyId++,
     type: 'boss',
     mobId: bossId,
@@ -6882,7 +6895,9 @@ function spawnBossEnemy(room, x, y, now, difficulty = null, forcedBossMobId = ''
     explosionDamage: Math.max(0, Number(bossDef.explosionDamage) || 0),
     splitMobId: String(bossDef.splitMobId || ''),
     splitCount: Math.max(0, Math.floor(Number(bossDef.splitCount) || 0)),
-  });
+  };
+  room.enemies.push(boss);
+  spawnBossEscortHorde(room, boss, now, diff);
   broadcastRoom(room, { type: 'system', message: `${String(bossDef.name || 'BOSS')} arrived. Keep moving.` });
 }
 
@@ -6894,6 +6909,436 @@ function maybeScheduleBossSpawn(room, now) {
   if (scheduleBossPortal(room, now)) {
     room.nextBossAtKills += Math.max(4, Number(room.bossKillInterval) || BOSS_KILL_INTERVAL);
   }
+}
+
+function getAlivePlayerCount(room) {
+  let count = 0;
+  for (const player of room?.players?.values?.() || []) {
+    if (player?.alive) count += 1;
+  }
+  return Math.max(0, count);
+}
+
+function normalizeDir(dx, dy, fallbackX = 1, fallbackY = 0) {
+  const len = Math.hypot(Number(dx) || 0, Number(dy) || 0);
+  if (len > 0.001) return { x: dx / len, y: dy / len };
+  const fallbackLen = Math.hypot(Number(fallbackX) || 0, Number(fallbackY) || 0) || 1;
+  return { x: (Number(fallbackX) || 0) / fallbackLen, y: (Number(fallbackY) || 0) / fallbackLen };
+}
+
+function getRoomEnemyHordeSoftCap(room, difficulty = null) {
+  const diff = difficulty || getRoomDifficulty(room, Date.now());
+  const players = Math.max(1, getAlivePlayerCount(room) || Number(room?.players?.size) || 1);
+  const levelBonus = Math.min(42, Math.max(0, Math.floor(Number(diff?.level) || 1) - 1) * 2);
+  return Math.round(HORDE_SOFT_ENEMY_CAP + (players - 1) * 18 + levelBonus);
+}
+
+function getNextHordeDelayMs(room, difficulty = null) {
+  const diff = difficulty || getRoomDifficulty(room, Date.now());
+  const level = Math.max(1, Math.floor(Number(diff.level) || 1));
+  const elapsedReduction = Math.floor(Math.max(0, Number(diff.elapsedSec) || 0) / 70) * 620;
+  const pressureMul = 1 / Math.sqrt(Math.max(1, Math.min(2.4, Number(room?.enemySpawnMul) || 1)));
+  const base = Math.max(
+    HORDE_MIN_INTERVAL_MS,
+    HORDE_BASE_INTERVAL_MS - (level - 1) * HORDE_INTERVAL_REDUCTION_MS - elapsedReduction,
+  );
+  return Math.round(base * pressureMul * (0.84 + Math.random() * 0.32));
+}
+
+function getHordeTargetSize(room, difficulty = null, options = {}) {
+  const forcedSize = Math.floor(Number(options.forceSize) || 0);
+  if (forcedSize > 0) return Math.max(3, Math.min(HORDE_MAX_SIZE, forcedSize));
+  const diff = difficulty || getRoomDifficulty(room, Date.now());
+  const level = Math.max(1, Math.floor(Number(diff.level) || 1));
+  const elapsedTiers = Math.floor(Math.max(0, Number(diff.elapsedSec) || 0) / 75);
+  const players = Math.max(1, getAlivePlayerCount(room) || Number(room?.players?.size) || 1);
+  const spawnPressure = Math.max(1, Number(room?.enemySpawnMul) || 1);
+  let size = HORDE_BASE_SIZE + Math.floor((level - 1) * 1.9) + elapsedTiers + (players - 1) * 3;
+  size = Math.round(size * Math.min(1.55, 0.9 + Math.max(0, spawnPressure - 1) * 0.42));
+  if (options.bossEscort) size = Math.round(size * 0.58 + Math.min(6, level));
+  const maxSize = options.bossEscort ? Math.min(24, HORDE_MAX_SIZE) : HORDE_MAX_SIZE;
+  return Math.max(options.bossEscort ? 5 : 6, Math.min(maxSize, size));
+}
+
+function pickHordeFormationType(difficulty = null, options = {}) {
+  const forced = String(options.formationType || '').trim().toLowerCase();
+  if (['column', 'wall', 'wedge', 'block', 'mass'].includes(forced)) return forced;
+  const level = Math.max(1, Math.floor(Number(difficulty?.level) || 1));
+  if (options.bossEscort) return level >= 5 && Math.random() < 0.45 ? 'block' : 'wedge';
+  const roll = Math.random();
+  if (level <= 1) return roll < 0.55 ? 'column' : 'wall';
+  if (level <= 3) {
+    if (roll < 0.34) return 'column';
+    if (roll < 0.68) return 'wedge';
+    return 'wall';
+  }
+  if (roll < 0.25) return 'column';
+  if (roll < 0.5) return 'wedge';
+  if (roll < 0.75) return 'block';
+  return 'mass';
+}
+
+function buildHordeFormationSlots(type, size, spacing) {
+  const slots = [];
+  const count = Math.max(1, Math.floor(Number(size) || 1));
+  const gap = Math.max(24, Number(spacing) || HORDE_FORMATION_SPACING);
+  const addGridSlots = (cols, sideScale = 1, backScale = 1) => {
+    const colCount = Math.max(1, Math.floor(cols));
+    for (let i = 0; i < count; i += 1) {
+      const row = Math.floor(i / colCount);
+      const col = i % colCount;
+      slots.push({
+        index: i,
+        row,
+        col,
+        side: (col - (colCount - 1) * 0.5) * gap * sideScale,
+        back: row * gap * backScale,
+      });
+    }
+  };
+
+  if (type === 'wedge') {
+    let row = 0;
+    while (slots.length < count) {
+      const rowCount = Math.min(9, 1 + row * 2);
+      for (let col = 0; col < rowCount && slots.length < count; col += 1) {
+        slots.push({
+          index: slots.length,
+          row,
+          col,
+          side: (col - (rowCount - 1) * 0.5) * gap * 0.86,
+          back: row * gap * 0.92,
+        });
+      }
+      row += 1;
+    }
+  } else if (type === 'wall') {
+    addGridSlots(Math.max(4, Math.min(9, Math.ceil(Math.sqrt(count * 1.75)))), 1.04, 0.92);
+  } else if (type === 'block') {
+    addGridSlots(Math.max(3, Math.min(7, Math.ceil(Math.sqrt(count)))), 0.98, 0.98);
+  } else if (type === 'mass') {
+    for (let i = 0; i < count; i += 1) {
+      const angle = i * 2.399963229728653;
+      const ring = Math.sqrt(i + 0.35);
+      slots.push({
+        index: i,
+        row: Math.floor(ring),
+        col: i,
+        side: Math.cos(angle) * gap * ring * 0.52,
+        back: Math.max(0, Math.sin(angle) * gap * ring * 0.42 + ring * gap * 0.45),
+      });
+    }
+  } else {
+    const cols = count >= 22 ? 4 : (count >= 12 ? 3 : 2);
+    addGridSlots(cols, 0.88, 1.06);
+  }
+
+  return slots;
+}
+
+function getHordeSlotBounds(slots) {
+  let side = 0;
+  let back = 0;
+  for (const slot of slots || []) {
+    side = Math.max(side, Math.abs(Number(slot.side) || 0));
+    back = Math.max(back, Math.max(0, Number(slot.back) || 0));
+  }
+  return { side, back };
+}
+
+function getDirectionTowardPlayers(room, x, y) {
+  const world = getRoomWorld(room);
+  const target = nearestAlivePlayer(room, x, y) || { x: world.width * 0.5, y: world.height * 0.5 };
+  return normalizeDir((Number(target.x) || 0) - x, (Number(target.y) || 0) - y, world.width * 0.5 - x, world.height * 0.5 - y);
+}
+
+function getHordeSpawnLine(room, slots, options = {}) {
+  const world = getRoomWorld(room);
+  const pad = getEnemySpawnPadding(room) + 42;
+  const slotBounds = getHordeSlotBounds(slots);
+  const sideMargin = Math.max(90, slotBounds.side + 54);
+  const center = options.center && Number.isFinite(Number(options.center.x)) && Number.isFinite(Number(options.center.y))
+    ? { x: Number(options.center.x), y: Number(options.center.y) }
+    : null;
+  if (center) {
+    const dir = getDirectionTowardPlayers(room, center.x, center.y);
+    return {
+      centerX: center.x,
+      centerY: center.y,
+      dirX: dir.x,
+      dirY: dir.y,
+      sideX: -dir.y,
+      sideY: dir.x,
+      edge: 'center',
+    };
+  }
+
+  const side = Math.floor(Math.random() * 4);
+  if (side === 0) {
+    return {
+      centerX: clamp(sideMargin + Math.random() * Math.max(1, world.width - sideMargin * 2), -pad, world.width + pad),
+      centerY: -pad,
+      dirX: 0,
+      dirY: 1,
+      sideX: -1,
+      sideY: 0,
+      edge: 'top',
+    };
+  }
+  if (side === 1) {
+    return {
+      centerX: world.width + pad,
+      centerY: clamp(sideMargin + Math.random() * Math.max(1, world.height - sideMargin * 2), -pad, world.height + pad),
+      dirX: -1,
+      dirY: 0,
+      sideX: 0,
+      sideY: -1,
+      edge: 'right',
+    };
+  }
+  if (side === 2) {
+    return {
+      centerX: clamp(sideMargin + Math.random() * Math.max(1, world.width - sideMargin * 2), -pad, world.width + pad),
+      centerY: world.height + pad,
+      dirX: 0,
+      dirY: -1,
+      sideX: 1,
+      sideY: 0,
+      edge: 'bottom',
+    };
+  }
+  return {
+    centerX: -pad,
+    centerY: clamp(sideMargin + Math.random() * Math.max(1, world.height - sideMargin * 2), -pad, world.height + pad),
+    dirX: 1,
+    dirY: 0,
+    sideX: 0,
+    sideY: 1,
+    edge: 'left',
+  };
+}
+
+function getAvailableHordeMobDef(room, mobId, difficulty = null) {
+  const def = getRoomMobDef(room, mobId);
+  if (!def || def.enabled === false) return null;
+  if (getMobBehaviorFromDef(def) === 'boss') return null;
+  const level = Math.max(1, Math.floor(Number(difficulty?.level) || 1));
+  if (level < Math.max(1, Math.floor(Number(def.minDifficultyLevel) || 1))) return null;
+  return def;
+}
+
+function firstAvailableHordeMobDef(room, ids, difficulty = null) {
+  for (const id of ids || []) {
+    const def = getAvailableHordeMobDef(room, id, difficulty);
+    if (def) return def;
+  }
+  return null;
+}
+
+function chooseHordeMobDef(room, difficulty = null, slot = null, profile = {}) {
+  const level = Math.max(1, Math.floor(Number(difficulty?.level) || 1));
+  const row = Math.max(0, Math.floor(Number(slot?.row) || 0));
+  if (profile.bossEscort && row <= 1 && Math.random() < 0.32) {
+    const guard = firstAvailableHordeMobDef(room, ['shield', 'brute', 'charger'], difficulty);
+    if (guard) return guard;
+  }
+  if (row === 0 && level >= 3 && Math.random() < 0.18) {
+    const front = firstAvailableHordeMobDef(room, ['shield', 'brute', 'charger'], difficulty);
+    if (front) return front;
+  }
+  if (row >= 2 && level >= 3 && Math.random() < 0.16) {
+    const support = firstAvailableHordeMobDef(room, ['medic', 'ranged', 'sniper'], difficulty);
+    if (support) return support;
+  }
+  if (profile.formationType === 'column' && level >= 2 && Math.random() < 0.18) {
+    const runner = firstAvailableHordeMobDef(room, ['runner', 'charger'], difficulty);
+    if (runner) return runner;
+  }
+  return chooseEnemyMob(room, difficulty);
+}
+
+function spawnFormationHorde(room, now, difficulty = null, options = {}) {
+  if (!room || normalizeGameMode(room.gameMode) === 'pvp') return null;
+  const diff = difficulty || getRoomDifficulty(room, now || Date.now());
+  const currentEnemies = Array.isArray(room.enemies) ? room.enemies.length : 0;
+  const cap = getRoomEnemyHordeSoftCap(room, diff) + (options.bossEscort ? 24 : 0);
+  if (!options.ignoreSoftCap && currentEnemies >= cap) return null;
+
+  const formationType = pickHordeFormationType(diff, options);
+  const desiredSize = getHordeTargetSize(room, diff, { ...options, formationType });
+  const size = options.ignoreSoftCap ? desiredSize : Math.max(0, Math.min(desiredSize, cap - currentEnemies));
+  if (size < (options.bossEscort ? 4 : 5)) return null;
+  const spacing = Math.max(28, HORDE_FORMATION_SPACING * (options.bossEscort ? 1.04 : 1));
+  const slots = buildHordeFormationSlots(formationType, size, spacing);
+  const spawnLine = getHordeSpawnLine(room, slots, options);
+  const holdMs = Math.max(8000, Math.round(Number(options.holdMs) || HORDE_FORMATION_HOLD_MS));
+  const horde = {
+    id: room.nextHordeId++,
+    type: formationType,
+    createdAt: now,
+    holdUntil: now + holdMs,
+    dirX: spawnLine.dirX,
+    dirY: spawnLine.dirY,
+    sideX: spawnLine.sideX,
+    sideY: spawnLine.sideY,
+    frontGap: options.bossEscort ? 82 : 54,
+    stopRadius: options.bossEscort ? 19 : 14,
+    bossEscort: Boolean(options.bossEscort),
+    enemyIds: [],
+  };
+
+  const bounds = getEnemyWorldBounds(room);
+  for (const slot of slots) {
+    const mobDef = chooseHordeMobDef(room, diff, slot, { formationType, bossEscort: Boolean(options.bossEscort) });
+    const jitter = options.bossEscort ? 7 : 12;
+    const x = clamp(
+      spawnLine.centerX + spawnLine.sideX * (Number(slot.side) || 0) - spawnLine.dirX * (Number(slot.back) || 0) + (Math.random() - 0.5) * jitter,
+      bounds.minX + ENEMY_RADIUS,
+      bounds.maxX - ENEMY_RADIUS,
+    );
+    const y = clamp(
+      spawnLine.centerY + spawnLine.sideY * (Number(slot.side) || 0) - spawnLine.dirY * (Number(slot.back) || 0) + (Math.random() - 0.5) * jitter,
+      bounds.minY + ENEMY_RADIUS,
+      bounds.maxY - ENEMY_RADIUS,
+    );
+    const enemy = createEnemyFromMob(room, mobDef, { x, y }, now, diff, {
+      speedMul: options.bossEscort ? 0.97 : 1,
+    });
+    enemy.formationId = horde.id;
+    enemy.formationSlotSide = Number(slot.side) || 0;
+    enemy.formationSlotBack = Number(slot.back) || 0;
+    enemy.formationHoldUntil = horde.holdUntil;
+    enemy.formationBreakDistance = Math.max(78, Math.min(150, 96 + Math.max(0, Number(slot.row) || 0) * 7));
+    enemy.attackCooldownMs = Math.max(Number(enemy.attackCooldownMs) || 0, 260 + Math.random() * 620);
+    room.enemies.push(enemy);
+    horde.enemyIds.push(enemy.id);
+  }
+
+  if (!Array.isArray(room.hordeFormations)) room.hordeFormations = [];
+  room.hordeFormations.push(horde);
+  room.lastHordeSpawnAt = now;
+  if (!options.quiet && horde.enemyIds.length >= 10) {
+    broadcastRoom(room, { type: 'system', message: `A ${formationType} horde is entering formation.` });
+  }
+  return { horde, spawned: horde.enemyIds.length, formationType };
+}
+
+function spawnBossEscortHorde(room, boss, now, difficulty = null) {
+  if (!room || !boss || normalizeGameMode(room.gameMode) === 'pvp') return null;
+  const diff = difficulty || getRoomDifficulty(room, now || Date.now());
+  const size = Math.max(5, Math.min(24, Math.round(getHordeTargetSize(room, diff, { bossEscort: true }) * 0.9)));
+  return spawnFormationHorde(room, now, diff, {
+    bossEscort: true,
+    center: { x: Number(boss.x) || 0, y: Number(boss.y) || 0 },
+    forceSize: size,
+    formationType: pickHordeFormationType(diff, { bossEscort: true }),
+    holdMs: Math.max(14000, HORDE_FORMATION_HOLD_MS - 5000),
+    quiet: true,
+  });
+}
+
+function maybeSpawnFormationHorde(room, now, difficulty = null) {
+  if (!room || normalizeGameMode(room.gameMode) === 'pvp' || room.players.size <= 0) return;
+  if (!room.nextHordeAt) room.nextHordeAt = now + HORDE_FIRST_SPAWN_MS;
+  if (now < room.nextHordeAt) return;
+  const diff = difficulty || getRoomDifficulty(room, now);
+  const spawned = spawnFormationHorde(room, now, diff);
+  const delay = spawned ? getNextHordeDelayMs(room, diff) : Math.max(6500, Math.round(getNextHordeDelayMs(room, diff) * 0.35));
+  room.nextHordeAt = now + delay;
+}
+
+function findHordeFormation(room, hordeId) {
+  const id = Math.max(0, Number(hordeId) || 0);
+  if (!id || !Array.isArray(room?.hordeFormations)) return null;
+  return room.hordeFormations.find((horde) => Math.max(0, Number(horde?.id) || 0) === id) || null;
+}
+
+function clearEnemyFormation(enemy) {
+  if (!enemy) return;
+  enemy.formationId = 0;
+  enemy.formationSlotSide = 0;
+  enemy.formationSlotBack = 0;
+  enemy.formationHoldUntil = 0;
+}
+
+function updateHordeFormations(room, now) {
+  if (!Array.isArray(room?.hordeFormations) || room.hordeFormations.length <= 0) return;
+  const next = [];
+  for (const horde of room.hordeFormations) {
+    if (!horde) continue;
+    const alive = [];
+    for (const enemy of room.enemies || []) {
+      if (Math.max(0, Number(enemy?.formationId) || 0) === Math.max(0, Number(horde.id) || 0) && Number(enemy?.hp) > 0) {
+        alive.push(enemy);
+      }
+    }
+    if (alive.length <= 0) continue;
+    if (now > Math.max(0, Number(horde.holdUntil) || 0) + 8000) {
+      for (const enemy of alive) clearEnemyFormation(enemy);
+      continue;
+    }
+
+    let cx = 0;
+    let cy = 0;
+    for (const enemy of alive) {
+      cx += Number(enemy.x) || 0;
+      cy += Number(enemy.y) || 0;
+    }
+    cx /= alive.length;
+    cy /= alive.length;
+    const target = nearestAlivePlayer(room, cx, cy);
+    if (target) {
+      const desired = normalizeDir((Number(target.x) || 0) - cx, (Number(target.y) || 0) - cy, Number(horde.dirX) || 1, Number(horde.dirY) || 0);
+      const smoothed = normalizeDir(
+        (Number(horde.dirX) || desired.x) * 0.82 + desired.x * 0.18,
+        (Number(horde.dirY) || desired.y) * 0.82 + desired.y * 0.18,
+        desired.x,
+        desired.y,
+      );
+      horde.dirX = smoothed.x;
+      horde.dirY = smoothed.y;
+      horde.sideX = -smoothed.y;
+      horde.sideY = smoothed.x;
+    }
+    next.push(horde);
+  }
+  room.hordeFormations = next;
+}
+
+function getEnemyFormationTarget(room, enemy, playerTarget, now, bounds = null) {
+  if (!room || !enemy || !playerTarget) return null;
+  const hordeId = Math.max(0, Number(enemy.formationId) || 0);
+  if (!hordeId) return null;
+  const horde = findHordeFormation(room, hordeId);
+  if (!horde || now > Math.max(0, Number(enemy.formationHoldUntil || horde.holdUntil) || 0)) {
+    clearEnemyFormation(enemy);
+    return null;
+  }
+  const dx = (Number(playerTarget.x) || 0) - (Number(enemy.x) || 0);
+  const dy = (Number(playerTarget.y) || 0) - (Number(enemy.y) || 0);
+  const distToPlayer = Math.hypot(dx, dy);
+  if (distToPlayer <= Math.max(70, Number(enemy.formationBreakDistance) || 96)) {
+    clearEnemyFormation(enemy);
+    return null;
+  }
+  const hpRatio = (Number(enemy.maxHp) || 0) > 0 ? (Number(enemy.hp) || 0) / Math.max(1, Number(enemy.maxHp) || 1) : 1;
+  if (hpRatio < 0.42 && now - Math.max(0, Number(horde.createdAt) || now) > 1600) {
+    clearEnemyFormation(enemy);
+    return null;
+  }
+  const dir = normalizeDir(Number(horde.dirX) || 0, Number(horde.dirY) || 0, dx, dy);
+  const sideX = Number(horde.sideX) || -dir.y;
+  const sideY = Number(horde.sideY) || dir.x;
+  const frontGap = Math.max(34, Number(horde.frontGap) || 54);
+  const slotSide = Number(enemy.formationSlotSide) || 0;
+  const slotBack = Math.max(0, Number(enemy.formationSlotBack) || 0);
+  const er = Math.max(ENEMY_RADIUS, Number(enemy.radius) || ENEMY_RADIUS);
+  const worldBounds = bounds || getEnemyWorldBounds(room);
+  return {
+    x: clamp((Number(playerTarget.x) || 0) - dir.x * (frontGap + slotBack) + sideX * slotSide, worldBounds.minX + er, worldBounds.maxX - er),
+    y: clamp((Number(playerTarget.y) || 0) - dir.y * (frontGap + slotBack) + sideY * slotSide, worldBounds.minY + er, worldBounds.maxY - er),
+    stopRadius: Math.max(8, Number(horde.stopRadius) || 14),
+  };
 }
 
 function getEnemyAttackCooldownMs(enemy) {
@@ -8978,6 +9423,7 @@ function completeCampaignRoom(room, now) {
   room.bullets = [];
   room.enemies = [];
   room.bossPortals = [];
+  room.hordeFormations = [];
   room.drops = [];
   room.skillOrbs = [];
   room.hasMovingXpOrbs = false;
@@ -9497,6 +9943,22 @@ function applyDevCheatCommand(room, player, rawCommand, now = Date.now()) {
       }
     }
     sendDevConsole(player, `Spawned ${count} ${type}.`);
+    return;
+  }
+
+  if (cmd === 'horde' || cmd === 'formation') {
+    const sizeRaw = Math.floor(Number(args[0]) || 0);
+    const formationType = String(args[1] || args[0] || '').trim().toLowerCase();
+    const result = spawnFormationHorde(room, now, getRoomDifficulty(room, now), {
+      forceSize: sizeRaw > 0 ? Math.min(60, sizeRaw) : 0,
+      formationType,
+      ignoreSoftCap: true,
+    });
+    if (!result) {
+      sendDevConsole(player, 'Horde not spawned.', false);
+      return;
+    }
+    sendDevConsole(player, `Spawned ${result.spawned} enemies in ${result.formationType} formation.`);
     return;
   }
 
@@ -10326,6 +10788,7 @@ function tickRoom(room, dtSec, now) {
       spawnEnemy(room, now, roomDifficulty);
     }
   }
+  maybeSpawnFormationHorde(room, now, roomDifficulty);
 
   if (normalizeGameMode(room.gameMode) !== 'pvp' && room.players.size > 0) {
     maybeScheduleBossSpawn(room, now);
@@ -10588,6 +11051,7 @@ function tickRoom(room, dtSec, now) {
 
   const enemyWorldBounds = getEnemyWorldBounds(room);
   phaseStartedNs = phaseStart();
+  updateHordeFormations(room, now);
   for (const e of room.enemies) {
     if (e.attackCooldownMs > 0) e.attackCooldownMs = Math.max(0, e.attackCooldownMs - dtSec * 1000);
 
@@ -10640,11 +11104,17 @@ function tickRoom(room, dtSec, now) {
     const dy = target.y - e.y;
     const d = Math.hypot(dx, dy) || 1;
     const rr = er + PLAYER_RADIUS;
-    const steerTarget = getEnemySteerTarget(room, e, target, er, now, enemyWorldBounds);
+    const formationTarget = getEnemyFormationTarget(room, e, target, now, enemyWorldBounds);
+    const formationActive = Boolean(formationTarget);
+    const steerTarget = getEnemySteerTarget(room, e, formationTarget || target, er, now, enemyWorldBounds);
     const steerDx = steerTarget.x - e.x;
     const steerDy = steerTarget.y - e.y;
     const steerDist = Math.hypot(steerDx, steerDy) || 1;
-    const targetBlocked = steerTarget.targetBlocked === true;
+    const movementTargetBlocked = steerTarget.targetBlocked === true;
+    const targetBlockCheckRange = Math.max(360, Number(e.rangeMax) || 0, Number(e.explosionRadius) || 0, rr * 4);
+    const targetBlocked = formationActive
+      ? (d <= targetBlockCheckRange && Boolean(findSceneBlockingObject(room, e.x, e.y, target.x, target.y, er * 0.72)))
+      : movementTargetBlocked;
     const breakObject = steerTarget.breakObjectId ? findRoomMapObjectById(room, steerTarget.breakObjectId) : null;
     const canBreakObject = canEnemyBreakMapObject(breakObject);
     const behavior = getEnemyBehavior(e);
@@ -10692,7 +11162,16 @@ function tickRoom(room, dtSec, now) {
       const targetDist = d;
       const rangeMin = Math.max(0, Number(e.rangeMin) || ENEMY_RANGED_MIN_RANGE);
       const rangeMax = Math.max(rangeMin + 20, Number(e.rangeMax) || ENEMY_RANGED_MAX_RANGE);
-      if (targetBlocked) {
+      if (formationActive) {
+        const stopRadius = Math.max(6, Number(formationTarget?.stopRadius) || 14);
+        if (steerDist <= stopRadius) {
+          e.vx = 0;
+          e.vy = 0;
+        } else {
+          e.vx = (steerDx / steerDist) * speed * 0.94;
+          e.vy = (steerDy / steerDist) * speed * 0.94;
+        }
+      } else if (movementTargetBlocked) {
         e.vx = (steerDx / steerDist) * speed;
         e.vy = (steerDy / steerDist) * speed;
       } else if (targetDist < rangeMin) {
@@ -10796,7 +11275,16 @@ function tickRoom(room, dtSec, now) {
       continue;
     }
 
-    if (behavior === 'flanker' && !targetBlocked && d > rr * 1.2) {
+    if (formationActive) {
+      const stopRadius = Math.max(6, Number(formationTarget?.stopRadius) || 14);
+      if (steerDist <= stopRadius) {
+        e.vx = 0;
+        e.vy = 0;
+      } else {
+        e.vx = (steerDx / steerDist) * speed * 0.96;
+        e.vy = (steerDy / steerDist) * speed * 0.96;
+      }
+    } else if (behavior === 'flanker' && !targetBlocked && d > rr * 1.2) {
       if (!e.flankSign) e.flankSign = Math.random() < 0.5 ? -1 : 1;
       if (!e.flankSwapAt || now > e.flankSwapAt) {
         if (Math.random() < 0.35) e.flankSign *= -1;
