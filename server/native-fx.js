@@ -928,6 +928,17 @@ function addSkillToMap(map, skill, options = {}) {
   map.set(id, enriched);
 }
 
+function withRuntimeSkillIcon(skill, defaultSkillDefs) {
+  if (!skill || typeof skill !== 'object') return skill;
+  if (skill.icon || skill.iconPath) return skill;
+  const id = normalizeId(skill.id);
+  if (!id || !defaultSkillDefs?.[id]) return skill;
+  return {
+    ...skill,
+    icon: `/assets/hero-skills/${id}.svg`,
+  };
+}
+
 function flattenHeroUniqueSkills(heroUniqueSkillDefs) {
   const out = [];
   const groups = heroUniqueSkillDefs && typeof heroUniqueSkillDefs === 'object' ? heroUniqueSkillDefs : {};
@@ -947,11 +958,11 @@ function buildSkillCatalogWithFx(baseSkills, options = {}) {
     : {};
 
   for (const skill of Array.isArray(baseSkills) ? baseSkills : []) {
-    addSkillToMap(byId, skill);
+    addSkillToMap(byId, withRuntimeSkillIcon(skill, defaultSkillDefs));
   }
 
   for (const skill of Object.values(defaultSkillDefs)) {
-    if (isActiveSkill(skill)) addSkillToMap(byId, skill);
+    if (isActiveSkill(skill)) addSkillToMap(byId, withRuntimeSkillIcon(skill, defaultSkillDefs));
   }
 
   for (const entry of flattenHeroUniqueSkills(options.heroUniqueSkillDefs)) {

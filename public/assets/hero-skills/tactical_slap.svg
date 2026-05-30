@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="tactical_slap">
+  <defs>
+    <linearGradient id="bg_tactical_slap" x1="10" y1="7" x2="56" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#111827"/>
+      <stop offset=".46" stop-color="#fb923c"/>
+      <stop offset="1" stop-color="#020617"/>
+    </linearGradient>
+    <radialGradient id="hot_tactical_slap" cx="31%" cy="24%" r="72%">
+      <stop offset="0" stop-color="#fff7ed" stop-opacity=".82"/>
+      <stop offset=".36" stop-color="#facc15" stop-opacity=".28"/>
+      <stop offset="1" stop-color="#fb923c" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="iconStroke" x1="12" y1="12" x2="54" y2="55" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff7ed"/>
+      <stop offset=".52" stop-color="#facc15"/>
+      <stop offset="1" stop-color="#f8fafc"/>
+    </linearGradient>
+    <linearGradient id="iconFill" x1="17" y1="13" x2="48" y2="53" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff7ed"/>
+      <stop offset=".62" stop-color="#facc15"/>
+      <stop offset="1" stop-color="#fb923c"/>
+    </linearGradient>
+    <filter id="softGlow" x="-35%" y="-35%" width="170%" height="170%">
+      <feDropShadow dx="0" dy="0" stdDeviation="2.8" flood-color="#facc15" flood-opacity=".75"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="7" flood-color="#fb923c" flood-opacity=".55"/>
+    </filter>
+  </defs>
+  <rect width="64" height="64" rx="13" fill="#020617"/>
+  <rect x="3.5" y="3.5" width="57" height="57" rx="12" fill="url(#bg_tactical_slap)"/>
+  <rect x="3.5" y="3.5" width="57" height="57" rx="12" fill="url(#hot_tactical_slap)"/>
+  <path d="M8 49c14-2 25-2 48 1M9 17c17 2 30 1 46-2M15 8l-8 47M56 11L44 58" stroke="#fff" stroke-opacity=".08" stroke-width="1.5"/>
+  <path d="M13 13h38v38H13z" fill="none" stroke="#facc15" stroke-opacity=".12" stroke-width="1"/>
+  
+        <g filter="url(#softGlow)">
+          <rect x="27" y="18" width="12" height="28" rx="3" fill="url(#iconFill)"/>
+          <path d="M19 38c7-3 11-7 14-15" stroke="url(#iconStroke)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <path d="M15 27l7-4 M16 34l6-1 M41 18l8-4 M42 27l10-1 M41 36l8 3" stroke="url(#iconStroke)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity=".9"/>
+          <path d="M31 24h4 M31 30h4 M31 36h4" stroke="#f8fafc" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity=".72"/>
+        </g>
+  <rect x="3.5" y="3.5" width="57" height="57" rx="12" fill="none" stroke="#f8fafc" stroke-opacity=".18"/>
+  <rect x="6.5" y="6.5" width="51" height="51" rx="9" fill="none" stroke="#facc15" stroke-opacity=".35"/>
+</svg>

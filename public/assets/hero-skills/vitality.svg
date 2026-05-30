@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="vitality">
+  <defs>
+    <linearGradient id="bg_vitality" x1="10" y1="7" x2="56" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#111827"/>
+      <stop offset=".46" stop-color="#14b8a6"/>
+      <stop offset="1" stop-color="#020617"/>
+    </linearGradient>
+    <radialGradient id="hot_vitality" cx="31%" cy="24%" r="72%">
+      <stop offset="0" stop-color="#dcfce7" stop-opacity=".82"/>
+      <stop offset=".36" stop-color="#34d399" stop-opacity=".28"/>
+      <stop offset="1" stop-color="#14b8a6" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="iconStroke" x1="12" y1="12" x2="54" y2="55" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#dcfce7"/>
+      <stop offset=".52" stop-color="#34d399"/>
+      <stop offset="1" stop-color="#f8fafc"/>
+    </linearGradient>
+    <linearGradient id="iconFill" x1="17" y1="13" x2="48" y2="53" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#dcfce7"/>
+      <stop offset=".62" stop-color="#34d399"/>
+      <stop offset="1" stop-color="#14b8a6"/>
+    </linearGradient>
+    <filter id="softGlow" x="-35%" y="-35%" width="170%" height="170%">
+      <feDropShadow dx="0" dy="0" stdDeviation="2.8" flood-color="#34d399" flood-opacity=".75"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="7" flood-color="#14b8a6" flood-opacity=".55"/>
+    </filter>
+  </defs>
+  <rect width="64" height="64" rx="13" fill="#020617"/>
+  <rect x="3.5" y="3.5" width="57" height="57" rx="12" fill="url(#bg_vitality)"/>
+  <rect x="3.5" y="3.5" width="57" height="57" rx="12" fill="url(#hot_vitality)"/>
+  <path d="M8 49c14-2 25-2 48 1M9 17c17 2 30 1 46-2M15 8l-8 47M56 11L44 58" stroke="#fff" stroke-opacity=".08" stroke-width="1.5"/>
+  <path d="M13 13h38v38H13z" fill="none" stroke="#34d399" stroke-opacity=".12" stroke-width="1"/>
+  
+        <g filter="url(#softGlow)">
+          <path d="M32 49s-16-9-16-22c0-7 8-11 16-3 8-8 16-4 16 3 0 13-16 22-16 22z" fill="url(#iconFill)"/>
+          <path d="M32 21v22 M21 32h22" stroke="#f8fafc" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity=".72"/>
+        </g>
+  <rect x="3.5" y="3.5" width="57" height="57" rx="12" fill="none" stroke="#f8fafc" stroke-opacity=".18"/>
+  <rect x="6.5" y="6.5" width="51" height="51" rx="9" fill="none" stroke="#34d399" stroke-opacity=".35"/>
+</svg>
