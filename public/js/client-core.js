@@ -287,11 +287,11 @@ const mobile = {
 };
 
 const PLAYER_VARIANTS = [
-  { id: 'cyber', name: 'Cyber', accent: '#8ec5ff', tint: '#9ec5ff', sprite: '/assets/sprites/player_cyber_3d.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.94, fps: 10, idleFrame: 1 },
-  { id: 'scout', name: 'Scout', accent: '#a7e7c5', tint: '#bdf0d4', sprite: '/assets/sprites/player_scout_3d.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.94, fps: 10, idleFrame: 1 },
-  { id: 'shadow', name: 'Shadow', accent: '#d4c1ff', tint: '#dccbff', sprite: '/assets/sprites/player_shadow_3d.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.94, fps: 10, idleFrame: 1 },
-  { id: 'medic', name: 'Medic', accent: '#ffd1dc', tint: '#ffdbe4', sprite: '/assets/sprites/player_medic_3d.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.94, fps: 10, idleFrame: 1 },
-  { id: 'raider', name: 'Raider', accent: '#ffe4b5', tint: '#ffe9c9', sprite: '/assets/sprites/player_raider_3d.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.94, fps: 10, idleFrame: 1 },
+  { id: 'cyber', name: 'Cyber', accent: '#8ec5ff', tint: '#9ec5ff', sprite: '/assets/sprites/player_warden.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.88, fps: 10, idleFrame: 1 },
+  { id: 'scout', name: 'Scout', accent: '#a7e7c5', tint: '#bdf0d4', sprite: '/assets/sprites/player_warden.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.88, fps: 10, idleFrame: 1 },
+  { id: 'shadow', name: 'Shadow', accent: '#d4c1ff', tint: '#dccbff', sprite: '/assets/sprites/player_warden.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.88, fps: 10, idleFrame: 1 },
+  { id: 'medic', name: 'Medic', accent: '#ffd1dc', tint: '#ffdbe4', sprite: '/assets/sprites/player_warden.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.88, fps: 10, idleFrame: 1 },
+  { id: 'raider', name: 'Raider', accent: '#ffe4b5', tint: '#ffe9c9', sprite: '/assets/sprites/player_warden.png', frameW: 64, frameH: 64, rows: { down: 2, left: 1, right: 3, up: 0 }, scale: 0.88, fps: 10, idleFrame: 1 },
 ];
 
 
