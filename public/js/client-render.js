@@ -5,7 +5,30 @@ if (minimapCtx) minimapCtx.imageSmoothingEnabled = false;
 
 const renderDiag = {
   frames: 0,
-  totals: { frame: 0, fx: 0, indicators: 0, minimap: 0 },
+  totals: {
+    frame: 0,
+    prep: 0,
+    world: 0,
+    items: 0,
+    projectiles: 0,
+    actors: 0,
+    ui: 0,
+    fx: 0,
+    indicators: 0,
+    minimap: 0,
+  },
+};
+const RENDER_DIAG_ORDER = ['world', 'fx', 'ui', 'actors', 'projectiles', 'items', 'prep', 'minimap', 'indicators'];
+const RENDER_DIAG_SHORT = {
+  world: 'w',
+  fx: 'fx',
+  ui: 'ui',
+  actors: 'act',
+  projectiles: 'pr',
+  items: 'it',
+  prep: 'pre',
+  minimap: 'map',
+  indicators: 'ind',
 };
 const renderScratch = {
   playersByDepth: [],
@@ -20,6 +43,11 @@ const renderScratch = {
   occlusionSeen: new Set(),
   occlusionGrid: new Map(),
   hudLastAt: 0,
+  renderLoadLevel: 0,
+  renderLoadLastChangeAt: 0,
+  renderLoadScore: 0,
+  renderFpsSample: 0,
+  renderFrameMsSample: 0,
 };
 const GROUND_CHUNK_SIZE = 512;
 const GROUND_CHUNK_CACHE_LIMIT = 220;
@@ -45,18 +73,107 @@ function renderDiagBuildText() {
   if (!isRenderDiagEnabled() || renderDiag.frames <= 0) return '';
   const f = Math.max(1, renderDiag.frames);
   const frameMs = (renderDiag.totals.frame / f).toFixed(2);
-  const fxMs = (renderDiag.totals.fx / f).toFixed(2);
-  const indMs = (renderDiag.totals.indicators / f).toFixed(2);
-  const mapMs = (renderDiag.totals.minimap / f).toFixed(2);
-  return ` | R ${frameMs}ms (fx ${fxMs} ind ${indMs} map ${mapMs})`;
+  const hot = RENDER_DIAG_ORDER
+    .map((key) => ({ key, ms: (Number(renderDiag.totals[key]) || 0) / f }))
+    .filter((item) => item.ms >= 0.04)
+    .sort((a, b) => b.ms - a.ms)
+    .slice(0, 4)
+    .map((item) => `${RENDER_DIAG_SHORT[item.key] || item.key}${item.ms.toFixed(1)}`);
+  const lod = Math.max(0, Math.min(2, Math.round(Number(renderScratch.renderLoadLevel) || 0)));
+  return ` | R ${frameMs}ms${hot.length ? ` (${hot.join(' ')})` : ''}${lod ? ` L${lod}` : ''}`;
 }
 
 function renderDiagReset() {
   renderDiag.frames = 0;
-  renderDiag.totals.frame = 0;
-  renderDiag.totals.fx = 0;
-  renderDiag.totals.indicators = 0;
-  renderDiag.totals.minimap = 0;
+  for (const key of Object.keys(renderDiag.totals)) {
+    renderDiag.totals[key] = 0;
+  }
+}
+
+function countRenderArray(value) {
+  return Array.isArray(value) ? value.length : 0;
+}
+
+function getRenderLoadScore() {
+  const state = game.state || {};
+  const bulletCount = Array.isArray(state.bullets)
+    ? state.bullets.length
+    : (game.renderBullets instanceof Map ? game.renderBullets.size : 0);
+  return (
+    countRenderArray(state.enemies) * 1.35
+    + bulletCount * 1.15
+    + countRenderArray(state.drops) * 1.7
+    + countRenderArray(state.xpOrbs) * 0.32
+    + countRenderArray(state.skillOrbs) * 2.2
+    + countRenderArray(visuals.blood) * 0.18
+    + countRenderArray(visuals.bloodMist) * 0.9
+    + countRenderArray(visuals.gore) * 0.48
+    + countRenderArray(visuals.rocketSmoke) * 0.95
+    + countRenderArray(visuals.rocketFire) * 1.05
+    + countRenderArray(visuals.rocketBlast) * 0.82
+    + countRenderArray(visuals.skillBursts) * 4.2
+    + countRenderArray(visuals.skillArcs) * 3.1
+    + countRenderArray(visuals.skillLinks) * 3.4
+    + countRenderArray(visuals.skillLabels) * 3.2
+    + countRenderArray(visuals.muzzleGroundFlashes) * 2.4
+    + countRenderArray(visuals.muzzle) * 0.8
+    + countRenderArray(visuals.objectImpactFx) * 1.0
+    + countRenderArray(visuals.hitFx) * 0.6
+    + countRenderArray(visuals.dodgeWind) * 0.65
+  );
+}
+
+function updateRenderLoadLevel(nowMs = performance.now(), fpsSample = renderScratch.renderFpsSample) {
+  const score = getRenderLoadScore();
+  const frameMs = Number(renderScratch.renderFrameMsSample) || 0;
+  const qKey = String(game.qualityKey || 'medium').toLowerCase();
+  let target = 0;
+  if (score >= 560) target = 2;
+  else if (score >= 330) target = 1;
+  if (fpsSample > 0 && fpsSample < 42) target = Math.max(target, 2);
+  else if (fpsSample > 0 && fpsSample < 56) target = Math.max(target, 1);
+  if (frameMs >= 15) target = Math.max(target, 2);
+  else if (frameMs >= 9) target = Math.max(target, 1);
+  if (qKey === 'low') target = Math.max(target, 1);
+  if (qKey === 'high' && target === 1 && score < 420 && (fpsSample <= 0 || fpsSample >= 70) && frameMs < 7) {
+    target = 0;
+  }
+
+  const current = Math.max(0, Math.min(2, Math.round(Number(renderScratch.renderLoadLevel) || 0)));
+  const elapsed = Math.max(0, Number(nowMs) - (Number(renderScratch.renderLoadLastChangeAt) || 0));
+  if (target > current || elapsed >= 1600) {
+    renderScratch.renderLoadLevel = target;
+    renderScratch.renderLoadLastChangeAt = Number(nowMs) || performance.now();
+  }
+  renderScratch.renderLoadScore = score;
+  return renderScratch.renderLoadLevel;
+}
+
+function getRenderLoadLevel() {
+  return Math.max(0, Math.min(2, Math.round(Number(renderScratch.renderLoadLevel) || 0)));
+}
+
+function getRenderFxStride(kind = 'minor', level = getRenderLoadLevel()) {
+  if (level <= 0) return 1;
+  if (kind === 'major') return level >= 2 ? 2 : 1;
+  if (kind === 'medium') return level >= 2 ? 3 : 2;
+  return level >= 2 ? 4 : 2;
+}
+
+function shouldDrawRenderLodItem(index, kind = 'minor', level = getRenderLoadLevel()) {
+  const stride = getRenderFxStride(kind, level);
+  return stride <= 1 || (index % stride) === 0;
+}
+
+function shouldDrawPickupLabelText(x, y, blink = false) {
+  if (blink) return true;
+  const level = getRenderLoadLevel();
+  if (level <= 0) return true;
+  const dx = Math.abs((Number(x) || 0) - canvas.width * 0.5);
+  const dy = Math.abs((Number(y) || 0) - canvas.height * 0.5);
+  const maxDx = canvas.width * (level >= 2 ? 0.26 : 0.38);
+  const maxDy = canvas.height * (level >= 2 ? 0.26 : 0.38);
+  return dx <= maxDx && dy <= maxDy;
 }
 
 function hexToRgba(hex, alpha = 1) {
@@ -1574,6 +1691,7 @@ function getWeaponPickupDrawWidth(weaponKey) {
 }
 
 function drawPickupLabel(x, y, label, blink, ttlMs, color) {
+  if (!shouldDrawPickupLabelText(x, y, blink)) return;
   const warnSec = blink ? Math.max(0, Math.ceil(ttlMs / 1000)) : 0;
   const text = blink ? `${label} ${warnSec}s` : label;
   ctx.save();
@@ -2605,7 +2723,10 @@ function drawSkillOrbEdgeIndicators(orbs) {
   }
 }
 function drawBloodPuddles() {
-  for (const p of visuals.bloodPuddles) {
+  const lodLevel = getRenderLoadLevel();
+  for (let i = 0; i < visuals.bloodPuddles.length; i += 1) {
+    if (lodLevel >= 2 && (i % 2) !== 0) continue;
+    const p = visuals.bloodPuddles[i];
     if (!isVisibleWorld(p.x, p.y, 34)) continue;
     const a = Math.max(0, p.life / p.ttl);
     ctx.fillStyle = `rgba(120, 10, 18, ${(a * 0.6).toFixed(3)})`;
@@ -3385,6 +3506,7 @@ function drawMeleeSwingsFx() {
 }
 
 function drawFx() {
+  const lodLevel = getRenderLoadLevel();
   for (const b of visuals.bossBlast) {
     if (!isVisibleWorld(b.x, b.y, b.maxR + 12)) continue;
     const t = Math.max(0, b.life / b.ttl);
@@ -3413,7 +3535,9 @@ function drawFx() {
     ctx.restore();
   }
 
-  for (const m of visuals.bloodMist) {
+  for (let i = 0; i < visuals.bloodMist.length; i += 1) {
+    if (!shouldDrawRenderLodItem(i, 'minor', lodLevel)) continue;
+    const m = visuals.bloodMist[i];
     if (!isVisibleWorld(m.x, m.y, m.r + 8)) continue;
     const a = Math.max(0, m.life / m.ttl);
     const sx = m.x - camera.x;
@@ -3426,7 +3550,9 @@ function drawFx() {
 
   drawGroundDebrisFx();
 
-  for (const s of visuals.rocketSmoke) {
+  for (let i = 0; i < visuals.rocketSmoke.length; i += 1) {
+    if (!shouldDrawRenderLodItem(i, 'medium', lodLevel)) continue;
+    const s = visuals.rocketSmoke[i];
     if (!isVisibleWorld(s.x, s.y, s.r + 16)) continue;
     const a = Math.max(0, s.life / s.ttl);
     ctx.fillStyle = `rgba(148,163,184,${(a * 0.3).toFixed(3)})`;
@@ -3435,7 +3561,9 @@ function drawFx() {
     ctx.fill();
   }
 
-  for (const f of visuals.rocketFire) {
+  for (let i = 0; i < visuals.rocketFire.length; i += 1) {
+    if (!shouldDrawRenderLodItem(i, 'medium', lodLevel)) continue;
+    const f = visuals.rocketFire[i];
     if (!isVisibleWorld(f.x, f.y, f.r + 10)) continue;
     const a = Math.max(0, f.life / f.ttl);
     ctx.save();
@@ -3448,7 +3576,9 @@ function drawFx() {
     ctx.restore();
   }
 
-  for (const p of visuals.rocketBlast) {
+  for (let i = 0; i < visuals.rocketBlast.length; i += 1) {
+    if (!shouldDrawRenderLodItem(i, 'medium', lodLevel)) continue;
+    const p = visuals.rocketBlast[i];
     if (!isVisibleWorld(p.ox, p.oy, p.r + 10)) continue;
     const a = Math.max(0, p.life / p.ttl);
     ctx.save();
@@ -3465,7 +3595,9 @@ function drawFx() {
   drawConsumableAuraFx();
   drawMeleeSwingsFx();
 
-  for (const s of visuals.skillBursts) {
+  for (let i = 0; i < visuals.skillBursts.length; i += 1) {
+    if (!shouldDrawRenderLodItem(i, 'major', lodLevel)) continue;
+    const s = visuals.skillBursts[i];
     if (!isVisibleWorld(s.x, s.y, s.maxR + 12)) continue;
     const a = Math.max(0, s.life / s.ttl);
     const sx = s.x - camera.x;
@@ -3667,7 +3799,9 @@ function drawFx() {
     }
   }
 
-  for (const a of visuals.skillArcs) {
+  for (let i = 0; i < visuals.skillArcs.length; i += 1) {
+    if (!shouldDrawRenderLodItem(i, 'major', lodLevel)) continue;
+    const a = visuals.skillArcs[i];
     if (!isVisibleWorld(a.x, a.y, a.radius + 24)) continue;
     const t = Math.max(0, a.life / a.ttl);
     const cx = a.x + Math.cos(a.ang) * a.radius;
@@ -3733,7 +3867,9 @@ function drawFx() {
     ctx.restore();
   }
 
-  for (const l of visuals.skillLinks) {
+  for (let i = 0; i < visuals.skillLinks.length; i += 1) {
+    if (!shouldDrawRenderLodItem(i, 'medium', lodLevel)) continue;
+    const l = visuals.skillLinks[i];
     if (!isVisibleWorld((l.x1 + l.x2) * 0.5, (l.y1 + l.y2) * 0.5, 220)) continue;
     const t = Math.max(0, l.life / l.ttl);
     const sx1 = l.x1 - camera.x;
@@ -3761,8 +3897,13 @@ function drawFx() {
     ctx.restore();
   }
 
-  for (const t of visuals.skillLabels) {
+  const skillLabelBudget = lodLevel >= 2 ? 6 : (lodLevel >= 1 ? 12 : Infinity);
+  let skillLabelsDrawn = 0;
+  for (let i = visuals.skillLabels.length - 1; i >= 0; i -= 1) {
+    if (skillLabelsDrawn >= skillLabelBudget) break;
+    const t = visuals.skillLabels[i];
     if (!isVisibleWorld(t.x, t.y, 70)) continue;
+    skillLabelsDrawn += 1;
     const a = Math.max(0, t.life / t.ttl);
     ctx.save();
     ctx.globalAlpha = Math.min(1, a * 1.2);
@@ -3775,7 +3916,9 @@ function drawFx() {
     ctx.fillText(t.text, t.x - camera.x, t.y - camera.y - 26);
     ctx.restore();
   }
-  for (const g of visuals.gore) {
+  for (let i = 0; i < visuals.gore.length; i += 1) {
+    if (!shouldDrawRenderLodItem(i, 'minor', lodLevel)) continue;
+    const g = visuals.gore[i];
     if (!isVisibleWorld(g.x, g.y, 26)) continue;
     if (game.shadowsEnabled && g.z > 0) {
       drawShadowAtScreen(g.x - camera.x, g.y - camera.y + 4, g.s * 1.25, g.s * 0.6, 0.2);
@@ -3788,7 +3931,9 @@ function drawFx() {
     ctx.fill();
   }
 
-  for (const p of visuals.blood) {
+  for (let i = 0; i < visuals.blood.length; i += 1) {
+    if (!shouldDrawRenderLodItem(i, 'minor', lodLevel)) continue;
+    const p = visuals.blood[i];
     if (!isVisibleWorld(p.x, p.y, 20)) continue;
     const a = Math.max(0, p.life / p.ttl);
     ctx.fillStyle = `rgba(180,16,28,${a.toFixed(3)})`;
@@ -3798,7 +3943,9 @@ function drawFx() {
   }
 
 
-  for (const w of visuals.dodgeWind) {
+  for (let i = 0; i < visuals.dodgeWind.length; i += 1) {
+    if (!shouldDrawRenderLodItem(i, 'minor', lodLevel)) continue;
+    const w = visuals.dodgeWind[i];
     if (!isVisibleWorld(w.x, w.y, 22)) continue;
     const a = Math.max(0, w.life / w.ttl) * Math.max(0, Number(w.alpha) || 0.4);
     if (a <= 0.01) continue;
@@ -3859,7 +4006,9 @@ function drawFx() {
     }
   }
 
-  for (const h of visuals.hitFx) {
+  for (let i = 0; i < visuals.hitFx.length; i += 1) {
+    if (!shouldDrawRenderLodItem(i, 'minor', lodLevel)) continue;
+    const h = visuals.hitFx[i];
     if (!isVisibleWorld(h.x, h.y, 24)) continue;
     const a = Math.max(0, h.life / h.ttl);
     const r = h.r + (1 - a) * 9;
@@ -3876,7 +4025,9 @@ function drawFx() {
   }
 
   if (Array.isArray(visuals.objectImpactFx)) {
-    for (const fx of visuals.objectImpactFx) {
+    for (let i = 0; i < visuals.objectImpactFx.length; i += 1) {
+      if (!shouldDrawRenderLodItem(i, 'medium', lodLevel)) continue;
+      const fx = visuals.objectImpactFx[i];
       if (!isVisibleWorld(fx.x, fx.y, 72)) continue;
       const lifeRatio = Math.max(0, Math.min(1, (Number(fx.life) || 0) / Math.max(0.001, Number(fx.ttl) || 1)));
       const sx = fx.x - camera.x;
@@ -3922,7 +4073,9 @@ function drawFx() {
     }
   }
 
-  for (const f of visuals.muzzleGroundFlashes) {
+  for (let i = 0; i < visuals.muzzleGroundFlashes.length; i += 1) {
+    if (!shouldDrawRenderLodItem(i, 'medium', lodLevel)) continue;
+    const f = visuals.muzzleGroundFlashes[i];
     if (!game.bulletTracersEnabled) continue;
     if (!isVisibleWorld(f.x, f.y, 72)) continue;
     const t = Math.max(0, f.life / f.ttl);
@@ -3980,7 +4133,9 @@ function drawFx() {
     ctx.restore();
   }
 
-  for (const f of visuals.muzzle) {
+  for (let i = 0; i < visuals.muzzle.length; i += 1) {
+    if (!shouldDrawRenderLodItem(i, 'minor', lodLevel)) continue;
+    const f = visuals.muzzle[i];
     if (!game.bulletTracersEnabled) continue;
     if (!isVisibleWorld(f.x, f.y, 20)) continue;
     const a = Math.max(0, f.life / f.ttl);
@@ -4403,8 +4558,14 @@ function render(ts) {
   fpsFrameCount += 1;
   fpsAccumSec += dt;
   if (fpsAccumSec >= FPS_UI_UPDATE_SEC) {
+    const fpsSample = fpsFrameCount / Math.max(0.001, fpsAccumSec);
+    renderScratch.renderFpsSample = fpsSample;
+    renderScratch.renderFrameMsSample = renderDiag.frames > 0
+      ? (Number(renderDiag.totals.frame) || 0) / Math.max(1, renderDiag.frames)
+      : 0;
+    updateRenderLoadLevel(ts, fpsSample);
     if (fpsCornerEl && game.showFpsEnabled) {
-      const fpsText = `FPS: ${Math.round(fpsFrameCount / fpsAccumSec)}`;
+      const fpsText = `FPS: ${Math.round(fpsSample)}`;
       const pingMs = Math.max(0, Math.round(Number(netStats?.rttMs) || 0));
       const pingText = ` | Ping: ${pingMs}ms`;
       fpsCornerEl.textContent = fpsText + pingText + renderDiagBuildText();
@@ -4415,8 +4576,10 @@ function render(ts) {
     renderDiagReset();
   }
 
+  let diagStartedAt = renderDiagStart();
   game.sampledNet = isSpectatorSmoothingView() ? sampleBufferedState() : sampleLiveEntityTargets();
   updateFx(simDt);
+  updateRenderLoadLevel(ts, renderScratch.renderFpsSample);
   updatePlayerInterpolation(simDt);
   updateEnemyInterpolation(simDt);
   updateBulletInterpolation(simDt);
@@ -4493,8 +4656,10 @@ function render(ts) {
     pushPlayerDepthItem(playersByDepth, p, getPlayerRenderPos(p));
   }
   playersByDepth.sort((a, b) => (Number(a.rp.y) || 0) - (Number(b.rp.y) || 0));
+  renderDiagEnd('prep', diagStartedAt);
 
   const stateNowMs = Number(game.state.now) || Date.now();
+  diagStartedAt = renderDiagStart();
   const webglWorld = renderWebGLWorldLayer(playersByDepth, ts / 1000, { sceneTransformActive });
   if (webglWorld.used) {
     drawBloodPuddles();
@@ -4506,6 +4671,9 @@ function render(ts) {
     drawBloodPuddles();
     drawMapObjects(stateNowMs);
   }
+  renderDiagEnd('world', diagStartedAt);
+
+  diagStartedAt = renderDiagStart();
   drawXpOrbs(game.state.xpOrbs || [], Number(game.state.now) || Date.now());
   drawBossPortals(game.state.bossPortals || [], Number(game.state.now) || Date.now());
   drawSkillOfferOrbs(game.state.skillOrbs || [], Number(game.state.now) || Date.now());
@@ -4513,6 +4681,9 @@ function render(ts) {
   for (const d of game.state.drops || []) {
     drawDropPickup(d, ts);
   }
+  renderDiagEnd('items', diagStartedAt);
+
+  diagStartedAt = renderDiagStart();
   const projectile = renderScratch.projectile;
   for (const b of getBulletsForRender()) {
     if (b?.replayHidden) continue;
@@ -4538,6 +4709,9 @@ function render(ts) {
       drawEnergyProjectile(projectile);
     }
   }
+  renderDiagEnd('projectiles', diagStartedAt);
+
+  diagStartedAt = renderDiagStart();
   if (!webglWorld.actors) {
     drawEnemies(game.state.enemies, ts / 1000);
     for (const item of playersByDepth) {
@@ -4548,6 +4722,9 @@ function render(ts) {
   } else {
     drawEnemyOverlayLayer(game.state.enemies, ts / 1000);
   }
+  renderDiagEnd('actors', diagStartedAt);
+
+  diagStartedAt = renderDiagStart();
   const actorOcclusionMarkers = renderScratch.actorOcclusionMarkers;
   actorOcclusionMarkers.length = 0;
   for (const e of game.state.enemies || []) {
@@ -4567,8 +4744,9 @@ function render(ts) {
   drawPlayerUiLayer(playersByDepth);
 
   drawTrees();
+  renderDiagEnd('ui', diagStartedAt);
 
-  let diagStartedAt = renderDiagStart();
+  diagStartedAt = renderDiagStart();
   drawFx();
   renderDiagEnd('fx', diagStartedAt);
 
