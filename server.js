@@ -272,6 +272,8 @@ const REALTIME_BULLET_RADIUS = Math.max(320, Number(process.env.REALTIME_BULLET_
 const REALTIME_BULLET_LIMIT = Math.max(16, Number(process.env.REALTIME_BULLET_LIMIT) || 56);
 const REALTIME_DROP_RADIUS = Math.max(240, Number(process.env.REALTIME_DROP_RADIUS) || 1100);
 const REALTIME_DROP_LIMIT = Math.max(8, Number(process.env.REALTIME_DROP_LIMIT) || 40);
+const REALTIME_MAP_OBJECT_RESEND_MS = Math.max(1000, Number(process.env.REALTIME_MAP_OBJECT_RESEND_MS) || 4000);
+const REALTIME_MAP_OBJECT_CHANGE_THROTTLE_MS = Math.max(120, Number(process.env.REALTIME_MAP_OBJECT_CHANGE_THROTTLE_MS) || 350);
 
 setMysqlSyncMonitor(USE_MYSQL_STORE ? {
   enabled: true,
@@ -4760,6 +4762,8 @@ function getOrCreateRoom(requestedCode, requestedSync, requestedGameMode, reques
       mapObjects: scene.mapObjects,
       sceneTheme: scene.theme,
       mapObjectStateVersion: 1,
+      lastRealtimeMapObjectsVersion: 0,
+      lastRealtimeMapObjectsAt: 0,
       realtimeCollectionState: {
         drops: { version: 1, lastSentVersion: 0, lastSentAt: 0 },
         xpOrbs: { version: 1, lastSentVersion: 0, lastSentAt: 0 },
@@ -4852,6 +4856,26 @@ function shouldIncludeRealtimeCollection(room, key, now, options = {}) {
     return true;
   }
   return false;
+}
+
+function getMapObjectsStateVersion(room) {
+  return Math.max(1, Number(room?.mapObjectStateVersion) || 1);
+}
+
+function shouldIncludeRealtimeMapObjects(room, now) {
+  if (!room) return false;
+  const version = getMapObjectsStateVersion(room);
+  const lastSentVersion = Math.max(0, Number(room.lastRealtimeMapObjectsVersion) || 0);
+  const lastSentAt = Math.max(0, Number(room.lastRealtimeMapObjectsAt) || 0);
+  const elapsedMs = now - lastSentAt;
+  const changed = version !== lastSentVersion;
+  const dueForResend = elapsedMs >= REALTIME_MAP_OBJECT_RESEND_MS;
+  if (!changed && !dueForResend) return false;
+  if (lastSentAt > 0 && changed && elapsedMs < REALTIME_MAP_OBJECT_CHANGE_THROTTLE_MS) return false;
+
+  room.lastRealtimeMapObjectsVersion = version;
+  room.lastRealtimeMapObjectsAt = now;
+  return true;
 }
 
 function sampleListEvenly(list, limit) {
@@ -5045,6 +5069,7 @@ function collectSerializedStatePayloadStats(payload) {
     skillOrbs: Array.isArray(source.skillOrbs) ? source.skillOrbs.length : 0,
     shotEvents: Array.isArray(source.shotEvents) ? source.shotEvents.length : 0,
     objectImpactEvents: Array.isArray(source.objectImpactEvents) ? source.objectImpactEvents.length : 0,
+    mapObjects: Array.isArray(source.decor?.objects) ? source.decor.objects.length : 0,
   };
 }
 
@@ -5099,6 +5124,7 @@ function maybeLogRoomRuntime(room, now, metrics = {}) {
     stateDropsSent: Math.max(0, Number(lastState?.dropsSent) || 0),
     stateSkillOrbsSent: Math.max(0, Number(lastState?.skillOrbsSent) || 0),
     stateShotEventsSent: Math.max(0, Number(lastState?.shotEventsSent) || 0),
+    stateMapObjectsSent: Math.max(0, Number(lastState?.mapObjectsSent) || 0),
     players: snapshot.players,
     spectators: snapshot.spectators,
     companions: snapshot.companions,
@@ -6344,6 +6370,11 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
     ownerId: companion.ownerId,
     skillId: companion.skillId,
   }));
+  const mapObjectsVersion = getMapObjectsStateVersion(room);
+  const includeMapObjects = includeDecor || shouldIncludeRealtimeMapObjects(room, now);
+  const serializedMapObjects = includeMapObjects
+    ? (room.mapObjects || []).map(serializeMapObject).filter(Boolean)
+    : undefined;
   return {
     now,
     instanceId: room.instanceId || INSTANCE_ID,
@@ -6562,8 +6593,8 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
       trees: includeDecor ? room.trees : undefined,
       terrainZones: includeDecor ? room.terrainZones : undefined,
       theme: includeDecor ? room.sceneTheme : undefined,
-      objectsVersion: Math.max(1, Number(room.mapObjectStateVersion) || 1),
-      objects: (room.mapObjects || []).map(serializeMapObject).filter(Boolean),
+      objectsVersion: includeMapObjects ? mapObjectsVersion : undefined,
+      objects: serializedMapObjects,
     },
   };
 }
@@ -11100,6 +11131,7 @@ setInterval(() => {
         skillOrbsSent: payloadStats.skillOrbs,
         shotEventsSent: payloadStats.shotEvents,
         objectImpactEventsSent: payloadStats.objectImpactEvents,
+        mapObjectsSent: payloadStats.mapObjects,
       };
       room.shotEvents = [];
       room.objectImpactEvents = [];

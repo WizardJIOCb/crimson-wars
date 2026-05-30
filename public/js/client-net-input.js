@@ -5752,7 +5752,12 @@ function carryForwardSceneDecor(state, previousState = null) {
   if (prevDecor) {
     if (!Array.isArray(nextDecor.trees) && Array.isArray(prevDecor.trees)) nextDecor.trees = prevDecor.trees;
     if (!Array.isArray(nextDecor.terrainZones) && Array.isArray(prevDecor.terrainZones)) nextDecor.terrainZones = prevDecor.terrainZones;
-    if (!Array.isArray(nextDecor.objects) && Array.isArray(prevDecor.objects)) nextDecor.objects = prevDecor.objects;
+    if (!Array.isArray(nextDecor.objects) && Array.isArray(prevDecor.objects)) {
+      nextDecor.objects = prevDecor.objects;
+      if (!Number.isFinite(Number(nextDecor.objectsVersion)) && Number.isFinite(Number(prevDecor.objectsVersion))) {
+        nextDecor.objectsVersion = prevDecor.objectsVersion;
+      }
+    }
     if ((!nextDecor.theme || typeof nextDecor.theme !== 'object') && prevDecor.theme) nextDecor.theme = prevDecor.theme;
   }
   state.decor = nextDecor;
