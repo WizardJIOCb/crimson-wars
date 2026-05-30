@@ -4173,6 +4173,7 @@ function sendNetStatsReport() {
 
 function loadImage(src) {
   const img = new Image();
+  img.decoding = 'async';
   img.src = src;
   return img;
 }
@@ -4246,15 +4247,28 @@ function getRunStartImageResources() {
     });
 }
 
+function isRunStartCriticalImage(img) {
+  const src = String(img?.currentSrc || img?.src || '').trim();
+  return /\/assets\/(?:buildings|map-props|tiles)\//.test(src)
+    || /\/assets\/sprites\/tree/.test(src);
+}
+
+function decodeRunStartImage(img) {
+  if (!(img?.complete && Number(img.naturalWidth) > 0)) return Promise.resolve(false);
+  if (typeof img.decode !== 'function') return Promise.resolve(true);
+  return img.decode().then(() => true).catch(() => img.complete && Number(img.naturalWidth) > 0);
+}
+
 function waitForRunStartImage(img) {
   if (!img) return Promise.resolve(false);
   if (img.complete && Number(img.naturalWidth) > 0) {
-    if (typeof img.decode === 'function') return img.decode().then(() => true).catch(() => true);
-    return Promise.resolve(true);
+    return decodeRunStartImage(img);
   }
+  try { img.fetchPriority = 'high'; } catch {}
   return new Promise((resolve) => {
     let done = false;
     let timer = 0;
+    const timeoutMs = isRunStartCriticalImage(img) ? 18000 : 6500;
     const finish = (ok) => {
       if (done) return;
       done = true;
@@ -4263,12 +4277,22 @@ function waitForRunStartImage(img) {
       img.removeEventListener('error', onError);
       resolve(Boolean(ok));
     };
-    const onLoad = () => finish(true);
+    const onLoad = () => { void decodeRunStartImage(img).then(finish); };
     const onError = () => finish(false);
     img.addEventListener('load', onLoad, { once: true });
     img.addEventListener('error', onError, { once: true });
-    timer = window.setTimeout(() => finish(img.complete && Number(img.naturalWidth) > 0), 6500);
+    timer = window.setTimeout(() => finish(img.complete && Number(img.naturalWidth) > 0), timeoutMs);
   });
+}
+
+function warmRunStartTextures(images) {
+  const warm = globalThis.CWWebGLWorld?.warmTextures;
+  if (typeof warm !== 'function') return;
+  try {
+    warm(images);
+  } catch (error) {
+    console.warn('CW WebGL texture preload failed', error);
+  }
 }
 
 function updateRunStartLoadingUi() {
@@ -4514,6 +4538,7 @@ async function preloadRunStartResources(token) {
     updateRunStartLoadingUi();
   })));
   if (token !== runStartSequence.token) return;
+  warmRunStartTextures(images);
   runStartSequence.resourcesReady = true;
   updateRunStartLoadingUi();
   maybeStartRunIntroTransition();

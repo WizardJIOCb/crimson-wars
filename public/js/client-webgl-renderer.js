@@ -173,6 +173,16 @@ void main() {
     state.textures = new WeakMap();
   }
 
+  function warmTextures(sources) {
+    if (!ensureInit()) return 0;
+    const list = Array.isArray(sources) ? sources : [sources];
+    let warmed = 0;
+    for (const source of list) {
+      if (getTexture(source)) warmed += 1;
+    }
+    return warmed;
+  }
+
   function ensureShadowCanvas() {
     if (state.shadowCanvas) return state.shadowCanvas;
     const c = document.createElement('canvas');
@@ -530,5 +540,6 @@ void main() {
     isAvailable: ensureInit,
     renderWorld,
     resize,
+    warmTextures,
   };
 })(globalThis);
