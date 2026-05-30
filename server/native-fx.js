@@ -935,7 +935,7 @@ function withRuntimeSkillIcon(skill, defaultSkillDefs) {
   if (!id || !defaultSkillDefs?.[id]) return skill;
   return {
     ...skill,
-    icon: `/assets/hero-skills/${id}.svg`,
+    icon: `/assets/hero-skills/${id}.webp`,
   };
 }
 

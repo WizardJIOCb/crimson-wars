@@ -39,6 +39,11 @@ const renderScratch = {
   rocketTrailPoints: [],
   rocketTrailPointPool: [],
   projectile: {},
+  projectileItems: [],
+  energyProjectiles: [],
+  rocketProjectiles: [],
+  fastXpOrbs: [],
+  fastXpOrbItems: [],
   occlusionOverlay: [],
   occlusionSeen: new Set(),
   occlusionGrid: new Map(),
@@ -4493,6 +4498,26 @@ function renderWebGLWorldLayer(playersByDepth, t, options = {}) {
   return { used: Boolean(used), actors: drawActors && Boolean(used) };
 }
 
+function renderWebGLFastFxLayer(projectiles, xpOrbs, nowMs, options = {}) {
+  const renderer = globalThis.CWWebGLWorld;
+  if (
+    !game.webglWorldEnabled
+    || !options.webglWorldUsed
+    || !renderer?.renderFastFx
+    || localStorage.getItem('cw:webglFastFxEnabled') === '0'
+  ) {
+    return { used: false, projectiles: false, xpOrbs: false };
+  }
+  return renderer.renderFastFx({
+    enabled: true,
+    camera,
+    projectiles,
+    xpOrbs,
+    nowMs,
+    bulletTracersEnabled: game.bulletTracersEnabled,
+  }) || { used: false, projectiles: false, xpOrbs: false };
+}
+
 function pushActorOcclusionMarker(out, x, y) {
   const pool = renderScratch.actorOcclusionPool;
   const index = out.length;
@@ -4517,6 +4542,95 @@ function pushPlayerDepthItem(out, p, rp) {
   item.p = p;
   item.rp = rp;
   out.push(item);
+}
+
+function pushProjectileRenderItem(out, source) {
+  const pool = renderScratch.projectileItems;
+  const index = renderScratch.energyProjectiles.length + renderScratch.rocketProjectiles.length;
+  let item = pool[index];
+  if (!item) {
+    item = {
+      id: '',
+      x: 0,
+      y: 0,
+      vx: 0,
+      vy: 0,
+      color: '',
+      kind: '',
+      radius: 0,
+      weaponKey: '',
+      ownerId: '',
+      ownerPlayerId: '',
+      shooterType: '',
+    };
+    pool[index] = item;
+  }
+  item.id = source.id || '';
+  item.x = source.x;
+  item.y = source.y;
+  item.vx = source.vx;
+  item.vy = source.vy;
+  item.color = source.color;
+  item.kind = source.kind;
+  item.radius = source.radius;
+  item.weaponKey = source.weaponKey;
+  item.ownerId = source.ownerId;
+  item.ownerPlayerId = source.ownerPlayerId;
+  item.shooterType = source.shooterType;
+  out.push(item);
+}
+
+function buildProjectileRenderLists(bullets) {
+  const energyProjectiles = renderScratch.energyProjectiles;
+  const rocketProjectiles = renderScratch.rocketProjectiles;
+  energyProjectiles.length = 0;
+  rocketProjectiles.length = 0;
+  const projectile = renderScratch.projectile;
+  for (const b of Array.isArray(bullets) ? bullets : []) {
+    if (b?.replayHidden) continue;
+    const rb = getBulletRenderPos(b);
+    if (!rb) continue;
+    const isRocket = String(rb.kind || b.kind || '').toLowerCase() === 'rocket';
+    if (!isVisibleWorld(rb.x, rb.y, isRocket ? 24 : 12)) continue;
+    projectile.id = b.id;
+    projectile.x = rb.x;
+    projectile.y = rb.y;
+    projectile.vx = rb.vx ?? b.vx;
+    projectile.vy = rb.vy ?? b.vy;
+    projectile.color = rb.color || b.color || (isRocket ? '#fb923c' : '#f59e0b');
+    projectile.kind = rb.kind || b.kind || 'bullet';
+    projectile.radius = rb.radius || b.radius || 3;
+    projectile.weaponKey = rb.weaponKey || b.weaponKey || '';
+    projectile.ownerId = rb.ownerId || b.ownerId || '';
+    projectile.ownerPlayerId = rb.ownerPlayerId || b.ownerPlayerId || '';
+    projectile.shooterType = rb.shooterType || b.shooterType || '';
+    pushProjectileRenderItem(isRocket ? rocketProjectiles : energyProjectiles, projectile);
+  }
+  return { energyProjectiles, rocketProjectiles };
+}
+
+function buildFastXpOrbRenderList(orbs, nowMs) {
+  const out = renderScratch.fastXpOrbs;
+  const pool = renderScratch.fastXpOrbItems;
+  out.length = 0;
+  if (!Array.isArray(orbs)) return out;
+  for (const o of orbs) {
+    const ro = getXpOrbRenderPos(o);
+    if (!isVisibleWorld(ro.x, ro.y, 20)) continue;
+    const left = Math.max(0, Number(o.ttlMs) || 0);
+    if (left < 3000 && Math.sin(nowMs / 80) < 0) continue;
+    const index = out.length;
+    let item = pool[index];
+    if (!item) {
+      item = { x: 0, y: 0, seed: 0 };
+      pool[index] = item;
+    }
+    item.x = ro.x;
+    item.y = ro.y;
+    item.seed = Number(o.id) || index;
+    out.push(item);
+  }
+  return out;
 }
 
 function render(ts) {
@@ -4673,8 +4787,14 @@ function render(ts) {
   }
   renderDiagEnd('world', diagStartedAt);
 
+  const xpOrbs = game.state.xpOrbs || [];
+  const bulletsForRender = getBulletsForRender();
+  const { energyProjectiles, rocketProjectiles } = buildProjectileRenderLists(bulletsForRender);
+  const fastXpOrbs = buildFastXpOrbRenderList(xpOrbs, stateNowMs);
+
   diagStartedAt = renderDiagStart();
-  drawXpOrbs(game.state.xpOrbs || [], Number(game.state.now) || Date.now());
+  const webglFastFx = renderWebGLFastFxLayer(energyProjectiles, fastXpOrbs, stateNowMs, { webglWorldUsed: webglWorld.used });
+  if (!webglFastFx.xpOrbs) drawXpOrbs(xpOrbs, stateNowMs);
   drawBossPortals(game.state.bossPortals || [], Number(game.state.now) || Date.now());
   drawSkillOfferOrbs(game.state.skillOrbs || [], Number(game.state.now) || Date.now());
 
@@ -4684,30 +4804,13 @@ function render(ts) {
   renderDiagEnd('items', diagStartedAt);
 
   diagStartedAt = renderDiagStart();
-  const projectile = renderScratch.projectile;
-  for (const b of getBulletsForRender()) {
-    if (b?.replayHidden) continue;
-    const rb = getBulletRenderPos(b);
-    if (!rb) continue;
-    const isRocket = String(rb.kind || b.kind || '').toLowerCase() === 'rocket';
-    if (!isVisibleWorld(rb.x, rb.y, isRocket ? 24 : 12)) continue;
-    projectile.id = b.id;
-    projectile.x = rb.x;
-    projectile.y = rb.y;
-    projectile.vx = rb.vx ?? b.vx;
-    projectile.vy = rb.vy ?? b.vy;
-    projectile.color = rb.color || b.color || (isRocket ? '#fb923c' : '#f59e0b');
-    projectile.kind = rb.kind || b.kind || 'bullet';
-    projectile.radius = rb.radius || b.radius || 3;
-    projectile.weaponKey = rb.weaponKey || b.weaponKey || '';
-    projectile.ownerId = rb.ownerId || b.ownerId || '';
-    projectile.ownerPlayerId = rb.ownerPlayerId || b.ownerPlayerId || '';
-    projectile.shooterType = rb.shooterType || b.shooterType || '';
-    if (isRocket) {
-      drawRocketProjectile(projectile);
-    } else {
+  if (!webglFastFx.projectiles) {
+    for (const projectile of energyProjectiles) {
       drawEnergyProjectile(projectile);
     }
+  }
+  for (const projectile of rocketProjectiles) {
+    drawRocketProjectile(projectile);
   }
   renderDiagEnd('projectiles', diagStartedAt);
 

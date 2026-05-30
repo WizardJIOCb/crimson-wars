@@ -3,13 +3,18 @@
   const state = {
     gl: null,
     program: null,
+    colorProgram: null,
     positionBuffer: null,
     texCoordBuffer: null,
+    colorBuffer: null,
     posLoc: -1,
     uvLoc: -1,
+    colorPosLoc: -1,
+    colorLoc: -1,
     resLoc: null,
     tintLoc: null,
     adjustLoc: null,
+    colorResLoc: null,
     whiteTexture: null,
     shadowCanvas: null,
     overlayCanvas: null,
@@ -17,6 +22,8 @@
     textures: new WeakMap(),
     positions: new Float32Array(12),
     texCoords: new Float32Array(12),
+    colorVertices: new Float32Array(4096 * 6),
+    colorVertexCount: 0,
     width: 0,
     height: 0,
     failed: false,
@@ -50,6 +57,25 @@ void main() {
   gl_FragColor = vec4(clamp(rgb, 0.0, 1.0), tex.a * u_tint.a);
 }`;
 
+  const colorVertexShaderSource = `
+attribute vec2 a_position;
+attribute vec4 a_color;
+uniform vec2 u_resolution;
+varying vec4 v_color;
+void main() {
+  vec2 zeroToOne = a_position / u_resolution;
+  vec2 clipSpace = zeroToOne * 2.0 - 1.0;
+  gl_Position = vec4(clipSpace * vec2(1.0, -1.0), 0.0, 1.0);
+  v_color = a_color;
+}`;
+
+  const colorFragmentShaderSource = `
+precision mediump float;
+varying vec4 v_color;
+void main() {
+  gl_FragColor = v_color;
+}`;
+
   function compileShader(gl, type, source) {
     const shader = gl.createShader(type);
     gl.shaderSource(shader, source);
@@ -63,8 +89,12 @@ void main() {
   }
 
   function createProgram(gl) {
-    const vertex = compileShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
-    const fragment = compileShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+    return createProgramFromSources(gl, vertexShaderSource, fragmentShaderSource);
+  }
+
+  function createProgramFromSources(gl, vertexSource, fragmentSource) {
+    const vertex = compileShader(gl, gl.VERTEX_SHADER, vertexSource);
+    const fragment = compileShader(gl, gl.FRAGMENT_SHADER, fragmentSource);
     const program = gl.createProgram();
     gl.attachShader(program, vertex);
     gl.attachShader(program, fragment);
@@ -93,14 +123,19 @@ void main() {
       if (!gl) throw new Error('WebGL context unavailable');
       state.gl = gl;
       state.program = createProgram(gl);
+      state.colorProgram = createProgramFromSources(gl, colorVertexShaderSource, colorFragmentShaderSource);
       state.positionBuffer = gl.createBuffer();
       state.texCoordBuffer = gl.createBuffer();
+      state.colorBuffer = gl.createBuffer();
       gl.useProgram(state.program);
       state.posLoc = gl.getAttribLocation(state.program, 'a_position');
       state.uvLoc = gl.getAttribLocation(state.program, 'a_texCoord');
       state.resLoc = gl.getUniformLocation(state.program, 'u_resolution');
       state.tintLoc = gl.getUniformLocation(state.program, 'u_tint');
       state.adjustLoc = gl.getUniformLocation(state.program, 'u_adjust');
+      state.colorPosLoc = gl.getAttribLocation(state.colorProgram, 'a_position');
+      state.colorLoc = gl.getAttribLocation(state.colorProgram, 'a_color');
+      state.colorResLoc = gl.getUniformLocation(state.colorProgram, 'u_resolution');
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
       gl.disable(gl.DEPTH_TEST);
@@ -214,6 +249,127 @@ void main() {
       return `rgba(${r},${g},${b},${safeAlpha.toFixed(3)})`;
     }
     return raw || `rgba(255,255,255,${safeAlpha.toFixed(3)})`;
+  }
+
+  function colorToArray(color, alpha = 1) {
+    const safeAlpha = Math.max(0, Math.min(1, Number(alpha) || 0));
+    const raw = String(color || '').trim();
+    const hex = raw.startsWith('#') ? raw.slice(1) : raw;
+    if (/^[0-9a-f]{3}$/i.test(hex) || /^[0-9a-f]{6}$/i.test(hex)) {
+      const full = hex.length === 3 ? hex.split('').map((ch) => ch + ch).join('') : hex;
+      const value = Number.parseInt(full, 16);
+      return [
+        ((value >> 16) & 255) / 255,
+        ((value >> 8) & 255) / 255,
+        (value & 255) / 255,
+        safeAlpha,
+      ];
+    }
+    return [1, 1, 1, safeAlpha];
+  }
+
+  function resetColorBatch() {
+    state.colorVertexCount = 0;
+  }
+
+  function ensureColorVertices(additionalVertices) {
+    const need = (state.colorVertexCount + Math.max(0, additionalVertices | 0)) * 6;
+    if (need <= state.colorVertices.length) return;
+    let nextLength = state.colorVertices.length;
+    while (nextLength < need) nextLength *= 2;
+    const next = new Float32Array(nextLength);
+    next.set(state.colorVertices);
+    state.colorVertices = next;
+  }
+
+  function pushColorVertex(x, y, color) {
+    ensureColorVertices(1);
+    const data = state.colorVertices;
+    let i = state.colorVertexCount * 6;
+    data[i++] = Number(x) || 0;
+    data[i++] = Number(y) || 0;
+    data[i++] = color[0] ?? 1;
+    data[i++] = color[1] ?? 1;
+    data[i++] = color[2] ?? 1;
+    data[i++] = color[3] ?? 1;
+    state.colorVertexCount += 1;
+  }
+
+  function pushColorTri(x1, y1, x2, y2, x3, y3, color) {
+    ensureColorVertices(3);
+    pushColorVertex(x1, y1, color);
+    pushColorVertex(x2, y2, color);
+    pushColorVertex(x3, y3, color);
+  }
+
+  function pushColorQuad(x1, y1, x2, y2, x3, y3, x4, y4, color) {
+    ensureColorVertices(6);
+    pushColorVertex(x1, y1, color);
+    pushColorVertex(x2, y2, color);
+    pushColorVertex(x3, y3, color);
+    pushColorVertex(x3, y3, color);
+    pushColorVertex(x2, y2, color);
+    pushColorVertex(x4, y4, color);
+  }
+
+  function pushLineQuad(x1, y1, x2, y2, width, color) {
+    const dx = (Number(x2) || 0) - (Number(x1) || 0);
+    const dy = (Number(y2) || 0) - (Number(y1) || 0);
+    const len = Math.hypot(dx, dy);
+    if (len <= 0.001) return;
+    const nx = -dy / len * width * 0.5;
+    const ny = dx / len * width * 0.5;
+    pushColorQuad(x1 + nx, y1 + ny, x1 - nx, y1 - ny, x2 + nx, y2 + ny, x2 - nx, y2 - ny, color);
+  }
+
+  function pushDiamond(cx, cy, dirX, dirY, forward, side, color) {
+    const len = Math.hypot(dirX, dirY) || 1;
+    const ux = dirX / len;
+    const uy = dirY / len;
+    const nx = -uy;
+    const ny = ux;
+    const x1 = cx + ux * forward;
+    const y1 = cy + uy * forward;
+    const x2 = cx + nx * side;
+    const y2 = cy + ny * side;
+    const x3 = cx - ux * forward * 0.62;
+    const y3 = cy - uy * forward * 0.62;
+    const x4 = cx - nx * side;
+    const y4 = cy - ny * side;
+    pushColorQuad(x1, y1, x2, y2, x4, y4, x3, y3, color);
+  }
+
+  function pushCircle(cx, cy, radius, color, segments = 14) {
+    const r = Math.max(0.5, Number(radius) || 0);
+    const count = Math.max(6, Math.min(24, segments | 0));
+    let px = cx + r;
+    let py = cy;
+    for (let i = 1; i <= count; i += 1) {
+      const a = (Math.PI * 2 * i) / count;
+      const x = cx + Math.cos(a) * r;
+      const y = cy + Math.sin(a) * r;
+      pushColorTri(cx, cy, px, py, x, y, color);
+      px = x;
+      py = y;
+    }
+  }
+
+  function flushColorBatch(options = {}) {
+    const gl = state.gl;
+    const count = state.colorVertexCount;
+    if (!gl || !state.colorProgram || count <= 0) return 0;
+    gl.useProgram(state.colorProgram);
+    gl.bindBuffer(gl.ARRAY_BUFFER, state.colorBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, state.colorVertices.subarray(0, count * 6), gl.STREAM_DRAW);
+    gl.enableVertexAttribArray(state.colorPosLoc);
+    gl.vertexAttribPointer(state.colorPosLoc, 2, gl.FLOAT, false, 24, 0);
+    gl.enableVertexAttribArray(state.colorLoc);
+    gl.vertexAttribPointer(state.colorLoc, 4, gl.FLOAT, false, 24, 8);
+    gl.uniform2f(state.colorResLoc, state.width || canvas.width || 1, state.height || canvas.height || 1);
+    if (options.additive) gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+    gl.drawArrays(gl.TRIANGLES, 0, count);
+    if (options.additive) gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    return count;
   }
 
   function ensureGroundOverlayCanvas(params) {
@@ -512,6 +668,103 @@ void main() {
     }
   }
 
+  function getProjectilePalette(projectile) {
+    const weaponKey = String(projectile?.weaponKey || '').toLowerCase();
+    const base = projectile?.color || '#f59e0b';
+    if (weaponKey.includes('sniper')) return { core: '#ffffff', hot: '#e0f2fe', edge: '#93c5fd', glow: '#38bdf8' };
+    if (weaponKey.includes('smg')) return { core: '#ecfeff', hot: '#a5f3fc', edge: '#22d3ee', glow: '#0891b2' };
+    if (weaponKey.includes('shotgun')) return { core: '#fff7ed', hot: '#fed7aa', edge: '#fb923c', glow: '#ef4444' };
+    return { core: '#fff7d6', hot: '#fde68a', edge: base, glow: '#fb923c' };
+  }
+
+  function drawFastProjectiles(params) {
+    const projectiles = Array.isArray(params.projectiles) ? params.projectiles : [];
+    const camera = params.camera || { x: 0, y: 0 };
+    const tracersEnabled = params.bulletTracersEnabled !== false;
+    for (const projectile of projectiles) {
+      if (!projectile) continue;
+      const x = (Number(projectile.x) || 0) - (Number(camera.x) || 0);
+      const y = (Number(projectile.y) || 0) - (Number(camera.y) || 0);
+      const vx = Number(projectile.vx) || 0;
+      const vy = Number(projectile.vy) || 0;
+      const speed = Math.hypot(vx, vy);
+      const dirX = speed > 0.001 ? vx / speed : 1;
+      const dirY = speed > 0.001 ? vy / speed : 0;
+      const radius = Math.max(2, Number(projectile.radius) || 3);
+      const weaponKey = String(projectile.weaponKey || '').toLowerCase();
+      const palette = getProjectilePalette(projectile);
+      const tracerLen = tracersEnabled
+        ? Math.min(48, Math.max(18, speed * (weaponKey.includes('sniper') ? 0.018 : 0.034)))
+        : Math.max(8, radius * 2.4);
+      const tailX = x - dirX * tracerLen;
+      const tailY = y - dirY * tracerLen;
+
+      if (tracersEnabled) {
+        pushLineQuad(tailX, tailY, x, y, Math.max(5.5, radius * 3.2), colorToArray(palette.glow, 0.12));
+        pushLineQuad(
+          x - dirX * tracerLen * 0.82,
+          y - dirY * tracerLen * 0.82,
+          x + dirX * radius * 1.1,
+          y + dirY * radius * 1.1,
+          Math.max(2.4, radius * 1.35),
+          colorToArray(palette.edge, 0.46),
+        );
+        pushLineQuad(
+          x - dirX * tracerLen * 0.35,
+          y - dirY * tracerLen * 0.35,
+          x + dirX * radius * 1.2,
+          y + dirY * radius * 1.2,
+          Math.max(0.9, radius * 0.45),
+          colorToArray('#ffffff', weaponKey.includes('sniper') ? 0.74 : 0.54),
+        );
+      }
+
+      pushCircle(x, y, Math.max(7, radius * 3.4), colorToArray(palette.glow, 0.12), 12);
+      pushDiamond(x, y, dirX, dirY, radius * 2.2, radius * 0.9, colorToArray(palette.core, 0.96));
+      pushLineQuad(
+        x - dirX * radius * 0.45,
+        y - dirY * radius * 0.45,
+        x + dirX * radius * 1.45,
+        y + dirY * radius * 1.45,
+        Math.max(1.1, radius * 0.42),
+        colorToArray(palette.hot, 0.9),
+      );
+    }
+    return projectiles.length;
+  }
+
+  function drawFastXpOrbs(params) {
+    const orbs = Array.isArray(params.xpOrbs) ? params.xpOrbs : [];
+    const camera = params.camera || { x: 0, y: 0 };
+    const nowMs = Number(params.nowMs) || performance.now();
+    for (const orb of orbs) {
+      if (!orb) continue;
+      const x = (Number(orb.x) || 0) - (Number(camera.x) || 0);
+      const y = (Number(orb.y) || 0) - (Number(camera.y) || 0);
+      const pulse = 1 + Math.sin(nowMs / 140 + (Number(orb.seed) || 0)) * 0.18;
+      pushCircle(x, y, 7.5 * pulse, colorToArray('#38bdf8', 0.22), 12);
+      pushDiamond(x, y, 0, 1, 6.2 * pulse, 5.1 * pulse, colorToArray('#22d3ee', 0.94));
+      pushDiamond(x, y, 0, 1, 3.6 * pulse, 2.8 * pulse, colorToArray('#e0faff', 0.82));
+    }
+    return orbs.length;
+  }
+
+  function renderFastFx(params = {}) {
+    if (!ensureInit()) return { used: false, projectiles: false, xpOrbs: false };
+    if (params.enabled === false) return { used: false, projectiles: false, xpOrbs: false };
+    resetColorBatch();
+    const projectileCount = drawFastProjectiles(params);
+    const xpOrbCount = drawFastXpOrbs(params);
+    const vertices = flushColorBatch({ additive: true });
+    const used = vertices > 0;
+    return {
+      used,
+      projectiles: used && projectileCount > 0,
+      xpOrbs: used && xpOrbCount > 0,
+      vertices,
+    };
+  }
+
   function renderWorld(params = {}) {
     if (!ensureInit()) return false;
     const gl = state.gl;
@@ -538,6 +791,7 @@ void main() {
     clear,
     clearTextureCache,
     isAvailable: ensureInit,
+    renderFastFx,
     renderWorld,
     resize,
     warmTextures,
