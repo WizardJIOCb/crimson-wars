@@ -7,6 +7,31 @@
   const PLAYER_CLASS_STORAGE_KEY = 'cw:playerClass';
 
   document.documentElement.classList.add('cw-native-ue');
+  window.cwNativeUeMode = true;
+  window.cwDisableWebRenderer = true;
+  window.cwNativeRendererActive = false;
+
+  function suppressRunStartOverlay() {
+    if (typeof window.cwCancelRunStartLoading === 'function') {
+      window.cwCancelRunStartLoading();
+    }
+    const overlay = document.getElementById('run-start-overlay');
+    if (overlay) {
+      overlay.classList.add('hidden');
+      overlay.classList.remove('is-intro', 'impact-active');
+      overlay.style.display = 'none';
+    }
+    const impactImg = document.getElementById('run-start-impact-img');
+    if (impactImg instanceof HTMLImageElement) impactImg.removeAttribute('src');
+  }
+
+  suppressRunStartOverlay();
+  if (typeof window.cwBeginRunStartLoading === 'function') {
+    window.cwBeginRunStartLoading = () => {
+      suppressRunStartOverlay();
+      return 0;
+    };
+  }
 
   function focusGameSurface() {
     const gameCanvas = document.getElementById('game');
@@ -15,6 +40,24 @@
       gameCanvas.focus({ preventScroll: true });
     }
     window.focus();
+  }
+
+  function shouldKeepWebControlFocus(target) {
+    if (!(target instanceof Element)) return false;
+    return Boolean(target.closest([
+      'input',
+      'textarea',
+      'select',
+      '[contenteditable="true"]',
+      '#join-overlay',
+      '#cw-menu-root',
+      '#join-form',
+      '#info-panel',
+      '#chat-wrap',
+      '#dev-console',
+      '.record-details-modal',
+      '.battle-hub-skill-modal'
+    ].join(',')));
   }
 
   function getSelectedHeroId() {
@@ -70,6 +113,19 @@
     return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`.slice(0, 80);
   }
 
+  const pendingNativeHandoffs = new Map();
+  const NATIVE_HANDOFF_READY_TIMEOUT_MS = 900;
+
+  window.addEventListener('cw-native-handoff-ready', (event) => {
+    const detail = event instanceof CustomEvent ? event.detail : null;
+    const key = `${String(detail?.roomCode || '').trim().toUpperCase()}|${String(detail?.playerId || '').trim()}`;
+    const pending = pendingNativeHandoffs.get(key);
+    if (!pending) return;
+    window.clearTimeout(pending.timer);
+    pendingNativeHandoffs.delete(key);
+    pending.resolve(true);
+  });
+
   function sendNativeHandoffPrepare(roomCode, playerId, token) {
     if (!roomCode || !playerId || !token) return false;
     try {
@@ -82,14 +138,44 @@
     return false;
   }
 
+  function prepareNativeHandoff(roomCode, playerId, token) {
+    const normalizedRoomCode = String(roomCode || '').trim().toUpperCase();
+    const normalizedPlayerId = String(playerId || '').trim();
+    const key = `${normalizedRoomCode}|${normalizedPlayerId}`;
+    return new Promise((resolve) => {
+      const sent = sendNativeHandoffPrepare(normalizedRoomCode, normalizedPlayerId, token);
+      if (!sent) {
+        resolve(false);
+        return;
+      }
+      const previous = pendingNativeHandoffs.get(key);
+      if (previous) {
+        window.clearTimeout(previous.timer);
+        previous.resolve(false);
+      }
+      const timer = window.setTimeout(() => {
+        pendingNativeHandoffs.delete(key);
+        resolve(false);
+      }, NATIVE_HANDOFF_READY_TIMEOUT_MS);
+      pendingNativeHandoffs.set(key, { resolve, timer });
+    });
+  }
+
   let lastNativeRunHash = '';
   let nativeRendererPausedByWebReturn = false;
+  let nativeRoutePending = false;
+  let nativeRendererRequested = false;
+
+  function isWebRendererDisabled() {
+    return window.cwDisableWebRenderer === true;
+  }
 
   function setNativeRendererActive(active) {
     const isActive = Boolean(active);
+    const hideWebCanvas = isWebRendererDisabled() || isActive;
     window.cwNativeRendererActive = isActive;
     if (typeof window.cwSetNativeAudioSuppressed === 'function') {
-      window.cwSetNativeAudioSuppressed(isActive);
+      window.cwSetNativeAudioSuppressed(hideWebCanvas);
     }
     document.documentElement.classList.toggle('cw-native-renderer-active', isActive);
     document.body?.classList.toggle('cw-native-renderer-active', isActive);
@@ -97,16 +183,20 @@
     ['game', 'game-webgl'].forEach((id) => {
       const el = document.getElementById(id);
       if (!el) return;
-      el.hidden = isActive;
-      el.classList.toggle('hidden', isActive);
-      el.style.visibility = isActive ? 'hidden' : 'visible';
-      el.style.opacity = isActive ? '0' : '1';
-      el.style.pointerEvents = isActive ? 'none' : '';
+      el.hidden = hideWebCanvas;
+      el.classList.toggle('hidden', hideWebCanvas);
+      el.style.visibility = hideWebCanvas ? 'hidden' : 'visible';
+      el.style.opacity = hideWebCanvas ? '0' : '1';
+      el.style.pointerEvents = hideWebCanvas ? 'none' : '';
     });
   }
 
-  function syncNativeRunRoute(action = '') {
+  setNativeRendererActive(false);
+
+  async function syncNativeRunRoute(action = '') {
     if (!action && window.cwNativeRendererActive) return;
+    if (!action && nativeRendererRequested) return;
+    if (nativeRoutePending && action === 'native') return;
     if (action === 'native') nativeRendererPausedByWebReturn = false;
 
     const roomCode = getCurrentRunRoomCode();
@@ -118,9 +208,8 @@
     if (action === 'native' && (!roomCode || !playerId)) return;
 
     const handoffToken = action === 'native' && roomCode && playerId ? createHandoffToken() : '';
-    if (handoffToken) {
-      sendNativeHandoffPrepare(roomCode, playerId, handoffToken);
-    }
+    if (handoffToken) nativeRoutePending = true;
+    if (action === 'native') nativeRendererRequested = true;
 
     const nextParams = new URLSearchParams();
     if (roomCode) nextParams.set('cw-native-room', roomCode);
@@ -136,13 +225,18 @@
     }
 
     const nextHash = nextParams.toString();
-    if (!nextHash || (!action && nextHash === lastNativeRunHash)) return;
+    if (!nextHash || (!action && nextHash === lastNativeRunHash)) {
+      if (handoffToken) nativeRoutePending = false;
+      return;
+    }
     lastNativeRunHash = nextHash;
 
     if (action) {
       if (handoffToken) {
+        await prepareNativeHandoff(roomCode, playerId, handoffToken);
         setTimeout(() => {
           window.location.hash = nextHash;
+          nativeRoutePending = false;
         }, 35);
       } else {
         window.location.hash = nextHash;
@@ -181,6 +275,7 @@
 
   function requestNativeRendererByDefault() {
     if (window.cwNativeRendererActive) return;
+    if (nativeRendererRequested || nativeRoutePending) return;
     if (nativeRendererPausedByWebReturn) return;
     if (!getCurrentRunRoomCode() || !getCurrentRunPlayerId()) return;
     syncNativeRunRoute('native');
@@ -199,12 +294,14 @@
   function restoreWebRunSurface(options = {}) {
     const openMenu = options === true || Boolean(options?.openMenu);
     const forceWeb = Boolean(options?.forceWeb || options?.webSurface);
+    const webRendererDisabled = isWebRendererDisabled();
     if (openMenu && !forceWeb) {
       openNativeBattleMenu();
       return;
     }
     setNativeRendererActive(false);
-    nativeRendererPausedByWebReturn = true;
+    nativeRendererRequested = false;
+    nativeRendererPausedByWebReturn = !webRendererDisabled;
 
     const game = window.cwGame || window.game || {};
     const hasRunState = Boolean(game.state || getCurrentRunRoomCode() || getCurrentRunPlayerId());
@@ -214,8 +311,10 @@
       overlay.classList.remove('death-mode', 'death-cinematic-active', 'death-rewards-visible');
     }
 
-    showRunElement('game');
-    showRunElement('game-webgl');
+    if (!webRendererDisabled) {
+      showRunElement('game');
+      showRunElement('game-webgl');
+    }
     showRunElement('top-center-hud');
     showRunElement('bottom-hud');
     showRunElement('minimap-wrap');
@@ -253,6 +352,7 @@
 
   function openNativeBattleMenu() {
     setNativeRendererActive(true);
+    nativeRendererRequested = false;
     nativeRendererPausedByWebReturn = false;
 
     const game = window.cwGame || window.game || {};
@@ -292,15 +392,17 @@
   }
 
   document.addEventListener('pointerdown', (event) => {
-    const target = event.target;
-    if (target instanceof Element && target.closest('#info-panel, #join-overlay, #chat-wrap, #dev-console')) return;
+    if (shouldKeepWebControlFocus(event.target)) return;
     setTimeout(focusGameSurface, 0);
   }, true);
 
   document.addEventListener('keydown', (event) => {
+    if (shouldKeepWebControlFocus(event.target)) return;
+
     if (event.code === 'F10') {
       event.preventDefault();
       nativeRendererPausedByWebReturn = false;
+      nativeRendererRequested = false;
       syncNativeRunRoute('native');
       return;
     }
@@ -322,12 +424,14 @@
   window.cwNativeSetRendererActive = setNativeRendererActive;
   window.cwNativeRequestRenderer = () => {
     nativeRendererPausedByWebReturn = false;
+    nativeRendererRequested = false;
     syncNativeRunRoute('native');
   };
 
   window.addEventListener('hashchange', handleNativeHashAction);
 
   window.addEventListener('DOMContentLoaded', () => {
+    suppressRunStartOverlay();
     removeNativeChoiceControls();
     handleNativeHashAction();
     requestNativeRendererByDefault();

@@ -199,6 +199,10 @@ function scheduleNextFrame(delayMs = 0) {
   requestAnimationFrame(render);
 }
 
+function isWebRendererDisabled() {
+  return window.cwDisableWebRenderer === true;
+}
+
 function getSceneTheme() {
   return game.state?.decor?.theme && typeof game.state.decor.theme === 'object'
     ? game.state.decor.theme
@@ -1317,8 +1321,19 @@ function drawTrees() {
     const x = tr.x - camera.x;
     const y = tr.y - camera.y;
     const s = (tr.scale || 1) * 1.6;
+    const treeSprite = sprites.tree;
 
     drawShadowAtScreen(x + 8 * s, y + 12 * s, 14 * s, 6 * s, 0.24);
+
+    if (treeSprite?.complete && treeSprite.naturalWidth > 0 && treeSprite.naturalHeight > 0) {
+      const drawH = 86 * s;
+      const drawW = drawH * (treeSprite.naturalWidth / treeSprite.naturalHeight);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.drawImage(treeSprite, -drawW * 0.5, -drawH * 0.93, drawW, drawH);
+      ctx.restore();
+      continue;
+    }
 
     ctx.save();
     ctx.translate(x, y);
@@ -1439,6 +1454,7 @@ function drawSingleMapObject(obj, nowMs = Date.now(), options = {}) {
 
   ctx.save();
   ctx.translate(screenX, screenY);
+  ctx.rotate(Number(obj.angle) || 0);
   if (recentlyHit) ctx.filter = 'brightness(1.18) saturate(1.2)';
   else if (obj.destroyed) ctx.filter = 'grayscale(0.65) brightness(0.48) saturate(0.4)';
   else if (damaged) ctx.filter = 'brightness(0.94) saturate(0.92)';
@@ -2026,6 +2042,104 @@ function drawDropPickup(d, nowMs) {
   }
 }
 
+const cosmeticPlayerFrameCache = new Map();
+
+function getPlayerCosmeticSkinId(player) {
+  return String(player?.visualLoadout?.heroSkinId || player?.visualLoadout?.skin || '').trim();
+}
+
+function getCosmeticVisual(kind, id) {
+  return globalThis.CWTonShop?.getCosmeticVisual?.(kind, id) || null;
+}
+
+function getTintedPlayerFrame(sprite, fw, fh, frame, row, tint) {
+  const color = String(tint || '').trim();
+  if (!color || !sprite?.complete) return null;
+  const srcKey = String(sprite.currentSrc || sprite.src || 'player');
+  const key = `${srcKey}:${sprite.naturalWidth}x${sprite.naturalHeight}:${fw}:${fh}:${frame}:${row}:${color}`;
+  const cached = cosmeticPlayerFrameCache.get(key);
+  if (cached) return cached;
+  if (cosmeticPlayerFrameCache.size > 120) cosmeticPlayerFrameCache.clear();
+  const canvasEl = document.createElement('canvas');
+  canvasEl.width = fw;
+  canvasEl.height = fh;
+  const g = canvasEl.getContext('2d');
+  if (!g) return null;
+  g.imageSmoothingEnabled = false;
+  g.drawImage(sprite, frame * fw, row * fh, fw, fh, 0, 0, fw, fh);
+  g.globalCompositeOperation = 'source-atop';
+  g.globalAlpha = 0.38;
+  g.fillStyle = color;
+  g.fillRect(0, 0, fw, fh);
+  g.globalAlpha = 0.18;
+  g.globalCompositeOperation = 'lighter';
+  g.fillRect(0, 0, fw, fh);
+  g.globalAlpha = 1;
+  g.globalCompositeOperation = 'source-over';
+  cosmeticPlayerFrameCache.set(key, canvasEl);
+  return canvasEl;
+}
+
+function drawCosmeticLoadoutFx(player, x, y, t, scale) {
+  const loadout = player?.visualLoadout || {};
+  const heroVisual = getCosmeticVisual('hero_skin', getPlayerCosmeticSkinId(player));
+  const itemSkins = loadout.itemSkins && typeof loadout.itemSkins === 'object' ? loadout.itemSkins : {};
+  if (heroVisual?.glow) {
+    const pulse = 0.55 + Math.sin(t * 4.2) * 0.16;
+    ctx.save();
+    ctx.globalAlpha = 0.24 * pulse;
+    ctx.strokeStyle = heroVisual.glow;
+    ctx.lineWidth = Math.max(1.5, 2.4 * scale);
+    ctx.beginPath();
+    ctx.ellipse(x, y + 16 * scale, 25 * scale, 9 * scale, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  const ringVisual = getCosmeticVisual('item_skin', itemSkins.ring);
+  if (ringVisual?.glow) {
+    const a = t * 2.1;
+    ctx.save();
+    ctx.globalAlpha = 0.75;
+    ctx.strokeStyle = ringVisual.glow;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.ellipse(x, y - 20 * scale, 19 * scale, 6 * scale, a * 0.08, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = ringVisual.tint || ringVisual.glow;
+    ctx.beginPath();
+    ctx.arc(x + Math.cos(a) * 19 * scale, y - 20 * scale + Math.sin(a) * 6 * scale, 2.4 * scale, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  const armorVisual = getCosmeticVisual('item_skin', itemSkins.armor);
+  if (armorVisual?.glow) {
+    ctx.save();
+    ctx.globalAlpha = 0.2 + Math.max(0, Math.sin(t * 5.8)) * 0.18;
+    ctx.fillStyle = armorVisual.glow;
+    ctx.beginPath();
+    ctx.arc(x, y - 16 * scale, 13 * scale, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  const legsVisual = getCosmeticVisual('item_skin', itemSkins.legs);
+  if (legsVisual?.glow) {
+    ctx.save();
+    ctx.globalAlpha = 0.28;
+    ctx.strokeStyle = legsVisual.glow;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x - 8 * scale, y + 24 * scale);
+    ctx.lineTo(x - 18 * scale, y + 34 * scale);
+    ctx.moveTo(x + 8 * scale, y + 24 * scale);
+    ctx.lineTo(x + 18 * scale, y + 34 * scale);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
 function drawPlayer(p, t, isMe, rx, ry, drawUi = true) {
   if (!isVisibleWorld(rx, ry, 50)) return;
   const x = rx - camera.x;
@@ -2039,6 +2153,7 @@ function drawPlayer(p, t, isMe, rx, ry, drawUi = true) {
 
   const variant = getPlayerVariant(p.playerClass || (isMe ? selectedPlayerClass : 'cyber'));
   const playerSprite = sprites.players[variant.id];
+  const heroSkinVisual = getCosmeticVisual('hero_skin', getPlayerCosmeticSkinId(p));
   const fw = Math.max(8, Number(variant.frameW) || 32);
   const fh = Math.max(8, Number(variant.frameH) || 48);
   const scale = Math.max(0.5, Number(variant.scale) || 1) * (isCompanion ? 0.84 : 1);
@@ -2077,11 +2192,15 @@ function drawPlayer(p, t, isMe, rx, ry, drawUi = true) {
 
     ctx.save();
     ctx.translate(x, y + 2);
-    ctx.drawImage(playerSprite, frame * fw, row * fh, fw, fh, -dw / 2, -dh * 0.6, dw, dh);
+    const tintedFrame = heroSkinVisual?.tint ? getTintedPlayerFrame(playerSprite, fw, fh, frame, row, heroSkinVisual.tint) : null;
+    if (tintedFrame) ctx.drawImage(tintedFrame, -dw / 2, -dh * 0.6, dw, dh);
+    else ctx.drawImage(playerSprite, frame * fw, row * fh, fw, fh, -dw / 2, -dh * 0.6, dw, dh);
     ctx.restore();
   } else {
     drawCircle(rx, ry, 18, isMe ? '#22d3ee' : '#a78bfa');
   }
+
+  drawCosmeticLoadoutFx(p, x, y, t, scale);
 
   if (!drawUi) return;
   if (isCompanion) drawCompanionNameAmmoBadge(displayPlayer, x, y);
@@ -4634,6 +4753,8 @@ function buildFastXpOrbRenderList(orbs, nowMs) {
 }
 
 function render(ts) {
+  if (isWebRendererDisabled()) return;
+
   const dt = Math.min(0.05, (ts - lastFrameTs) / 1000);
   lastFrameTs = ts;
   const simDt = replayGame.active ? (dt * Math.max(1, Number(replayGame.speed) || 1)) : dt;
@@ -4877,4 +4998,4 @@ function render(ts) {
 startInputSender();
 setInterval(sendNetPing, NET_PING_INTERVAL_MS);
 setInterval(sendNetStatsReport, 1500);
-scheduleNextFrame();
+if (!isWebRendererDisabled()) scheduleNextFrame();

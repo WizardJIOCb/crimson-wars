@@ -478,7 +478,7 @@ if (joinOverlay && typeof MutationObserver !== 'undefined') {
   joinOverlayObserver.observe(joinOverlay, { attributes: true, attributeFilter: ['style', 'class'] });
 }
 
-const MENU_TAB_IDS = new Set(['run', 'story', 'play', 'characters', 'skills', 'profile', 'rating', 'news', 'menu']);
+const MENU_TAB_IDS = new Set(['run', 'story', 'play', 'characters', 'skills', 'shop', 'profile', 'rating', 'news', 'menu']);
 const initialUrlParams = new URLSearchParams(window.location.search);
 const initialMenuTabParam = String(initialUrlParams.get('tab') || '').trim().toLowerCase();
 const initialRunSelection = typeof window.cwGetRunSelection === 'function' ? window.cwGetRunSelection() : null;
@@ -868,6 +868,7 @@ function setCommentatorVoiceVolume(value) {
   }
   renderCommentatorVoiceVolumeUi();
   scheduleCommentatorVoiceVolumeRestart();
+  window.cwNativeNotifyGameSettingsChanged?.('commentator_voice_volume');
 }
 
 function scheduleCommentatorVoiceVolumeRestart() {
@@ -986,6 +987,7 @@ function setCommentatorVoiceEnabled(enabled) {
   trimCommentarySpeechQueue();
   renderCommentatorSpeechMonitor();
   renderCommentatorVoiceUi();
+  window.cwNativeNotifyGameSettingsChanged?.('commentator_voice');
 }
 window.setCommentatorVoiceEnabled = setCommentatorVoiceEnabled;
 window.setCommentatorVoiceVolume = setCommentatorVoiceVolume;
@@ -2039,6 +2041,9 @@ function setMainMenuTab(tabId) {
   }
   if (nextTab === 'profile') {
     void globalThis.CWProfile?.requestRunHistory?.({ force: false });
+  }
+  if (nextTab === 'shop') {
+    globalThis.CWTonShop?.render?.();
   }
   if (nextTab === 'rating') {
     void globalThis.CWRating?.request?.({ force: false });
@@ -6590,6 +6595,11 @@ message: (ev) => {
     return;
   }
 
+  if (msg.type === 'nativeHandoffReady') {
+    window.dispatchEvent(new CustomEvent('cw-native-handoff-ready', { detail: msg }));
+    return;
+  }
+
   if (msg.type === 'quickItemFx') {
     window.spawnQuickItemFx?.(msg.event || {});
     return;
@@ -7286,7 +7296,7 @@ function buildCurrentInputPayload(includeJump = true) {
 
 function sendInput() {
   if (!game.connected || !game.myId || ws.readyState !== WebSocket.OPEN || !game.state) return;
-  if (window.cwNativeRendererActive) {
+  if (window.cwDisableWebRenderer || window.cwNativeRendererActive) {
     input.jumpQueued = false;
     return;
   }

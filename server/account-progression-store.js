@@ -148,6 +148,8 @@ function createAccountProgressionStore({
     '  salvage INTEGER NOT NULL DEFAULT 0,',
     '  inventory_items_json TEXT NOT NULL DEFAULT "[]" ,',
     '  hero_equipment_json TEXT NOT NULL DEFAULT "{}",',
+    '  cosmetic_entitlements_json TEXT NOT NULL DEFAULT "{}",',
+    '  selected_cosmetics_json TEXT NOT NULL DEFAULT "{}",',
     '  total_runs INTEGER NOT NULL DEFAULT 0,',
     '  hero_runs_json TEXT NOT NULL DEFAULT "{}",',
     '  campaign_progress_json TEXT NOT NULL DEFAULT "{}",',
@@ -185,6 +187,12 @@ function createAccountProgressionStore({
     if (!columns.some((col) => col.name === 'hero_equipment_json')) {
       db.exec('ALTER TABLE account_progression ADD COLUMN hero_equipment_json TEXT NOT NULL DEFAULT "{}"');
     }
+    if (!columns.some((col) => col.name === 'cosmetic_entitlements_json')) {
+      db.exec('ALTER TABLE account_progression ADD COLUMN cosmetic_entitlements_json TEXT NOT NULL DEFAULT "{}"');
+    }
+    if (!columns.some((col) => col.name === 'selected_cosmetics_json')) {
+      db.exec('ALTER TABLE account_progression ADD COLUMN selected_cosmetics_json TEXT NOT NULL DEFAULT "{}"');
+    }
     if (!columns.some((col) => col.name === 'campaign_progress_json')) {
       db.exec('ALTER TABLE account_progression ADD COLUMN campaign_progress_json TEXT NOT NULL DEFAULT "{}"');
     }
@@ -206,6 +214,8 @@ function createAccountProgressionStore({
       '  salvage BIGINT NOT NULL DEFAULT 0,',
       '  inventory_items_json LONGTEXT NOT NULL,',
       '  hero_equipment_json LONGTEXT NOT NULL,',
+      '  cosmetic_entitlements_json LONGTEXT NOT NULL,',
+      '  selected_cosmetics_json LONGTEXT NOT NULL,',
       '  total_runs BIGINT NOT NULL DEFAULT 0,',
       '  hero_runs_json LONGTEXT NOT NULL,',
       '  campaign_progress_json LONGTEXT NOT NULL,',
@@ -220,6 +230,14 @@ function createAccountProgressionStore({
     if (!mysqlColumnNames.has('campaign_progress_json')) {
       mysqlClient.execute('ALTER TABLE account_progression ADD COLUMN campaign_progress_json LONGTEXT NULL');
       mysqlClient.execute(`UPDATE account_progression SET campaign_progress_json = ${escapeSql('{}')} WHERE campaign_progress_json IS NULL`);
+    }
+    if (!mysqlColumnNames.has('cosmetic_entitlements_json')) {
+      mysqlClient.execute('ALTER TABLE account_progression ADD COLUMN cosmetic_entitlements_json LONGTEXT NULL');
+      mysqlClient.execute(`UPDATE account_progression SET cosmetic_entitlements_json = ${escapeSql('{}')} WHERE cosmetic_entitlements_json IS NULL`);
+    }
+    if (!mysqlColumnNames.has('selected_cosmetics_json')) {
+      mysqlClient.execute('ALTER TABLE account_progression ADD COLUMN selected_cosmetics_json LONGTEXT NULL');
+      mysqlClient.execute(`UPDATE account_progression SET selected_cosmetics_json = ${escapeSql('{}')} WHERE selected_cosmetics_json IS NULL`);
     }
   }
 
@@ -239,6 +257,8 @@ function createAccountProgressionStore({
     salvage: 'salvage',
     inventory_items_json: 'inventory_items_json',
     hero_equipment_json: 'hero_equipment_json',
+    cosmetic_entitlements_json: 'cosmetic_entitlements_json',
+    selected_cosmetics_json: 'selected_cosmetics_json',
     total_runs: 'total_runs',
     hero_runs_json: 'hero_runs_json',
     campaign_progress_json: 'campaign_progress_json',
@@ -256,7 +276,7 @@ function createAccountProgressionStore({
     run(payload) {
       mysqlClient.execute([
         'INSERT INTO account_progression (',
-        '  player_id, account_xp, account_level, account_skill_points, shards, active_hero, unlocked_heroes_json, hero_nodes_json, hero_cards_json, hero_levels_json, hero_xp_json, hero_skill_levels_json, salvage, inventory_items_json, hero_equipment_json, total_runs, hero_runs_json, campaign_progress_json, created_at, updated_at',
+        '  player_id, account_xp, account_level, account_skill_points, shards, active_hero, unlocked_heroes_json, hero_nodes_json, hero_cards_json, hero_levels_json, hero_xp_json, hero_skill_levels_json, salvage, inventory_items_json, hero_equipment_json, cosmetic_entitlements_json, selected_cosmetics_json, total_runs, hero_runs_json, campaign_progress_json, created_at, updated_at',
         ') VALUES (',
         `  ${[
           payload.playerId,
@@ -274,6 +294,8 @@ function createAccountProgressionStore({
           payload.salvage,
           payload.inventoryItemsJson,
           payload.heroEquipmentJson,
+          payload.cosmeticEntitlementsJson,
+          payload.selectedCosmeticsJson,
           payload.totalRuns,
           payload.heroRunsJson,
           payload.campaignProgressJson,
@@ -285,9 +307,9 @@ function createAccountProgressionStore({
     },
   } : db.prepare([
     'INSERT INTO account_progression (',
-    '  player_id, account_xp, account_level, account_skill_points, shards, active_hero, unlocked_heroes_json, hero_nodes_json, hero_cards_json, hero_levels_json, hero_xp_json, hero_skill_levels_json, salvage, inventory_items_json, hero_equipment_json, total_runs, hero_runs_json, campaign_progress_json, created_at, updated_at',
+    '  player_id, account_xp, account_level, account_skill_points, shards, active_hero, unlocked_heroes_json, hero_nodes_json, hero_cards_json, hero_levels_json, hero_xp_json, hero_skill_levels_json, salvage, inventory_items_json, hero_equipment_json, cosmetic_entitlements_json, selected_cosmetics_json, total_runs, hero_runs_json, campaign_progress_json, created_at, updated_at',
     ') VALUES (',
-    '  @playerId, @accountXp, @accountLevel, @accountSkillPoints, @shards, @activeHero, @unlockedHeroesJson, @heroNodesJson, @heroCardsJson, @heroLevelsJson, @heroXpJson, @heroSkillLevelsJson, @salvage, @inventoryItemsJson, @heroEquipmentJson, @totalRuns, @heroRunsJson, @campaignProgressJson, @createdAt, @updatedAt',
+    '  @playerId, @accountXp, @accountLevel, @accountSkillPoints, @shards, @activeHero, @unlockedHeroesJson, @heroNodesJson, @heroCardsJson, @heroLevelsJson, @heroXpJson, @heroSkillLevelsJson, @salvage, @inventoryItemsJson, @heroEquipmentJson, @cosmeticEntitlementsJson, @selectedCosmeticsJson, @totalRuns, @heroRunsJson, @campaignProgressJson, @createdAt, @updatedAt',
     ')',
   ].join('\n'));
   const stmtUpdate = useMysql ? {
@@ -308,6 +330,8 @@ function createAccountProgressionStore({
         `  salvage=${escapeSql(payload.salvage)},`,
         `  inventory_items_json=${escapeSql(payload.inventoryItemsJson)},`,
         `  hero_equipment_json=${escapeSql(payload.heroEquipmentJson)},`,
+        `  cosmetic_entitlements_json=${escapeSql(payload.cosmeticEntitlementsJson)},`,
+        `  selected_cosmetics_json=${escapeSql(payload.selectedCosmeticsJson)},`,
         `  total_runs=${escapeSql(payload.totalRuns)},`,
         `  hero_runs_json=${escapeSql(payload.heroRunsJson)},`,
         `  campaign_progress_json=${escapeSql(payload.campaignProgressJson)},`,
@@ -331,6 +355,8 @@ function createAccountProgressionStore({
     '  salvage=@salvage,',
     '  inventory_items_json=@inventoryItemsJson,',
     '  hero_equipment_json=@heroEquipmentJson,',
+    '  cosmetic_entitlements_json=@cosmeticEntitlementsJson,',
+    '  selected_cosmetics_json=@selectedCosmeticsJson,',
     '  total_runs=@totalRuns,',
     '  hero_runs_json=@heroRunsJson,',
     '  campaign_progress_json=@campaignProgressJson,',
@@ -520,6 +546,8 @@ function createAccountProgressionStore({
       salvage: clampInt(itemSalvageStart, 0),
       inventoryItems: [],
       heroEquipment: {},
+      cosmeticEntitlements: {},
+      selectedCosmetics: {},
       totalRuns: 0,
       heroRuns: {},
       campaignProgress: {},
@@ -625,6 +653,55 @@ function createAccountProgressionStore({
       if (Object.keys(nextHero).length > 0) out[heroId] = nextHero;
     }
     return out;
+  }
+
+  function normalizeStringList(raw) {
+    const source = Array.isArray(raw) ? raw : [];
+    const out = [];
+    for (const value of source) {
+      const id = String(value || '').trim();
+      if (!id || out.includes(id)) continue;
+      out.push(id);
+    }
+    return out;
+  }
+
+  function normalizeCosmeticEntitlements(raw) {
+    const source = raw && typeof raw === 'object' ? raw : {};
+    return {
+      ownedProducts: normalizeStringList(source.ownedProducts),
+      ownedHeroSkins: normalizeStringList(source.ownedHeroSkins),
+      ownedItemSkins: normalizeStringList(source.ownedItemSkins),
+    };
+  }
+
+  function normalizeSelectedCosmetics(raw, entitlements = {}) {
+    const source = raw && typeof raw === 'object' ? raw : {};
+    const ownedHeroSkins = new Set(normalizeStringList(entitlements.ownedHeroSkins));
+    const ownedItemSkins = new Set(normalizeStringList(entitlements.ownedItemSkins));
+    const heroSkinsSource = source.heroSkins && typeof source.heroSkins === 'object' ? source.heroSkins : {};
+    const itemSkinsSource = source.itemSkins && typeof source.itemSkins === 'object' ? source.itemSkins : {};
+    const heroSkins = {};
+    const itemSkins = {};
+    for (const heroId of Object.keys(heroSkinsSource)) {
+      if (!heroMap[heroId]) continue;
+      const skinId = String(heroSkinsSource[heroId] || '').trim();
+      if (!skinId || !ownedHeroSkins.has(skinId)) continue;
+      heroSkins[heroId] = skinId;
+    }
+    for (const target of Object.keys(itemSkinsSource)) {
+      const key = String(target || '').trim();
+      const skinId = String(itemSkinsSource[target] || '').trim();
+      if (!key || !skinId || !ownedItemSkins.has(skinId)) continue;
+      itemSkins[key] = skinId;
+    }
+    return { heroSkins, itemSkins };
+  }
+
+  function addUniqueString(list, value) {
+    const id = String(value || '').trim();
+    if (!id) return;
+    if (!list.includes(id)) list.push(id);
   }
 
   function getItemDef(itemId) {
@@ -806,6 +883,8 @@ function createAccountProgressionStore({
     const heroSkillLevels = normalizeHeroSkillLevels(safeJsonParse(row.hero_skill_levels_json, {}));
     const inventoryItems = normalizeInventoryItems(safeJsonParse(row.inventory_items_json, []));
     const heroEquipment = normalizeHeroEquipment(safeJsonParse(row.hero_equipment_json, {}), inventoryItems);
+    const cosmeticEntitlements = normalizeCosmeticEntitlements(safeJsonParse(row.cosmetic_entitlements_json, {}));
+    const selectedCosmetics = normalizeSelectedCosmetics(safeJsonParse(row.selected_cosmetics_json, {}), cosmeticEntitlements);
     const heroRuns = normalizeHeroRuns(safeJsonParse(row.hero_runs_json, {}));
     const campaignProgress = normalizeCampaignProgress(safeJsonParse(row.campaign_progress_json, {}));
     const activeHeroRaw = String(row.active_hero || '').trim();
@@ -826,6 +905,8 @@ function createAccountProgressionStore({
       salvage: clampInt(row.salvage, 0),
       inventoryItems,
       heroEquipment,
+      cosmeticEntitlements,
+      selectedCosmetics,
       totalRuns: clampInt(row.total_runs, 0),
       heroRuns,
       campaignProgress,
@@ -851,6 +932,8 @@ function createAccountProgressionStore({
       salvage: clampInt(progression.salvage, 0),
       inventoryItemsJson: JSON.stringify(normalizeInventoryItems(progression.inventoryItems)),
       heroEquipmentJson: JSON.stringify(normalizeHeroEquipment(progression.heroEquipment, progression.inventoryItems)),
+      cosmeticEntitlementsJson: JSON.stringify(normalizeCosmeticEntitlements(progression.cosmeticEntitlements)),
+      selectedCosmeticsJson: JSON.stringify(normalizeSelectedCosmetics(progression.selectedCosmetics, progression.cosmeticEntitlements)),
       totalRuns: clampInt(progression.totalRuns, 0),
       heroRunsJson: JSON.stringify(normalizeHeroRuns(progression.heroRuns)),
       campaignProgressJson: JSON.stringify(normalizeCampaignProgress(progression.campaignProgress)),
@@ -872,6 +955,7 @@ function createAccountProgressionStore({
     const inventoryItems = normalizeInventoryItems(raw?.inventoryItems || base.inventoryItems);
     const unlockedHeroes = normalizeUnlockedHeroes(raw?.unlockedHeroes || base.unlockedHeroes);
     const heroLevels = normalizeHeroLevels(raw?.heroLevels || base.heroLevels);
+    const cosmeticEntitlements = normalizeCosmeticEntitlements(raw?.cosmeticEntitlements || base.cosmeticEntitlements);
     const activeHeroRaw = String(raw?.activeHero || base.activeHero || fallbackHeroId).trim();
     return ensureStarterMeleeLoadout({
       ...base,
@@ -889,6 +973,8 @@ function createAccountProgressionStore({
       salvage: clampInt(raw?.salvage, 0),
       inventoryItems,
       heroEquipment: normalizeHeroEquipment(raw?.heroEquipment || base.heroEquipment, inventoryItems),
+      cosmeticEntitlements,
+      selectedCosmetics: normalizeSelectedCosmetics(raw?.selectedCosmetics || base.selectedCosmetics, cosmeticEntitlements),
       totalRuns: clampInt(raw?.totalRuns, 0),
       heroRuns: normalizeHeroRuns(raw?.heroRuns || base.heroRuns),
       campaignProgress: normalizeCampaignProgress(raw?.campaignProgress || base.campaignProgress),
@@ -1009,6 +1095,8 @@ function createAccountProgressionStore({
       heroSkillLevels: normalizeHeroSkillLevels(progression.heroSkillLevels),
       inventoryItems: buildInventoryPublicItems(progression.inventoryItems),
       heroEquipment: normalizeHeroEquipment(progression.heroEquipment, progression.inventoryItems),
+      cosmeticEntitlements: normalizeCosmeticEntitlements(progression.cosmeticEntitlements),
+      selectedCosmetics: normalizeSelectedCosmetics(progression.selectedCosmetics, progression.cosmeticEntitlements),
       totalRuns: clampInt(progression.totalRuns, 0),
       heroRuns: normalizeHeroRuns(progression.heroRuns),
       campaignProgress: normalizeCampaignProgress(progression.campaignProgress),
@@ -1629,6 +1717,87 @@ function createAccountProgressionStore({
     return { ok: true, progression: toPublicProgression(saved) };
   }
 
+  function grantTonShopProduct(playerId, product) {
+    const progression = getOrCreateProgression(playerId);
+    if (!progression) return { ok: false, code: 404, message: 'Progression not found' };
+    const productId = String(product?.id || '').trim();
+    const grants = Array.isArray(product?.grants) ? product.grants : [];
+    if (!productId || grants.length <= 0) return { ok: false, code: 400, message: 'Invalid TON shop product' };
+
+    progression.cosmeticEntitlements = normalizeCosmeticEntitlements(progression.cosmeticEntitlements);
+    progression.selectedCosmetics = normalizeSelectedCosmetics(progression.selectedCosmetics, progression.cosmeticEntitlements);
+    addUniqueString(progression.cosmeticEntitlements.ownedProducts, productId);
+
+    for (const grant of grants) {
+      if (grant?.type === 'hero_unlock') {
+        const heroId = String(grant.heroId || '').trim();
+        if (heroMap[heroId] && !progression.unlockedHeroes.includes(heroId)) {
+          progression.unlockedHeroes.push(heroId);
+          progression.heroLevels = normalizeHeroLevels(progression.heroLevels);
+          progression.heroXp = normalizeHeroXp(progression.heroXp, progression.heroLevels);
+          progression.heroLevels[heroId] = Math.max(1, clampInt(progression.heroLevels[heroId], 1) || 1);
+          progression.heroXp[heroId] = clampInt(progression.heroXp[heroId], 0);
+        }
+      } else if (grant?.type === 'hero_skin') {
+        const skinId = String(grant.skinId || '').trim();
+        const heroId = String(grant.heroId || '').trim();
+        addUniqueString(progression.cosmeticEntitlements.ownedHeroSkins, skinId);
+        if (skinId && heroMap[heroId] && !progression.selectedCosmetics.heroSkins[heroId]) {
+          progression.selectedCosmetics.heroSkins[heroId] = skinId;
+        }
+      } else if (grant?.type === 'item_skin') {
+        const skinId = String(grant.skinId || '').trim();
+        const target = String(grant.target || '').trim();
+        addUniqueString(progression.cosmeticEntitlements.ownedItemSkins, skinId);
+        if (skinId && target && !progression.selectedCosmetics.itemSkins[target]) {
+          progression.selectedCosmetics.itemSkins[target] = skinId;
+        }
+      }
+    }
+
+    progression.unlockedHeroes = normalizeUnlockedHeroes(progression.unlockedHeroes);
+    progression.cosmeticEntitlements = normalizeCosmeticEntitlements(progression.cosmeticEntitlements);
+    progression.selectedCosmetics = normalizeSelectedCosmetics(progression.selectedCosmetics, progression.cosmeticEntitlements);
+    ensureStarterMeleeLoadout(progression, { equipMissing: true });
+    const saved = saveProgression(progression);
+    return { ok: true, progression: toPublicProgression(saved) };
+  }
+
+  function selectCosmetic(playerId, payload = {}) {
+    const progression = getOrCreateProgression(playerId);
+    if (!progression) return { ok: false, code: 404, message: 'Progression not found' };
+    const kind = String(payload.kind || payload.type || '').trim().toLowerCase();
+    const entitlements = normalizeCosmeticEntitlements(progression.cosmeticEntitlements);
+    const selected = normalizeSelectedCosmetics(progression.selectedCosmetics, entitlements);
+
+    if (kind === 'hero_skin') {
+      const heroId = String(payload.heroId || '').trim();
+      const skinId = String(payload.skinId || '').trim();
+      if (!heroMap[heroId]) return { ok: false, code: 400, message: 'Unknown hero' };
+      if (skinId && !entitlements.ownedHeroSkins.includes(skinId)) {
+        return { ok: false, code: 403, message: 'Hero skin is locked' };
+      }
+      if (skinId) selected.heroSkins[heroId] = skinId;
+      else delete selected.heroSkins[heroId];
+    } else if (kind === 'item_skin') {
+      const target = String(payload.target || '').trim();
+      const skinId = String(payload.skinId || '').trim();
+      if (!target) return { ok: false, code: 400, message: 'Skin target is required' };
+      if (skinId && !entitlements.ownedItemSkins.includes(skinId)) {
+        return { ok: false, code: 403, message: 'Item skin is locked' };
+      }
+      if (skinId) selected.itemSkins[target] = skinId;
+      else delete selected.itemSkins[target];
+    } else {
+      return { ok: false, code: 400, message: 'Unknown cosmetic kind' };
+    }
+
+    progression.cosmeticEntitlements = entitlements;
+    progression.selectedCosmetics = normalizeSelectedCosmetics(selected, entitlements);
+    const saved = saveProgression(progression);
+    return { ok: true, progression: toPublicProgression(saved) };
+  }
+
   if (useMysql) loadProgressionCache();
 
   return {
@@ -1646,6 +1815,8 @@ function createAccountProgressionStore({
     upgradeHeroNode,
     unlockHeroSkill,
     upgradeHeroSkill,
+    grantTonShopProduct,
+    selectCosmetic,
     equipItem,
     unequipItem,
     sellItem,

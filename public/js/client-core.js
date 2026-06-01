@@ -335,7 +335,9 @@ const game = {
   sortedMapObjects: [],
   sortedMapObjectIds: [],
   sortedMapObjectsSignature: '',
-  qualityKey: 'medium',
+  qualityKey: QUALITY[String(localStorage.getItem('cw:qualityKey') || '').toLowerCase()]
+    ? String(localStorage.getItem('cw:qualityKey')).toLowerCase()
+    : 'medium',
   webglWorldEnabled: localStorage.getItem('cw:webglWorldEnabled') !== '0',
   shadowsEnabled: getToggleDefaultOn('cw:shadowsEnabled'),
   bulletTracersEnabled: getToggleDefaultOn('cw:bulletTracersEnabled'),
@@ -393,6 +395,7 @@ const game = {
     nicknameStatus: null,
     progression: null,
     progressionCatalog: null,
+    tonShop: null,
     busy: false,
     checkingNickname: false,
   },
@@ -401,6 +404,122 @@ const game = {
     sentKeys: new Set(),
   },
 };
+
+const NATIVE_GAME_SETTING_DEFS = [
+  { id: 'graphics_quality', nativeKey: 'graphicsQuality', type: 'select', label: 'Graphics quality', storageKey: 'cw:qualityKey', group: 'graphics', options: ['low', 'medium', 'high'] },
+  { id: 'shadows', nativeKey: 'shadows', type: 'checkbox', label: 'Shadows', storageKey: 'cw:shadowsEnabled', gameKey: 'shadowsEnabled', group: 'graphics' },
+  { id: 'bullet_tracers', nativeKey: 'bulletTracers', type: 'checkbox', label: 'Bullet tracers', storageKey: 'cw:bulletTracersEnabled', gameKey: 'bulletTracersEnabled', group: 'graphics' },
+  { id: 'extra_blood', nativeKey: 'extraBlood', type: 'checkbox', label: 'Extra blood', storageKey: 'cw:extraBloodEnabled', gameKey: 'extraBloodEnabled', group: 'graphics' },
+  { id: 'hit_effects', nativeKey: 'hitEffects', type: 'checkbox', label: 'Hit effects', storageKey: 'cw:hitEffectsEnabled', gameKey: 'hitEffectsEnabled', group: 'graphics' },
+  { id: 'show_minimap', nativeKey: 'showMinimap', type: 'checkbox', label: 'Show minimap', storageKey: 'cw:showMinimapEnabled', gameKey: 'showMinimapEnabled', group: 'hud' },
+  { id: 'enemy_hp_bars', nativeKey: 'enemyHpBars', type: 'checkbox', label: 'Enemy HP Bars', storageKey: 'cw:enemyHpBarsEnabled', gameKey: 'enemyHpBarsEnabled', group: 'hud' },
+  { id: 'show_companion_names', nativeKey: 'showCompanionNames', type: 'checkbox', label: 'Ally bot names', storageKey: 'cw:showCompanionNamesEnabled', gameKey: 'showCompanionNamesEnabled', group: 'hud' },
+  { id: 'show_companion_ammo', nativeKey: 'showCompanionAmmo', type: 'checkbox', label: 'Ally bot ammo', storageKey: 'cw:showCompanionReserveAmmoEnabled', gameKey: 'showCompanionReserveAmmoEnabled', group: 'hud' },
+  { id: 'connection_indicator', nativeKey: 'connectionIndicator', type: 'checkbox', label: 'Connection indicator', storageKey: 'cw:connectionIndicatorEnabled', gameKey: 'connectionIndicatorEnabled', group: 'hud' },
+  { id: 'show_fps', nativeKey: 'showFps', type: 'checkbox', label: 'Show FPS', storageKey: 'cw:showFpsEnabled', gameKey: 'showFpsEnabled', group: 'hud' },
+  { id: 'show_chat', nativeKey: 'showChat', type: 'checkbox', label: 'Show chat', storageKey: 'cw:showChatEnabled', gameKey: 'showChatEnabled', group: 'hud' },
+  { id: 'auto_fire', nativeKey: 'autoFire', type: 'checkbox', label: 'Auto fire', storageKey: 'cw:autoFireEnabled', gameKey: 'autoFireEnabled', group: 'combat' },
+  { id: 'dynamic_sticks', nativeKey: 'dynamicSticks', type: 'checkbox', label: 'Dynamic sticks', storageKey: 'cw:dynamicSticksEnabled', gameKey: 'dynamicSticksEnabled', group: 'controls' },
+  { id: 'show_aim_stick', nativeKey: 'showAimStick', type: 'checkbox', label: 'Show aim stick', storageKey: 'cw:showAimStickEnabled', gameKey: 'showAimStickEnabled', group: 'controls' },
+  { id: 'game_sounds', nativeKey: 'gameSounds', type: 'checkbox', label: 'Game sounds', storageKey: 'cw:sfxEnabled', gameKey: 'sfxEnabled', group: 'audio' },
+  { id: 'sound_volume', nativeKey: 'soundVolume', type: 'range', label: 'Sound volume', storageKey: 'cw:sfxVolume', group: 'audio', min: 0, max: 100, step: 1 },
+  { id: 'show_commentator', nativeKey: 'showCommentator', type: 'checkbox', label: 'Arena commentator', storageKey: 'cw:showCommentatorEnabled', gameKey: 'showCommentatorEnabled', group: 'audio' },
+  { id: 'commentator_voice', nativeKey: 'commentatorVoice', type: 'checkbox', label: 'Voice commentator', storageKey: 'cw:commentatorTtsEnabled', group: 'audio' },
+  { id: 'show_replay_player', nativeKey: 'showReplayPlayer', type: 'checkbox', label: 'Show replay player', storageKey: 'cw:showReplayPlayerEnabled', gameKey: 'showReplayPlayerEnabled', group: 'replay' },
+  { id: 'language', nativeKey: 'language', type: 'select', label: 'Language', storageKey: 'cw:language', group: 'hud', options: ['ru', 'en'] },
+];
+
+const NATIVE_GAME_SETTING_ALIASES = new Map();
+for (const def of NATIVE_GAME_SETTING_DEFS) {
+  NATIVE_GAME_SETTING_ALIASES.set(def.id, def.id);
+  NATIVE_GAME_SETTING_ALIASES.set(def.nativeKey, def.id);
+}
+
+function normalizeNativeGameSettingId(id) {
+  const key = String(id || '').trim();
+  return NATIVE_GAME_SETTING_ALIASES.get(key) || NATIVE_GAME_SETTING_ALIASES.get(key.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`)) || key;
+}
+
+function getNativeGameSettingValue(id) {
+  const settingId = normalizeNativeGameSettingId(id);
+  const def = NATIVE_GAME_SETTING_DEFS.find((item) => item.id === settingId);
+  if (!def) return undefined;
+  if (settingId === 'graphics_quality') return String(game.qualityKey || qualitySelect?.value || 'medium');
+  if (settingId === 'sound_volume') return Math.round(getGameSfxVolume() * 100);
+  if (settingId === 'commentator_voice') return localStorage.getItem('cw:commentatorTtsEnabled') !== '0';
+  if (settingId === 'language') return String(window.cwI18nGetLanguage?.() || localStorage.getItem('cw:language') || 'ru');
+  if (def.gameKey) return Boolean(game[def.gameKey]);
+  const stored = localStorage.getItem(def.storageKey);
+  return stored === null ? Boolean(def.defaultValue) : stored !== '0';
+}
+
+function buildNativeGameSettingsSnapshot(changedId = '') {
+  return {
+    schemaVersion: 1,
+    changedId: changedId ? normalizeNativeGameSettingId(changedId) : '',
+    controls: NATIVE_GAME_SETTING_DEFS.map((def) => ({
+      ...def,
+      value: getNativeGameSettingValue(def.id),
+    })),
+    values: Object.fromEntries(NATIVE_GAME_SETTING_DEFS.map((def) => [def.id, getNativeGameSettingValue(def.id)])),
+    nativeValues: Object.fromEntries(NATIVE_GAME_SETTING_DEFS.map((def) => [def.nativeKey, getNativeGameSettingValue(def.id)])),
+  };
+}
+
+function emitNativeGameSettingsChanged(changedId = '') {
+  const detail = buildNativeGameSettingsSnapshot(changedId);
+  window.dispatchEvent(new CustomEvent('cw-native-settings-changed', { detail }));
+  if (window.chrome?.webview?.postMessage) {
+    try { window.chrome.webview.postMessage({ type: 'cw-native-settings-changed', payload: detail }); } catch {}
+  }
+  return detail;
+}
+
+function applyNativeGameSetting(id, value) {
+  const settingId = normalizeNativeGameSettingId(id);
+  const boolValue = value === true || value === 1 || value === '1' || String(value).toLowerCase() === 'true';
+  if (settingId === 'graphics_quality') {
+    const q = String(value || '').toLowerCase();
+    if (QUALITY[q]) {
+      game.qualityKey = q;
+      localStorage.setItem('cw:qualityKey', q);
+      if (qualitySelect) qualitySelect.value = q;
+      rebuildGroundTile();
+    }
+  } else if (settingId === 'shadows') setShadowsEnabled(boolValue);
+  else if (settingId === 'bullet_tracers') setBulletTracersEnabled(boolValue);
+  else if (settingId === 'extra_blood') setExtraBloodEnabled(boolValue);
+  else if (settingId === 'hit_effects') setHitEffectsEnabled(boolValue);
+  else if (settingId === 'show_minimap') setShowMinimapEnabled(boolValue);
+  else if (settingId === 'enemy_hp_bars') setEnemyHpBarsEnabled(boolValue);
+  else if (settingId === 'show_companion_names') setShowCompanionNamesEnabled(boolValue);
+  else if (settingId === 'show_companion_ammo') setShowCompanionReserveAmmoEnabled(boolValue);
+  else if (settingId === 'connection_indicator') setConnectionIndicatorEnabled(boolValue);
+  else if (settingId === 'show_fps') setShowFpsEnabled(boolValue);
+  else if (settingId === 'show_chat') setShowChatEnabled(boolValue);
+  else if (settingId === 'auto_fire') setAutoFireEnabled(boolValue);
+  else if (settingId === 'dynamic_sticks') setDynamicSticksEnabled(boolValue);
+  else if (settingId === 'show_aim_stick') setShowAimStickEnabled(boolValue);
+  else if (settingId === 'game_sounds') setGameSfxEnabled(boolValue);
+  else if (settingId === 'sound_volume') setGameSfxVolume(value);
+  else if (settingId === 'show_commentator') setShowCommentatorEnabled(boolValue);
+  else if (settingId === 'commentator_voice') {
+    if (typeof window.setCommentatorVoiceEnabled === 'function') window.setCommentatorVoiceEnabled(boolValue);
+    else localStorage.setItem('cw:commentatorTtsEnabled', boolValue ? '1' : '0');
+  } else if (settingId === 'show_replay_player') setShowReplayPlayerEnabled(boolValue);
+  else if (settingId === 'language' && typeof window.cwI18nSetLanguage === 'function') {
+    window.cwI18nSetLanguage(String(value || 'ru'));
+  } else {
+    return buildNativeGameSettingsSnapshot(settingId);
+  }
+  return emitNativeGameSettingsChanged(settingId);
+}
+
+window.cwNativeGetGameSettings = () => buildNativeGameSettingsSnapshot();
+window.cwNativeApplyGameSetting = applyNativeGameSetting;
+window.cwNativeSetGameSetting = applyNativeGameSetting;
+window.cwNativeToggleGameSetting = (id) => applyNativeGameSetting(id, !getNativeGameSettingValue(id));
+window.cwNativeNotifyGameSettingsChanged = emitNativeGameSettingsChanged;
 
 const camera = { x: 0, y: 0 };
 const visuals = {
@@ -1401,6 +1520,8 @@ function getBattleHubPlayerHeroId(progression = null) {
 
 function getBattleHubHeroAvatarPath(heroId) {
   const id = String(heroId || '').trim().toLowerCase();
+  const selectedSkin = globalThis.CWTonShop?.getSelectedHeroSkin?.(id);
+  if (selectedSkin?.image) return selectedSkin.image;
   if (id === 'medic') return '/assets/characters/medis.png';
   if (!PLAYER_VARIANTS.some((variant) => variant.id === id)) return '/assets/characters/cyber.png';
   return `/assets/characters/${id}.png`;
@@ -2417,6 +2538,7 @@ async function refreshPlayerAuthSession({ silent = false } = {}) {
     game.playerAuth.needsNicknameSetup = Boolean(data?.nicknameSetupRequired);
     game.playerAuth.progressionCatalog = data?.progressionCatalog || null;
     game.playerAuth.progression = data?.progression || null;
+    game.playerAuth.tonShop = data?.tonShop || null;
     ensureSelectedRunSetupValid();
     if (game.playerAuth.player?.nickname) {
       localStorage.setItem(NICKNAME_STORAGE_KEY, game.playerAuth.player.nickname);
@@ -2432,6 +2554,7 @@ async function refreshPlayerAuthSession({ silent = false } = {}) {
     game.playerAuth.needsNicknameSetup = false;
     game.playerAuth.progressionCatalog = null;
     game.playerAuth.progression = null;
+    game.playerAuth.tonShop = null;
     ensureSelectedRunSetupValid();
   }
   renderPlayerAuthUi();
@@ -2444,6 +2567,7 @@ async function refreshPlayerAuthSession({ silent = false } = {}) {
   if (typeof globalThis.renderNewsFeed === 'function') {
     globalThis.renderNewsFeed();
   }
+  globalThis.CWTonShop?.render?.();
   if (authLoaded && game.playerAuth.player) {
     queueStoredActiveRunResume();
   } else if (authLoaded && !game.playerAuth.player) {
@@ -2577,9 +2701,11 @@ async function logoutPlayerAccount() {
     game.playerAuth.nicknameStatus = null;
     game.playerAuth.progression = null;
     game.playerAuth.progressionCatalog = null;
+    game.playerAuth.tonShop = null;
     ensureSelectedRunSetupValid();
     statusEl.textContent = 'Logged out. Guest mode active.';
     renderPlayerAuthUi();
+    globalThis.CWTonShop?.render?.();
     if (typeof globalThis.renderRunSetupMenu === 'function') {
       globalThis.renderRunSetupMenu();
     }
@@ -3043,6 +3169,10 @@ function hudTooltipText(ru, en) {
   return String(window.cwI18nGetLanguage?.() || 'ru') === 'ru' ? ru : en;
 }
 
+function isNativeUnrealUi() {
+  return document.documentElement.classList.contains('cw-native-ue') || document.body?.classList.contains('cw-native-renderer-active');
+}
+
 function skillStatLine(key, fallback, value) {
   return `${trCore(`ui.skill_stat.${key}`, fallback)}: ${value}`;
 }
@@ -3136,6 +3266,25 @@ function getSkillTooltipIconHtml(chip, fallbackText = '') {
   return `<span class="skill-tooltip-icon"><span>${escapeHtml(String(glyph).slice(0, 4))}</span></span>`;
 }
 
+function getSkillTooltipIconHtmlFromData(chip, skill, def, fallbackText = '') {
+  if (chip instanceof HTMLElement) return getSkillTooltipIconHtml(chip, fallbackText);
+  const iconPath = getSkillHudIconPath(skill || {}, def || {});
+  if (iconPath) {
+    return `<span class="skill-tooltip-icon"><img src="${escapeHtml(iconPath)}" alt=""></span>`;
+  }
+  return `<span class="skill-tooltip-icon"><span>${escapeHtml(String(fallbackText || '?').slice(0, 4))}</span></span>`;
+}
+
+function nativeTooltipStatLines(nativeTooltip) {
+  const stats = Array.isArray(nativeTooltip?.stats) ? nativeTooltip.stats : [];
+  const useRu = String(window.cwI18nGetLanguage?.() || 'ru') === 'ru';
+  return stats.map((stat) => {
+    const label = String((useRu ? stat?.labelRu : stat?.label) || stat?.label || stat?.key || '').trim();
+    const value = String((useRu ? stat?.displayRu : stat?.display) || stat?.display || stat?.value || '').trim();
+    return label && value ? `${label}: ${value}` : '';
+  }).filter(Boolean);
+}
+
 function buildQuickItemDesc(itemDef) {
   const use = itemDef?.combatUse && typeof itemDef.combatUse === 'object' ? itemDef.combatUse : null;
   const type = String(use?.type || '').toLowerCase();
@@ -3165,34 +3314,81 @@ function buildQuickItemStatLines(itemDef, quantity) {
   return lines;
 }
 
-function getSkillTooltipInfo(chip) {
-  const sid = String(chip.dataset.skillId || '').toLowerCase();
+function buildSkillEffectSummary(skill, def) {
+  const kind = String(skill?.kind || def?.kind || 'passive').toLowerCase();
+  const castType = String(skill?.castType || def?.castType || skill?.fx?.castType || def?.fx?.castType || '').toLowerCase();
+  const text = `${skill?.id || ''} ${skill?.name || ''} ${skill?.desc || ''} ${def?.id || ''} ${def?.name || ''} ${def?.desc || ''}`.toLowerCase();
+  if (kind !== 'active') {
+    if (/(buddy|companion)/.test(text)) return hudTooltipText('Эффект: призывает боевого помощника с отдельным оружием.', 'Effect: summons a combat buddy with its own weapon.');
+    if (/(magnet|pickup)/.test(text)) return hudTooltipText('Эффект: усиливает сбор кристаллов и радиус подбора.', 'Effect: improves crystal collection and pickup radius.');
+    if (/(regen|vital|hp|shield|plating)/.test(text)) return hudTooltipText('Эффект: повышает выживаемость героя.', 'Effect: improves hero survivability.');
+    if (/(reload|haste|speed|stride|dodge|jump)/.test(text)) return hudTooltipText('Эффект: ускоряет движение, перезарядку или рывки.', 'Effect: improves movement, reloads, or dodges.');
+    return hudTooltipText('Эффект: пассивно усиливает параметры героя.', 'Effect: passively improves hero stats.');
+  }
+  if (skill?.projectilesReplicated || def?.projectilesReplicated || Number(def?.missileSpeed || skill?.missileSpeed) > 0) {
+    return hudTooltipText('Эффект: выпускает самонаводящиеся ракеты. В Unreal сами ракеты идут только из синхронизированных снарядов.', 'Effect: launches homing rockets. In Unreal, rocket actors come only from replicated projectile state.');
+  }
+  if (castType === 'laser_strike' || /(beam|laser|lance|mark|shrapnel)/.test(text)) {
+    return hudTooltipText('Эффект: мгновенно поражает ближайшие цели направленными ударами.', 'Effect: instantly strikes nearby targets with directed hits.');
+  }
+  if (castType === 'chain_lightning' || /(chain|arc|storm|matrix|lightning)/.test(text)) {
+    return hudTooltipText('Эффект: перескакивает между несколькими целями цепным разрядом.', 'Effect: jumps between multiple targets as a chained discharge.');
+  }
+  if (castType === 'shockwave' || /(wave|stomp|pulse)/.test(text)) {
+    return hudTooltipText('Эффект: бьёт область вокруг героя и расчищает пространство.', 'Effect: hits an area around the hero and clears space.');
+  }
+  if (castType === 'psi_blast' || /(psi|void|burst)/.test(text)) {
+    return hudTooltipText('Эффект: создаёт пси-взрыв, отбрасывает и оглушает врагов.', 'Effect: creates a psi blast that knocks back and stuns enemies.');
+  }
+  if (castType === 'blade_orbit' || /(blade|fang|razor)/.test(text)) {
+    return hudTooltipText('Эффект: быстрые клинки режут ближайшие цели.', 'Effect: fast blades cut through nearby targets.');
+  }
+  return hudTooltipText('Эффект: активируется по перезарядке и наносит урон ближайшим врагам.', 'Effect: triggers on cooldown and damages nearby enemies.');
+}
+
+function getSkillTooltipInfoById(skillId, chip = null) {
+  const sid = String(skillId || '').toLowerCase();
   if (!sid) return null;
-  const me = game.state?.players?.find((p) => p.id === game.myId);
-  const skills = Array.isArray(me?.skills) ? me.skills : [];
+  const hudPlayer = getBottomHudPlayer();
+  const fallbackPlayer = game.state?.players?.find((p) => p.id === game.myId);
+  const skills = Array.isArray(hudPlayer?.skills)
+    ? hudPlayer.skills
+    : (Array.isArray(fallbackPlayer?.skills) ? fallbackPlayer.skills : []);
   const skill = skills.find((s) => String(s.id || '').toLowerCase() === sid);
   if (!skill) return null;
 
-  const def = game.skillCatalog?.[sid] || {};
+  const catalogDef = game.skillCatalog?.[sid] || {};
+  const def = { ...skill, ...catalogDef };
+  const nativeTooltip = skill?.nativeTooltip || skill?.tooltip || catalogDef?.nativeTooltip || catalogDef?.tooltip || null;
   const rarity = String(skill.rarity || def.rarity || 'common').toLowerCase();
-  const color = String(chip.dataset.tooltipColor || '').trim() || rarityColor(rarity);
-  const descFallback = String(skill.desc || def.desc || trCore('ui.skill.no_description', 'No description')).trim();
+  const color = String(chip?.dataset?.tooltipColor || '').trim() || rarityColor(rarity);
+  const descFallback = String(nativeTooltip?.description || skill.desc || def.desc || trCore('ui.skill.no_description', 'No description')).trim();
   const desc = trCore(`skill.${sid}.desc`, descFallback);
-  const lines = buildSkillCurrentStatLines(skill, def);
+  const lines = nativeTooltip ? nativeTooltipStatLines(nativeTooltip) : buildSkillCurrentStatLines(skill, def);
   const kind = String(skill?.kind || def?.kind || 'passive').toLowerCase();
   const cooldown = Math.max(0, Number(skill?.cooldownMs) || 0);
   const state = kind === 'active'
     ? (cooldown > 0 ? `${formatHudCooldown(cooldown)} ${trCore('ui.skill.cooldown', 'cooldown')}` : trCore('ui.skill.ready', 'ready'))
     : trCore('ui.skill.passive', 'passive');
+  const useRu = String(window.cwI18nGetLanguage?.() || 'ru') === 'ru';
+  const effect = nativeTooltip
+    ? String((useRu ? nativeTooltip.effectRu : nativeTooltip.effect) || nativeTooltip.effect || '').trim()
+    : buildSkillEffectSummary(skill, def);
   return {
     color,
-    title: `${trSkillNameCore(skill.id || sid, skill.name || def.name || sid)} Lv${Math.max(1, Number(skill.level) || 1)}`,
+    title: String(nativeTooltip?.title || `${trSkillNameCore(skill.id || sid, skill.name || def.name || sid)} Lv${Math.max(1, Number(skill.level) || 1)}`),
     kicker: `${kind === 'active' ? hudTooltipText('Активное умение', 'Active skill') : hudTooltipText('Пассивное умение', 'Passive skill')} | ${rarityLabel(rarity)}`,
     state,
     desc,
+    effect,
     lines,
-    iconHtml: getSkillTooltipIconHtml(chip, skillBadgeLabel({ ...def, ...skill })),
+    iconHtml: getSkillTooltipIconHtmlFromData(chip, skill, def, skillBadgeLabel({ ...def, ...skill })),
+    payload: nativeTooltip || null,
   };
+}
+
+function getSkillTooltipInfo(chip) {
+  return getSkillTooltipInfoById(chip?.dataset?.skillId || '', chip);
 }
 
 function getQuickTooltipInfo(chip) {
@@ -3221,6 +3417,7 @@ function getQuickTooltipInfo(chip) {
     kicker: `${hudTooltipText('Быстрый предмет', 'Quick item')} [${hotkey}] | ${rarityLabel(rarity)}`,
     state: quantity > 0 ? `x${quantity}` : hudTooltipText('Закончился', 'Empty'),
     desc: buildQuickItemDesc(itemDef),
+    effect: '',
     lines: buildQuickItemStatLines(itemDef, quantity),
     iconHtml: getSkillTooltipIconHtml(chip, title.slice(0, 3).toUpperCase()),
   };
@@ -3250,28 +3447,120 @@ function showSkillTooltip(chip) {
     + '<div class="skill-tooltip-state">' + escapeHtml(info.state) + '</div>'
     + '</div>'
     + '<div class="skill-tooltip-desc">' + escapeHtml(info.desc) + '</div>'
+    + (info.effect ? '<div class="skill-tooltip-effect">' + escapeHtml(info.effect) + '</div>' : '')
     + (linesHtml ? '<div class="skill-tooltip-stats">' + linesHtml + '</div>' : '');
   tip.classList.remove('hidden');
   skillTooltipChip = chip;
   positionSkillTooltipForChip(chip);
 }
 
-skillBarEl?.addEventListener('pointerover', (event) => {
-  if (mobile.enabled || skillTooltipPinned) return;
-  const target = event.target;
-  if (!(target instanceof HTMLElement)) return;
-  const chip = target.closest('.skill-chip');
-  if (!(chip instanceof HTMLElement)) return;
-  showSkillTooltip(chip);
+function positionSkillTooltipAt(clientX, clientY) {
+  if (!skillTooltipEl) return;
+  const tipRect = skillTooltipEl.getBoundingClientRect();
+  const x = Math.max(8, Math.min(window.innerWidth - tipRect.width - 8, Number(clientX) + 14));
+  const y = Math.max(8, Math.min(window.innerHeight - tipRect.height - 8, Number(clientY) - Math.min(tipRect.height * 0.5, 120)));
+  skillTooltipEl.style.left = `${x}px`;
+  skillTooltipEl.style.top = `${y}px`;
+  skillTooltipEl.classList.remove('is-above', 'is-below');
+  skillTooltipEl.style.setProperty('--tooltip-arrow-x', '18px');
+}
+
+function showSkillTooltipById(skillId, clientX = null, clientY = null) {
+  const info = getSkillTooltipInfoById(skillId, null);
+  if (!info) {
+    hideSkillTooltip();
+    return null;
+  }
+  const tip = ensureSkillTooltipElement();
+  const linesHtml = info.lines.map((line) => '<div class="skill-tooltip-line">' + escapeHtml(line) + '</div>').join('');
+  tip.style.setProperty('--tooltip-color', info.color);
+  tip.innerHTML = '<div class="skill-tooltip-head">'
+    + info.iconHtml
+    + '<div class="skill-tooltip-head-copy">'
+    + '<div class="skill-tooltip-kicker">' + escapeHtml(info.kicker) + '</div>'
+    + '<div class="skill-tooltip-title">' + escapeHtml(info.title) + '</div>'
+    + '</div>'
+    + '<div class="skill-tooltip-state">' + escapeHtml(info.state) + '</div>'
+    + '</div>'
+    + '<div class="skill-tooltip-desc">' + escapeHtml(info.desc) + '</div>'
+    + (info.effect ? '<div class="skill-tooltip-effect">' + escapeHtml(info.effect) + '</div>' : '')
+    + (linesHtml ? '<div class="skill-tooltip-stats">' + linesHtml + '</div>' : '');
+  tip.classList.remove('hidden');
+  skillTooltipChip = null;
+  if (Number.isFinite(Number(clientX)) && Number.isFinite(Number(clientY))) {
+    positionSkillTooltipAt(Number(clientX), Number(clientY));
+  } else {
+    const chip = skillBarEl?.querySelector?.(`.skill-slot[data-skill-id="${skillHudSelectorValue(skillId)}"]`);
+    if (chip instanceof HTMLElement) positionSkillTooltipForChip(chip);
+  }
+  return info.payload || info;
+}
+
+window.cwNativeGetSkillTooltip = (skillId) => getSkillTooltipInfoById(skillId, null)?.payload || null;
+window.cwNativeShowSkillTooltip = (skillId, x = null, y = null) => showSkillTooltipById(skillId, x, y);
+window.cwNativeHideSkillTooltip = () => hideSkillTooltip();
+
+function normalizeNativeBridgePayload(rawPayload) {
+  if (!rawPayload) return null;
+  if (typeof rawPayload === 'string') {
+    try { return JSON.parse(rawPayload); } catch { return null; }
+  }
+  return typeof rawPayload === 'object' ? rawPayload : null;
+}
+
+function handleNativeBridgePayload(rawPayload) {
+  const payload = normalizeNativeBridgePayload(rawPayload);
+  if (!payload || typeof payload !== 'object') return;
+  if (payload.type === 'cw-native-apply-setting') {
+    applyNativeGameSetting(payload.id || payload.settingId || payload.nativeKey, payload.value);
+    return true;
+  }
+  if (payload.type === 'cw-native-skill-hover') {
+    const skillId = String(payload.skillId || payload.id || '').trim();
+    if (!skillId || payload.visible === false) hideSkillTooltip(false);
+    else showSkillTooltipById(skillId, payload.x, payload.y);
+    return true;
+  }
+  if (payload.type === 'cw-native-hide-skill-tooltip') {
+    hideSkillTooltip(false);
+    return true;
+  }
+  return false;
+}
+
+window.addEventListener('message', (event) => {
+  const origin = String(event.origin || '').trim();
+  if (origin && origin !== 'null' && origin !== window.location.origin && !isNativeUnrealUi()) return;
+  handleNativeBridgePayload(event.data);
 });
 
-skillBarEl?.addEventListener('pointermove', (event) => {
-  if (mobile.enabled || skillTooltipPinned) return;
+try {
+  window.chrome?.webview?.addEventListener?.('message', (event) => {
+    handleNativeBridgePayload(event?.data);
+  });
+} catch {}
+
+function canShowSkillHoverTooltip() {
+  return !skillTooltipPinned && (!mobile.enabled || isNativeUnrealUi());
+}
+
+function getSkillChipFromPointerEvent(event) {
   const target = event.target;
-  if (!(target instanceof HTMLElement)) return;
-  const chip = target.closest('.skill-chip');
+  const directChip = target instanceof HTMLElement ? target.closest('.skill-chip') : null;
+  if (directChip instanceof HTMLElement) return directChip;
+  const x = Number(event.clientX);
+  const y = Number(event.clientY);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  const hit = document.elementFromPoint(x, y);
+  const hitChip = hit instanceof HTMLElement ? hit.closest('.skill-chip') : null;
+  return hitChip instanceof HTMLElement ? hitChip : null;
+}
+
+function updateSkillTooltipFromPointerEvent(event, hideWhenMissing = true) {
+  if (!canShowSkillHoverTooltip()) return;
+  const chip = getSkillChipFromPointerEvent(event);
   if (!(chip instanceof HTMLElement)) {
-    hideSkillTooltip(false);
+    if (hideWhenMissing) hideSkillTooltip(false);
     return;
   }
   if (chip !== skillTooltipChip) {
@@ -3279,17 +3568,40 @@ skillBarEl?.addEventListener('pointermove', (event) => {
     return;
   }
   positionSkillTooltipForChip(chip);
+}
+
+skillBarEl?.addEventListener('pointerover', (event) => {
+  updateSkillTooltipFromPointerEvent(event, false);
+});
+
+skillBarEl?.addEventListener('pointermove', (event) => {
+  updateSkillTooltipFromPointerEvent(event, true);
+});
+
+skillBarEl?.addEventListener('mouseover', (event) => {
+  updateSkillTooltipFromPointerEvent(event, false);
+});
+
+skillBarEl?.addEventListener('mousemove', (event) => {
+  updateSkillTooltipFromPointerEvent(event, true);
 });
 
 skillBarEl?.addEventListener('pointerleave', () => {
   if (!skillTooltipPinned) hideSkillTooltip(false);
 });
 
+skillBarEl?.addEventListener('mouseleave', () => {
+  if (!skillTooltipPinned) hideSkillTooltip(false);
+});
+
+document.addEventListener('mousemove', (event) => {
+  if (!isNativeUnrealUi()) return;
+  updateSkillTooltipFromPointerEvent(event, false);
+});
+
 skillBarEl?.addEventListener('click', (event) => {
-  if (!mobile.enabled) return;
-  const target = event.target;
-  if (!(target instanceof HTMLElement)) return;
-  const chip = target.closest('.skill-chip');
+  if (!mobile.enabled && !isNativeUnrealUi()) return;
+  const chip = getSkillChipFromPointerEvent(event);
   if (!(chip instanceof HTMLElement)) {
     hideSkillTooltip();
     return;
@@ -3305,10 +3617,11 @@ skillBarEl?.addEventListener('click', (event) => {
 });
 
 document.addEventListener('click', (event) => {
-  if (!mobile.enabled) return;
+  if (!mobile.enabled && !isNativeUnrealUi()) return;
   const target = event.target;
-  if (!(target instanceof HTMLElement)) return;
-  if (target.closest('#skill-bar')) return;
+  const targetInSkillBar = target instanceof HTMLElement && target.closest('#skill-bar');
+  const hitChip = getSkillChipFromPointerEvent(event);
+  if (targetInSkillBar || hitChip) return;
   hideSkillTooltip();
 });
 
@@ -4179,23 +4492,26 @@ function loadImage(src) {
 }
 
 const playerSprites = Object.fromEntries(PLAYER_VARIANTS.map((v) => [v.id, loadImage(v.sprite)]));
+const TRIPO_MAP_PROP_ROOT = '/assets/map-props/tripo3d';
 const sprites = {
   players: playerSprites,
   enemy: loadImage('/assets/sprites/enemy_mummy.png'),
   ground: loadImage('/assets/tiles/ground_grass.jpg'),
+  tree: loadImage('/assets/sprites/tree_tripo3d.png'),
   mapProps: {
     car_red: loadImage('/assets/map-props/car_red.png'),
     car_blue: loadImage('/assets/map-props/car_blue.png'),
-    bus_yellow: loadImage('/assets/map-props/bus_yellow.png'),
-    ambulance: loadImage('/assets/map-props/ambulance.png'),
-    barrier: loadImage('/assets/map-props/barrier.png'),
+    bus_yellow: loadImage(`${TRIPO_MAP_PROP_ROOT}/bus_yellow.png`),
+    ambulance: loadImage(`${TRIPO_MAP_PROP_ROOT}/ambulance.png`),
+    barrier: loadImage(`${TRIPO_MAP_PROP_ROOT}/barrier.png`),
     shack: loadImage('/assets/map-props/shack.png'),
-    mall_block: loadImage('/assets/map-props/mall_block.png'),
-    clinic_block: loadImage('/assets/map-props/clinic_block.svg'),
-    industrial_tank: loadImage('/assets/map-props/industrial_tank.png'),
-    reactor_block: loadImage('/assets/map-props/reactor_block.svg'),
+    mall_block: loadImage(`${TRIPO_MAP_PROP_ROOT}/mall_block.png`),
+    clinic_block: loadImage(`${TRIPO_MAP_PROP_ROOT}/clinic_block.png`),
+    industrial_tank: loadImage(`${TRIPO_MAP_PROP_ROOT}/industrial_tank.png`),
+    reactor_block: loadImage(`${TRIPO_MAP_PROP_ROOT}/reactor_block.png`),
+    shopping_cart_barricade: loadImage(`${TRIPO_MAP_PROP_ROOT}/shopping_cart_barricade.png`),
     build_1: loadImage('/assets/buildings/build-1.png'),
-    build_2: loadImage('/assets/buildings/build-2.png'),
+    build_2: loadImage(`${TRIPO_MAP_PROP_ROOT}/build_2.png`),
     build_3: loadImage('/assets/buildings/build-3.png'),
     build_4: loadImage('/assets/buildings/build-4.png'),
     build_5: loadImage('/assets/buildings/build-5.png'),
@@ -4447,6 +4763,12 @@ function setRunStartLoadingBackground(src) {
   if (runStartOverlayEl) runStartOverlayEl.style.setProperty('--run-start-bg-image', `url("${safeSrc}")`);
 }
 
+function shouldSuppressRunStartOverlay() {
+  return isNativeUnrealUi()
+    || globalThis.cwNativeUeMode === true
+    || globalThis.cwDisableWebRenderer === true;
+}
+
 function cancelRunStartLoading(options = {}) {
   const targetToken = Math.max(0, Number(options?.token) || 0);
   if (targetToken > 0 && targetToken !== runStartSequence.token) return;
@@ -4545,6 +4867,10 @@ async function preloadRunStartResources(token) {
 }
 
 function beginRunStartLoading(options = {}) {
+  if (shouldSuppressRunStartOverlay()) {
+    cancelRunStartLoading();
+    return 0;
+  }
   if (game.embedMode || replayGame.active || game.spectating) return 0;
   const token = runStartSequence.token + 1;
   runStartSequence.token = token;
@@ -5111,13 +5437,17 @@ qualitySelect?.addEventListener('change', () => {
   const q = qualitySelect.value;
   if (!QUALITY[q]) return;
   game.qualityKey = q;
+  localStorage.setItem('cw:qualityKey', q);
   rebuildGroundTile();
+  emitNativeGameSettingsChanged('graphics_quality');
 });
+if (qualitySelect) qualitySelect.value = game.qualityKey;
 
 function setShadowsEnabled(enabled) {
   game.shadowsEnabled = Boolean(enabled);
   if (shadowToggleEl) shadowToggleEl.checked = game.shadowsEnabled;
   localStorage.setItem('cw:shadowsEnabled', game.shadowsEnabled ? '1' : '0');
+  emitNativeGameSettingsChanged('shadows');
 }
 
 shadowToggleEl?.addEventListener('change', () => {
@@ -5129,6 +5459,7 @@ function setBulletTracersEnabled(enabled) {
   game.bulletTracersEnabled = Boolean(enabled);
   if (bulletTracersToggleEl) bulletTracersToggleEl.checked = game.bulletTracersEnabled;
   localStorage.setItem('cw:bulletTracersEnabled', game.bulletTracersEnabled ? '1' : '0');
+  emitNativeGameSettingsChanged('bullet_tracers');
 }
 
 bulletTracersToggleEl?.addEventListener('change', () => {
@@ -5140,6 +5471,7 @@ function setEnemyHpBarsEnabled(enabled) {
   game.enemyHpBarsEnabled = Boolean(enabled);
   if (enemyHpToggleEl) enemyHpToggleEl.checked = game.enemyHpBarsEnabled;
   localStorage.setItem('cw:enemyHpBarsEnabled', game.enemyHpBarsEnabled ? '1' : '0');
+  emitNativeGameSettingsChanged('enemy_hp_bars');
 }
 
 enemyHpToggleEl?.addEventListener('change', () => {
@@ -5151,6 +5483,7 @@ function setShowCompanionNamesEnabled(enabled) {
   game.showCompanionNamesEnabled = Boolean(enabled);
   if (showCompanionNamesToggleEl) showCompanionNamesToggleEl.checked = game.showCompanionNamesEnabled;
   localStorage.setItem('cw:showCompanionNamesEnabled', game.showCompanionNamesEnabled ? '1' : '0');
+  emitNativeGameSettingsChanged('show_companion_names');
 }
 
 showCompanionNamesToggleEl?.addEventListener('change', () => {
@@ -5162,6 +5495,7 @@ function setShowCompanionReserveAmmoEnabled(enabled) {
   game.showCompanionReserveAmmoEnabled = Boolean(enabled);
   if (showCompanionReserveToggleEl) showCompanionReserveToggleEl.checked = game.showCompanionReserveAmmoEnabled;
   localStorage.setItem('cw:showCompanionReserveAmmoEnabled', game.showCompanionReserveAmmoEnabled ? '1' : '0');
+  emitNativeGameSettingsChanged('show_companion_ammo');
 }
 
 showCompanionReserveToggleEl?.addEventListener('change', () => {
@@ -5173,6 +5507,7 @@ function setExtraBloodEnabled(enabled) {
   game.extraBloodEnabled = Boolean(enabled);
   if (extraBloodToggleEl) extraBloodToggleEl.checked = game.extraBloodEnabled;
   localStorage.setItem('cw:extraBloodEnabled', game.extraBloodEnabled ? '1' : '0');
+  emitNativeGameSettingsChanged('extra_blood');
 }
 
 extraBloodToggleEl?.addEventListener('change', () => {
@@ -5184,6 +5519,7 @@ function setHitEffectsEnabled(enabled) {
   game.hitEffectsEnabled = Boolean(enabled);
   if (hitEffectsToggleEl) hitEffectsToggleEl.checked = game.hitEffectsEnabled;
   localStorage.setItem('cw:hitEffectsEnabled', game.hitEffectsEnabled ? '1' : '0');
+  emitNativeGameSettingsChanged('hit_effects');
 }
 
 hitEffectsToggleEl?.addEventListener('change', () => {
@@ -5196,6 +5532,7 @@ function setAutoFireEnabled(enabled) {
   game.autoFireEnabled = Boolean(enabled);
   if (autoFireToggleEl) autoFireToggleEl.checked = game.autoFireEnabled;
   localStorage.setItem('cw:autoFireEnabled', game.autoFireEnabled ? '1' : '0');
+  emitNativeGameSettingsChanged('auto_fire');
 }
 
 autoFireToggleEl?.addEventListener('change', () => {
@@ -5206,6 +5543,7 @@ function setConnectionIndicatorEnabled(enabled) {
   game.connectionIndicatorEnabled = Boolean(enabled);
   if (connIndicatorToggleEl) connIndicatorToggleEl.checked = game.connectionIndicatorEnabled;
   localStorage.setItem('cw:connectionIndicatorEnabled', game.connectionIndicatorEnabled ? '1' : '0');
+  emitNativeGameSettingsChanged('connection_indicator');
 }
 
 connIndicatorToggleEl?.addEventListener('change', () => {
@@ -5218,6 +5556,7 @@ function setShowFpsEnabled(enabled) {
   if (showFpsToggleEl) showFpsToggleEl.checked = game.showFpsEnabled;
   localStorage.setItem('cw:showFpsEnabled', game.showFpsEnabled ? '1' : '0');
   updateFpsCornerVisibility();
+  emitNativeGameSettingsChanged('show_fps');
 }
 
 showFpsToggleEl?.addEventListener('change', () => {
@@ -5231,6 +5570,7 @@ function setShowChatEnabled(enabled) {
   localStorage.setItem('cw:showChatEnabled', game.showChatEnabled ? '1' : '0');
   if (!game.showChatEnabled && chatInputEl && document.activeElement === chatInputEl) chatInputEl.blur();
   updateHudVisibility(getComputedStyle(joinOverlay).display !== 'none');
+  emitNativeGameSettingsChanged('show_chat');
 }
 
 showChatToggleEl?.addEventListener('change', () => {
@@ -5243,6 +5583,7 @@ function setGameSfxEnabled(enabled) {
   if (gameSfxToggleEl) gameSfxToggleEl.checked = game.sfxEnabled;
   localStorage.setItem('cw:sfxEnabled', game.sfxEnabled ? '1' : '0');
   if (game.sfxEnabled) unlockGameAudio();
+  emitNativeGameSettingsChanged('game_sounds');
 }
 
 function applyGameSfxEnabled(enabled, { persist = true, unlock = true } = {}) {
@@ -5259,6 +5600,7 @@ function setGameSfxVolume(percent) {
   if (gameSfxVolumeEl) gameSfxVolumeEl.value = String(value);
   if (gameSfxVolumeValueEl) gameSfxVolumeValueEl.textContent = `${value}%`;
   applyGameAudioMasterGain();
+  emitNativeGameSettingsChanged('sound_volume');
 }
 
 function applyGameSfxVolume(percent, { persist = true } = {}) {
@@ -5945,6 +6287,7 @@ function setShowCommentatorEnabled(enabled) {
   if (showCommentatorToggleEl) showCommentatorToggleEl.checked = game.showCommentatorEnabled;
   localStorage.setItem('cw:showCommentatorEnabled', game.showCommentatorEnabled ? '1' : '0');
   updateHudVisibility(getComputedStyle(joinOverlay).display !== 'none');
+  emitNativeGameSettingsChanged('show_commentator');
 }
 
 showCommentatorToggleEl?.addEventListener('change', () => {
@@ -5980,6 +6323,7 @@ function setShowReplayPlayerEnabled(enabled) {
   if (replayPlayerToggleEl) replayPlayerToggleEl.checked = game.showReplayPlayerEnabled;
   localStorage.setItem('cw:showReplayPlayerEnabled', game.showReplayPlayerEnabled ? '1' : '0');
   updateHudVisibility(getComputedStyle(joinOverlay).display !== 'none');
+  emitNativeGameSettingsChanged('show_replay_player');
 }
 
 replayPlayerToggleEl?.addEventListener('change', () => {
@@ -5992,6 +6336,7 @@ function setShowMinimapEnabled(enabled) {
   if (showMinimapToggleEl) showMinimapToggleEl.checked = game.showMinimapEnabled;
   localStorage.setItem('cw:showMinimapEnabled', game.showMinimapEnabled ? '1' : '0');
   updateMinimapVisibility();
+  emitNativeGameSettingsChanged('show_minimap');
 }
 
 showMinimapToggleEl?.addEventListener('change', () => {
@@ -6004,6 +6349,7 @@ function setShowAimStickEnabled(enabled) {
   if (showAimStickToggleEl) showAimStickToggleEl.checked = game.showAimStickEnabled;
   localStorage.setItem('cw:showAimStickEnabled', game.showAimStickEnabled ? '1' : '0');
   updateAimStickVisibility();
+  emitNativeGameSettingsChanged('show_aim_stick');
 }
 
 showAimStickToggleEl?.addEventListener('change', () => {
@@ -6019,6 +6365,7 @@ function setDynamicSticksEnabled(enabled) {
     mobileControlsEl.classList.toggle('dynamic-enabled', game.dynamicSticksEnabled);
     mobileControlsEl.classList.remove('sticks-ghost');
   }
+  emitNativeGameSettingsChanged('dynamic_sticks');
 }
 
 dynamicSticksToggleEl?.addEventListener('change', () => {
@@ -6046,11 +6393,11 @@ function resizeCanvas() {
   const { width, height } = getSafeCanvasViewportSize();
   if (canvas.width !== width) canvas.width = width;
   if (canvas.height !== height) canvas.height = height;
-  if (webglCanvas) {
+  if (webglCanvas && !globalThis.cwDisableWebRenderer) {
     if (webglCanvas.width !== width) webglCanvas.width = width;
     if (webglCanvas.height !== height) webglCanvas.height = height;
   }
-  if (typeof globalThis.CWWebGLWorld?.resize === 'function') {
+  if (!globalThis.cwDisableWebRenderer && typeof globalThis.CWWebGLWorld?.resize === 'function') {
     globalThis.CWWebGLWorld.resize(width, height);
   }
 }

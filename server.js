@@ -6,6 +6,7 @@ const { spawn } = require('child_process');
 const express = require('express');
 const Database = require('better-sqlite3');
 const WebSocket = require('ws');
+const { beginCell } = require('@ton/core');
 
 const { WebSocketServer } = WebSocket;
 
@@ -19,6 +20,8 @@ const { createRuntimeRegistryStore } = require('./server/runtime-registry-store'
 const { createSkillsStore } = require('./server/skills-store');
 const { createAccountProgressionStore } = require('./server/account-progression-store');
 const { createNewsStore } = require('./server/news-store');
+const { createTonShopOrderStore } = require('./server/ton-shop-store');
+const { getProduct, getHeroSkin, getItemSkin, getTonShopRuntimeConfig, buildPublicTonShopPayload } = require('./server/ton-shop-catalog');
 const { isMysqlStoreEnabled, createMysqlSyncClient, setMysqlSyncMonitor } = require('./server/mysql-sync');
 const { createLeaderboardService } = require('./server/services/leaderboard-service');
 const { registerLeaderboardRoutes } = require('./server/http/leaderboard-routes');
@@ -30,6 +33,7 @@ const {
   buildRuntimeMeleeFxRef,
   buildRuntimeProjectileFxRef,
   buildRuntimeSkillFxRef,
+  buildRuntimeSkillTooltipRef,
   buildRuntimeWorldFxRef,
   buildSkillCatalogWithFx,
   getProjectileFxKey,
@@ -54,6 +58,9 @@ const INSTANCE_ID = (process.env.INSTANCE_ID || `${require('os').hostname()}-${p
 const SHUTDOWN_GRACE_MS = Math.max(1000, Number(process.env.SHUTDOWN_GRACE_MS) || 8000);
 const RESTART_RETRY_MS = Math.max(1000, Number(process.env.RESTART_RETRY_MS) || 2500);
 const PLAYER_RECONNECT_GRACE_MS = Math.max(5000, Number(process.env.PLAYER_RECONNECT_GRACE_MS) || 30000);
+const NATIVE_HANDOFF_TTL_MS = Math.max(15000, Number(process.env.NATIVE_HANDOFF_TTL_MS) || 120000);
+const NATIVE_HANDOFF_LATE_GRACE_MS = Math.max(0, Number(process.env.NATIVE_HANDOFF_LATE_GRACE_MS) || 45000);
+const NATIVE_HANDOFF_REJOIN_GRACE_MS = Math.max(15000, Number(process.env.NATIVE_HANDOFF_REJOIN_GRACE_MS) || 120000);
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || (IS_PROD ? '' : `http://localhost:${PORT}`)).toString().trim().replace(/\/+$/, '');
 const SESSION_COOKIE_DOMAIN = (process.env.SESSION_COOKIE_DOMAIN || (IS_PROD ? '.rodion.pro' : '')).toString().trim();
 const GOOGLE_CLIENT_ID = (process.env.GOOGLE_CLIENT_ID || '').toString().trim();
@@ -508,6 +515,11 @@ const accountProgressionStore = createAccountProgressionStore({
   shardsFromSurvivalSecMul: ACCOUNT_SHARDS_FROM_SURVIVAL_SEC_MUL,
   mysql: MYSQL_STORE,
 });
+const tonShopOrderStore = createTonShopOrderStore({
+  dataDir: DATA_DIR,
+  dbPath: path.join(DATA_DIR, 'ton-shop-orders.db'),
+  mysql: MYSQL_STORE,
+});
 const runtimeRegistryStore = createRuntimeRegistryStore({
   dataDir: DATA_DIR,
   dbPath: RUNTIME_REGISTRY_DB_PATH,
@@ -647,6 +659,12 @@ function buildRuntimeSkillFxPayload(def) {
   return buildRuntimeSkillFxRef(def, { heroId });
 }
 
+function buildRuntimeSkillTooltipPayload(def, options = {}) {
+  if (!def) return null;
+  const heroId = String(options.heroId || def?.sourceHeroId || def?.heroId || '').trim().toLowerCase();
+  return buildRuntimeSkillTooltipRef(def, { heroId, level: options.level || 1 });
+}
+
 function buildSkillFxTargetsPayload(targets) {
   if (!Array.isArray(targets)) return [];
   return targets.slice(0, 16).map((target) => ({
@@ -666,6 +684,13 @@ function broadcastSkillFx(room, player, def, st, now, options = {}) {
   const baseDamage = (Number(def.damage) || 0) + (Number(def.damagePerLevel) || 0) * (lvl - 1);
   const targets = buildSkillFxTargetsPayload(options.targets);
   const castType = getSkillCastType(def);
+  const sourceCastType = String(def?.castType || def?.id || castType || '').trim().toLowerCase();
+  const projectilesReplicated = options.projectilesReplicated === true || sourceCastType === 'homing_missiles';
+  const projectileCount = projectilesReplicated ? 0 : Math.max(0, Math.round(Number(options.projectileCount) || 0));
+  const spawnProjectiles = projectilesReplicated ? false : (options.spawnProjectiles === undefined
+    ? projectileCount > 0
+    : options.spawnProjectiles !== false);
+  const skillId = String(def.id || castType || '');
   broadcastRoom(room, {
     type: 'skillFx',
     event: {
@@ -673,7 +698,8 @@ function broadcastSkillFx(room, player, def, st, now, options = {}) {
       playerId: String(player.id || ''),
       playerName: String(player.name || ''),
       heroId: String(player.playerClass || def.sourceHeroId || def.heroId || ''),
-      skillId: String(def.id || castType || ''),
+      skillId: projectilesReplicated ? 'replicated_projectile_cast' : skillId,
+      sourceSkillId: skillId,
       skillName: String(def.name || def.id || castType || 'Skill'),
       castType,
       level: lvl,
@@ -684,7 +710,9 @@ function broadcastSkillFx(room, player, def, st, now, options = {}) {
       radius,
       damage: Math.max(0, Math.round(Number(options.damage) || baseDamage)),
       hitCount: Math.max(0, Math.round(Number(options.hitCount) || targets.length)),
-      projectileCount: Math.max(0, Math.round(Number(options.projectileCount) || 0)),
+      projectileCount,
+      projectilesReplicated,
+      spawnProjectiles,
       targetCount: targets.length,
       targets,
       color: fx?.color || '',
@@ -794,12 +822,15 @@ function buildPublicProfileProgressionDetails(publicProgression, catalog) {
   const activeEquipment = equipmentByHero[activeHeroId] && typeof equipmentByHero[activeHeroId] === 'object'
     ? equipmentByHero[activeHeroId]
     : {};
+  const selectedHeroSkinId = String(publicProgression?.selectedCosmetics?.heroSkins?.[activeHeroId] || '').trim();
+  const selectedHeroSkin = selectedHeroSkinId ? getHeroSkin(selectedHeroSkinId) : null;
 
   const activeHero = {
     id: activeHeroId,
     name: String(activeHeroDef?.name || activeHeroId).trim(),
     accent: String(activeHeroDef?.accent || '#39c1d9').trim(),
-    avatar: getPublicHeroAvatarPath(activeHeroId),
+    avatar: selectedHeroSkin?.image || getPublicHeroAvatarPath(activeHeroId),
+    skin: selectedHeroSkin ? { ...selectedHeroSkin } : null,
     level: Math.max(1, Number(heroLevels[activeHeroId]) || 1),
     xp: Math.max(0, Number(heroXp[activeHeroId]) || 0),
     xpToNext: Math.max(0, Number(heroXpToNext[activeHeroId]) || 0),
@@ -879,6 +910,13 @@ function buildPlayerVisualLoadout(player) {
   const activeEquipment = equipmentByHero[heroId] && typeof equipmentByHero[heroId] === 'object'
     ? equipmentByHero[heroId]
     : {};
+  const selectedCosmetics = progression?.selectedCosmetics && typeof progression.selectedCosmetics === 'object'
+    ? progression.selectedCosmetics
+    : {};
+  const heroSkinId = String(selectedCosmetics?.heroSkins?.[heroId] || '').trim();
+  const itemSkins = selectedCosmetics?.itemSkins && typeof selectedCosmetics.itemSkins === 'object'
+    ? Object.fromEntries(Object.entries(selectedCosmetics.itemSkins).map(([key, value]) => [String(key || '').trim(), String(value || '').trim()]).filter(([key, value]) => key && value))
+    : {};
   const slots = {};
 
   for (const slotDef of ITEM_SLOT_DEFS || []) {
@@ -904,8 +942,10 @@ function buildPlayerVisualLoadout(player) {
   return {
     heroId,
     bodyMesh: `heroes/${heroId}/body`,
-    skin: 'default',
+    skin: heroSkinId || 'default',
+    heroSkinId,
     weaponKey: String(player?.weaponKey || 'pistol').trim() || 'pistol',
+    itemSkins,
     slots,
   };
 }
@@ -988,6 +1028,101 @@ function buildNativeMobCatalog() {
   });
 }
 
+function buildNativeSettingsManifest() {
+  const checkbox = (id, label, storageKey, defaultValue, group, nativeKey = id) => ({
+    id,
+    nativeKey,
+    type: 'checkbox',
+    label,
+    labelRu: label,
+    storageKey,
+    defaultValue: Boolean(defaultValue),
+    group,
+  });
+  return {
+    schemaVersion: 1,
+    generatedAt: Date.now(),
+    triggerContract: 'Render these controls in the Unreal run menu. Read current values through cwNativeGetGameSettings() when WebView is available, and apply changes through cwNativeApplyGameSetting(id, value).',
+    applyContract: {
+      read: 'cwNativeGetGameSettings()',
+      apply: 'cwNativeApplyGameSetting(id, value)',
+      toggle: 'cwNativeToggleGameSetting(id)',
+      messageType: 'cw-native-apply-setting',
+    },
+    groups: [
+      { id: 'graphics', label: 'Graphics', labelRu: 'Graphics' },
+      { id: 'hud', label: 'HUD', labelRu: 'HUD' },
+      { id: 'combat', label: 'Combat', labelRu: 'Combat' },
+      { id: 'controls', label: 'Controls', labelRu: 'Controls' },
+      { id: 'audio', label: 'Audio', labelRu: 'Audio' },
+      { id: 'replay', label: 'Replay', labelRu: 'Replay' },
+    ],
+    controls: [
+      {
+        id: 'graphics_quality',
+        nativeKey: 'graphicsQuality',
+        type: 'select',
+        label: 'Graphics quality',
+        labelRu: 'Graphics quality',
+        storageKey: 'cw:qualityKey',
+        defaultValue: 'medium',
+        group: 'graphics',
+        options: [
+          { value: 'low', label: 'Low', labelRu: 'Low' },
+          { value: 'medium', label: 'Medium', labelRu: 'Medium' },
+          { value: 'high', label: 'High', labelRu: 'High' },
+        ],
+      },
+      checkbox('shadows', 'Shadows', 'cw:shadowsEnabled', true, 'graphics'),
+      checkbox('bullet_tracers', 'Bullet tracers', 'cw:bulletTracersEnabled', true, 'graphics', 'bulletTracers'),
+      checkbox('extra_blood', 'Extra blood', 'cw:extraBloodEnabled', true, 'graphics', 'extraBlood'),
+      checkbox('hit_effects', 'Hit effects', 'cw:hitEffectsEnabled', true, 'graphics', 'hitEffects'),
+      checkbox('show_minimap', 'Show minimap', 'cw:showMinimapEnabled', true, 'hud', 'showMinimap'),
+      checkbox('enemy_hp_bars', 'Enemy HP Bars', 'cw:enemyHpBarsEnabled', true, 'hud', 'enemyHpBars'),
+      checkbox('show_companion_names', 'Ally bot names', 'cw:showCompanionNamesEnabled', false, 'hud', 'showCompanionNames'),
+      checkbox('show_companion_ammo', 'Ally bot ammo', 'cw:showCompanionReserveAmmoEnabled', true, 'hud', 'showCompanionAmmo'),
+      checkbox('connection_indicator', 'Connection indicator', 'cw:connectionIndicatorEnabled', true, 'hud', 'connectionIndicator'),
+      checkbox('show_fps', 'Show FPS', 'cw:showFpsEnabled', true, 'hud', 'showFps'),
+      checkbox('show_chat', 'Show chat', 'cw:showChatEnabled', true, 'hud', 'showChat'),
+      checkbox('auto_fire', 'Auto fire', 'cw:autoFireEnabled', true, 'combat', 'autoFire'),
+      checkbox('dynamic_sticks', 'Dynamic sticks', 'cw:dynamicSticksEnabled', false, 'controls', 'dynamicSticks'),
+      checkbox('show_aim_stick', 'Show aim stick', 'cw:showAimStickEnabled', true, 'controls', 'showAimStick'),
+      checkbox('game_sounds', 'Game sounds', 'cw:sfxEnabled', true, 'audio', 'gameSounds'),
+      {
+        id: 'sound_volume',
+        nativeKey: 'soundVolume',
+        type: 'range',
+        label: 'Sound volume',
+        labelRu: 'Sound volume',
+        storageKey: 'cw:sfxVolume',
+        defaultValue: 70,
+        min: 0,
+        max: 100,
+        step: 1,
+        unit: '%',
+        group: 'audio',
+      },
+      checkbox('show_commentator', 'Arena commentator', 'cw:showCommentatorEnabled', true, 'audio', 'showCommentator'),
+      checkbox('commentator_voice', 'Voice commentator', 'cw:commentatorTtsEnabled', true, 'audio', 'commentatorVoice'),
+      checkbox('show_replay_player', 'Show replay player', 'cw:showReplayPlayerEnabled', true, 'replay', 'showReplayPlayer'),
+      {
+        id: 'language',
+        nativeKey: 'language',
+        type: 'select',
+        label: 'Language',
+        labelRu: 'Language',
+        storageKey: 'cw:language',
+        defaultValue: 'ru',
+        group: 'hud',
+        options: [
+          { value: 'ru', label: 'Russian', labelRu: 'Russian' },
+          { value: 'en', label: 'English', labelRu: 'English' },
+        ],
+      },
+    ],
+  };
+}
+
 function buildNativeAssetManifest(catalog) {
   const heroes = buildNativeHeroCatalog(catalog);
   const items = buildNativeItemCatalog(catalog);
@@ -1056,6 +1191,7 @@ function buildNativeBootstrapPayload(req) {
   const skillCatalog = buildPublicSkillCatalog();
   const gameplayFxManifest = buildNativeGameplayFxManifest({ skills: skillCatalog, items: catalog.items });
   const skillFxManifest = gameplayFxManifest.skillFx || buildNativeSkillFxManifest(skillCatalog);
+  const uiSettings = buildNativeSettingsManifest();
   const baseUrl = getRequestBaseUrl(req) || PUBLIC_BASE_URL;
   const wsBaseUrl = baseUrl.replace(/^http:/i, 'ws:').replace(/^https:/i, 'wss:').replace(/\/+$/, '');
   return {
@@ -1088,6 +1224,7 @@ function buildNativeBootstrapPayload(req) {
       skills: skillCatalog,
       skillFx: skillFxManifest,
       fx: gameplayFxManifest,
+      uiSettings,
       weapons: buildNativeWeaponCatalog(),
       mobs: buildNativeMobCatalog(),
     },
@@ -1101,6 +1238,10 @@ function buildNativeBootstrapPayload(req) {
       ragdollPolicy: 'serverDeathEventClientPhysics',
       skillFx: skillFxManifest,
       fx: gameplayFxManifest,
+      uiSettings,
+      menu: {
+        settings: uiSettings,
+      },
     },
   };
 }
@@ -2051,6 +2192,50 @@ app.get('/api/room-route', (req, res) => {
   });
 });
 
+function createTonCommentPayloadBoc(comment) {
+  const text = String(comment || '').trim().slice(0, 180);
+  return beginCell().storeUint(0, 32).storeStringTail(text).endCell().toBoc().toString('base64');
+}
+
+function buildTonOrderResponse(order, product = null) {
+  if (!order) return null;
+  return {
+    id: order.id,
+    productId: order.productId,
+    product: product ? {
+      id: product.id,
+      title: product.title,
+      type: product.type,
+      image: product.image,
+    } : null,
+    amountNanoTon: order.amountNanoTon,
+    receiverAddress: order.receiverAddress,
+    network: order.network,
+    networkId: order.networkId,
+    comment: order.comment,
+    payload: order.payloadBoc,
+    status: order.status,
+    expiresAt: order.expiresAt,
+    submittedAt: order.submittedAt,
+    confirmedAt: order.confirmedAt,
+  };
+}
+
+function grantPaidTonOrder(order) {
+  if (!order || order.status !== 'paid') return null;
+  const product = getProduct(order.productId);
+  if (!product) return null;
+  const result = accountProgressionStore.grantTonShopProduct(order.playerId, product);
+  return result?.ok ? result.progression : null;
+}
+
+function getTonShopPayloadForPlayer(playerId = 0) {
+  const progression = playerId ? accountProgressionStore.getOrCreateProgression(playerId) : null;
+  return buildPublicTonShopPayload({
+    progression: progression ? accountProgressionStore.toPublicProgression(progression) : null,
+  });
+}
+
 app.get('/api/player/me', (req, res) => {
   const catalog = accountProgressionStore.getCatalogPayload();
   if (!req.playerUser) {
@@ -2063,6 +2248,7 @@ app.get('/api/player/me', (req, res) => {
       nicknameSetupRequired: false,
       progressionCatalog: catalog,
       progression: null,
+      tonShop: getTonShopPayloadForPlayer(0),
     });
     return;
   }
@@ -2076,7 +2262,153 @@ app.get('/api/player/me', (req, res) => {
     nicknameSetupRequired: playerAuthStore.needsNicknameSetup(req.playerUser.id),
     progressionCatalog: catalog,
     progression: accountProgressionStore.toPublicProgression(progression),
+    tonShop: getTonShopPayloadForPlayer(req.playerUser.id),
   });
+});
+
+app.get('/api/ton/shop', (req, res) => {
+  res.json({
+    ok: true,
+    tonShop: getTonShopPayloadForPlayer(req.playerUser?.id || 0),
+    now: Date.now(),
+  });
+});
+
+app.post('/api/ton/orders', (req, res) => {
+  if (!req.playerUser) {
+    res.status(401).json({ ok: false, message: 'Authentication required' });
+    return;
+  }
+  const runtime = getTonShopRuntimeConfig();
+  if (!runtime.enabled) {
+    res.status(503).json({ ok: false, message: 'TON receiver is not configured' });
+    return;
+  }
+  const productId = String(req.body?.productId || '').trim();
+  const product = getProduct(productId);
+  if (!product) {
+    res.status(404).json({ ok: false, message: 'TON shop product not found' });
+    return;
+  }
+  const progression = accountProgressionStore.toPublicProgression(accountProgressionStore.getOrCreateProgression(req.playerUser.id));
+  if (buildPublicTonShopPayload({ progression }).products.find((item) => item.id === product.id)?.owned) {
+    res.json({ ok: true, alreadyOwned: true, progression, tonShop: getTonShopPayloadForPlayer(req.playerUser.id) });
+    return;
+  }
+  const orderId = `ton_${Date.now().toString(36)}_${crypto.randomBytes(8).toString('hex')}`;
+  const comment = `CW:${orderId}:${req.playerUser.id}:${product.id}`;
+  const order = tonShopOrderStore.createOrder({
+    id: orderId,
+    playerId: req.playerUser.id,
+    productId: product.id,
+    amountNanoTon: String(product.priceNanoTon),
+    receiverAddress: runtime.receiverAddress,
+    network: runtime.network,
+    networkId: runtime.networkId,
+    comment,
+    payloadBoc: createTonCommentPayloadBoc(comment),
+    expiresAt: Date.now() + runtime.orderTtlMs,
+  });
+  res.status(201).json({
+    ok: true,
+    order: buildTonOrderResponse(order, product),
+    tonShop: getTonShopPayloadForPlayer(req.playerUser.id),
+  });
+});
+
+app.post('/api/ton/orders/:id/submit', (req, res) => {
+  if (!req.playerUser) {
+    res.status(401).json({ ok: false, message: 'Authentication required' });
+    return;
+  }
+  const order = tonShopOrderStore.getOrder(req.params.id);
+  if (!order || order.playerId !== req.playerUser.id) {
+    res.status(404).json({ ok: false, message: 'TON order not found' });
+    return;
+  }
+  if (order.expiresAt && order.expiresAt < Date.now() && order.status !== 'paid') {
+    res.status(409).json({ ok: false, message: 'TON order expired', order: buildTonOrderResponse(order, getProduct(order.productId)) });
+    return;
+  }
+  let nextOrder = tonShopOrderStore.submitOrder(order.id, {
+    walletAddress: req.body?.walletAddress || req.body?.account || '',
+    boc: req.body?.boc || req.body?.transactionBoc || '',
+  });
+  let progression = null;
+  const runtime = getTonShopRuntimeConfig();
+  if (runtime.devAutoConfirm && nextOrder?.status !== 'paid') {
+    nextOrder = tonShopOrderStore.markOrderPaid(nextOrder.id);
+    progression = grantPaidTonOrder(nextOrder);
+  } else if (nextOrder?.status === 'paid') {
+    progression = grantPaidTonOrder(nextOrder);
+  }
+  res.json({
+    ok: true,
+    order: buildTonOrderResponse(nextOrder, getProduct(nextOrder?.productId)),
+    progression,
+    tonShop: getTonShopPayloadForPlayer(req.playerUser.id),
+    verification: runtime.devAutoConfirm ? 'dev-auto-confirmed' : 'submitted',
+  });
+});
+
+app.get('/api/ton/orders/:id/status', (req, res) => {
+  if (!req.playerUser) {
+    res.status(401).json({ ok: false, message: 'Authentication required' });
+    return;
+  }
+  const order = tonShopOrderStore.getOrder(req.params.id);
+  if (!order || order.playerId !== req.playerUser.id) {
+    res.status(404).json({ ok: false, message: 'TON order not found' });
+    return;
+  }
+  const progression = order.status === 'paid' ? grantPaidTonOrder(order) : null;
+  res.json({
+    ok: true,
+    order: buildTonOrderResponse(order, getProduct(order.productId)),
+    progression,
+    tonShop: getTonShopPayloadForPlayer(req.playerUser.id),
+  });
+});
+
+app.post('/api/player/progression/select-cosmetic', (req, res) => {
+  if (!req.playerUser) {
+    res.status(401).json({ ok: false, message: 'Authentication required' });
+    return;
+  }
+  const kind = String(req.body?.kind || '').trim().toLowerCase();
+  if (kind === 'hero_skin') {
+    const skinId = String(req.body?.skinId || '').trim();
+    const skin = skinId ? getHeroSkin(skinId) : null;
+    const heroId = String(req.body?.heroId || skin?.heroId || '').trim();
+    if (skinId && (!skin || skin.heroId !== heroId)) {
+      res.status(400).json({ ok: false, message: 'Unknown hero skin' });
+      return;
+    }
+    const result = accountProgressionStore.selectCosmetic(req.playerUser.id, { kind, heroId, skinId });
+    if (!result?.ok) {
+      res.status(result?.code || 400).json({ ok: false, message: result?.message || 'Failed to select cosmetic' });
+      return;
+    }
+    res.json({ ok: true, progression: result.progression, tonShop: getTonShopPayloadForPlayer(req.playerUser.id) });
+    return;
+  }
+  if (kind === 'item_skin') {
+    const skinId = String(req.body?.skinId || '').trim();
+    const skin = skinId ? getItemSkin(skinId) : null;
+    const target = String(req.body?.target || skin?.target || '').trim();
+    if (skinId && (!skin || skin.target !== target)) {
+      res.status(400).json({ ok: false, message: 'Unknown item skin' });
+      return;
+    }
+    const result = accountProgressionStore.selectCosmetic(req.playerUser.id, { kind, target, skinId });
+    if (!result?.ok) {
+      res.status(result?.code || 400).json({ ok: false, message: result?.message || 'Failed to select cosmetic' });
+      return;
+    }
+    res.json({ ok: true, progression: result.progression, tonShop: getTonShopPayloadForPlayer(req.playerUser.id) });
+    return;
+  }
+  res.status(400).json({ ok: false, message: 'Unknown cosmetic kind' });
 });
 
 app.post('/api/integrations/partner-runs/start', requirePartnerRunsSecret, (req, res) => {
@@ -2615,6 +2947,14 @@ app.get('/api/native/bootstrap', (req, res) => {
   }
 });
 
+app.get('/api/native/ui-settings', (_req, res) => {
+  res.json({
+    ok: true,
+    settings: buildNativeSettingsManifest(),
+    now: Date.now(),
+  });
+});
+
 app.get('/api/rooms', (_req, res) => {
   const rooms = listRoomsForLobby().map((room) => ({
     ...room,
@@ -3034,6 +3374,21 @@ const SCENE_PROP_TEMPLATES = {
     maxHp: 104,
     explosive: false,
   },
+  shopping_cart_barricade: {
+    spriteKey: 'shopping_cart_barricade',
+    w: 156,
+    h: 78,
+    anchorY: 0.58,
+    shadowScale: 0.95,
+    collisionScaleX: 0.92,
+    collisionScaleY: 0.62,
+    collisionOffsetY: 4,
+    solid: true,
+    solidAfterDestroyed: false,
+    destructible: true,
+    maxHp: 64,
+    explosive: false,
+  },
   road_shack: {
     spriteKey: 'shack',
     w: 170,
@@ -3198,6 +3553,345 @@ const SCENE_PROP_TEMPLATES = {
     solid: true,
     destructible: false,
     maxHp: 740,
+    explosive: false,
+  },
+  abandoned_building: {
+    spriteKey: 'abandoned_building',
+    w: 340,
+    h: 260,
+    anchorY: 0.58,
+    shadowScale: 1.12,
+    collisionScaleX: 0.9,
+    collisionScaleY: 0.78,
+    collisionOffsetY: 12,
+    solid: true,
+    destructible: false,
+    maxHp: 420,
+    explosive: false,
+  },
+  abandoned_building_1: {
+    spriteKey: 'abandoned_building_1',
+    w: 360,
+    h: 280,
+    anchorY: 0.58,
+    shadowScale: 1.14,
+    collisionScaleX: 0.9,
+    collisionScaleY: 0.78,
+    collisionOffsetY: 12,
+    solid: true,
+    destructible: false,
+    maxHp: 460,
+    explosive: false,
+  },
+  abandoned_building_2: {
+    spriteKey: 'abandoned_building_2',
+    w: 380,
+    h: 300,
+    anchorY: 0.58,
+    shadowScale: 1.16,
+    collisionScaleX: 0.9,
+    collisionScaleY: 0.78,
+    collisionOffsetY: 14,
+    solid: true,
+    destructible: false,
+    maxHp: 500,
+    explosive: false,
+  },
+  abandoned_bus: {
+    spriteKey: 'abandoned_bus',
+    w: 194,
+    h: 78,
+    anchorY: 0.57,
+    shadowScale: 1.28,
+    collisionScaleX: 0.92,
+    collisionScaleY: 0.6,
+    collisionOffsetY: 5,
+    solid: true,
+    solidAfterDestroyed: true,
+    destructible: true,
+    maxHp: 184,
+    explosive: true,
+    explosionRadius: 152,
+    explosionDamage: 52,
+  },
+  abandoned_gas_station: {
+    spriteKey: 'abandoned_gas_station',
+    w: 520,
+    h: 300,
+    anchorY: 0.56,
+    shadowScale: 1.22,
+    collisionScaleX: 0.92,
+    collisionScaleY: 0.78,
+    collisionOffsetY: 12,
+    solid: true,
+    destructible: false,
+    maxHp: 620,
+    explosive: false,
+  },
+  cyberpunk_storefront: {
+    spriteKey: 'cyberpunk_storefront',
+    w: 520,
+    h: 240,
+    anchorY: 0.55,
+    shadowScale: 1.24,
+    collisionScaleX: 0.94,
+    collisionScaleY: 0.82,
+    collisionOffsetY: 14,
+    solid: true,
+    destructible: false,
+    maxHp: 620,
+    explosive: false,
+  },
+  futuristic_barrier: {
+    spriteKey: 'futuristic_barrier',
+    w: 140,
+    h: 48,
+    anchorY: 0.52,
+    shadowScale: 0.94,
+    collisionScaleX: 0.96,
+    collisionScaleY: 0.76,
+    collisionOffsetY: 2,
+    solid: true,
+    solidAfterDestroyed: true,
+    destructible: true,
+    maxHp: 116,
+    explosive: false,
+  },
+  futuristic_police_vehicle: {
+    spriteKey: 'futuristic_police_vehicle',
+    w: 124,
+    h: 70,
+    anchorY: 0.56,
+    shadowScale: 1.06,
+    collisionScaleX: 0.9,
+    collisionScaleY: 0.58,
+    collisionOffsetY: 4,
+    solid: true,
+    solidAfterDestroyed: true,
+    destructible: true,
+    maxHp: 96,
+    explosive: false,
+  },
+  futuristic_vending_machine: {
+    spriteKey: 'futuristic_vending_machine',
+    w: 78,
+    h: 112,
+    anchorY: 0.58,
+    shadowScale: 0.82,
+    collisionScaleX: 0.72,
+    collisionScaleY: 0.8,
+    collisionOffsetY: 6,
+    solid: true,
+    solidAfterDestroyed: true,
+    destructible: true,
+    maxHp: 80,
+    explosive: false,
+  },
+  glowing_twisted_tree: {
+    spriteKey: 'glowing_twisted_tree',
+    w: 160,
+    h: 180,
+    anchorY: 0.64,
+    shadowScale: 1.02,
+    collisionScaleX: 0.5,
+    collisionScaleY: 0.42,
+    collisionOffsetY: 20,
+    solid: true,
+    destructible: false,
+    maxHp: 1,
+    explosive: false,
+  },
+  gnarled_tree: {
+    spriteKey: 'gnarled_tree',
+    w: 150,
+    h: 170,
+    anchorY: 0.64,
+    shadowScale: 1,
+    collisionScaleX: 0.5,
+    collisionScaleY: 0.42,
+    collisionOffsetY: 18,
+    solid: true,
+    destructible: false,
+    maxHp: 1,
+    explosive: false,
+  },
+  haunted_house: {
+    spriteKey: 'haunted_house',
+    w: 430,
+    h: 330,
+    anchorY: 0.58,
+    shadowScale: 1.2,
+    collisionScaleX: 0.9,
+    collisionScaleY: 0.78,
+    collisionOffsetY: 18,
+    solid: true,
+    destructible: false,
+    maxHp: 680,
+    explosive: false,
+  },
+  industrial_facility: {
+    spriteKey: 'industrial_facility',
+    w: 560,
+    h: 300,
+    anchorY: 0.56,
+    shadowScale: 1.26,
+    collisionScaleX: 0.94,
+    collisionScaleY: 0.82,
+    collisionOffsetY: 16,
+    solid: true,
+    destructible: false,
+    maxHp: 720,
+    explosive: false,
+  },
+  industrial_factory: {
+    spriteKey: 'industrial_factory',
+    w: 620,
+    h: 320,
+    anchorY: 0.56,
+    shadowScale: 1.3,
+    collisionScaleX: 0.94,
+    collisionScaleY: 0.82,
+    collisionOffsetY: 16,
+    solid: true,
+    destructible: false,
+    maxHp: 780,
+    explosive: false,
+  },
+  military_ambulance: {
+    spriteKey: 'military_ambulance',
+    w: 128,
+    h: 72,
+    anchorY: 0.56,
+    shadowScale: 1.08,
+    collisionScaleX: 0.9,
+    collisionScaleY: 0.58,
+    collisionOffsetY: 4,
+    solid: true,
+    solidAfterDestroyed: true,
+    destructible: true,
+    maxHp: 112,
+    explosive: true,
+    explosionRadius: 116,
+    explosionDamage: 42,
+  },
+  post_apocalyptic_car: {
+    spriteKey: 'post_apocalyptic_car',
+    w: 108,
+    h: 64,
+    anchorY: 0.56,
+    shadowScale: 1,
+    collisionScaleX: 0.88,
+    collisionScaleY: 0.58,
+    collisionOffsetY: 4,
+    solid: true,
+    solidAfterDestroyed: true,
+    destructible: true,
+    maxHp: 82,
+    explosive: true,
+    explosionRadius: 96,
+    explosionDamage: 30,
+  },
+  ruined_sci_fi_facility: {
+    spriteKey: 'ruined_sci_fi_facility',
+    w: 540,
+    h: 320,
+    anchorY: 0.56,
+    shadowScale: 1.28,
+    collisionScaleX: 0.94,
+    collisionScaleY: 0.82,
+    collisionOffsetY: 16,
+    solid: true,
+    destructible: false,
+    maxHp: 780,
+    explosive: false,
+  },
+  ruined_storefront: {
+    spriteKey: 'ruined_storefront',
+    w: 500,
+    h: 240,
+    anchorY: 0.55,
+    shadowScale: 1.2,
+    collisionScaleX: 0.94,
+    collisionScaleY: 0.82,
+    collisionOffsetY: 14,
+    solid: true,
+    destructible: false,
+    maxHp: 560,
+    explosive: false,
+  },
+  rusty_gas_station: {
+    spriteKey: 'rusty_gas_station',
+    w: 540,
+    h: 310,
+    anchorY: 0.56,
+    shadowScale: 1.24,
+    collisionScaleX: 0.92,
+    collisionScaleY: 0.78,
+    collisionOffsetY: 12,
+    solid: true,
+    destructible: false,
+    maxHp: 640,
+    explosive: false,
+  },
+  rusty_shopping_cart: {
+    spriteKey: 'rusty_shopping_cart',
+    w: 156,
+    h: 78,
+    anchorY: 0.58,
+    shadowScale: 0.95,
+    collisionScaleX: 0.92,
+    collisionScaleY: 0.62,
+    collisionOffsetY: 4,
+    solid: true,
+    solidAfterDestroyed: false,
+    destructible: true,
+    maxHp: 64,
+    explosive: false,
+  },
+  steampunk_reactor: {
+    spriteKey: 'steampunk_reactor',
+    w: 436,
+    h: 256,
+    anchorY: 0.55,
+    shadowScale: 1.32,
+    collisionScaleX: 0.94,
+    collisionScaleY: 0.86,
+    collisionOffsetY: 18,
+    solid: true,
+    destructible: false,
+    maxHp: 620,
+    explosive: false,
+  },
+  toxic_waste_barrels: {
+    spriteKey: 'toxic_waste_barrels',
+    w: 180,
+    h: 150,
+    anchorY: 0.56,
+    shadowScale: 1,
+    collisionScaleX: 0.76,
+    collisionScaleY: 0.72,
+    collisionOffsetY: 8,
+    solid: true,
+    solidAfterDestroyed: true,
+    destructible: true,
+    maxHp: 160,
+    explosive: true,
+    explosionRadius: 92,
+    explosionDamage: 34,
+  },
+  wrecked_police_car: {
+    spriteKey: 'wrecked_police_car',
+    w: 112,
+    h: 66,
+    anchorY: 0.56,
+    shadowScale: 1.04,
+    collisionScaleX: 0.9,
+    collisionScaleY: 0.58,
+    collisionOffsetY: 4,
+    solid: true,
+    solidAfterDestroyed: true,
+    destructible: true,
+    maxHp: 88,
     explosive: false,
   },
   dead_signal_station: {
@@ -4403,6 +5097,17 @@ function getEnemyBehavior(enemy) {
   return 'melee';
 }
 
+function setEnemyFaceToward(enemy, target) {
+  if (!enemy || !target) return false;
+  const targetX = Number(target.x);
+  const enemyX = Number(enemy.x);
+  if (!Number.isFinite(targetX) || !Number.isFinite(enemyX)) return false;
+  const dx = targetX - enemyX;
+  if (Math.abs(dx) <= 0.15) return false;
+  enemy.faceLeft = dx < 0;
+  return true;
+}
+
 function getMobSpawnWeightsFromLevel(levelDef, mobCatalog) {
   const weights = levelDef?.modifiers?.mobWeights;
   if (!weights || typeof weights !== 'object' || Array.isArray(weights)) return null;
@@ -5167,17 +5872,23 @@ function pushRoomShotEvent(room, event) {
   if (!Array.isArray(room.shotEvents)) room.shotEvents = [];
   if (!Array.isArray(room.replayShotEvents)) room.replayShotEvents = [];
   if (!Number.isFinite(Number(room.nextShotEventId))) room.nextShotEventId = 1;
+  const realtime = event.realtime !== false && event.realtimeState !== false;
+  const replay = event.replay !== false && event.replayState !== false;
   const payload = {
     id: room.nextShotEventId++,
     at: Date.now(),
     ...event,
   };
-  room.shotEvents.push(payload);
-  room.replayShotEvents.push(payload);
-  if (room.shotEvents.length > 96) {
+  delete payload.realtime;
+  delete payload.realtimeState;
+  delete payload.replay;
+  delete payload.replayState;
+  if (realtime) room.shotEvents.push(payload);
+  if (replay) room.replayShotEvents.push(payload);
+  if (realtime && room.shotEvents.length > 96) {
     room.shotEvents.splice(0, room.shotEvents.length - 96);
   }
-  if (room.replayShotEvents.length > 512) {
+  if (replay && room.replayShotEvents.length > 512) {
     room.replayShotEvents.splice(0, room.replayShotEvents.length - 512);
   }
 }
@@ -5890,6 +6601,7 @@ function castHomingMissiles(room, player, def, st, now) {
     };
     room.bullets.push(rocket);
     pushRoomShotEvent(room, {
+      realtime: false,
       bulletId,
       ownerId: player.id,
       ownerPlayerId: player.ownerId || '',
@@ -5914,7 +6626,9 @@ function castHomingMissiles(room, player, def, st, now) {
     radius,
     damage,
     hitCount: targets.length,
-    projectileCount: targets.length,
+    projectileCount: 0,
+    projectilesReplicated: true,
+    spawnProjectiles: false,
   });
   return true;
 }
@@ -6301,7 +7015,14 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
       const st = p.skills?.[sid] || { level: 0, cooldownMs: 0, maxCooldownMs: 0 };
       const def = getCombatSkillDef(sid, p.playerClass) || { id: sid, name: sid, kind: 'passive', rarity: 'common', desc: '' };
       const castType = getSkillCastType(def);
+      const sourceCastType = String(def?.castType || def?.id || castType || '').trim().toLowerCase();
+      const projectilesReplicated = sourceCastType === 'homing_missiles';
       const fx = buildRuntimeSkillFxPayload(def);
+      const level = Math.max(0, Math.floor(Number(st.level) || 0));
+      const tooltip = buildRuntimeSkillTooltipPayload(def, {
+        heroId: def.sourceHeroId || def.heroId || p.playerClass,
+        level: Math.max(1, level),
+      });
       return {
         id: sid,
         name: def.name,
@@ -6309,9 +7030,14 @@ function serializeRoom(room, { includeDecor = true, compactRealtime = false } = 
         rarity: def.rarity,
         desc: def.desc || '',
         castType,
+        sourceCastType,
+        projectilesReplicated,
+        spawnProjectiles: !projectilesReplicated,
         fxKey: getSkillFxKey(def, def.sourceHeroId || def.heroId || ''),
         fx,
-        level: Math.max(0, Math.floor(Number(st.level) || 0)),
+        tooltip,
+        nativeTooltip: tooltip,
+        level,
         cooldownMs: Math.max(0, Math.round(Number(st.cooldownMs) || 0)),
         maxCooldownMs: Math.max(0, Math.round(Number(st.maxCooldownMs) || 0)),
         radius: Math.max(0, Math.round(Number(def.radius) || 0)),
@@ -10085,15 +10811,28 @@ function joinRoom(ws, join) {
     const room = rooms.get(requestedCode);
     const currentPlayer = room?.players?.get(nativeHandoffPlayerId) || null;
     const now = Date.now();
+    const handoffExpiresAt = Math.max(0, Number(currentPlayer?.nativeHandoffExpiresAt) || 0);
+    const handoffTokenMatches = currentPlayer
+      && nativeHandoffToken
+      && String(currentPlayer.nativeHandoffToken || '') === nativeHandoffToken;
+    const handoffTokenFresh = handoffTokenMatches && handoffExpiresAt >= now;
+    const handoffTokenRecentlyExpired = handoffTokenMatches
+      && handoffExpiresAt > 0
+      && now - handoffExpiresAt <= NATIVE_HANDOFF_LATE_GRACE_MS;
+    const sameNativeSocketRetry = currentPlayer?.nativeHandoffActive === true && currentPlayer.ws === ws;
+    const sameAccountNativeRetry = currentPlayer
+      && Boolean(join?.nativeHandoff || join?.nativeResume || join?.resume)
+      && sessionAccountId > 0
+      && Math.max(0, Number(currentPlayer.playerAccountId) || 0) === sessionAccountId;
     const isValidHandoff = currentPlayer
-      && String(currentPlayer.nativeHandoffToken || '') === nativeHandoffToken
-      && Math.max(0, Number(currentPlayer.nativeHandoffExpiresAt) || 0) >= now;
+      && (handoffTokenFresh || handoffTokenRecentlyExpired || sameNativeSocketRetry || sameAccountNativeRetry);
     if (!room || !currentPlayer || !isValidHandoff) {
       sendTo(ws, {
         type: 'joinError',
         message: requestedCode ? `Native handoff for room ${requestedCode} is no longer valid.` : 'Native handoff is no longer valid.',
         code: 409,
         roomCode: requestedCode,
+        nativeHandoffRetryable: true,
       });
       return null;
     }
@@ -10108,8 +10847,8 @@ function joinRoom(ws, join) {
     }
     currentPlayer.ws = ws;
     currentPlayer.nativeHandoffActive = true;
-    currentPlayer.nativeHandoffToken = '';
-    currentPlayer.nativeHandoffExpiresAt = 0;
+    currentPlayer.nativeHandoffToken = nativeHandoffToken;
+    currentPlayer.nativeHandoffExpiresAt = now + NATIVE_HANDOFF_REJOIN_GRACE_MS;
     currentPlayer.moveX = 0;
     currentPlayer.moveY = 0;
     currentPlayer.shooting = false;
@@ -10615,7 +11354,7 @@ wss.on('connection', (ws, req) => {
         return;
       }
       current.nativeHandoffToken = token;
-      current.nativeHandoffExpiresAt = Date.now() + 20000;
+      current.nativeHandoffExpiresAt = Date.now() + NATIVE_HANDOFF_TTL_MS;
       sendTo(ws, {
         type: 'nativeHandoffReady',
         roomCode: room.code,
@@ -10633,6 +11372,8 @@ wss.on('connection', (ws, req) => {
         current.shooting = false;
         current.jumpQueued = false;
         current.nativeHandoffActive = false;
+        current.nativeHandoffToken = '';
+        current.nativeHandoffExpiresAt = 0;
         if (previousWs && previousWs !== ws && isSocketOpen(previousWs)) {
           current.ws = previousWs;
           current.nativePreviousWs = null;
@@ -11184,12 +11925,10 @@ function tickRoom(room, dtSec, now) {
         e.vx = 0;
         e.vy = 0;
       }
-      if (Math.abs(Number(e.vx) || 0) > 0.15) e.faceLeft = (Number(e.vx) || 0) < 0;
-      else e.faceLeft = dx < 0;
-
       const moved = moveActorWithSceneCollision(room, e.x, e.y, e.vx * dtSec, e.vy * dtSec, er, enemyWorldBounds);
       e.x = moved.x;
       e.y = moved.y;
+      setEnemyFaceToward(e, target);
 
       if (e.attackCooldownMs <= 0 && target.alive && !targetBlocked && targetDist <= rangeMax * 1.1) {
         fireEnemyProjectile(room, e, target);
@@ -11207,13 +11946,13 @@ function tickRoom(room, dtSec, now) {
         if (String(e.attackTargetKind || 'player') === 'object') {
           const lockedObject = findRoomMapObjectById(room, e.attackTargetId);
           if (canEnemyBreakMapObject(lockedObject) && isEnemyInMapObjectAttackRange(e, lockedObject, er)) {
-            e.faceLeft = (Number(lockedObject.x) || e.x) < e.x;
+            setEnemyFaceToward(e, lockedObject);
             applyEnemyHitToMapObject(room, e, lockedObject, now);
           }
         } else {
           const lockedTarget = room.players.get(e.attackTargetId);
           if (lockedTarget && lockedTarget.alive) {
-            e.faceLeft = (lockedTarget.x - e.x) < 0;
+            setEnemyFaceToward(e, lockedTarget);
             if (behavior === 'charger' || e.type === 'boss') {
               const cdx = lockedTarget.x - e.x;
               const cdy = lockedTarget.y - e.y;
@@ -11258,7 +11997,7 @@ function tickRoom(room, dtSec, now) {
     if (canBreakObject && e.attackCooldownMs <= 0 && isEnemyInMapObjectAttackRange(e, breakObject, er)) {
       e.vx = 0;
       e.vy = 0;
-      e.faceLeft = (Number(breakObject.x) || e.x) < e.x;
+      setEnemyFaceToward(e, breakObject);
       e.attackWindupMs = e.type === 'boss' ? BOSS_ATTACK_WINDUP_MS : ENEMY_ATTACK_WINDUP_MS;
       e.attackTargetId = String(breakObject.id || '');
       e.attackTargetKind = 'object';
@@ -11268,7 +12007,7 @@ function tickRoom(room, dtSec, now) {
     if (e.attackCooldownMs <= 0 && !targetBlocked && (e.x - target.x) ** 2 + (e.y - target.y) ** 2 <= attackTriggerRange * attackTriggerRange && target.alive) {
       e.vx = 0;
       e.vy = 0;
-      e.faceLeft = dx < 0;
+      setEnemyFaceToward(e, target);
       e.attackWindupMs = e.type === 'boss' ? BOSS_ATTACK_WINDUP_MS : ENEMY_ATTACK_WINDUP_MS;
       e.attackTargetId = target.id;
       e.attackTargetKind = 'player';
@@ -11301,10 +12040,10 @@ function tickRoom(room, dtSec, now) {
       e.vx = (steerDx / steerDist) * speed;
       e.vy = (steerDy / steerDist) * speed;
     }
-    if (Math.abs(Number(e.vx) || 0) > 0.15) e.faceLeft = (Number(e.vx) || 0) < 0;
     const moved = moveActorWithSceneCollision(room, e.x, e.y, e.vx * dtSec, e.vy * dtSec, er, enemyWorldBounds);
     e.x = moved.x;
     e.y = moved.y;
+    setEnemyFaceToward(e, target);
   }
   phaseEnd('enemiesMs', phaseStartedNs);
 

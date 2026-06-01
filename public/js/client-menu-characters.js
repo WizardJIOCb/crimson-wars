@@ -2229,6 +2229,8 @@
   }
   function getHeroCardImagePath(heroId) {
     const id = String(heroId || '').trim().toLowerCase();
+    const selectedSkin = globalThis.CWTonShop?.getSelectedHeroSkin?.(id);
+    if (selectedSkin?.image) return selectedSkin.image;
     if (!id) return '/assets/characters/cyber.jpg';
     if (id === 'medic') return '/assets/characters/medis.jpg';
     return `/assets/characters/${id}.jpg`;

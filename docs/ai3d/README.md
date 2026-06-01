@@ -100,6 +100,32 @@ py -3.10 scripts/ai3d/make_pbr_from_texture.py --character cyber --texture publi
 
 Maps are written beside the texture in a `maps/` folder.
 
+## Render Tripo3D Environment Sprites
+
+Environment FBX exports from Studio Tripo3D live in the native project by default:
+
+```text
+C:\Projects\crimson-wars-native\Content\Objects
+```
+
+Render them into web-game PNG sprites:
+
+```powershell
+& "C:\Program Files\Blender Foundation\Blender 5.1\blender.exe" --background --python scripts/ai3d/render_tripo_environment_sprites.py -- --asset all
+```
+
+Generated map props go to:
+
+```text
+public/assets/map-props/tripo3d/
+```
+
+The generated tree sprite goes to:
+
+```text
+public/assets/sprites/tree_tripo3d.png
+```
+
 ## Unreal Direction
 
 For final animated characters:

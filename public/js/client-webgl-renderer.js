@@ -1,4 +1,18 @@
 (function initCWWebGLWorld(global) {
+  const params = new URLSearchParams(global.location?.search || '');
+  const nativeUeMode = String(params.get('native') || '').trim().toLowerCase() === 'ue';
+  if (global.cwDisableWebRenderer || nativeUeMode) {
+    global.CWWebGLWorld = {
+      clear() {},
+      clearTextureCache() {},
+      isAvailable() { return false; },
+      renderWorld() { return false; },
+      resize() {},
+      warmTextures() { return 0; },
+    };
+    return;
+  }
+
   const canvas = document.getElementById('game-webgl');
   const state = {
     gl: null,

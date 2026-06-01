@@ -18,263 +18,12 @@
       "scene": {
         "themeId": "mall",
         "baseMaterial": "grass",
-        "terrainZones": [
-          {
-            "material": "concrete",
-            "shape": "rect",
-            "x": 0.495087202161631,
-            "y": 0.08694515212127592,
-            "w": 0.58,
-            "h": 0.16,
-            "feather": 0.07,
-            "alpha": 1,
-            "angle": 0.01,
-            "centerStripe": false,
-            "id": "zone_1"
-          },
-          {
-            "material": "asphalt_wet",
-            "shape": "band",
-            "x": 0.48334644800552895,
-            "y": 0.23321569085773525,
-            "w": 0.86,
-            "h": 0.065,
-            "feather": 0.08,
-            "alpha": 1,
-            "angle": 0,
-            "centerStripe": false,
-            "id": "zone_2"
-          },
-          {
-            "material": "asphalt_wet",
-            "shape": "band",
-            "x": 0.5224614782525429,
-            "y": 0.5044529040523446,
-            "w": 1.06,
-            "h": 0.2,
-            "feather": 0.08,
-            "alpha": 1,
-            "angle": 0,
-            "centerStripe": true,
-            "id": "zone_3"
-          },
-          {
-            "material": "dirt",
-            "shape": "ellipse",
-            "x": 0.16750983600414673,
-            "y": 0.16535292742679425,
-            "w": 0.18,
-            "h": 0.12,
-            "feather": 0.28,
-            "alpha": 0.24,
-            "angle": 0,
-            "centerStripe": false,
-            "id": "zone_4"
-          },
-          {
-            "material": "dirt",
-            "shape": "ellipse",
-            "x": 0.82,
-            "y": 0.14,
-            "w": 0.18,
-            "h": 0.12,
-            "feather": 0.28,
-            "alpha": 0.24,
-            "angle": 0,
-            "centerStripe": false,
-            "id": "zone_5"
-          },
-          {
-            "material": "dirt",
-            "shape": "ellipse",
-            "x": 0.5037034168925305,
-            "y": 0.34715807729984055,
-            "w": 0.22,
-            "h": 0.16,
-            "feather": 0.28,
-            "alpha": 0.4,
-            "angle": 0,
-            "centerStripe": false,
-            "id": "zone_6"
-          },
-          {
-            "material": "dirt",
-            "shape": "ellipse",
-            "x": 0.49756133711368955,
-            "y": 0.8242351291215312,
-            "w": 0.18,
-            "h": 0.14,
-            "feather": 0.28,
-            "alpha": 0.36,
-            "angle": 0,
-            "centerStripe": false,
-            "id": "zone_7"
-          },
-          {
-            "material": "asphalt_wet",
-            "shape": "band",
-            "x": 0.5063243044481767,
-            "y": 0.9002170437664445,
-            "w": 0.54,
-            "h": 0.08,
-            "feather": 0.08,
-            "alpha": 1,
-            "angle": 0,
-            "centerStripe": true,
-            "id": "road_copy"
-          },
-          {
-            "material": "asphalt_wet",
-            "shape": "band",
-            "x": 0.49006917469159705,
-            "y": 0.3390092088194832,
-            "w": 0.86,
-            "h": 0.065,
-            "feather": 0.08,
-            "alpha": 1,
-            "angle": 0,
-            "centerStripe": false,
-            "id": "zone_2_copy"
-          },
-          {
-            "material": "asphalt_wet",
-            "shape": "band",
-            "x": 0.512445754523868,
-            "y": 0.7276029055690073,
-            "w": 0.82,
-            "h": 0.16,
-            "feather": 0.08,
-            "alpha": 1,
-            "angle": 0,
-            "centerStripe": true,
-            "id": "road_2"
-          }
-        ],
+        "terrainZones": [],
         "plannedObjects": [
           {
-            "kind": "mall_block",
-            "x": 0.5,
-            "y": 0.055,
-            "scale": 1.28,
-            "angle": 0,
-            "hpMul": 1,
-            "zombieBreakable": false,
-            "name": "",
-            "styleTag": "",
-            "id": "prop_1"
-          },
-          {
-            "kind": "mall_block",
-            "x": 0.17,
-            "y": 0.09,
-            "scale": 0.78,
-            "angle": -0.04,
-            "hpMul": 1,
-            "zombieBreakable": false,
-            "name": "",
-            "styleTag": "",
-            "id": "prop_2"
-          },
-          {
-            "kind": "mall_block",
-            "x": 0.83,
-            "y": 0.09,
-            "scale": 0.78,
-            "angle": 0.04,
-            "hpMul": 1,
-            "zombieBreakable": false,
-            "name": "",
-            "styleTag": "",
-            "id": "prop_3"
-          },
-          {
-            "kind": "concrete_barrier",
-            "x": 0.39,
-            "y": 0.19,
-            "scale": 1.08,
-            "angle": 0,
-            "hpMul": 1,
-            "zombieBreakable": false,
-            "name": "",
-            "styleTag": "",
-            "id": "prop_4"
-          },
-          {
-            "kind": "concrete_barrier",
-            "x": 0.61,
-            "y": 0.19,
-            "scale": 1.08,
-            "angle": 0,
-            "hpMul": 1,
-            "zombieBreakable": false,
-            "name": "",
-            "styleTag": "",
-            "id": "prop_5"
-          },
-          {
-            "kind": "yellow_bus",
-            "x": 0.14523013127162357,
-            "y": 0.3240960422238915,
-            "scale": 1,
-            "angle": 1.5707963267948966,
-            "hpMul": 1,
-            "zombieBreakable": false,
-            "name": "",
-            "styleTag": "",
-            "id": "prop_6"
-          },
-          {
-            "kind": "burnt_sedan",
-            "x": 0.7584229918938835,
-            "y": 0.44842193915148965,
-            "scale": 1,
-            "angle": 0.06,
-            "hpMul": 1,
-            "zombieBreakable": false,
-            "name": "",
-            "styleTag": "",
-            "id": "prop_10"
-          },
-          {
-            "kind": "concrete_barrier",
-            "x": 0.27,
-            "y": 0.67,
-            "scale": 1,
-            "angle": -0.42,
-            "hpMul": 1,
-            "zombieBreakable": false,
-            "name": "",
-            "styleTag": "",
-            "id": "prop_12"
-          },
-          {
-            "kind": "concrete_barrier",
-            "x": 0.73,
-            "y": 0.66,
-            "scale": 1,
-            "angle": 0.42,
-            "hpMul": 1,
-            "zombieBreakable": false,
-            "name": "",
-            "styleTag": "",
-            "id": "prop_13"
-          },
-          {
-            "kind": "ambulance_van",
-            "x": 0.6725620240727094,
-            "y": 0.6726497526055374,
-            "scale": 1,
-            "angle": 0,
-            "hpMul": 1,
-            "zombieBreakable": false,
-            "name": "",
-            "styleTag": "",
-            "id": "prop_18"
-          },
-          {
-            "kind": "red_hatchback",
-            "x": 0.4957013018914272,
-            "y": 0.23260343194020433,
+            "kind": "wrecked_police_car",
+            "x": 0.056763285024154585,
+            "y": 0.09213250517598344,
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
@@ -284,9 +33,69 @@
             "id": "prop"
           },
           {
-            "kind": "red_hatchback",
-            "x": 0.49447310243183495,
-            "y": 0.3441941256974419,
+            "kind": "toxic_waste_barrels",
+            "x": 0.15096618357487923,
+            "y": 0.10041407867494824,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": false,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_2"
+          },
+          {
+            "kind": "steampunk_reactor",
+            "x": 0.2608695652173913,
+            "y": 0.10869565217391303,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": false,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_3"
+          },
+          {
+            "kind": "rusty_shopping_cart",
+            "x": 0.3864734299516908,
+            "y": 0.10248447204968944,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": false,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_4"
+          },
+          {
+            "kind": "rusty_gas_station",
+            "x": 0.4999999999999999,
+            "y": 0.11490683229813664,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": false,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_5"
+          },
+          {
+            "kind": "ruined_storefront",
+            "x": 0.642512077294686,
+            "y": 0.12318840579710144,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": false,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_6"
+          },
+          {
+            "kind": "ruined_sci_fi_facility",
+            "x": 0.7983091787439613,
+            "y": 0.13561076604554864,
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
@@ -296,105 +105,81 @@
             "id": "prop_7"
           },
           {
-            "kind": "yellow_bus",
-            "x": 0.44970498648980595,
-            "y": 0.7354219391514896,
-            "scale": 1,
-            "angle": 1.5707963267948966,
-            "hpMul": 1,
-            "zombieBreakable": false,
-            "name": "",
-            "styleTag": "",
-            "id": "prop_15"
-          },
-          {
-            "kind": "yellow_bus",
-            "x": 0.49815770081061167,
-            "y": 0.8200336877566058,
+            "kind": "post_apocalyptic_car",
+            "x": 0.9118357487922705,
+            "y": 0.12732919254658384,
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
             "zombieBreakable": false,
             "name": "",
             "styleTag": "",
-            "id": "prop_16"
+            "id": "prop_8"
           },
           {
-            "kind": "burnt_sedan",
-            "x": 0.33480717268484406,
-            "y": 0.3905147910306348,
+            "kind": "military_ambulance",
+            "x": 0.06159420289855072,
+            "y": 0.3364389233954451,
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
             "zombieBreakable": false,
             "name": "",
             "styleTag": "",
-            "id": "prop_21"
+            "id": "prop_9"
           },
           {
-            "kind": "burnt_sedan",
-            "x": 0.6529108327192337,
-            "y": 0.3905147910306348,
+            "kind": "industrial_factory",
+            "x": 0.21014492753623187,
+            "y": 0.3426501035196687,
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
             "zombieBreakable": false,
             "name": "",
             "styleTag": "",
-            "id": "prop_22"
+            "id": "prop_10"
           },
           {
-            "kind": "burnt_sedan",
-            "x": 0.33726357160402853,
-            "y": 0.27892409727339723,
+            "kind": "industrial_facility",
+            "x": 0.3768115942028986,
+            "y": 0.34472049689440987,
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
             "zombieBreakable": false,
             "name": "",
             "styleTag": "",
-            "id": "prop_23"
+            "id": "prop_11"
           },
           {
-            "kind": "burnt_sedan",
-            "x": 0.6627364283959716,
-            "y": 0.28734603642488693,
+            "kind": "haunted_house",
+            "x": 0.5326086956521738,
+            "y": 0.3426501035196687,
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
             "zombieBreakable": false,
             "name": "",
             "styleTag": "",
-            "id": "prop_24"
+            "id": "prop_12"
           },
           {
-            "kind": "burnt_sedan",
-            "x": 0.16654384672070752,
-            "y": 0.6958100852721338,
+            "kind": "gnarled_tree",
+            "x": 0.6473429951690821,
+            "y": 0.3426501035196687,
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
             "zombieBreakable": false,
             "name": "",
             "styleTag": "",
-            "id": "prop_25"
+            "id": "prop_13"
           },
           {
-            "kind": "burnt_sedan",
-            "x": 0.8371407516580692,
-            "y": 0.6789662069691546,
-            "scale": 1,
-            "angle": 0,
-            "hpMul": 1,
-            "zombieBreakable": false,
-            "name": "",
-            "styleTag": "",
-            "id": "prop_26"
-          },
-          {
-            "kind": "industrial_tank",
-            "x": 0.2953873213792067,
-            "y": 0.5104021241007637,
+            "kind": "glowing_twisted_tree",
+            "x": 0.718599033816425,
+            "y": 0.3405797101449275,
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
@@ -404,11 +189,155 @@
             "id": "prop_14"
           },
           {
-            "kind": "reactor_block",
-            "x": 0.678,
-            "y": 0.504,
+            "kind": "futuristic_vending_machine",
+            "x": 0.8067632850241546,
+            "y": 0.34265010351966874,
             "scale": 1,
-            "angle": 2.0943951023931953,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": false,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_15"
+          },
+          {
+            "kind": "futuristic_police_vehicle",
+            "x": 0.8731884057971013,
+            "y": 0.3405797101449275,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": false,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_16"
+          },
+          {
+            "kind": "futuristic_barrier",
+            "x": 0.9396135265700483,
+            "y": 0.3364389233954451,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": false,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_17"
+          },
+          {
+            "kind": "cyberpunk_storefront",
+            "x": 0.19323671497584538,
+            "y": 0.5455486542443064,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": false,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_18"
+          },
+          {
+            "kind": "abandoned_gas_station",
+            "x": 0.37077294685990336,
+            "y": 0.5476190476190476,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": false,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_19"
+          },
+          {
+            "kind": "abandoned_bus",
+            "x": 0.06159420289855072,
+            "y": 0.5186335403726708,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": false,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_20"
+          },
+          {
+            "kind": "abandoned_building_2",
+            "x": 0.5217391304347825,
+            "y": 0.541407867494824,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": false,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_21"
+          },
+          {
+            "kind": "abandoned_building_1",
+            "x": 0.6533816425120772,
+            "y": 0.5351966873706004,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": false,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_22"
+          },
+          {
+            "kind": "abandoned_building",
+            "x": 0.7681159420289855,
+            "y": 0.5289855072463768,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": false,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_23"
+          },
+          {
+            "kind": "dead_signal_station",
+            "x": 0.07729468599033816,
+            "y": 0.8747412008281573,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": false,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_24"
+          },
+          {
+            "kind": "hellmart_24_7",
+            "x": 0.21256038647342995,
+            "y": 0.8664596273291926,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": false,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_25"
+          },
+          {
+            "kind": "almost_alive_clinic",
+            "x": 0.3478260869565217,
+            "y": 0.8623188405797101,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": false,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_26"
+          },
+          {
+            "kind": "fix_or_die_garage",
+            "x": 0.4951690821256039,
+            "y": 0.8540372670807452,
+            "scale": 1,
+            "angle": 0,
             "hpMul": 1,
             "zombieBreakable": false,
             "name": "",
@@ -416,11 +345,11 @@
             "id": "prop_27"
           },
           {
-            "kind": "red_hatchback",
-            "x": 0.83,
-            "y": 0.552,
+            "kind": "haven_nope_tower",
+            "x": 0.6340579710144927,
+            "y": 0.8478260869565217,
             "scale": 1,
-            "angle": 1.5707963267948966,
+            "angle": 0,
             "hpMul": 1,
             "zombieBreakable": false,
             "name": "",
@@ -428,9 +357,9 @@
             "id": "prop_28"
           },
           {
-            "kind": "ambulance_van",
-            "x": 0.8309997543601082,
-            "y": 0.7989788398778819,
+            "kind": "fuel_hell_checkpoint",
+            "x": 0.7814009661835748,
+            "y": 0.851966873706004,
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
@@ -440,124 +369,148 @@
             "id": "prop_29"
           },
           {
-            "kind": "reactor_block",
-            "x": 0.751,
-            "y": 0.302,
-            "scale": 0.5,
-            "angle": 2.0943951023931953,
-            "hpMul": 1,
-            "zombieBreakable": false,
-            "name": "",
-            "styleTag": "",
-            "id": "prop_27_copy"
-          },
-          {
-            "kind": "yellow_bus",
-            "x": 0.5508533529845246,
-            "y": 0.7330506369091483,
-            "scale": 1,
-            "angle": 1.5707963267948966,
-            "hpMul": 1,
-            "zombieBreakable": false,
-            "name": "",
-            "styleTag": "",
-            "id": "prop_15_copy"
-          },
-          {
-            "kind": "clinic_block",
-            "x": 0.511,
-            "y": 0.6,
+            "kind": "bullet_bistro_bunker",
+            "x": 0.9190821256038646,
+            "y": 0.8498964803312629,
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
-            "zombieBreakable": true,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
             "id": "prop_30"
           },
           {
-            "kind": "clinic_block",
-            "x": 0.433,
-            "y": 0.474,
-            "scale": 1,
-            "angle": 1.5707963267948966,
-            "hpMul": 1,
-            "zombieBreakable": true,
-            "name": "",
-            "styleTag": "",
-            "id": "prop_30_copy"
-          },
-          {
-            "kind": "clinic_block",
-            "x": 0.575,
-            "y": 0.479,
-            "scale": 1,
-            "angle": 1.5707963267948966,
-            "hpMul": 1,
-            "zombieBreakable": true,
-            "name": "",
-            "styleTag": "",
-            "id": "prop_30_copy_copy"
-          },
-          {
-            "kind": "clinic_block",
-            "x": 0.5,
-            "y": 0.357,
+            "kind": "reactor_block",
+            "x": 0.8973429951690821,
+            "y": 0.5186335403726707,
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
-            "zombieBreakable": true,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
-            "id": "prop_30_copy_2"
+            "id": "prop_31"
           },
           {
-            "kind": "clinic_block",
-            "x": 0.435,
-            "y": 0.406,
+            "kind": "industrial_tank",
+            "x": 0.9118357487922704,
+            "y": 0.65527950310559,
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
-            "zombieBreakable": true,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
-            "id": "prop_30_copy_2_copy"
+            "id": "prop_32"
           },
           {
             "kind": "clinic_block",
-            "x": 0.578,
-            "y": 0.409,
+            "x": 0.7693236714975844,
+            "y": 0.665631469979296,
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
-            "zombieBreakable": true,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
-            "id": "prop_30_copy_2_copy_copy"
+            "id": "prop_33"
           },
           {
-            "kind": "clinic_block",
-            "x": 0.442,
-            "y": 0.547,
+            "kind": "mall_block",
+            "x": 0.5990338164251207,
+            "y": 0.6718426501035195,
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
-            "zombieBreakable": true,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
-            "id": "prop_30_copy_2_copy_copy_copy"
+            "id": "prop_34"
           },
           {
-            "kind": "clinic_block",
-            "x": 0.58,
-            "y": 0.548,
+            "kind": "road_shack",
+            "x": 0.4710144927536231,
+            "y": 0.6801242236024844,
             "scale": 1,
             "angle": 0,
             "hpMul": 1,
-            "zombieBreakable": true,
+            "zombieBreakable": false,
             "name": "",
             "styleTag": "",
-            "id": "prop_30_copy_2_copy_copy_copy_copy"
+            "id": "prop_35"
+          },
+          {
+            "kind": "shopping_cart_barricade",
+            "x": 0.3985507246376811,
+            "y": 0.675983436853002,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": false,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_36"
+          },
+          {
+            "kind": "concrete_barrier",
+            "x": 0.33454106280193235,
+            "y": 0.675983436853002,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": false,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_37"
+          },
+          {
+            "kind": "ambulance_van",
+            "x": 0.27777777777777773,
+            "y": 0.6780538302277432,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": false,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_38"
+          },
+          {
+            "kind": "yellow_bus",
+            "x": 0.21497584541062803,
+            "y": 0.6697722567287784,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": false,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_39"
+          },
+          {
+            "kind": "burnt_sedan",
+            "x": 0.14613526570048305,
+            "y": 0.6697722567287785,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": false,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_40"
+          },
+          {
+            "kind": "red_hatchback",
+            "x": 0.08695652173913042,
+            "y": 0.665631469979296,
+            "scale": 1,
+            "angle": 0,
+            "hpMul": 1,
+            "zombieBreakable": false,
+            "name": "",
+            "styleTag": "",
+            "id": "prop_41"
           }
         ],
         "randomProps": {
@@ -590,7 +543,7 @@
       },
       "scene": {
         "themeId": "ringroad",
-        "baseMaterial": "dirt",
+        "baseMaterial": "grass",
         "terrainZones": [
           {
             "material": "asphalt",
@@ -1845,13 +1798,13 @@
             "enemySpawnMul": 1.08,
             "enemyHpMul": 1,
             "bossKillInterval": 28,
+            "bossMobId": "boss_hellmart",
             "mobWeights": {
               "normal": 36,
               "runner": 8,
               "charger": 7,
               "ranged": 4
-            },
-            "bossMobId": "boss_hellmart"
+            }
           }
         },
         {
@@ -1878,14 +1831,14 @@
             "enemySpawnMul": 1.15,
             "enemyHpMul": 1.08,
             "bossKillInterval": 18,
+            "bossMobId": "boss_hellmart",
             "mobWeights": {
               "normal": 31,
               "runner": 11,
               "charger": 11,
               "ranged": 7,
               "brute": 2
-            },
-            "bossMobId": "boss_hellmart"
+            }
           }
         },
         {
@@ -1912,6 +1865,7 @@
             "enemySpawnMul": 1.22,
             "enemyHpMul": 1.14,
             "bossKillInterval": 22,
+            "bossMobId": "boss_hellmart",
             "mobWeights": {
               "normal": 27,
               "runner": 12,
@@ -1920,8 +1874,7 @@
               "brute": 4,
               "splitter": 3,
               "exploder": 2
-            },
-            "bossMobId": "boss_hellmart"
+            }
           }
         },
         {
@@ -1948,6 +1901,7 @@
             "enemySpawnMul": 1.28,
             "enemyHpMul": 1.2,
             "bossKillInterval": 16,
+            "bossMobId": "boss_hellmart",
             "mobWeights": {
               "normal": 24,
               "runner": 13,
@@ -1958,8 +1912,7 @@
               "medic": 2,
               "exploder": 3,
               "shield": 1
-            },
-            "bossMobId": "boss_hellmart"
+            }
           }
         }
       ]
@@ -1996,13 +1949,13 @@
             "enemySpawnMul": 1.1,
             "enemyHpMul": 1.04,
             "bossKillInterval": 24,
+            "bossMobId": "boss_chief_surgeon",
             "mobWeights": {
               "normal": 32,
               "runner": 7,
               "ranged": 9,
               "medic": 2
-            },
-            "bossMobId": "boss_chief_surgeon"
+            }
           }
         },
         {
@@ -2029,15 +1982,15 @@
             "enemySpawnMul": 1.16,
             "enemyHpMul": 1.1,
             "bossKillInterval": 22,
+            "bossMobId": "boss_chief_surgeon",
             "mobWeights": {
               "normal": 28,
               "runner": 8,
               "ranged": 11,
+              "brute": 2,
               "splitter": 4,
-              "medic": 4,
-              "brute": 2
-            },
-            "bossMobId": "boss_chief_surgeon"
+              "medic": 4
+            }
           }
         },
         {
@@ -2058,16 +2011,16 @@
             "enemySpawnMul": 1.2,
             "enemyHpMul": 1.14,
             "bossKillInterval": 14,
+            "bossMobId": "boss_chief_surgeon",
             "mobWeights": {
               "normal": 25,
               "runner": 9,
               "ranged": 12,
+              "brute": 4,
               "splitter": 6,
               "medic": 5,
-              "brute": 4,
               "sniper": 2
-            },
-            "bossMobId": "boss_chief_surgeon"
+            }
           }
         },
         {
@@ -2094,17 +2047,17 @@
             "enemySpawnMul": 1.26,
             "enemyHpMul": 1.2,
             "bossKillInterval": 12,
+            "bossMobId": "boss_chief_surgeon",
             "mobWeights": {
               "normal": 22,
               "runner": 10,
               "ranged": 12,
+              "brute": 5,
               "splitter": 7,
               "medic": 6,
-              "brute": 5,
               "sniper": 3,
               "shield": 2
-            },
-            "bossMobId": "boss_chief_surgeon"
+            }
           }
         }
       ]
@@ -2147,13 +2100,13 @@
             "enemySpawnMul": 1.14,
             "enemyHpMul": 1.06,
             "bossKillInterval": 24,
+            "bossMobId": "boss_road_titan",
             "mobWeights": {
               "normal": 30,
               "runner": 14,
               "charger": 13,
               "ranged": 4
-            },
-            "bossMobId": "boss_road_titan"
+            }
           }
         },
         {
@@ -2180,15 +2133,15 @@
             "enemySpawnMul": 1.2,
             "enemyHpMul": 1.12,
             "bossKillInterval": 18,
+            "bossMobId": "boss_road_titan",
             "mobWeights": {
               "normal": 25,
               "runner": 16,
               "charger": 16,
+              "ranged": 5,
               "brute": 4,
-              "exploder": 3,
-              "ranged": 5
-            },
-            "bossMobId": "boss_road_titan"
+              "exploder": 3
+            }
           }
         },
         {
@@ -2215,16 +2168,16 @@
             "enemySpawnMul": 1.26,
             "enemyHpMul": 1.18,
             "bossKillInterval": 14,
+            "bossMobId": "boss_road_titan",
             "mobWeights": {
               "normal": 23,
               "runner": 17,
               "charger": 16,
               "brute": 6,
-              "exploder": 5,
+              "splitter": 3,
               "sniper": 3,
-              "splitter": 3
-            },
-            "bossMobId": "boss_road_titan"
+              "exploder": 5
+            }
           }
         },
         {
@@ -2251,17 +2204,17 @@
             "enemySpawnMul": 1.34,
             "enemyHpMul": 1.24,
             "bossKillInterval": 11,
+            "bossMobId": "boss_road_titan",
             "mobWeights": {
               "normal": 20,
               "runner": 18,
               "charger": 17,
               "brute": 7,
-              "exploder": 6,
-              "sniper": 4,
               "splitter": 4,
+              "sniper": 4,
+              "exploder": 6,
               "shield": 2
-            },
-            "bossMobId": "boss_road_titan"
+            }
           }
         }
       ]
@@ -2304,14 +2257,14 @@
             "enemySpawnMul": 1.16,
             "enemyHpMul": 1.08,
             "bossKillInterval": 24,
+            "bossMobId": "boss_reactor_apostle",
             "mobWeights": {
               "normal": 28,
-              "ranged": 12,
               "charger": 8,
+              "ranged": 12,
               "brute": 4,
               "exploder": 3
-            },
-            "bossMobId": "boss_reactor_apostle"
+            }
           }
         },
         {
@@ -2338,16 +2291,16 @@
             "enemySpawnMul": 1.22,
             "enemyHpMul": 1.14,
             "bossKillInterval": 17,
+            "bossMobId": "boss_reactor_apostle",
             "mobWeights": {
               "normal": 24,
-              "ranged": 13,
               "charger": 8,
+              "ranged": 13,
               "brute": 6,
-              "exploder": 5,
+              "medic": 2,
               "sniper": 3,
-              "medic": 2
-            },
-            "bossMobId": "boss_reactor_apostle"
+              "exploder": 5
+            }
           }
         },
         {
@@ -2374,17 +2327,17 @@
             "enemySpawnMul": 1.28,
             "enemyHpMul": 1.2,
             "bossKillInterval": 13,
+            "bossMobId": "boss_reactor_apostle",
             "mobWeights": {
               "normal": 21,
               "ranged": 14,
               "brute": 8,
-              "exploder": 6,
-              "sniper": 5,
+              "splitter": 3,
               "medic": 3,
-              "shield": 3,
-              "splitter": 3
-            },
-            "bossMobId": "boss_reactor_apostle"
+              "sniper": 5,
+              "exploder": 6,
+              "shield": 3
+            }
           }
         },
         {
@@ -2417,18 +2370,18 @@
             "enemySpawnMul": 1.36,
             "enemyHpMul": 1.26,
             "bossKillInterval": 10,
+            "bossMobId": "boss_reactor_apostle",
             "mobWeights": {
               "normal": 18,
+              "runner": 6,
               "ranged": 14,
               "brute": 9,
-              "exploder": 7,
-              "sniper": 6,
-              "medic": 4,
-              "shield": 4,
               "splitter": 4,
-              "runner": 6
-            },
-            "bossMobId": "boss_reactor_apostle"
+              "medic": 4,
+              "sniper": 6,
+              "exploder": 7,
+              "shield": 4
+            }
           }
         }
       ]

@@ -67,17 +67,17 @@ const ACTIVE_FX_PRESETS = {
     layers: ['instant_beam_lances', 'target_reticle_flash', 'impact_flare', 'thin_pink_afterline'],
   },
   homing_missiles: {
-    style: 'homing_missiles',
+    style: 'skill_burst',
     primary: '#fb923c',
     secondary: '#fed7aa',
     accent: '#fde047',
-    niagaraSystem: '/Game/CrimsonWars/FX/Skills/NS_HomingMissiles_Salvo',
-    gameplayCue: 'GameplayCue.Crimson.Skill.HomingMissiles',
-    spawnMode: 'projectile_salvo',
+    niagaraSystem: '/Game/CrimsonWars/FX/Skills/NS_GenericSkill_Burst',
+    gameplayCue: 'GameplayCue.Crimson.Skill.Generic',
+    spawnMode: 'caster_burst',
     attachTo: 'caster_backpack',
     cameraShake: 'CW_RocketSalvo',
     decal: 'M_Rocket_Soot_Decal',
-    layers: ['muzzle_pop_cluster', 'guided_smoke_trails', 'hot_core_projectiles', 'impact_fireball'],
+    layers: ['muzzle_pop_cluster', 'backpack_flash', 'short_smoke_puffs'],
   },
   default: {
     style: 'skill_burst',
@@ -260,7 +260,7 @@ const PROJECTILE_FX_PRESETS = {
     materialPreset: 'MI_FX_BulletTracer',
     cameraShake: '',
     mesh: '/Game/CrimsonWars/Projectiles/SM_BulletTracer',
-    trigger: 'bullet_state_or_shot_event',
+    trigger: 'bullet_state',
     layers: ['hot_core_tracer', 'thin_afterline', 'impact_sparks'],
   },
   rocket: {
@@ -277,7 +277,71 @@ const PROJECTILE_FX_PRESETS = {
     cameraShake: 'CW_RocketImpact',
     mesh: '/Game/CrimsonWars/Projectiles/SM_Rocket_Smart',
     trigger: 'rocket_bullet_state_and_removed_explosion',
-    layers: ['bright_engine_flame', 'curved_smoke_ribbon', 'ember_sparks', 'warhead_glint', 'impact_fireball'],
+    engineFlame: {
+      style: 'short_nozzle_flame',
+      socket: 'Nozzle',
+      length: 10,
+      width: 4.5,
+      lengthScale: 0.38,
+      widthScale: 0.55,
+      alpha: 0.78,
+    },
+    rotationSmoothing: {
+      enabled: true,
+      target: 'velocity_angle',
+      mode: 'exponential_shortest_arc',
+      interpSpeed: 14,
+      maxTurnDegPerSec: 540,
+      resetDistance: 96,
+    },
+    impactExplosion: {
+      renderMode: 'radial_soft_billboards',
+      niagaraSystem: '/Game/CrimsonWars/FX/Projectiles/NS_Rocket_Impact_RadialSoft',
+      materialPreset: 'MI_FX_RocketExplosion_RadialSoft_Additive',
+      spriteSource: 'single_radial_gradient',
+      facingMode: 'camera_facing',
+      sortMode: 'view_depth',
+      blendMode: 'additive_soft',
+      durationMs: 420,
+      coreRadius: 34,
+      outerRadius: 92,
+      spriteCount: 9,
+      verticalJitter: 0.18,
+      horizontalJitter: 0.28,
+      surfaceMaterialMode: 'terrain_zone_or_object_impact_material',
+      fireball: {
+        style: 'layered_fireball',
+        hotCoreColor: '#fff1a8',
+        midColor: '#fb923c',
+        outerColor: '#ef3b12',
+        verticalLift: 0.35,
+      },
+      scorch: {
+        durationMs: 6400,
+        asphaltColor: '#050607',
+        dirtColor: '#1f1007',
+        grassColor: '#051106',
+        concreteColor: '#111315',
+      },
+      surfaceDebris: {
+        enabled: true,
+        countBase: 24,
+        countAsphalt: 30,
+        countDirt: 28,
+        asphalt: ['dark_flat_chunks', 'gray_dust', 'tar_scorch'],
+        dirt: ['brown_clods', 'soil_dust', 'loose_pebbles'],
+        grass: ['earth_clods', 'green_sod_chunks', 'leaf_dust'],
+        concrete: ['pale_gravel', 'concrete_dust', 'radial_cracks'],
+        metal: ['bright_sparks', 'cool_gray_shards', 'smoke'],
+      },
+      avoidTextureAtlases: true,
+      disableFlipbook: true,
+      disableSubUv: true,
+      disableRibbonRenderer: true,
+      disableTiledSpriteSheets: true,
+      removeHorizontalBanding: true,
+    },
+    layers: ['bright_engine_flame', 'curved_smoke_ribbon', 'ember_sparks', 'warhead_glint', 'impact_fireball', 'surface_specific_debris', 'ground_scorch_decal'],
   },
 };
 
@@ -427,6 +491,15 @@ function isActiveSkill(skill) {
 function getSkillCastType(skill) {
   const id = normalizeId(skill?.id);
   if (!isActiveSkill(skill)) return '';
+  const castType = normalizeId(skill?.castType) || id;
+  return castType === 'homing_missiles' ? 'skill_burst' : castType;
+}
+
+function getSourceSkillCastType(skill) {
+  const id = normalizeId(skill?.id);
+  if (!isActiveSkill(skill)) return '';
+  const sourceCastType = normalizeId(skill?.sourceCastType);
+  if (sourceCastType) return sourceCastType;
   return normalizeId(skill?.castType) || id;
 }
 
@@ -480,8 +553,9 @@ function getPassivePresetKey(skill) {
 }
 
 function buildActiveFxProfile(skill, heroId = '') {
+  const sourceCastType = getSourceSkillCastType(skill);
   const castType = getSkillCastType(skill);
-  const preset = ACTIVE_FX_PRESETS[castType] || ACTIVE_FX_PRESETS.default;
+  const preset = ACTIVE_FX_PRESETS[sourceCastType] || ACTIVE_FX_PRESETS[castType] || ACTIVE_FX_PRESETS.default;
   const colors = buildColors(skill, heroId, preset);
   const theme = getHeroTheme(heroId || skill?.sourceHeroId || skill?.heroId);
   const maxLevel = Math.max(1, Math.floor(numberOr(skill?.maxLevel, 1)));
@@ -498,6 +572,7 @@ function buildActiveFxProfile(skill, heroId = '') {
     heroId: normalizeId(heroId || skill?.sourceHeroId || skill?.heroId),
     kind: 'active',
     castType,
+    sourceCastType,
     style: preset.style,
     trigger: 'cooldown_reset_after_successful_cast',
     colors,
@@ -528,11 +603,17 @@ function buildActiveFxProfile(skill, heroId = '') {
       lightColor: colors.primary,
       shouldSpawnOnServerEvent: false,
       shouldInferFromCooldownReset: true,
+      shouldSpawnProjectiles: sourceCastType !== 'homing_missiles',
+      projectilesReplicated: sourceCastType === 'homing_missiles',
+      projectileSpawnMode: sourceCastType === 'homing_missiles' ? 'none' : 'client_fx',
+      skillProjectileActors: sourceCastType === 'homing_missiles' ? 'replicated_bullet_state_only' : 'fx_profile',
+      disableSkillProjectiles: sourceCastType === 'homing_missiles',
+      projectileCount: sourceCastType === 'homing_missiles' ? 0 : null,
     },
     layers: preset.layers.slice(),
     audio: {
       cast: '/assets/sounds/skill-cast.ogg',
-      impact: castType === 'homing_missiles'
+      impact: sourceCastType === 'homing_missiles'
         ? '/assets/sounds/skill-rocket-explosion.ogg'
         : (castType === 'psi_blast' ? '/assets/sounds/skill-psi-blast.ogg' : '/assets/sounds/skill-cast.ogg'),
     },
@@ -597,10 +678,13 @@ function buildRuntimeSkillFxRef(skill, options = {}) {
   return {
     key: profile.key,
     castType: profile.castType,
+    sourceCastType: profile.sourceCastType || profile.castType || '',
     style: profile.style,
     color: profile.colors.primary,
     secondaryColor: profile.colors.secondary,
     intensity: profile.scale.intensity,
+    spawnProjectiles: profile.unreal?.shouldSpawnProjectiles !== false,
+    projectilesReplicated: profile.unreal?.projectilesReplicated === true,
   };
 }
 
@@ -695,11 +779,12 @@ function buildProjectileFxProfile(projectile = 'bullet', options = {}) {
   const presetKey = getProjectilePresetKey(projectile);
   const preset = PROJECTILE_FX_PRESETS[presetKey] || PROJECTILE_FX_PRESETS.bullet;
   const explosionRadius = Math.max(0, Math.round(numberOr(options.explosionRadius ?? projectile?.explosionRadius, presetKey === 'rocket' ? 120 : 0)));
+  const isRocket = presetKey === 'rocket';
   return {
     schemaVersion: 1,
     key: preset.key,
     kind: presetKey,
-    weaponKey: presetKey === 'rocket' ? 'homing_missiles' : normalizeId(projectile?.weaponKey),
+    weaponKey: isRocket ? 'homing_missiles' : normalizeId(projectile?.weaponKey),
     style: preset.style,
     trigger: preset.trigger,
     colors: {
@@ -708,11 +793,15 @@ function buildProjectileFxProfile(projectile = 'bullet', options = {}) {
       accent: options.accent || preset.accent,
     },
     scale: {
-      intensity: roundNumber(numberOr(options.intensity, presetKey === 'rocket' ? 1.25 : 0.9), 3),
-      radius: Math.max(2, Math.round(numberOr(options.radius ?? projectile?.radius, presetKey === 'rocket' ? 6 : 3))),
+      intensity: roundNumber(numberOr(options.intensity, isRocket ? 1.25 : 0.9), 3),
+      radius: Math.max(2, Math.round(numberOr(options.radius ?? projectile?.radius, isRocket ? 6 : 3))),
       speed: Math.max(0, Math.round(numberOr(options.speed ?? projectile?.speed, 0))),
       explosionRadius,
-      trailSeconds: presetKey === 'rocket' ? 0.58 : 0.08,
+      trailSeconds: isRocket ? 0.42 : 0.08,
+      flameLength: isRocket ? preset.engineFlame.length : 0,
+      flameWidth: isRocket ? preset.engineFlame.width : 0,
+      impactDurationMs: isRocket ? preset.impactExplosion.durationMs : 0,
+      impactOuterRadius: isRocket ? preset.impactExplosion.outerRadius : 0,
     },
     web: {
       burstStyle: preset.style,
@@ -728,13 +817,20 @@ function buildProjectileFxProfile(projectile = 'bullet', options = {}) {
       cameraShake: preset.cameraShake,
       mesh: preset.mesh,
       lightColor: options.primary || projectile?.color || preset.primary,
-      shouldSpawnOnServerEvent: true,
+      renderMode: isRocket ? 'mesh_projectile' : 'tracer_only',
+      projectileActorSource: 'replicated_bullet_state',
+      shotEventRole: 'muzzle_audio_only',
+      engineFlame: isRocket ? { ...preset.engineFlame } : null,
+      rotationSmoothing: isRocket ? { ...preset.rotationSmoothing } : null,
+      impactExplosion: isRocket ? { ...preset.impactExplosion } : null,
+      isRocket,
+      shouldSpawnOnServerEvent: false,
       shouldInferFromBulletState: true,
     },
     layers: preset.layers.slice(),
     audio: {
-      cast: presetKey === 'rocket' ? '/assets/sounds/rocket-launch.ogg' : '',
-      impact: presetKey === 'rocket' ? '/assets/sounds/skill-rocket-explosion.ogg' : '/assets/sounds/bullet-impact.ogg',
+      cast: isRocket ? '/assets/sounds/rocket-launch.ogg' : '',
+      impact: isRocket ? '/assets/sounds/skill-rocket-explosion.ogg' : '/assets/sounds/bullet-impact.ogg',
     },
   };
 }
@@ -749,6 +845,11 @@ function buildRuntimeProjectileFxRef(projectile = 'bullet', options = {}) {
     color: profile.colors.primary,
     secondaryColor: profile.colors.secondary,
     intensity: profile.scale.intensity,
+    renderMode: profile.unreal?.renderMode || '',
+    trailSeconds: Math.max(0, Number(profile.scale?.trailSeconds) || 0),
+    engineFlame: profile.unreal?.engineFlame || null,
+    rotationSmoothing: profile.unreal?.rotationSmoothing || null,
+    impactExplosion: profile.unreal?.impactExplosion || null,
   };
 }
 
@@ -763,7 +864,7 @@ function buildNativeProjectileFxManifest() {
   return {
     schemaVersion: 1,
     generatedAt: Date.now(),
-    triggerContract: 'Projectile FX can be spawned from shotEvents and maintained from replicated bullet state. Rockets use projectile.rocket and should explode when removed after impact.',
+    triggerContract: 'Projectile actors should be maintained from replicated bullet state. shotEvents are muzzle/audio timing only and must not spawn persistent projectile meshes. Rockets use projectile.rocket from replicated bullet state only, use short nozzle flame settings from unreal.engineFlame, smooth orientation with unreal.rotationSmoothing, and should explode when removed after impact.',
     byKey,
     byKind,
   };
@@ -889,15 +990,249 @@ function buildNativeMeleeFxManifest(items) {
   };
 }
 
+function formatTooltipNumber(value, digits = 1) {
+  const rounded = roundNumber(value, digits);
+  if (Number.isInteger(rounded)) return String(rounded);
+  return rounded.toFixed(Math.max(0, Math.floor(digits))).replace(/\.?0+$/u, '');
+}
+
+function buildTooltipStat(key, label, labelRu, value, options = {}) {
+  const num = Number(value);
+  if (!Number.isFinite(num) || Math.abs(num) < 0.0001) return null;
+  const digits = Math.max(0, Math.floor(options.digits ?? (Math.abs(num) < 10 ? 1 : 0)));
+  const sign = options.sign && num > 0 ? '+' : '';
+  const prefix = String(options.prefix || '');
+  const unit = String(options.unit || '');
+  const display = `${sign}${prefix}${formatTooltipNumber(num, digits)}${unit}`;
+  return {
+    key,
+    label,
+    labelRu,
+    value: roundNumber(num, digits),
+    unit,
+    display,
+    displayRu: display,
+  };
+}
+
+function buildTooltipTextStat(key, label, labelRu, display, displayRu = display) {
+  const text = String(display || '').trim();
+  if (!text) return null;
+  return {
+    key,
+    label,
+    labelRu,
+    value: text,
+    unit: '',
+    display: text,
+    displayRu: String(displayRu || text),
+  };
+}
+
+function addTooltipStat(stats, stat) {
+  if (stat) stats.push(stat);
+}
+
+function buildSkillTooltipEffect(skill) {
+  const kind = normalizeId(skill?.kind) || 'passive';
+  const sourceCastType = getSourceSkillCastType(skill);
+  const text = `${skill?.id || ''} ${skill?.name || ''} ${skill?.desc || ''}`.toLowerCase();
+  if (kind === 'active') {
+    if (sourceCastType === 'homing_missiles' || numberOr(skill?.missileSpeed, 0) > 0) {
+      return {
+        ru: 'Launches homing rockets at nearby enemies. In Native, visible rocket actors must come only from state.bullets[], while the skill FX stays as a short launch burst.',
+        en: 'Launches homing rockets at nearby enemies. In Native, visible rocket actors must come only from state.bullets[], while the skill FX stays as a short launch burst.',
+      };
+    }
+    if (sourceCastType === 'laser_strike' || /(laser|beam|lance|mark|shrapnel)/u.test(text)) {
+      return {
+        ru: 'Instantly pierces nearby targets with directed beams.',
+        en: 'Instantly pierces nearby targets with directed beams.',
+      };
+    }
+    if (sourceCastType === 'chain_lightning' || /(chain|arc|storm|matrix|lightning)/u.test(text)) {
+      return {
+        ru: 'A chained discharge jumps between multiple targets.',
+        en: 'A chained discharge jumps between multiple targets.',
+      };
+    }
+    if (sourceCastType === 'shockwave' || /(wave|stomp|pulse)/u.test(text)) {
+      return {
+        ru: 'A shockwave around the hero deals damage and clears space.',
+        en: 'A shockwave around the hero deals damage and clears space.',
+      };
+    }
+    if (sourceCastType === 'psi_blast' || /(psi|void|burst)/u.test(text)) {
+      return {
+        ru: 'A psi blast around the hero knocks back and briefly stuns enemies.',
+        en: 'A psi blast around the hero knocks back and briefly stuns enemies.',
+      };
+    }
+    if (sourceCastType === 'blade_orbit' || /(blade|fang|razor)/u.test(text)) {
+      return {
+        ru: 'Fast blades strike nearby targets on cooldown.',
+        en: 'Fast blades strike nearby targets on cooldown.',
+      };
+    }
+    return {
+      ru: 'Triggers on cooldown and damages nearby enemies.',
+      en: 'Triggers on cooldown and damages nearby enemies.',
+    };
+  }
+
+  if (skill?.companionWeaponKey) {
+    return {
+      ru: 'Summons a combat buddy with its own weapon.',
+      en: 'Summons a combat buddy with its own weapon.',
+    };
+  }
+  if (numberOr(skill?.shieldMaxBase, 0) > 0 || numberOr(skill?.shieldMaxPerLevel, 0) > 0) {
+    return {
+      ru: 'Creates a shield that absorbs part of incoming damage and restores after breaking.',
+      en: 'Creates a shield that absorbs part of incoming damage and restores after breaking.',
+    };
+  }
+  if (skill?.globalAura === true) {
+    return {
+      ru: 'Passively improves the other heroes on the account.',
+      en: 'Passively improves the other heroes on the account.',
+    };
+  }
+  if (numberOr(skill?.hpRegenPerSecPerLevel, 0) > 0 || numberOr(skill?.maxHpFlatPerLevel, 0) > 0) {
+    return {
+      ru: 'Improves hero survivability.',
+      en: 'Improves hero survivability.',
+    };
+  }
+  if (numberOr(skill?.moveSpeedMulPerLevel, 0) > 0 || numberOr(skill?.reloadSpeedMulPerLevel, 0) > 0 || numberOr(skill?.extraDodgeChargesPerLevel, 0) > 0) {
+    return {
+      ru: 'Improves movement, reloads, or dodges.',
+      en: 'Improves movement, reloads, or dodges.',
+    };
+  }
+  return {
+    ru: 'Passively improves combat stats.',
+    en: 'Passively improves combat stats.',
+  };
+}
+
+function buildSkillTooltipStats(skill, level = 1) {
+  const lvl = Math.max(1, Math.floor(numberOr(level, 1)));
+  const activeLevel = Math.max(0, lvl - 1);
+  const stats = [];
+  if (isActiveSkill(skill)) {
+    const damage = numberOr(skill?.damage, 0) + numberOr(skill?.damagePerLevel, 0) * activeLevel;
+    const radius = numberOr(skill?.radius, 0) + numberOr(skill?.radiusPerLevel, 0) * activeLevel;
+    const targets = numberOr(skill?.targets, 0) + numberOr(skill?.targetsPerLevel, 0) * activeLevel;
+    const cooldownMs = Math.max(0, numberOr(skill?.cooldownMs, 0));
+    const cooldownScale = Math.max(0.2, 1 - Math.max(0, numberOr(skill?.cooldownMulPerLevel, 0)) * activeLevel);
+    const currentCooldownMs = cooldownMs > 0 ? Math.max(300, Math.round(cooldownMs * cooldownScale)) : 0;
+    const missileSpeed = numberOr(skill?.missileSpeed, 0) + numberOr(skill?.missileSpeedPerLevel, 0) * activeLevel;
+    const turnRate = numberOr(skill?.turnRate, 0) + numberOr(skill?.turnRatePerLevel, 0) * activeLevel;
+    const explosionRadius = numberOr(skill?.explosionRadius, 0) + numberOr(skill?.explosionRadiusPerLevel, 0) * activeLevel;
+
+    addTooltipStat(stats, buildTooltipStat('damage', 'Damage', 'Damage', damage));
+    addTooltipStat(stats, buildTooltipStat('radius', 'Radius', 'Radius', radius));
+    addTooltipStat(stats, buildTooltipStat('targets', 'Targets', 'Targets', Math.max(0, Math.round(targets))));
+    addTooltipStat(stats, buildTooltipStat('cooldown', 'Cooldown', 'Cooldown', currentCooldownMs / 1000, { digits: 2, unit: 's' }));
+    addTooltipStat(stats, buildTooltipStat('missile_speed', 'Missile speed', 'Missile speed', missileSpeed));
+    addTooltipStat(stats, buildTooltipStat('turn_rate', 'Turn rate', 'Turn rate', turnRate, { digits: 2 }));
+    addTooltipStat(stats, buildTooltipStat('explosion_radius', 'Explosion radius', 'Explosion radius', explosionRadius));
+    addTooltipStat(stats, buildTooltipStat('flight_time', 'Flight time', 'Flight time', numberOr(skill?.lifeMs, 0) / 1000, { digits: 2, unit: 's' }));
+    addTooltipStat(stats, buildTooltipStat('knockback', 'Knockback', 'Knockback', numberOr(skill?.knockbackMul, 0), { digits: 1, prefix: 'x' }));
+    addTooltipStat(stats, buildTooltipStat('stun', 'Stun', 'Stun', numberOr(skill?.stunMs, 0), { unit: 'ms' }));
+    return stats;
+  }
+
+  addTooltipStat(stats, buildTooltipStat('damage', 'Damage', 'Damage', numberOr(skill?.damageMulPerLevel, 0) * lvl * 100, { digits: 1, sign: true, unit: '%' }));
+  addTooltipStat(stats, buildTooltipStat('fire_rate', 'Fire rate', 'Fire rate', numberOr(skill?.fireRateMulPerLevel, 0) * lvl * 100, { digits: 1, sign: true, unit: '%' }));
+  addTooltipStat(stats, buildTooltipStat('reload_speed', 'Reload speed', 'Reload speed', numberOr(skill?.reloadSpeedMulPerLevel, 0) * lvl * 100, { digits: 1, sign: true, unit: '%' }));
+  addTooltipStat(stats, buildTooltipStat('move_speed', 'Move speed', 'Move speed', numberOr(skill?.moveSpeedMulPerLevel, 0) * lvl * 100, { digits: 1, sign: true, unit: '%' }));
+  addTooltipStat(stats, buildTooltipStat('max_hp', 'Max HP', 'Max HP', numberOr(skill?.maxHpFlatPerLevel, 0) * lvl, { sign: true }));
+  addTooltipStat(stats, buildTooltipStat('pickup_radius', 'Pickup radius', 'Pickup radius', numberOr(skill?.pickupRadiusPerLevel, 0) * lvl, { sign: true }));
+  addTooltipStat(stats, buildTooltipStat('hp_regen', 'HP regen', 'HP regen', numberOr(skill?.hpRegenPerSecPerLevel, 0) * lvl, { digits: 2, sign: true, unit: '/s' }));
+  addTooltipStat(stats, buildTooltipStat('jump_charges', 'Jump charges', 'Jump charges', numberOr(skill?.extraDodgeChargesPerLevel, 0) * lvl, { sign: true }));
+  addTooltipStat(stats, buildTooltipStat('bullet_pierce', 'Bullet pierce', 'Bullet pierce', numberOr(skill?.bulletPierceFlat, 0) + numberOr(skill?.bulletPiercePerLevel, 0) * lvl, { sign: true }));
+  addTooltipStat(stats, buildTooltipStat('bullet_damage', 'Bullet damage', 'Bullet damage', numberOr(skill?.bulletDamageMulPerLevel, 0) * lvl * 100, { digits: 1, sign: true, unit: '%' }));
+  addTooltipStat(stats, buildTooltipStat('bullet_homing_range', 'Bullet homing range', 'Bullet homing range', numberOr(skill?.bulletHomingRangeBase, 0) + numberOr(skill?.bulletHomingRangePerLevel, 0) * Math.max(0, lvl - 1)));
+  addTooltipStat(stats, buildTooltipStat('bullet_homing_turn', 'Bullet homing turn', 'Bullet homing turn', numberOr(skill?.bulletHomingTurnBase, 0) + numberOr(skill?.bulletHomingTurnPerLevel, 0) * Math.max(0, lvl - 1), { digits: 2 }));
+  addTooltipStat(stats, buildTooltipStat('shield_hp', 'Shield HP', 'Shield HP', (numberOr(skill?.shieldMaxBase, 0) > 0 ? numberOr(skill?.shieldMaxBase, 0) + numberOr(skill?.shieldMaxPerLevel, 0) * Math.max(0, lvl - 1) : numberOr(skill?.shieldMaxPerLevel, 0) * lvl)));
+  addTooltipStat(stats, buildTooltipStat('shield_absorb', 'Shield absorb', 'Shield absorb', (numberOr(skill?.shieldAbsorbBase, 0) + numberOr(skill?.shieldAbsorbPerLevel, 0) * Math.max(0, lvl - 1)) * 100, { digits: 1, unit: '%' }));
+  addTooltipStat(stats, buildTooltipStat('shield_restore', 'Shield restore', 'Shield restore', numberOr(skill?.shieldRestoreMs, 0) / 1000, { digits: 1, unit: 's' }));
+  addTooltipStat(stats, buildTooltipStat('other_heroes_damage', 'Other heroes damage', 'Other heroes damage', numberOr(skill?.globalDamageMulPerLevel, 0) * lvl * 100, { digits: 1, sign: true, unit: '%' }));
+  addTooltipStat(stats, buildTooltipStat('other_heroes_fire_rate', 'Other heroes fire rate', 'Other heroes fire rate', numberOr(skill?.globalFireRateMulPerLevel, 0) * lvl * 100, { digits: 1, sign: true, unit: '%' }));
+  addTooltipStat(stats, buildTooltipStat('other_heroes_speed', 'Other heroes speed', 'Other heroes speed', numberOr(skill?.globalMoveSpeedMulPerLevel, 0) * lvl * 100, { digits: 1, sign: true, unit: '%' }));
+  addTooltipStat(stats, buildTooltipStat('other_heroes_hp', 'Other heroes HP', 'Other heroes HP', numberOr(skill?.globalMaxHpFlatPerLevel, 0) * lvl, { sign: true }));
+  addTooltipStat(stats, buildTooltipStat('other_heroes_pickup', 'Other heroes pickup', 'Other heroes pickup', numberOr(skill?.globalPickupRadiusPerLevel, 0) * lvl, { sign: true }));
+  addTooltipStat(stats, buildTooltipStat('other_heroes_regen', 'Other heroes regen', 'Other heroes regen', numberOr(skill?.globalHpRegenPerSecPerLevel, 0) * lvl, { digits: 2, sign: true, unit: '/s' }));
+  addTooltipStat(stats, buildTooltipTextStat('companion_weapon', 'Companion weapon', 'Companion weapon', normalizeId(skill?.companionWeaponKey).toUpperCase()));
+  return stats;
+}
+
+function buildSkillTooltipProfile(skill, options = {}) {
+  if (!skill || typeof skill !== 'object') return null;
+  const level = Math.max(1, Math.floor(numberOr(options.level ?? skill.level, 1)));
+  const id = normalizeId(skill.id);
+  const name = String(skill.name || id || 'Skill');
+  const heroId = normalizeId(options.heroId || skill.sourceHeroId || skill.heroId);
+  const effect = buildSkillTooltipEffect(skill);
+  return {
+    schemaVersion: 1,
+    skillId: id,
+    heroId,
+    name,
+    title: `${name} Lv${level}`,
+    titleRu: `${name} Lv${level}`,
+    kind: normalizeId(skill.kind) || 'passive',
+    rarity: normalizeId(skill.rarity) || 'common',
+    level,
+    maxLevel: Math.max(1, Math.floor(numberOr(skill.maxLevel, level))),
+    description: String(skill.desc || ''),
+    effect: effect.en,
+    effectRu: effect.ru,
+    castType: getSkillCastType(skill),
+    sourceCastType: getSourceSkillCastType(skill),
+    stats: buildSkillTooltipStats(skill, level),
+    trigger: 'native_hud_hover_or_focus',
+  };
+}
+
+function buildRuntimeSkillTooltipRef(skill, options = {}) {
+  return buildSkillTooltipProfile(skill, options);
+}
+
+function buildNativeSkillTooltipManifest(skills) {
+  const bySkillId = {};
+  for (const skill of Array.isArray(skills) ? skills : []) {
+    const tooltip = buildSkillTooltipProfile(skill, {
+      heroId: skill?.sourceHeroId || skill?.heroId || '',
+      level: 1,
+    });
+    if (!tooltip?.skillId) continue;
+    bySkillId[tooltip.skillId] = tooltip;
+  }
+  return {
+    schemaVersion: 1,
+    generatedAt: Date.now(),
+    triggerContract: 'Render Native skill hints in UMG from payload.catalog.skills[].tooltip, state.players[].skills[].tooltip, or this bySkillId map. Do not depend on Web DOM mouse hover inside the Unreal viewport.',
+    bySkillId,
+  };
+}
+
 function buildNativeGameplayFxManifest(options = {}) {
   const skills = Array.isArray(options.skills) ? options.skills : [];
   const items = Array.isArray(options.items) ? options.items : [];
   const skillFx = buildNativeSkillFxManifest(skills);
+  const skillTooltips = buildNativeSkillTooltipManifest(skills);
   return {
     schemaVersion: 1,
     generatedAt: Date.now(),
-    triggerContract: 'Top-level native FX manifest. Use skillFx for skills, worldFx for pickups/world events, projectileFx for bullets and rockets, and meleeFx for second-hand melee weapon attacks.',
+    triggerContract: 'Top-level native FX manifest. Use skillFx for skills, worldFx for pickups/world events, projectileFx for bullets and rockets, meleeFx for second-hand melee weapon attacks, and skillTooltips for Native HUD hover/focus hints.',
     skillFx,
+    skillTooltips,
+    ui: {
+      skillTooltips,
+    },
     worldFx: buildNativeWorldFxManifest(),
     projectileFx: buildNativeProjectileFxManifest(),
     meleeFx: buildNativeMeleeFxManifest(items),
@@ -909,6 +1244,8 @@ function enrichSkillForClient(skill, options = {}) {
   const heroId = normalizeId(options.heroId || skill.sourceHeroId || skill.heroId);
   const fx = buildSkillFxProfile(skill, { heroId });
   const castType = getSkillCastType(skill);
+  const sourceCastType = getSourceSkillCastType(skill);
+  const tooltip = buildSkillTooltipProfile(skill, { heroId, level: options.level || skill.level || 1 });
   const out = {
     ...skill,
     id: normalizeId(skill.id) || String(skill.id || ''),
@@ -916,8 +1253,15 @@ function enrichSkillForClient(skill, options = {}) {
     sourceHeroId: heroId || skill.sourceHeroId,
     fxKey: fx?.key || '',
     fx: fx || null,
+    tooltip,
+    nativeTooltip: tooltip,
   };
   if (castType) out.castType = castType;
+  if (sourceCastType) out.sourceCastType = sourceCastType;
+  if (fx?.unreal?.projectilesReplicated) {
+    out.projectilesReplicated = true;
+    out.spawnProjectiles = false;
+  }
   return out;
 }
 
@@ -990,7 +1334,7 @@ function buildNativeSkillFxManifest(skills) {
   return {
     schemaVersion: 1,
     generatedAt: Date.now(),
-    triggerContract: 'A client should spawn active FX when an active skill cooldown jumps from ready to a fresh cooldown. Runtime skill state includes castType and fxKey.',
+    triggerContract: 'A client should spawn active FX when an active skill cooldown jumps from ready to a fresh cooldown. Runtime skill state includes castType and fxKey. Homing missile skill FX is cast/muzzle-only; moving rockets come from replicated projectile.rocket bullet state.',
     byKey,
     bySkillId,
     activeCastTypes: Object.keys(activeCastTypes).sort(),
@@ -1003,13 +1347,16 @@ module.exports = {
   buildNativeMeleeFxManifest,
   buildNativeProjectileFxManifest,
   buildNativeSkillFxManifest,
+  buildNativeSkillTooltipManifest,
   buildNativeWorldFxManifest,
   buildRuntimeMeleeFxRef,
   buildRuntimeProjectileFxRef,
   buildRuntimeSkillFxRef,
+  buildRuntimeSkillTooltipRef,
   buildRuntimeWorldFxRef,
   buildSkillCatalogWithFx,
   buildSkillFxProfile,
+  buildSkillTooltipProfile,
   buildMeleeFxProfile,
   buildProjectileFxProfile,
   buildWorldFxProfile,

@@ -126,6 +126,7 @@
       ['story', tr('ui.main.story', 'Сюжет')],
       ['characters', tr('ui.main.characters', 'Персонажи')],
       ['skills', tr('ui.main.skills', 'Навыки')],
+      ['shop', 'TON Shop'],
       ['profile', tr('ui.main.profile', 'Профиль')],
       ['rating', tr('ui.main.rating', 'Рейтинг')],
       ['news', tr('ui.main.news', 'Новости')],
@@ -452,6 +453,12 @@
     );
   }
 
+  function ShopPanel() {
+    return h(CwPanel, { id: 'menu-panel-shop', className: 'menu-panel', dataMenuPanel: 'shop' },
+      h('div', { id: 'ton-shop-root', className: 'ton-shop-root' })
+    );
+  }
+
   function RatingPanel() {
     return h(CwPanel, { id: 'menu-panel-rating', className: 'menu-panel', dataMenuPanel: 'rating' },
       h(CwLeaderboardTable, null,
@@ -505,6 +512,7 @@
           h(PlayPanel),
           h(CharactersPanel),
           h(SkillsPanel),
+          h(ShopPanel),
           h(ProfilePanel),
           h(RatingPanel),
           h(NewsPanel)
