@@ -27,6 +27,7 @@
   let heroProgressionModalState = null;
   let heroProgressionModalCloseTimer = 0;
   let heroProgressionModalPulseTimer = 0;
+  const heroProgressionPendingActions = new Set();
   let heroRosterDeselectFx = null;
   let heroRosterDeselectFxTimer = 0;
   let lastHeroLoadoutRenderId = '';
@@ -76,6 +77,28 @@
     return typeof performance !== 'undefined' && typeof performance.now === 'function'
       ? performance.now()
       : Date.now();
+  }
+  function getHeroProgressionPendingKey(kind, heroId, itemId) {
+    const nextKind = String(kind || '').trim().toLowerCase();
+    const nextHeroId = normalizeHeroEquipFxKey(heroId);
+    const nextItemId = String(itemId || '').trim();
+    return nextKind && nextHeroId && nextItemId ? `${nextKind}:${nextHeroId}:${nextItemId}` : '';
+  }
+  function isHeroProgressionActionPending(kind, heroId, itemId) {
+    const key = getHeroProgressionPendingKey(kind, heroId, itemId);
+    return key ? heroProgressionPendingActions.has(key) : false;
+  }
+  function setHeroProgressionActionPending(kind, heroId, itemId, pending) {
+    const key = getHeroProgressionPendingKey(kind, heroId, itemId);
+    if (!key) return false;
+    if (pending) heroProgressionPendingActions.add(key);
+    else heroProgressionPendingActions.delete(key);
+    return true;
+  }
+  function getHeroProgressionPendingLabel(action) {
+    return action === 'unlock'
+      ? getInventoryUiText('\u041e\u0442\u043a\u0440\u044b\u0432\u0430\u0435\u043c...', 'Unlocking...')
+      : getInventoryUiText('\u0423\u043b\u0443\u0447\u0448\u0430\u0435\u043c...', 'Upgrading...');
   }
   function getInventoryRarityFxColor(rarity) {
     switch (String(rarity || '').trim().toLowerCase()) {
@@ -627,6 +650,9 @@
       : getInventoryUiText('\u0421\u043b\u0435\u0434\u0443\u044e\u0449\u0438\u0439 \u0443\u0440\u043e\u0432\u0435\u043d\u044c', 'Next level');
     const levelPct = Math.max(0, Math.min(100, (data.level / Math.max(1, data.maxLevel)) * 100));
     const afterValue = data.action === 'maxed' ? data.resourceValue : Math.max(0, data.resourceValue - data.cost);
+    const isPending = isHeroProgressionActionPending(data.kind, data.hero?.id, data.item?.id);
+    const canSubmit = data.canUse && !isPending;
+    const pendingLabel = getHeroProgressionPendingLabel(data.action);
     const actionLabel = data.action === 'unlock'
       ? `${trWithFallback('ui.hero.unlock', 'Unlock')} | ${formatHeroProgressionCurrency(data.resourceKind, data.cost)}`
       : data.action === 'upgrade'
@@ -638,7 +664,9 @@
         ? trWithFallback('ui.hero.locked', 'Hero locked')
         : data.action === 'maxed'
           ? trWithFallback('ui.skill_modal.maxed', 'Maxed')
-          : data.resourceValue >= data.cost
+          : isPending
+            ? pendingLabel
+            : data.resourceValue >= data.cost
             ? getInventoryUiText('\u0413\u043e\u0442\u043e\u0432\u043e \u043a \u043f\u0440\u043e\u043a\u0430\u0447\u043a\u0435', 'Ready to upgrade')
             : `${getInventoryUiText('\u041d\u0435 \u0445\u0432\u0430\u0442\u0430\u0435\u0442', 'Need more')}: ${formatHeroProgressionCurrency(data.resourceKind, Math.max(0, data.cost - data.resourceValue))}`;
     const desc = String(data.desc || '').trim() || data.subtitle;
@@ -646,6 +674,7 @@
 
     modal.style.setProperty('--avatar-accent', String(data.hero?.accent || data.color || '#38bdf8'));
     modal.style.setProperty('--skill-color', String(data.color || data.hero?.accent || '#38bdf8'));
+    modal.classList.toggle('is-busy', isPending);
     modal.setAttribute('aria-label', data.title);
     content.innerHTML = '<div class="battle-hub-skill-modal-hero hero-progression-modal-hero">'
       + renderHeroProgressionModalArt(data)
@@ -666,8 +695,8 @@
       + `<span class="${data.resourceValue > 0 ? 'has-value' : ''}"><b>${escapeHtml(getInventoryUiText('\u0423 \u0432\u0430\u0441', 'You have'))}</b><strong>${escapeHtml(formatHeroProgressionCurrency(data.resourceKind, data.resourceValue))}</strong></span>`
       + `<span><b>${escapeHtml(trWithFallback('ui.skill_modal.after', 'After'))}</b><strong>${escapeHtml(formatHeroProgressionCurrency(data.resourceKind, afterValue))}</strong></span>`
       + '</div>'
-      + `<div class="battle-hub-skill-modal-status ${data.canUse ? 'ok' : 'warn'}">${escapeHtml(statusText)}</div>`
-      + `<button class="battle-hub-skill-modal-action hero-progression-modal-action" type="button" data-hero-progression-modal-action="${escapeHtml(data.action)}"${data.canUse ? '' : ' disabled'}>${escapeHtml(actionLabel)}</button>`;
+      + `<div class="battle-hub-skill-modal-status ${canSubmit || isPending ? 'ok' : 'warn'}">${escapeHtml(statusText)}</div>`
+      + `<button class="battle-hub-skill-modal-action hero-progression-modal-action${isPending ? ' is-loading' : ''}" type="button" data-hero-progression-modal-action="${escapeHtml(data.action)}" aria-busy="${isPending ? 'true' : 'false'}"${canSubmit ? '' : ' disabled'}><span class="battle-hub-skill-modal-action-label">${escapeHtml(isPending ? pendingLabel : actionLabel)}</span></button>`;
 
     const actionBtn = content.querySelector('.hero-progression-modal-action');
     actionBtn?.addEventListener('click', () => {
@@ -698,7 +727,10 @@
       heroProgressionModalState.itemId,
     );
     if (!data || !data.canUse || data.action === 'maxed') return;
+    if (isHeroProgressionActionPending(data.kind, data.hero.id, data.item.id)) return;
+    setHeroProgressionActionPending(data.kind, data.hero.id, data.item.id, true);
     heroProgressionModalEl.classList.add('is-busy');
+    renderHeroProgressionModal();
     try {
       if (data.kind === 'talent') {
         await upgradeHeroNodeForAccount(data.hero.id, data.item.id);
@@ -708,6 +740,7 @@
         await upgradeHeroSkillForAccount(data.hero.id, data.item.id);
       }
       setHeroActionFeedback(`${data.heroName}: ${data.title} ${data.action === 'unlock' ? 'unlocked' : 'upgraded'}`, 'ok');
+      setHeroProgressionActionPending(data.kind, data.hero.id, data.item.id, false);
       renderCharacterPicker();
       renderHeroProgressionModal();
       heroProgressionModalEl.classList.remove('is-busy');
@@ -719,6 +752,7 @@
       }, HERO_PROGRESSION_MODAL_PULSE_MS);
     } catch (err) {
       const msg = humanizeHeroApiError(err, 'Failed to upgrade.');
+      setHeroProgressionActionPending(data.kind, data.hero.id, data.item.id, false);
       heroProgressionModalEl.classList.remove('is-busy');
       renderHeroProgressionModal();
       const status = heroProgressionModalEl.querySelector('.battle-hub-skill-modal-status');
@@ -1502,7 +1536,8 @@
     });
     const canUnlockSkill = Boolean(game.playerAuth?.player && unlocked && !unlockedSkill && costReq.enough);
     const canUpgradeSkill = Boolean(game.playerAuth?.player && unlocked && unlockedSkill && !maxedSkill && costReq.enough);
-    const canUseAction = unlockedSkill ? canUpgradeSkill : canUnlockSkill;
+    const isPending = isHeroProgressionActionPending('skill', hero.id, skill.id);
+    const canUseAction = (unlockedSkill ? canUpgradeSkill : canUnlockSkill) && !isPending;
     const skillName = trWithFallback(`skill.${String(skill.id || '').toLowerCase()}.name`, skill.name || skill.id);
     const skillDesc = trWithFallback(`skill.${String(skill.id || '').toLowerCase()}.desc`, skill.desc || '');
     const skillEffectText = formatHeroUniqueSkillInlineEffectText(skill, lvl);
@@ -1523,6 +1558,7 @@
       unlockedSkill ? 'is-unlocked' : 'is-locked',
       maxedSkill ? 'is-maxed' : '',
       canUseAction ? 'can-upgrade' : '',
+      isPending ? 'is-pending' : '',
       (!costReq.enough && !maxedSkill) ? 'hero-node-lack' : '',
       skillFx.className,
     ].filter(Boolean).join(' ');
@@ -1530,6 +1566,7 @@
       'hero-node-up',
       'hero-skill-upgrade-action',
       canUseAction ? 'is-ready' : '',
+      isPending ? 'is-loading' : '',
       (!costReq.enough && !maxedSkill) ? 'hero-node-up-lack' : '',
       unlockedSkill ? 'is-upgrade' : 'is-unlock',
       maxedSkill ? 'is-maxed' : '',
@@ -1538,10 +1575,12 @@
       ? trWithFallback('ui.common.max', 'MAX')
       : (unlockedSkill ? trWithFallback('ui.inventory.action_upgrade', 'Upgrade') : trWithFallback('ui.hero.unlock', 'Unlock'));
     const levelLabel = `${lvl}/${maxLevel}`;
-    const actionTitle = `${actionVerb}: ${skillName}. ${levelLabel}. ${requirementLabel}`;
+    const actionTitle = isPending
+      ? `${getHeroProgressionPendingLabel(unlockedSkill ? 'upgrade' : 'unlock')}: ${skillName}. ${levelLabel}.`
+      : `${actionVerb}: ${skillName}. ${levelLabel}. ${requirementLabel}`;
     const detailTitle = `${getInventoryUiText('\u041f\u043e\u0434\u0440\u043e\u0431\u043d\u0435\u0435', 'Details')}: ${skillName}`;
-    const actionMarkHtml = maxedSkill ? '' : '<span class="hero-skill-upgrade-action-mark" aria-hidden="true">+</span>';
-    return `<div class="${escapeHtml(rowClasses)}" data-hero-skill-row="${escapeHtml(skill.id)}" style="--skill-color:${escapeHtml(skillColor)}">${skillIconHtml}<div class="hero-unique-skill-copy"><button type="button" class="hero-node-detail-hit" data-hero-detail-kind="skill" data-hero-detail-hero="${escapeHtml(hero.id)}" data-hero-detail-id="${escapeHtml(skill.id)}" title="${escapeHtml(detailTitle)}" aria-label="${escapeHtml(detailTitle)}"><span class="hero-node-name">${escapeHtml(skillName)} <span class="muted">(${escapeHtml(skillType)})</span></span><span class="hero-node-desc">${skillDescHtml}</span></button><div class="hero-node-desc hero-req ${requirementClass}">${escapeHtml(requirementLabel)}</div></div><button type="button" class="${escapeHtml(buttonClasses)}" data-hero-skill-id="${escapeHtml(skill.id)}" data-hero-skill-action="${unlockedSkill ? 'upgrade' : 'unlock'}" title="${escapeHtml(actionTitle)}" aria-label="${escapeHtml(actionTitle)}" ${canUseAction ? '' : 'disabled'}><span class="hero-skill-upgrade-action-frame" aria-hidden="true"></span><span class="hero-skill-upgrade-action-level">${escapeHtml(levelLabel)}</span>${actionMarkHtml}</button></div>`;
+    const actionMarkHtml = maxedSkill ? '' : `<span class="hero-skill-upgrade-action-mark" aria-hidden="true">${isPending ? '' : '+'}</span>`;
+    return `<div class="${escapeHtml(rowClasses)}" data-hero-skill-row="${escapeHtml(skill.id)}" style="--skill-color:${escapeHtml(skillColor)}">${skillIconHtml}<div class="hero-unique-skill-copy"><button type="button" class="hero-node-detail-hit" data-hero-detail-kind="skill" data-hero-detail-hero="${escapeHtml(hero.id)}" data-hero-detail-id="${escapeHtml(skill.id)}" title="${escapeHtml(detailTitle)}" aria-label="${escapeHtml(detailTitle)}"><span class="hero-node-name">${escapeHtml(skillName)} <span class="muted">(${escapeHtml(skillType)})</span></span><span class="hero-node-desc">${skillDescHtml}</span></button><div class="hero-node-desc hero-req ${requirementClass}">${escapeHtml(isPending ? getHeroProgressionPendingLabel(unlockedSkill ? 'upgrade' : 'unlock') : requirementLabel)}</div></div><button type="button" class="${escapeHtml(buttonClasses)}" data-hero-skill-id="${escapeHtml(skill.id)}" data-hero-skill-action="${unlockedSkill ? 'upgrade' : 'unlock'}" title="${escapeHtml(actionTitle)}" aria-label="${escapeHtml(actionTitle)}" aria-busy="${isPending ? 'true' : 'false'}" ${canUseAction ? '' : 'disabled'}><span class="hero-skill-upgrade-action-frame" aria-hidden="true"></span><span class="hero-skill-upgrade-action-level">${escapeHtml(levelLabel)}</span>${actionMarkHtml}</button></div>`;
   }
   function renderHeroTalentNodeRow(hero, node, progression, points, unlocked) {
     const lvl = getNodeLevel(progression, hero.id, node.id);
@@ -1549,7 +1588,8 @@
     const maxedNode = lvl >= maxLevel;
     const cost = Math.max(1, Number(node.cost) || 1);
     const pointReq = heroRequirementMeta(cost, points, (need, have) => trWithFallback('ui.hero.need_have_points', 'Skill points: need {need} • you have {have}', { need, have }));
-    const canUpgrade = Boolean(game.playerAuth?.player && unlocked && !maxedNode && pointReq.enough);
+    const isPending = isHeroProgressionActionPending('talent', hero.id, node.id);
+    const canUpgrade = Boolean(game.playerAuth?.player && unlocked && !maxedNode && pointReq.enough && !isPending);
     const nodeName = trWithFallback(`hero.node.${String(node.id || '').toLowerCase()}.name`, node.name || node.id);
     const nodeDesc = trWithFallback(`hero.node.${String(node.id || '').toLowerCase()}.desc`, node.desc || '');
     const currentEffectText = formatHeroTalentCurrentEffectText(node, lvl);
@@ -1571,6 +1611,7 @@
       `hero-talent-${talentVisual.key}`,
       maxedNode ? 'is-maxed' : '',
       canUpgrade ? 'can-upgrade' : '',
+      isPending ? 'is-pending' : '',
       (!pointReq.enough && !maxedNode) ? 'hero-node-lack' : '',
       talentFx.className,
     ].filter(Boolean).join(' ');
@@ -1579,15 +1620,18 @@
       'hero-skill-upgrade-action',
       'hero-talent-upgrade-action',
       canUpgrade ? 'is-ready' : '',
+      isPending ? 'is-loading' : '',
       (!pointReq.enough && !maxedNode) ? 'hero-node-up-lack' : '',
       maxedNode ? 'is-maxed' : '',
     ].filter(Boolean).join(' ');
     const actionVerb = maxedNode ? trWithFallback('ui.common.max', 'MAX') : trWithFallback('ui.inventory.action_upgrade', 'Upgrade');
     const levelLabel = `${lvl}/${maxLevel}`;
-    const actionTitle = `${actionVerb}: ${nodeName}. ${levelLabel}. ${requirementLabel}`;
+    const actionTitle = isPending
+      ? `${getHeroProgressionPendingLabel('upgrade')}: ${nodeName}. ${levelLabel}.`
+      : `${actionVerb}: ${nodeName}. ${levelLabel}. ${requirementLabel}`;
     const detailTitle = `${getInventoryUiText('\u041f\u043e\u0434\u0440\u043e\u0431\u043d\u0435\u0435', 'Details')}: ${nodeName}`;
-    const actionMarkHtml = maxedNode ? '' : '<span class="hero-skill-upgrade-action-mark" aria-hidden="true">+</span>';
-    return `<div class="${escapeHtml(rowClasses)}" data-hero-talent-row="${escapeHtml(node.id)}" style="--skill-color:${escapeHtml(talentColor)};--talent-color:${escapeHtml(talentColor)}">${talentIconHtml}<div class="hero-talent-copy"><button type="button" class="hero-node-detail-hit" data-hero-detail-kind="talent" data-hero-detail-hero="${escapeHtml(hero.id)}" data-hero-detail-id="${escapeHtml(node.id)}" title="${escapeHtml(detailTitle)}" aria-label="${escapeHtml(detailTitle)}"><span class="hero-node-name">${escapeHtml(nodeName)}</span><span class="hero-node-desc">${nodeDescHtml}</span></button><div class="hero-node-desc hero-req ${requirementClass}">${escapeHtml(requirementLabel)}</div></div><button type="button" class="${escapeHtml(buttonClasses)}" data-node-id="${escapeHtml(node.id)}" title="${escapeHtml(actionTitle)}" aria-label="${escapeHtml(actionTitle)}" ${canUpgrade ? '' : 'disabled'}><span class="hero-skill-upgrade-action-frame" aria-hidden="true"></span><span class="hero-skill-upgrade-action-level">${escapeHtml(levelLabel)}</span>${actionMarkHtml}</button></div>`;
+    const actionMarkHtml = maxedNode ? '' : `<span class="hero-skill-upgrade-action-mark" aria-hidden="true">${isPending ? '' : '+'}</span>`;
+    return `<div class="${escapeHtml(rowClasses)}" data-hero-talent-row="${escapeHtml(node.id)}" style="--skill-color:${escapeHtml(talentColor)};--talent-color:${escapeHtml(talentColor)}">${talentIconHtml}<div class="hero-talent-copy"><button type="button" class="hero-node-detail-hit" data-hero-detail-kind="talent" data-hero-detail-hero="${escapeHtml(hero.id)}" data-hero-detail-id="${escapeHtml(node.id)}" title="${escapeHtml(detailTitle)}" aria-label="${escapeHtml(detailTitle)}"><span class="hero-node-name">${escapeHtml(nodeName)}</span><span class="hero-node-desc">${nodeDescHtml}</span></button><div class="hero-node-desc hero-req ${requirementClass}">${escapeHtml(isPending ? getHeroProgressionPendingLabel('upgrade') : requirementLabel)}</div></div><button type="button" class="${escapeHtml(buttonClasses)}" data-node-id="${escapeHtml(node.id)}" title="${escapeHtml(actionTitle)}" aria-label="${escapeHtml(actionTitle)}" aria-busy="${isPending ? 'true' : 'false'}" ${canUpgrade ? '' : 'disabled'}><span class="hero-skill-upgrade-action-frame" aria-hidden="true"></span><span class="hero-skill-upgrade-action-level">${escapeHtml(levelLabel)}</span>${actionMarkHtml}</button></div>`;
   }
   function bindHeroUnlockButton(targetEl, hero) {
     const unlockBtn = targetEl?.querySelector?.('[data-hero-unlock="1"]');
@@ -1611,31 +1655,45 @@
       }
     });
   }
+  async function handleHeroProgressionActionClick(hero, btn) {
+    if (!(btn instanceof HTMLElement) || btn.disabled) return;
+    const heroSkillId = btn.getAttribute('data-hero-skill-id') || '';
+    const heroSkillAction = btn.getAttribute('data-hero-skill-action') || '';
+    if (heroSkillId) {
+      if (isHeroProgressionActionPending('skill', hero.id, heroSkillId)) return;
+      setHeroProgressionActionPending('skill', hero.id, heroSkillId, true);
+      renderCharacterPicker();
+      try {
+        if (heroSkillAction === 'unlock') await unlockHeroSkillForAccount(hero.id, heroSkillId);
+        else await upgradeHeroSkillForAccount(hero.id, heroSkillId);
+        setHeroActionFeedback(`${hero.name}: ${heroSkillId} ${heroSkillAction === 'unlock' ? 'unlocked' : 'upgraded'}`, 'ok');
+      } catch (err) {
+        setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to update hero skill.'), 'err');
+      } finally {
+        setHeroProgressionActionPending('skill', hero.id, heroSkillId, false);
+        renderCharacterPicker();
+      }
+      return;
+    }
+    const nodeId = btn.getAttribute('data-node-id') || '';
+    if (!nodeId) return;
+    if (isHeroProgressionActionPending('talent', hero.id, nodeId)) return;
+    setHeroProgressionActionPending('talent', hero.id, nodeId, true);
+    renderCharacterPicker();
+    try {
+      await upgradeHeroNodeForAccount(hero.id, nodeId);
+      setHeroActionFeedback(`Upgraded ${hero.name}: ${nodeId}`, 'ok');
+    } catch (err) {
+      setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to upgrade node.'), 'err');
+    } finally {
+      setHeroProgressionActionPending('talent', hero.id, nodeId, false);
+      renderCharacterPicker();
+    }
+  }
   function bindHeroProgressionButtons(targetEl, hero) {
     for (const btn of targetEl?.querySelectorAll?.('.hero-node-up') || []) {
       btn.addEventListener('click', async () => {
-        const heroSkillId = btn.getAttribute('data-hero-skill-id') || '';
-        const heroSkillAction = btn.getAttribute('data-hero-skill-action') || '';
-        if (heroSkillId) {
-          try {
-            if (heroSkillAction === 'unlock') await unlockHeroSkillForAccount(hero.id, heroSkillId);
-            else await upgradeHeroSkillForAccount(hero.id, heroSkillId);
-            setHeroActionFeedback(`${hero.name}: ${heroSkillId} ${heroSkillAction === 'unlock' ? 'unlocked' : 'upgraded'}`, 'ok');
-            renderCharacterPicker();
-          } catch (err) {
-            setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to update hero skill.'), 'err');
-          }
-          return;
-        }
-        const nodeId = btn.getAttribute('data-node-id') || '';
-        if (!nodeId) return;
-        try {
-          await upgradeHeroNodeForAccount(hero.id, nodeId);
-          setHeroActionFeedback(`Upgraded ${hero.name}: ${nodeId}`, 'ok');
-          renderCharacterPicker();
-        } catch (err) {
-          setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to upgrade node.'), 'err');
-        }
+        await handleHeroProgressionActionClick(hero, btn);
       });
     }
   }
@@ -1832,28 +1890,7 @@
     });
     for (const btn of heroTreePanelEl.querySelectorAll('.hero-node-up')) {
       btn.addEventListener('click', async () => {
-        const heroSkillId = btn.getAttribute('data-hero-skill-id') || '';
-        const heroSkillAction = btn.getAttribute('data-hero-skill-action') || '';
-        if (heroSkillId) {
-          try {
-            if (heroSkillAction === 'unlock') await unlockHeroSkillForAccount(hero.id, heroSkillId);
-            else await upgradeHeroSkillForAccount(hero.id, heroSkillId);
-            setHeroActionFeedback(`${hero.name}: ${heroSkillId} ${heroSkillAction === 'unlock' ? 'unlocked' : 'upgraded'}`, 'ok');
-            renderCharacterPicker();
-          } catch (err) {
-            setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to update hero skill.'), 'err');
-          }
-          return;
-        }
-        const nodeId = btn.getAttribute('data-node-id') || '';
-        if (!nodeId) return;
-        try {
-          await upgradeHeroNodeForAccount(hero.id, nodeId);
-          setHeroActionFeedback(`Upgraded ${hero.name}: ${nodeId}`, 'ok');
-          renderCharacterPicker();
-        } catch (err) {
-          setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to upgrade node.'), 'err');
-        }
+        await handleHeroProgressionActionClick(hero, btn);
       });
     }
   }
@@ -2109,28 +2146,7 @@
     });
     for (const btn of heroTreePanelEl.querySelectorAll('.hero-node-up')) {
       btn.addEventListener('click', async () => {
-        const heroSkillId = btn.getAttribute('data-hero-skill-id') || '';
-        const heroSkillAction = btn.getAttribute('data-hero-skill-action') || '';
-        if (heroSkillId) {
-          try {
-            if (heroSkillAction === 'unlock') await unlockHeroSkillForAccount(hero.id, heroSkillId);
-            else await upgradeHeroSkillForAccount(hero.id, heroSkillId);
-            setHeroActionFeedback(`${hero.name}: ${heroSkillId} ${heroSkillAction === 'unlock' ? 'unlocked' : 'upgraded'}`, 'ok');
-            renderCharacterPicker();
-          } catch (err) {
-            setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to update hero skill.'), 'err');
-          }
-          return;
-        }
-        const nodeId = btn.getAttribute('data-node-id') || '';
-        if (!nodeId) return;
-        try {
-          await upgradeHeroNodeForAccount(hero.id, nodeId);
-          setHeroActionFeedback(`Upgraded ${hero.name}: ${nodeId}`, 'ok');
-          renderCharacterPicker();
-        } catch (err) {
-          setHeroActionFeedback(humanizeHeroApiError(err, 'Failed to upgrade node.'), 'err');
-        }
+        await handleHeroProgressionActionClick(hero, btn);
       });
     }
     for (const btn of heroTreePanelEl.querySelectorAll('[data-open-slot-equip]')) {

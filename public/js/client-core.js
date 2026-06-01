@@ -1540,6 +1540,7 @@ let battleHubHeroSwapTimer = 0;
 let battleHubHeroSwapToken = 0;
 let battleHubHeroSkillModalEl = null;
 let battleHubHeroSkillModalState = null;
+let battleHubHeroSkillPurchasePendingKey = '';
 let battleHubHeroSkillFx = null;
 let battleHubGlobalRankFetchToken = 0;
 let battleHubGlobalRankState = {
@@ -1813,6 +1814,18 @@ function getBattleHubSkillActionApi(action) {
   return null;
 }
 
+function getBattleHubHeroSkillPendingKey(heroId, skillId) {
+  const nextHeroId = String(heroId || '').trim().toLowerCase();
+  const nextSkillId = String(skillId || '').trim();
+  return nextHeroId && nextSkillId ? `${nextHeroId}:${nextSkillId}` : '';
+}
+
+function getBattleHubSkillPendingLabel(action) {
+  return action === 'unlock'
+    ? hudTooltipText('\u041e\u0442\u043a\u0440\u044b\u0432\u0430\u0435\u043c...', 'Unlocking...')
+    : hudTooltipText('\u0423\u043b\u0443\u0447\u0448\u0430\u0435\u043c...', 'Upgrading...');
+}
+
 function buildBattleHubSkillStatRows(skill, level) {
   const rows = buildSkillCurrentStatLines({ ...skill, level: Math.max(1, Number(level) || 1), cooldownMs: 0 }, skill)
     .filter((line) => !String(line || '').startsWith('Current CD'));
@@ -1886,8 +1899,10 @@ function renderBattleHubHeroSkillModal() {
   const rarity = ['common', 'uncommon', 'rare', 'epic', 'legendary'].includes(rarityRaw) ? rarityRaw : 'common';
   const rarityLabel = trCore(`ui.inventory.rarity.${rarity}`, rarity);
   const color = rarityColor(rarity);
+  const isPending = battleHubHeroSkillPurchasePendingKey === getBattleHubHeroSkillPendingKey(hero?.id, skillId);
   modal.style.setProperty('--avatar-accent', getBattleHubHeroAccent(String(hero?.id || '').trim().toLowerCase()));
   modal.style.setProperty('--skill-color', color);
+  modal.classList.toggle('is-busy', isPending);
   const closeBtn = modal.querySelector('.battle-hub-skill-modal-close');
   closeBtn?.setAttribute?.('aria-label', trCore('ui.skill_modal.close_aria', 'Close skill details'));
   const icon = skillBadgeLabel(skill);
@@ -1896,6 +1911,7 @@ function renderBattleHubHeroSkillModal() {
   const cost = getBattleHubHeroSkillCost(skill, currentLevel);
   const shards = Math.max(0, Number(progression?.shards) || 0);
   const canPay = loggedIn && cost.action !== 'maxed' && shards >= cost.cost && Boolean(getBattleHubSkillActionApi(cost.action));
+  const canSubmit = canPay && !isPending;
   const currentRows = buildBattleHubSkillStatRows(skill, Math.max(1, currentLevel || 1));
   const nextRows = cost.action === 'upgrade' || cost.action === 'unlock'
     ? buildBattleHubSkillStatRows(skill, Math.max(1, cost.nextLevel))
@@ -1909,11 +1925,14 @@ function renderBattleHubHeroSkillModal() {
     : cost.action === 'upgrade'
       ? trCore('ui.skill_modal.upgrade_for', 'Upgrade for {cost}', { cost: formatBattleHubShardAmount(cost.cost) })
       : trCore('ui.skill_modal.max_level', 'Max level reached');
+  const pendingLabel = getBattleHubSkillPendingLabel(cost.action);
   const statusLabel = !loggedIn
     ? trCore('ui.profile.login_required', 'Login required.')
     : cost.action === 'maxed'
       ? trCore('ui.skill_modal.maxed', 'Maxed')
-      : shards >= cost.cost
+      : isPending
+        ? pendingLabel
+        : shards >= cost.cost
         ? trCore('ui.skill_modal.ready', 'Ready: {shards}', { shards: formatBattleHubShardAmount(shards) })
         : trCore('ui.skill_modal.need_more', 'Need {shards} more', { shards: formatBattleHubShardAmount(Math.max(0, cost.cost - shards)) });
   const levelText = currentLevel > 0
@@ -1942,8 +1961,8 @@ function renderBattleHubHeroSkillModal() {
     + `<span class="${shards > 0 ? 'has-value' : ''}"><b>${escapeHtml(trCore('ui.skill_modal.your_shards', 'Your shards'))}</b><strong>${shards}</strong></span>`
     + `<span><b>${escapeHtml(trCore('ui.skill_modal.after', 'After'))}</b><strong>${cost.action === 'maxed' ? shards : Math.max(0, shards - cost.cost)}</strong></span>`
     + '</div>'
-    + `<div class="battle-hub-skill-modal-status ${canPay ? 'ok' : 'warn'}">${escapeHtml(statusLabel)}</div>`
-    + `<button class="battle-hub-skill-modal-action" type="button" data-skill-modal-action="${escapeHtml(cost.action)}"${canPay ? '' : ' disabled'}>${escapeHtml(actionLabel)}</button>`;
+    + `<div class="battle-hub-skill-modal-status ${canSubmit || isPending ? 'ok' : 'warn'}">${escapeHtml(statusLabel)}</div>`
+    + `<button class="battle-hub-skill-modal-action${isPending ? ' is-loading' : ''}" type="button" data-skill-modal-action="${escapeHtml(cost.action)}" aria-busy="${isPending ? 'true' : 'false'}"${canSubmit ? '' : ' disabled'}><span class="battle-hub-skill-modal-action-label">${escapeHtml(isPending ? pendingLabel : actionLabel)}</span></button>`;
 
   const actionBtn = content.querySelector('.battle-hub-skill-modal-action');
   actionBtn?.addEventListener('click', () => {
@@ -1970,9 +1989,14 @@ async function purchaseBattleHubHeroSkill() {
   const cost = getBattleHubHeroSkillCost(data.skill, data.level);
   const actionApi = getBattleHubSkillActionApi(cost.action);
   if (!actionApi || cost.action === 'maxed') return;
+  const pendingKey = getBattleHubHeroSkillPendingKey(data.hero.id, data.skill.id);
+  if (battleHubHeroSkillPurchasePendingKey === pendingKey) return;
+  battleHubHeroSkillPurchasePendingKey = pendingKey;
   battleHubHeroSkillModalEl.classList.add('is-busy');
+  renderBattleHubHeroSkillModal();
   try {
     await actionApi(data.hero.id, data.skill.id);
+    battleHubHeroSkillPurchasePendingKey = '';
     markBattleHubHeroSkillFx(data.hero.id, data.skill.id);
     renderBattleHubPlayerBadge();
     globalThis.CWCharacters?.render?.();
@@ -1984,6 +2008,7 @@ async function purchaseBattleHubHeroSkill() {
     closeBattleHubHeroSkillModal({ purchased: true });
   } catch (err) {
     const msg = String(err?.message || trCore('ui.skill_modal.purchase_failed', 'Purchase failed.')).trim();
+    if (battleHubHeroSkillPurchasePendingKey === pendingKey) battleHubHeroSkillPurchasePendingKey = '';
     battleHubHeroSkillModalEl.classList.remove('is-busy');
     renderBattleHubHeroSkillModal();
     const status = battleHubHeroSkillModalEl.querySelector('.battle-hub-skill-modal-status');
