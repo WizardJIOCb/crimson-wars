@@ -22,6 +22,7 @@ const { createAccountProgressionStore } = require('./server/account-progression-
 const { createNewsStore } = require('./server/news-store');
 const { createTonShopOrderStore } = require('./server/ton-shop-store');
 const { getProduct, getHeroSkin, getItemSkin, getTonShopRuntimeConfig, buildPublicTonShopPayload } = require('./server/ton-shop-catalog');
+const { createTonPaymentVerifier } = require('./server/ton-payment-verifier');
 const { isMysqlStoreEnabled, createMysqlSyncClient, setMysqlSyncMonitor } = require('./server/mysql-sync');
 const { createLeaderboardService } = require('./server/services/leaderboard-service');
 const { registerLeaderboardRoutes } = require('./server/http/leaderboard-routes');
@@ -519,6 +520,9 @@ const tonShopOrderStore = createTonShopOrderStore({
   dataDir: DATA_DIR,
   dbPath: path.join(DATA_DIR, 'ton-shop-orders.db'),
   mysql: MYSQL_STORE,
+});
+const tonPaymentVerifier = createTonPaymentVerifier({
+  orderStore: tonShopOrderStore,
 });
 const runtimeRegistryStore = createRuntimeRegistryStore({
   dataDir: DATA_DIR,
@@ -2218,6 +2222,10 @@ function buildTonOrderResponse(order, product = null) {
     expiresAt: order.expiresAt,
     submittedAt: order.submittedAt,
     confirmedAt: order.confirmedAt,
+    paidTxHash: order.paidTxHash,
+    paidTxLt: order.paidTxLt,
+    paidTxUtime: order.paidTxUtime,
+    paidAmountNanoTon: order.paidAmountNanoTon,
   };
 }
 
@@ -2229,6 +2237,40 @@ function grantPaidTonOrder(order) {
   return result?.ok ? result.progression : null;
 }
 
+async function verifyTonOrderAndGrant(order) {
+  if (!order) return { order: null, progression: null, verification: 'missing' };
+  const result = await tonPaymentVerifier.verifyOrder(order);
+  const nextOrder = result?.order || order;
+  const progression = nextOrder?.status === 'paid' ? grantPaidTonOrder(nextOrder) : null;
+  return {
+    order: nextOrder,
+    progression,
+    verification: result?.verified ? 'paid' : (result?.reason || 'submitted'),
+  };
+}
+
+async function verifyRecentTonOrdersForPlayer(playerId) {
+  const safePlayerId = Math.max(0, Number(playerId) || 0);
+  if (!safePlayerId || typeof tonShopOrderStore.listVerifiableOrdersForPlayer !== 'function') {
+    return { verified: 0, progression: null };
+  }
+  const orders = tonShopOrderStore.listVerifiableOrdersForPlayer(safePlayerId, {
+    limit: Math.max(1, Math.min(20, Number(process.env.TON_VERIFIER_PLAYER_ORDER_LIMIT) || 8)),
+  });
+  if (orders.length <= 0) return { verified: 0, progression: null };
+  const results = await tonPaymentVerifier.verifyOrders(orders);
+  let verified = 0;
+  let progression = null;
+  for (const result of results) {
+    const order = result?.order;
+    if (order?.status !== 'paid') continue;
+    const nextProgression = grantPaidTonOrder(order);
+    if (nextProgression) progression = nextProgression;
+    if (result?.verified) verified += 1;
+  }
+  return { verified, progression };
+}
+
 function getTonShopPayloadForPlayer(playerId = 0) {
   const progression = playerId ? accountProgressionStore.getOrCreateProgression(playerId) : null;
   return buildPublicTonShopPayload({
@@ -2236,7 +2278,7 @@ function getTonShopPayloadForPlayer(playerId = 0) {
   });
 }
 
-app.get('/api/player/me', (req, res) => {
+app.get('/api/player/me', async (req, res) => {
   const catalog = accountProgressionStore.getCatalogPayload();
   if (!req.playerUser) {
     res.json({
@@ -2252,6 +2294,11 @@ app.get('/api/player/me', (req, res) => {
     });
     return;
   }
+  try {
+    await verifyRecentTonOrdersForPlayer(req.playerUser.id);
+  } catch (err) {
+    console.warn(`[ton-verifier] player refresh skipped: ${err?.message || err}`);
+  }
   const progression = accountProgressionStore.getOrCreateProgression(req.playerUser.id);
   res.json({
     ok: true,
@@ -2266,7 +2313,14 @@ app.get('/api/player/me', (req, res) => {
   });
 });
 
-app.get('/api/ton/shop', (req, res) => {
+app.get('/api/ton/shop', async (req, res) => {
+  if (req.playerUser?.id) {
+    try {
+      await verifyRecentTonOrdersForPlayer(req.playerUser.id);
+    } catch (err) {
+      console.warn(`[ton-verifier] shop refresh skipped: ${err?.message || err}`);
+    }
+  }
   res.json({
     ok: true,
     tonShop: getTonShopPayloadForPlayer(req.playerUser?.id || 0),
@@ -2316,7 +2370,7 @@ app.post('/api/ton/orders', (req, res) => {
   });
 });
 
-app.post('/api/ton/orders/:id/submit', (req, res) => {
+app.post('/api/ton/orders/:id/submit', async (req, res) => {
   if (!req.playerUser) {
     res.status(401).json({ ok: false, message: 'Authentication required' });
     return;
@@ -2324,10 +2378,6 @@ app.post('/api/ton/orders/:id/submit', (req, res) => {
   const order = tonShopOrderStore.getOrder(req.params.id);
   if (!order || order.playerId !== req.playerUser.id) {
     res.status(404).json({ ok: false, message: 'TON order not found' });
-    return;
-  }
-  if (order.expiresAt && order.expiresAt < Date.now() && order.status !== 'paid') {
-    res.status(409).json({ ok: false, message: 'TON order expired', order: buildTonOrderResponse(order, getProduct(order.productId)) });
     return;
   }
   let nextOrder = tonShopOrderStore.submitOrder(order.id, {
@@ -2335,23 +2385,45 @@ app.post('/api/ton/orders/:id/submit', (req, res) => {
     boc: req.body?.boc || req.body?.transactionBoc || '',
   });
   let progression = null;
+  let verification = 'submitted';
   const runtime = getTonShopRuntimeConfig();
   if (runtime.devAutoConfirm && nextOrder?.status !== 'paid') {
-    nextOrder = tonShopOrderStore.markOrderPaid(nextOrder.id);
+    nextOrder = tonShopOrderStore.markOrderPaid(nextOrder.id, { verifier: 'dev-auto-confirm' });
     progression = grantPaidTonOrder(nextOrder);
+    verification = 'dev-auto-confirmed';
   } else if (nextOrder?.status === 'paid') {
     progression = grantPaidTonOrder(nextOrder);
+    verification = 'paid';
+  } else {
+    try {
+      const verified = await verifyTonOrderAndGrant(nextOrder);
+      nextOrder = verified.order || nextOrder;
+      progression = verified.progression;
+      verification = verified.verification;
+    } catch (err) {
+      console.warn(`[ton-verifier] submit verification skipped: ${err?.message || err}`);
+      verification = 'api-error';
+    }
+  }
+  if (nextOrder?.expiresAt && nextOrder.expiresAt < Date.now() && nextOrder.status !== 'paid') {
+    res.status(409).json({
+      ok: false,
+      message: 'TON order expired',
+      order: buildTonOrderResponse(nextOrder, getProduct(nextOrder.productId)),
+      verification,
+    });
+    return;
   }
   res.json({
     ok: true,
     order: buildTonOrderResponse(nextOrder, getProduct(nextOrder?.productId)),
     progression,
     tonShop: getTonShopPayloadForPlayer(req.playerUser.id),
-    verification: runtime.devAutoConfirm ? 'dev-auto-confirmed' : 'submitted',
+    verification,
   });
 });
 
-app.get('/api/ton/orders/:id/status', (req, res) => {
+app.get('/api/ton/orders/:id/status', async (req, res) => {
   if (!req.playerUser) {
     res.status(401).json({ ok: false, message: 'Authentication required' });
     return;
@@ -2361,12 +2433,28 @@ app.get('/api/ton/orders/:id/status', (req, res) => {
     res.status(404).json({ ok: false, message: 'TON order not found' });
     return;
   }
-  const progression = order.status === 'paid' ? grantPaidTonOrder(order) : null;
+  let nextOrder = order;
+  let progression = null;
+  let verification = order.status === 'paid' ? 'paid' : 'submitted';
+  if (order.status === 'paid') {
+    progression = grantPaidTonOrder(order);
+  } else {
+    try {
+      const verified = await verifyTonOrderAndGrant(order);
+      nextOrder = verified.order || order;
+      progression = verified.progression;
+      verification = verified.verification;
+    } catch (err) {
+      console.warn(`[ton-verifier] status verification skipped: ${err?.message || err}`);
+      verification = 'api-error';
+    }
+  }
   res.json({
     ok: true,
-    order: buildTonOrderResponse(order, getProduct(order.productId)),
+    order: buildTonOrderResponse(nextOrder, getProduct(nextOrder.productId)),
     progression,
     tonShop: getTonShopPayloadForPlayer(req.playerUser.id),
+    verification,
   });
 });
 

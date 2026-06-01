@@ -31,6 +31,11 @@ function normalizeOrderRow(row) {
     expiresAt: Math.max(0, Number(row.expires_at ?? row.expiresAt) || 0),
     submittedAt: Math.max(0, Number(row.submitted_at ?? row.submittedAt) || 0),
     confirmedAt: Math.max(0, Number(row.confirmed_at ?? row.confirmedAt) || 0),
+    paidTxHash: String((row.paid_tx_hash ?? row.paidTxHash) || '').trim(),
+    paidTxLt: String((row.paid_tx_lt ?? row.paidTxLt) || '').trim(),
+    paidTxUtime: Math.max(0, Number(row.paid_tx_utime ?? row.paidTxUtime) || 0),
+    paidAmountNanoTon: String((row.paid_amount_nano_ton ?? row.paidAmountNanoTon) || '').trim(),
+    verifier: String(row.verifier || '').trim(),
   };
 }
 
@@ -63,11 +68,28 @@ function createTonShopOrderStore({ dataDir, dbPath, mysql } = {}) {
       '  updated_at INTEGER NOT NULL,',
       '  expires_at INTEGER NOT NULL,',
       '  submitted_at INTEGER NOT NULL DEFAULT 0,',
-      '  confirmed_at INTEGER NOT NULL DEFAULT 0',
+      '  confirmed_at INTEGER NOT NULL DEFAULT 0,',
+      '  paid_tx_hash TEXT NOT NULL DEFAULT \'\',',
+      '  paid_tx_lt TEXT NOT NULL DEFAULT \'\',',
+      '  paid_tx_utime INTEGER NOT NULL DEFAULT 0,',
+      '  paid_amount_nano_ton TEXT NOT NULL DEFAULT \'\',',
+      '  verifier TEXT NOT NULL DEFAULT \'\'',
       ');',
       'CREATE INDEX IF NOT EXISTS idx_ton_shop_orders_player ON ton_shop_orders(player_id, created_at);',
       'CREATE INDEX IF NOT EXISTS idx_ton_shop_orders_status ON ton_shop_orders(status, created_at);',
     ].join('\n'));
+    const columns = db.prepare('PRAGMA table_info(ton_shop_orders)').all();
+    const columnNames = new Set(columns.map((col) => col.name));
+    const sqliteColumns = [
+      ['paid_tx_hash', 'TEXT NOT NULL DEFAULT \'\''],
+      ['paid_tx_lt', 'TEXT NOT NULL DEFAULT \'\''],
+      ['paid_tx_utime', 'INTEGER NOT NULL DEFAULT 0'],
+      ['paid_amount_nano_ton', 'TEXT NOT NULL DEFAULT \'\''],
+      ['verifier', 'TEXT NOT NULL DEFAULT \'\''],
+    ];
+    for (const [name, def] of sqliteColumns) {
+      if (!columnNames.has(name)) db.exec(`ALTER TABLE ton_shop_orders ADD COLUMN ${name} ${def}`);
+    }
   } else {
     mysqlClient.execute([
       'CREATE TABLE IF NOT EXISTS ton_shop_orders (',
@@ -88,10 +110,27 @@ function createTonShopOrderStore({ dataDir, dbPath, mysql } = {}) {
       '  expires_at BIGINT NOT NULL,',
       '  submitted_at BIGINT NOT NULL DEFAULT 0,',
       '  confirmed_at BIGINT NOT NULL DEFAULT 0,',
+      '  paid_tx_hash VARCHAR(128) NOT NULL DEFAULT \'\',',
+      '  paid_tx_lt VARCHAR(64) NOT NULL DEFAULT \'\',',
+      '  paid_tx_utime BIGINT NOT NULL DEFAULT 0,',
+      '  paid_amount_nano_ton VARCHAR(64) NOT NULL DEFAULT \'\',',
+      '  verifier VARCHAR(64) NOT NULL DEFAULT \'\',',
       '  INDEX idx_ton_shop_orders_player (player_id, created_at),',
       '  INDEX idx_ton_shop_orders_status (status, created_at)',
       ') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci',
     ].join('\n'));
+    const mysqlColumnRows = mysqlClient.queryRows('SHOW COLUMNS FROM ton_shop_orders');
+    const mysqlColumnNames = new Set(mysqlColumnRows.map((row) => String(row.Field || '').trim()));
+    const mysqlColumns = [
+      ['paid_tx_hash', 'VARCHAR(128) NOT NULL DEFAULT \'\''],
+      ['paid_tx_lt', 'VARCHAR(64) NOT NULL DEFAULT \'\''],
+      ['paid_tx_utime', 'BIGINT NOT NULL DEFAULT 0'],
+      ['paid_amount_nano_ton', 'VARCHAR(64) NOT NULL DEFAULT \'\''],
+      ['verifier', 'VARCHAR(64) NOT NULL DEFAULT \'\''],
+    ];
+    for (const [name, def] of mysqlColumns) {
+      if (!mysqlColumnNames.has(name)) mysqlClient.execute(`ALTER TABLE ton_shop_orders ADD COLUMN ${name} ${def}`);
+    }
   }
 
   const orderJsonSql = jsonObjectSql({
@@ -112,6 +151,11 @@ function createTonShopOrderStore({ dataDir, dbPath, mysql } = {}) {
     expires_at: 'expires_at',
     submitted_at: 'submitted_at',
     confirmed_at: 'confirmed_at',
+    paid_tx_hash: 'paid_tx_hash',
+    paid_tx_lt: 'paid_tx_lt',
+    paid_tx_utime: 'paid_tx_utime',
+    paid_amount_nano_ton: 'paid_amount_nano_ton',
+    verifier: 'verifier',
   });
 
   const stmtGet = useMysql
@@ -174,12 +218,40 @@ function createTonShopOrderStore({ dataDir, dbPath, mysql } = {}) {
           'UPDATE ton_shop_orders SET',
           `  status=${escapeSql(payload.status)},`,
           `  confirmed_at=${escapeSql(payload.confirmedAt)},`,
+          `  paid_tx_hash=${escapeSql(payload.paidTxHash)},`,
+          `  paid_tx_lt=${escapeSql(payload.paidTxLt)},`,
+          `  paid_tx_utime=${escapeSql(payload.paidTxUtime)},`,
+          `  paid_amount_nano_ton=${escapeSql(payload.paidAmountNanoTon)},`,
+          `  verifier=${escapeSql(payload.verifier)},`,
           `  updated_at=${escapeSql(payload.updatedAt)}`,
           `WHERE id=${escapeSql(payload.id)}`,
         ].join('\n'));
       },
     }
-    : db.prepare('UPDATE ton_shop_orders SET status=@status, confirmed_at=@confirmedAt, updated_at=@updatedAt WHERE id=@id');
+    : db.prepare([
+      'UPDATE ton_shop_orders SET status=@status, confirmed_at=@confirmedAt,',
+      'paid_tx_hash=@paidTxHash, paid_tx_lt=@paidTxLt, paid_tx_utime=@paidTxUtime,',
+      'paid_amount_nano_ton=@paidAmountNanoTon, verifier=@verifier, updated_at=@updatedAt',
+      'WHERE id=@id',
+    ].join(' '));
+
+  const stmtListPlayerVerifiable = useMysql
+    ? {
+      all(playerId, limit) {
+        return mysqlClient.queryJsonRows([
+          `SELECT ${orderJsonSql} FROM ton_shop_orders`,
+          `WHERE player_id=${escapeSql(playerId)} AND status IN ('pending', 'submitted')`,
+          'ORDER BY created_at DESC',
+          `LIMIT ${Math.max(1, Math.min(50, Number(limit) || 10))}`,
+        ].join(' '));
+      },
+    }
+    : db.prepare([
+      'SELECT * FROM ton_shop_orders',
+      'WHERE player_id = ? AND status IN (\'pending\', \'submitted\')',
+      'ORDER BY created_at DESC',
+      'LIMIT ?',
+    ].join(' '));
 
   function createOrder(payload = {}) {
     const createdAt = nowMs();
@@ -222,7 +294,7 @@ function createTonShopOrderStore({ dataDir, dbPath, mysql } = {}) {
     return getOrder(order.id);
   }
 
-  function markOrderPaid(orderId) {
+  function markOrderPaid(orderId, metadata = {}) {
     const order = getOrder(orderId);
     if (!order) return null;
     if (order.status === 'paid') return order;
@@ -231,9 +303,24 @@ function createTonShopOrderStore({ dataDir, dbPath, mysql } = {}) {
       id: order.id,
       status: 'paid',
       confirmedAt: now,
+      paidTxHash: String(metadata.paidTxHash || metadata.txHash || '').trim().slice(0, 128),
+      paidTxLt: String(metadata.paidTxLt || metadata.txLt || '').trim().slice(0, 64),
+      paidTxUtime: Math.max(0, Number(metadata.paidTxUtime || metadata.txUtime) || 0),
+      paidAmountNanoTon: String(metadata.paidAmountNanoTon || metadata.amountNanoTon || '').trim().slice(0, 64),
+      verifier: String(metadata.verifier || 'toncenter-v2').trim().slice(0, 64),
       updatedAt: now,
     });
     return getOrder(order.id);
+  }
+
+  function listVerifiableOrdersForPlayer(playerId, { limit = 10 } = {}) {
+    const safePlayerId = Math.max(0, Number(playerId) || 0);
+    if (!safePlayerId) return [];
+    const safeLimit = Math.max(1, Math.min(50, Number(limit) || 10));
+    return stmtListPlayerVerifiable
+      .all(safePlayerId, safeLimit)
+      .map(normalizeOrderRow)
+      .filter(Boolean);
   }
 
   return {
@@ -241,6 +328,7 @@ function createTonShopOrderStore({ dataDir, dbPath, mysql } = {}) {
     getOrder,
     submitOrder,
     markOrderPaid,
+    listVerifiableOrdersForPlayer,
   };
 }
 

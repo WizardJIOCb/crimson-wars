@@ -105,6 +105,22 @@
     }
   }
 
+  function sleep(ms) {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
+  }
+
+  async function waitForOrderPaid(orderId) {
+    let latest = null;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await sleep(attempt < 2 ? 2500 : 3500);
+      latest = await apiJson(`/api/ton/orders/${encodeURIComponent(orderId)}/status`, { method: 'GET' });
+      applyPlayerPayload(latest);
+      if (latest?.order?.status === 'paid') return latest;
+      setMessage('Payment submitted. Verifying on TON...', '');
+    }
+    return latest;
+  }
+
   async function ensureTonUi() {
     const shop = getShop();
     if (state.tonUi) return state.tonUi;
@@ -174,11 +190,15 @@
           walletAddress: tonUi.account?.address || '',
         }),
       });
-      applyPlayerPayload(submitted);
-      if (submitted?.order?.status === 'paid') {
+      let finalPayload = submitted;
+      applyPlayerPayload(finalPayload);
+      if (finalPayload?.order?.status !== 'paid') {
+        finalPayload = await waitForOrderPaid(order.id);
+      }
+      if (finalPayload?.order?.status === 'paid') {
         setMessage('TON purchase unlocked.', 'ok');
       } else {
-        setMessage('Payment submitted. Enable the production verifier or dev auto-confirm to unlock it.', 'warn');
+        setMessage('Payment submitted. Verification can take a little longer; refresh the shop in a minute.', 'warn');
       }
     } catch (err) {
       setMessage(err?.message || 'TON purchase failed.', 'err');
