@@ -130,6 +130,7 @@ const PRODUCTS = [
     priceTon: 0.001,
     image: '/assets/items/nuclear_grenade.png',
     repeatable: true,
+    preferManual: true,
     featured: true,
     grants: [{ type: 'item', itemId: 'nuclear_grenade', quantity: 1, autoEquip: true }],
   },

@@ -204,6 +204,10 @@
     return state.tonUi;
   }
 
+  function prefersManualCheckout(product) {
+    return product?.preferManual === true || String(product?.type || '').trim().toLowerCase() === 'active_item';
+  }
+
   async function buyProduct(productId) {
     if (state.busy) return;
     const product = getProductById(productId);
@@ -217,6 +221,10 @@
     }
     if (!getShop()?.enabled) {
       setMessage('TON receiver is not configured on the server yet.', 'err');
+      return;
+    }
+    if (prefersManualCheckout(product)) {
+      await startManualPayment(productId);
       return;
     }
     state.busy = true;
@@ -346,8 +354,10 @@
   function renderProduct(product) {
     const owned = Boolean(product?.owned);
     const featured = product?.featured ? ' is-featured' : '';
+    const manualPreferred = prefersManualCheckout(product);
     const disabled = state.busy || owned || !game.playerAuth?.player || !getShop()?.enabled;
-    const action = owned ? 'Owned' : (getShop()?.enabled ? `Buy ${formatTon(product.priceNanoTon)}` : 'TON setup needed');
+    const actionVerb = manualPreferred ? 'Pay' : 'Buy';
+    const action = owned ? 'Owned' : (getShop()?.enabled ? `${actionVerb} ${formatTon(product.priceNanoTon)}` : 'TON setup needed');
     return `<article class="ton-product-card${featured} ton-product-${html(product.type || 'item')}">
       <div class="ton-product-art"><img src="${html(product.image || '/assets/ui/ton-crimson-icon.png')}" alt="" loading="lazy" decoding="async"></div>
       <div class="ton-product-copy">
@@ -357,7 +367,7 @@
       </div>
       <div class="ton-product-actions">
         <button type="button" class="ton-buy-btn" data-ton-buy="${html(product.id)}" ${disabled ? 'disabled' : ''}>${html(action)}</button>
-        <button type="button" class="ton-manual-btn" data-ton-manual="${html(product.id)}" ${disabled ? 'disabled' : ''}>Manual</button>
+        ${manualPreferred ? '' : `<button type="button" class="ton-manual-btn" data-ton-manual="${html(product.id)}" ${disabled ? 'disabled' : ''}>Manual</button>`}
       </div>
     </article>`;
   }
