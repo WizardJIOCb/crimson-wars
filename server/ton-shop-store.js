@@ -11,6 +11,10 @@ function randomOrderId() {
   return `ton_${Date.now().toString(36)}_${crypto.randomBytes(8).toString('hex')}`;
 }
 
+function ignoreDuplicateMysqlColumn(err) {
+  return /Duplicate column name/i.test(String(err?.message || err));
+}
+
 function normalizeOrderRow(row) {
   if (!row) return null;
   return {
@@ -129,7 +133,13 @@ function createTonShopOrderStore({ dataDir, dbPath, mysql } = {}) {
       ['verifier', 'VARCHAR(64) NOT NULL DEFAULT \'\''],
     ];
     for (const [name, def] of mysqlColumns) {
-      if (!mysqlColumnNames.has(name)) mysqlClient.execute(`ALTER TABLE ton_shop_orders ADD COLUMN ${name} ${def}`);
+      if (!mysqlColumnNames.has(name)) {
+        try {
+          mysqlClient.execute(`ALTER TABLE ton_shop_orders ADD COLUMN ${name} ${def}`);
+        } catch (err) {
+          if (!ignoreDuplicateMysqlColumn(err)) throw err;
+        }
+      }
     }
   }
 
