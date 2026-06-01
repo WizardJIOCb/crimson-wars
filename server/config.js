@@ -261,6 +261,7 @@ const ITEM_DEFS = [
   { id: 'frag_grenade', name: 'Осколочная граната', slotCategory: 'quick', rarity: 'common', stackable: true, maxStack: 10, sellSalvage: 3, combatUse: { type: 'grenade', damage: 80, radius: 120 } },
   { id: 'incendiary_grenade', name: 'Зажигательная граната', slotCategory: 'quick', rarity: 'uncommon', stackable: true, maxStack: 9, sellSalvage: 4, combatUse: { type: 'grenade', damage: 102, radius: 128 } },
   { id: 'cluster_grenade', name: 'Кассетная граната', slotCategory: 'quick', rarity: 'rare', stackable: true, maxStack: 6, sellSalvage: 6, combatUse: { type: 'grenade', damage: 130, radius: 145 } },
+  { id: 'nuclear_grenade', name: 'Супер-ядерная граната', slotCategory: 'quick', rarity: 'legendary', stackable: true, maxStack: 10, sellSalvage: 1, icon: '/assets/items/nuclear_grenade.png', combatUse: { type: 'nuclear', damage: 1250, radius: 620, stunMs: 1800 } },
   { id: 'artillery_beacon', name: 'Маяк артиллерии', slotCategory: 'quick', rarity: 'epic', stackable: true, maxStack: 5, sellSalvage: 10, combatUse: { type: 'artillery', damage: 170, radius: 170, waves: 3 } },
   { id: 'satellite_laser', name: 'Спутниковый лазер', slotCategory: 'quick', rarity: 'legendary', stackable: true, maxStack: 4, sellSalvage: 14, combatUse: { type: 'satellite', damage: 280, radius: 190 } },
   { id: 'stim_pack', name: 'Стим-пак', slotCategory: 'quick', rarity: 'rare', stackable: true, maxStack: 7, sellSalvage: 6, combatUse: { type: 'buff', damageMul: 0.18, fireRateMul: 0.18, durationMs: 12000 } },
@@ -272,7 +273,7 @@ const ITEM_DEFS = [
   { id: 'drone_swarm', name: 'Рой дронов', slotCategory: 'quick', rarity: 'epic', stackable: true, maxStack: 5, sellSalvage: 11, combatUse: { type: 'artillery', damage: 210, radius: 155, waves: 4 } },
 ].map((item) => ({
   ...item,
-  icon: `/assets/items/${item.id}.webp`,
+  icon: item.icon || `/assets/items/${item.id}.webp`,
 }));
 
 function makeHeroUniqueSkills(heroId, defs) {

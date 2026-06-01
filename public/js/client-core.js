@@ -3292,6 +3292,7 @@ function buildQuickItemDesc(itemDef) {
   if (type === 'regen') return hudTooltipText('Запускает сильную регенерацию на несколько секунд.', 'Starts strong health regeneration for a few seconds.');
   if (type === 'buff') return hudTooltipText('Временно усиливает боевые параметры героя.', 'Temporarily boosts the hero combat stats.');
   if (type === 'grenade') return hudTooltipText('Бросает заряд в точку прицела и поражает область.', 'Throws a charge at the aim point and hits an area.');
+  if (type === 'nuclear') return hudTooltipText('Запускает огромный ядерный взрыв в точке прицела.', 'Triggers a huge nuclear blast at the aim point.');
   if (type === 'artillery') return hudTooltipText('Вызывает серию ударов по выбранной зоне.', 'Calls a sequence of strikes on the selected zone.');
   if (type === 'satellite') return hudTooltipText('Наводит мощный орбитальный удар по зоне.', 'Calls a powerful orbital strike on the area.');
   return hudTooltipText('Используется из быстрого слота в бою.', 'Used from a quick slot in combat.');
@@ -3725,6 +3726,7 @@ function getQuickHudRole(itemDef) {
   if (type === 'heal' || type === 'regen') return { key: 'support', color: '#34d399' };
   if (type === 'buff') return { key: 'speed', color: '#facc15' };
   if (type === 'satellite') return { key: 'electric', color: '#22d3ee' };
+  if (type === 'nuclear') return { key: 'ordnance', color: '#a3e635' };
   if (type === 'grenade' || type === 'artillery') return { key: 'ordnance', color: '#fb923c' };
   return { key: 'tech', color: '#60a5fa' };
 }

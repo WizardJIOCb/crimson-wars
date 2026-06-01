@@ -123,6 +123,17 @@ const ITEM_SKINS = [
 
 const PRODUCTS = [
   {
+    id: 'test_nuclear_grenade',
+    type: 'active_item',
+    title: 'Super Nuclear Grenade',
+    subtitle: 'Test active quick-slot grenade. Buy one charge for a live TON payment check.',
+    priceTon: 0.001,
+    image: '/assets/items/nuclear_grenade.png',
+    repeatable: true,
+    featured: true,
+    grants: [{ type: 'item', itemId: 'nuclear_grenade', quantity: 1, autoEquip: true }],
+  },
+  {
     id: 'hero_contract_scout',
     type: 'hero_unlock',
     title: 'Scout Contract',
@@ -252,6 +263,7 @@ function listItemSkins() {
 }
 
 function getProductOwnedState(product, progression) {
+  if (product?.repeatable === true) return false;
   const entitlements = progression?.cosmeticEntitlements && typeof progression.cosmeticEntitlements === 'object'
     ? progression.cosmeticEntitlements
     : {};

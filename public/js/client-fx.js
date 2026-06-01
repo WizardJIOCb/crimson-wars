@@ -914,6 +914,7 @@ function getConsumableFxColor(event = {}) {
   if (useType === 'buff') return itemId.includes('adrenaline') ? '#fb7185' : '#facc15';
   if (useType === 'satellite') return itemId.includes('orbital') ? '#67e8f9' : '#a78bfa';
   if (useType === 'artillery') return itemId.includes('drone') ? '#93c5fd' : '#f97316';
+  if (useType === 'nuclear' || itemId.includes('nuclear')) return '#a3e635';
   if (itemId.includes('shock')) return '#60a5fa';
   if (itemId.includes('incendiary')) return '#fb923c';
   if (itemId.includes('cluster')) return '#fde047';
@@ -959,11 +960,52 @@ function spawnConsumableAura(event, color) {
 function spawnConsumableImpactFx(event, x, y, radius, color, options = {}) {
   const useType = String(event.useType || '').trim().toLowerCase();
   const itemId = String(event.itemId || '').trim().toLowerCase();
-  const r = Math.max(54, Math.min(280, Number(radius) || Number(event.radius) || 90));
   const isShock = itemId.includes('shock');
+  const isNuclear = useType === 'nuclear' || itemId.includes('nuclear');
   const isSatellite = useType === 'satellite';
-  const style = isSatellite ? 'psi_blast' : (isShock ? 'shockwave' : 'default');
+  const r = Math.max(54, Math.min(isNuclear ? 720 : 280, Number(radius) || Number(event.radius) || 90));
+  const style = isSatellite ? 'psi_blast' : ((isShock || isNuclear) ? 'shockwave' : 'default');
   const burstColor = color || getConsumableFxColor(event);
+  if (isNuclear) {
+    spawnSkillBurstFx(x, y, '#d9f99d', r, {
+      style: 'shockwave',
+      startRadius: 26,
+      growSpeed: Math.max(1300, r * 5.6),
+      trailRings: 8,
+      spikeCount: Math.max(18, Math.min(34, Math.round(r / 19))),
+      life: 0.86,
+      accentColor: '#ecfccb',
+      innerColor: '#bef264',
+    });
+    spawnSkillBurstFx(x, y, '#67e8f9', r * 0.58, {
+      style: 'psi_blast',
+      startRadius: 10,
+      growSpeed: Math.max(900, r * 4.2),
+      trailRings: 7,
+      life: 0.55,
+    });
+    spawnGroundExplosionFx(x, y, r, {
+      kind: 'nuclear',
+      intensity: 1.75,
+      material: 'concrete',
+    });
+    spawnRadialHitFx(x, y, r * 0.88, {
+      count: 24,
+      severity: 10,
+      color: '#d9f99d',
+    });
+    registerImpactSource({
+      x,
+      y,
+      radius: r,
+      strength: 3.4,
+      ttlMs: 820,
+      radial: true,
+      target: 'enemy',
+    });
+    if (options.label !== false) spawnSkillLabel(getConsumableFxLabel(event), x, y - 10);
+    return;
+  }
 
   spawnSkillBurstFx(x, y, burstColor, r, {
     style,

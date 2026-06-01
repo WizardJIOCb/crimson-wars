@@ -672,6 +672,7 @@ function createAccountProgressionStore({
       ownedProducts: normalizeStringList(source.ownedProducts),
       ownedHeroSkins: normalizeStringList(source.ownedHeroSkins),
       ownedItemSkins: normalizeStringList(source.ownedItemSkins),
+      claimedTonOrders: normalizeStringList(source.claimedTonOrders),
     };
   }
 
@@ -1717,15 +1718,75 @@ function createAccountProgressionStore({
     return { ok: true, progression: toPublicProgression(saved) };
   }
 
-  function grantTonShopProduct(playerId, product) {
+  function grantInventoryItemToProgression(progression, itemId, quantity = 1, options = {}) {
+    const def = getItemDef(itemId);
+    if (!progression || !def) return null;
+    const grantQuantity = Math.max(1, clampInt(quantity, 1) || 1);
+    const maxStack = def.stackable ? Math.max(1, clampInt(def.maxStack, 999) || 999) : 1;
+    let remaining = grantQuantity;
+    let firstGrantedUid = '';
+
+    progression.inventoryItems = normalizeInventoryItems(progression.inventoryItems);
+    if (def.stackable) {
+      for (const entry of progression.inventoryItems) {
+        if (remaining <= 0) break;
+        if (String(entry.itemId || '').trim() !== itemId) continue;
+        const room = Math.max(0, maxStack - clampInt(entry.quantity, 0));
+        if (room <= 0) continue;
+        const add = Math.min(room, remaining);
+        entry.quantity = clampInt(entry.quantity, 0) + add;
+        remaining -= add;
+        if (!firstGrantedUid) firstGrantedUid = entry.uid;
+      }
+    }
+
+    while (remaining > 0) {
+      const add = def.stackable ? Math.min(maxStack, remaining) : 1;
+      const entry = {
+        uid: makeUid(itemId),
+        itemId,
+        level: 1,
+        quantity: add,
+      };
+      progression.inventoryItems.push(entry);
+      if (!firstGrantedUid) firstGrantedUid = entry.uid;
+      remaining -= add;
+    }
+
+    progression.inventoryItems = normalizeInventoryItems(progression.inventoryItems);
+    if (options.autoEquip !== false && String(def.slotCategory || '') === 'quick') {
+      const heroId = heroMap[progression.activeHero] ? progression.activeHero : fallbackHeroId;
+      const quickSlots = itemSlots.filter((slot) => slot?.kind === 'consumable' && slot?.category === 'quick');
+      if (heroId && firstGrantedUid && quickSlots.length > 0) {
+        if (!progression.heroEquipment || typeof progression.heroEquipment !== 'object') progression.heroEquipment = {};
+        if (!progression.heroEquipment[heroId]) progression.heroEquipment[heroId] = {};
+        const slots = progression.heroEquipment[heroId];
+        const alreadyEquipped = Object.values(slots).some((uid) => String(uid || '').trim() === firstGrantedUid);
+        const emptySlot = quickSlots.find((slot) => !String(slots[slot.key] || '').trim());
+        if (!alreadyEquipped && emptySlot) {
+          removeItemFromEquipment(progression, firstGrantedUid);
+          if (!progression.heroEquipment[heroId]) progression.heroEquipment[heroId] = {};
+          progression.heroEquipment[heroId][emptySlot.key] = firstGrantedUid;
+        }
+      }
+    }
+    progression.heroEquipment = normalizeHeroEquipment(progression.heroEquipment, progression.inventoryItems);
+    return { itemId, quantity: grantQuantity, uid: firstGrantedUid };
+  }
+
+  function grantTonShopProduct(playerId, product, options = {}) {
     const progression = getOrCreateProgression(playerId);
     if (!progression) return { ok: false, code: 404, message: 'Progression not found' };
     const productId = String(product?.id || '').trim();
     const grants = Array.isArray(product?.grants) ? product.grants : [];
     if (!productId || grants.length <= 0) return { ok: false, code: 400, message: 'Invalid TON shop product' };
+    const claimId = String(options?.orderId || '').trim();
 
     progression.cosmeticEntitlements = normalizeCosmeticEntitlements(progression.cosmeticEntitlements);
     progression.selectedCosmetics = normalizeSelectedCosmetics(progression.selectedCosmetics, progression.cosmeticEntitlements);
+    if (claimId && progression.cosmeticEntitlements.claimedTonOrders.includes(claimId)) {
+      return { ok: true, alreadyGranted: true, progression: toPublicProgression(progression) };
+    }
     addUniqueString(progression.cosmeticEntitlements.ownedProducts, productId);
 
     for (const grant of grants) {
@@ -1752,8 +1813,14 @@ function createAccountProgressionStore({
         if (skinId && target && !progression.selectedCosmetics.itemSkins[target]) {
           progression.selectedCosmetics.itemSkins[target] = skinId;
         }
+      } else if (grant?.type === 'item') {
+        const itemId = String(grant.itemId || '').trim();
+        if (getItemDef(itemId)) {
+          grantInventoryItemToProgression(progression, itemId, grant.quantity, { autoEquip: grant.autoEquip !== false });
+        }
       }
     }
+    if (claimId) addUniqueString(progression.cosmeticEntitlements.claimedTonOrders, claimId);
 
     progression.unlockedHeroes = normalizeUnlockedHeroes(progression.unlockedHeroes);
     progression.cosmeticEntitlements = normalizeCosmeticEntitlements(progression.cosmeticEntitlements);

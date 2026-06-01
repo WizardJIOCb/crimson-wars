@@ -2233,7 +2233,7 @@ function grantPaidTonOrder(order) {
   if (!order || order.status !== 'paid') return null;
   const product = getProduct(order.productId);
   if (!product) return null;
-  const result = accountProgressionStore.grantTonShopProduct(order.playerId, product);
+  const result = accountProgressionStore.grantTonShopProduct(order.playerId, product, { orderId: order.id });
   return result?.ok ? result.progression : null;
 }
 
@@ -9894,6 +9894,27 @@ function usePlayerQuickConsumable(room, player, slotKey, now = Date.now()) {
       const stunMs = Math.max(0, Math.round(scaleConsumableMagnitude(combatUse.stunMs, level, 0.14)));
       const hitCount = applyConsumableAreaDamage(room, player, target.x, target.y, damage, radius, now, { stunMs });
       resultMessage = `${itemName}: ${hitCount} target(s) hit.`;
+      fxEvent = createQuickItemFxEvent(player, slotKey, usedItem, itemName, combatUse, now, {
+        targetX: target.x,
+        targetY: target.y,
+        damage,
+        radius,
+        stunMs,
+        hitCount,
+      });
+      break;
+    }
+    case 'nuclear': {
+      const target = getConsumableAimPoint(room, player);
+      const damage = Math.max(1, Math.round(scaleConsumableMagnitude(combatUse.damage, level, 0.18)));
+      const radius = Math.max(260, Math.round(scaleConsumableMagnitude(combatUse.radius, level, 0.05)));
+      const stunMs = Math.max(800, Math.round(scaleConsumableMagnitude(combatUse.stunMs || 1400, level, 0.08)));
+      const hitCount = applyConsumableAreaDamage(room, player, target.x, target.y, damage, radius, now, {
+        stunMs,
+        knockback: ENEMY_HIT_KNOCKBACK_SPEED * 3.8,
+      });
+      damageSceneObjectsInRadius(room, target.x, target.y, radius * 0.92, damage * 0.42, player.id, now, { cause: 'nuclear_grenade' });
+      resultMessage = `${itemName}: nuclear blast hit ${hitCount} target(s).`;
       fxEvent = createQuickItemFxEvent(player, slotKey, usedItem, itemName, combatUse, now, {
         targetX: target.x,
         targetY: target.y,
