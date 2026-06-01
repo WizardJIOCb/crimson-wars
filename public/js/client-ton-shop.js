@@ -37,6 +37,19 @@
     return `${value.toFixed(value >= 1 ? 2 : 3).replace(/0+$/, '').replace(/\.$/, '')} TON`;
   }
 
+  function formatTonInput(nanoTon) {
+    const value = Number(nanoTon || 0) / 1000000000;
+    return value.toFixed(9).replace(/0+$/, '').replace(/\.$/, '');
+  }
+
+  function buildTonTransferLink(order) {
+    if (!order?.receiverAddress || !order?.amountNanoTon) return '';
+    const url = new URL(`ton://transfer/${encodeURIComponent(order.receiverAddress)}`);
+    url.searchParams.set('amount', String(order.amountNanoTon));
+    if (order.comment) url.searchParams.set('text', String(order.comment));
+    return url.toString();
+  }
+
   function getProductById(productId) {
     return (getShop()?.products || []).find((entry) => String(entry?.id || '') === String(productId || '')) || null;
   }
@@ -161,6 +174,21 @@
     }
   }
 
+  function closeTonConnectModal() {
+    try {
+      if (typeof state.tonUi?.closeModal === 'function') state.tonUi.closeModal();
+    } catch (_) {}
+  }
+
+  function withTimeout(promise, ms, message) {
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        window.setTimeout(() => reject(new Error(message || 'Operation timed out.')), ms);
+      }),
+    ]);
+  }
+
   async function ensureTonUi() {
     const shop = getShop();
     if (state.tonUi) return state.tonUi;
@@ -207,7 +235,7 @@
       }
       order = orderPayload.order;
       setMessage('Confirm the transaction in your wallet.', '');
-      const tx = await tonUi.sendTransaction({
+      const tx = await withTimeout(tonUi.sendTransaction({
         validUntil: Math.floor(Date.now() / 1000) + 600,
         network: String(order.networkId || getShop()?.networkId || ''),
         messages: [{
@@ -215,7 +243,7 @@
           amount: String(order.amountNanoTon),
           payload: order.payload || undefined,
         }],
-      });
+      }), 45000, 'Wallet did not confirm the transaction. Use Manual transfer below.');
       setMessage('Transaction submitted. Waiting for server verification...', '');
       const submitted = await apiJson(`/api/ton/orders/${encodeURIComponent(order.id)}/submit`, {
         method: 'POST',
@@ -236,9 +264,10 @@
       }
     } catch (err) {
       if (order) {
+        closeTonConnectModal();
         state.manualOrder = order;
         state.manualProduct = order.product || product;
-        setMessage('Wallet returned an error. Manual TON transfer is available below.', 'warn');
+        setMessage(err?.message || 'Wallet returned an error. Manual TON transfer is available below.', 'warn');
       } else {
         setMessage(err?.message || 'TON purchase failed.', 'err');
       }
@@ -395,6 +424,8 @@
     const ownedItemSkins = getOwnedItemSkinSet();
     const manualOrder = state.manualOrder;
     const manualProduct = state.manualProduct;
+    const manualAmount = manualOrder ? formatTonInput(manualOrder.amountNanoTon) : '';
+    const manualTransferLink = manualOrder ? buildTonTransferLink(manualOrder) : '';
     root.innerHTML = `<div class="ton-shop-shell">
       <section class="ton-shop-head">
         <div>
@@ -414,14 +445,15 @@
         <div>
           <span class="cw-kicker">Manual TON transfer</span>
           <strong>${html(manualProduct?.title || manualOrder.productId || 'TON order')}</strong>
-          <p>Send the exact amount to the receiver address and include the required comment. The game unlocks the item when the payment appears on TON.</p>
+          <p>Close the Wallet popup if it is stuck. Send the exact TON amount to the receiver address and include the required comment. The game unlocks the item when the payment appears on TON.</p>
         </div>
         <dl>
-          <div><dt>Amount</dt><dd><code>${html(formatTon(manualOrder.amountNanoTon))}</code><button type="button" data-ton-copy="${html(manualOrder.amountNanoTon)}" data-copy-label="Amount">Copy</button></dd></div>
+          <div><dt>Amount</dt><dd><code>${html(manualAmount)} TON</code><button type="button" data-ton-copy="${html(manualAmount)}" data-copy-label="Amount">Copy</button></dd></div>
           <div><dt>Receiver</dt><dd><code>${html(manualOrder.receiverAddress)}</code><button type="button" data-ton-copy="${html(manualOrder.receiverAddress)}" data-copy-label="Receiver">Copy</button></dd></div>
           <div><dt>Comment</dt><dd><code>${html(manualOrder.comment)}</code><button type="button" data-ton-copy="${html(manualOrder.comment)}" data-copy-label="Comment">Copy</button></dd></div>
         </dl>
         <div class="ton-manual-actions">
+          ${manualTransferLink ? `<a class="ton-manual-open" href="${html(manualTransferLink)}">Open wallet</a>` : ''}
           <button type="button" data-ton-check-manual ${state.busy ? 'disabled' : ''}>Check payment</button>
           <button type="button" data-ton-close-manual ${state.busy ? 'disabled' : ''}>Close</button>
         </div>

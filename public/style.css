@@ -17323,13 +17323,19 @@ html.cw-app-ready #join-form.cw-shell .menu-panel.active > *:nth-child(n + 4) { 
   background: rgba(2, 6, 23, 0.58);
 }
 
-.ton-manual-panel button {
+.ton-manual-panel button,
+.ton-manual-open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 34px;
+  padding: 0 12px;
   border: 1px solid rgba(103, 232, 249, 0.32);
   border-radius: 8px;
   color: #ecfeff;
   background: rgba(14, 116, 144, 0.82);
   font-weight: 800;
+  text-decoration: none;
   cursor: pointer;
 }
 
