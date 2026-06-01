@@ -17230,7 +17230,14 @@ html.cw-app-ready #join-form.cw-shell .menu-panel.active > *:nth-child(n + 4) { 
   line-height: 1.35;
 }
 
+.ton-product-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
 .ton-buy-btn,
+.ton-manual-btn,
 .ton-wardrobe-card button {
   min-height: 38px;
   border: 1px solid rgba(103, 232, 249, 0.34);
@@ -17241,12 +17248,95 @@ html.cw-app-ready #join-form.cw-shell .menu-panel.active > *:nth-child(n + 4) { 
   cursor: pointer;
 }
 
+.ton-manual-btn {
+  min-width: 82px;
+  color: #bae6fd;
+  background: rgba(15, 23, 42, 0.82);
+}
+
 .ton-buy-btn:disabled,
+.ton-manual-btn:disabled,
 .ton-wardrobe-card button:disabled {
   cursor: default;
   opacity: 0.56;
   color: rgba(226, 232, 240, 0.72);
   background: rgba(30, 41, 59, 0.74);
+}
+
+.ton-manual-panel {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid rgba(103, 232, 249, 0.34);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(8, 47, 73, 0.82), rgba(15, 23, 42, 0.92)),
+    linear-gradient(135deg, rgba(34, 211, 238, 0.14), rgba(239, 68, 68, 0.1));
+}
+
+.ton-manual-panel strong {
+  display: block;
+  margin-top: 4px;
+  color: #f8fafc;
+  font-size: 1.04rem;
+}
+
+.ton-manual-panel p {
+  max-width: 860px;
+  margin: 8px 0 0;
+  color: rgba(226, 232, 240, 0.76);
+}
+
+.ton-manual-panel dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.ton-manual-panel dl > div {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.ton-manual-panel dt {
+  color: rgba(226, 232, 240, 0.72);
+}
+
+.ton-manual-panel dd {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  margin: 0;
+}
+
+.ton-manual-panel code {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: #ecfeff;
+  background: rgba(2, 6, 23, 0.58);
+}
+
+.ton-manual-panel button {
+  min-height: 34px;
+  border: 1px solid rgba(103, 232, 249, 0.32);
+  border-radius: 8px;
+  color: #ecfeff;
+  background: rgba(14, 116, 144, 0.82);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.ton-manual-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .ton-wardrobe {
