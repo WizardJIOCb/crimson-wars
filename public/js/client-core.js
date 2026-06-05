@@ -4520,6 +4520,7 @@ function loadImage(src) {
 
 const playerSprites = Object.fromEntries(PLAYER_VARIANTS.map((v) => [v.id, loadImage(v.sprite)]));
 const TRIPO_MAP_PROP_ROOT = '/assets/map-props/tripo3d';
+const TRIPO_BUS_SPRITE_VERSION = '20260605bus1';
 const MAP_PROP_DIRECTIONAL_SPRITES = Object.freeze(Object.fromEntries([
   'barrier',
   'shopping_cart_barricade',
@@ -4567,8 +4568,8 @@ const sprites = {
   mapProps: {
     car_red: loadImage('/assets/map-props/car_red.png'),
     car_blue: loadImage('/assets/map-props/car_blue.png'),
-    bus_yellow: loadImage(`${TRIPO_MAP_PROP_ROOT}/bus_yellow.png`),
-    abandoned_bus: loadImage(`${TRIPO_MAP_PROP_ROOT}/abandoned_bus.png`),
+    bus_yellow: loadImage(`${TRIPO_MAP_PROP_ROOT}/bus_yellow.png?v=${TRIPO_BUS_SPRITE_VERSION}`),
+    abandoned_bus: loadImage(`${TRIPO_MAP_PROP_ROOT}/abandoned_bus.png?v=${TRIPO_BUS_SPRITE_VERSION}`),
     ambulance: loadImage(`${TRIPO_MAP_PROP_ROOT}/ambulance.png`),
     military_ambulance: loadImage(`${TRIPO_MAP_PROP_ROOT}/military_ambulance.png`),
     barrier: loadImage(`${TRIPO_MAP_PROP_ROOT}/barrier.png`),
