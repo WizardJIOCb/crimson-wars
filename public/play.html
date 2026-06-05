@@ -684,8 +684,8 @@
   <script src="/js/client-page-loader.js?v=20260509loaderfx5"></script>
   <script src="/js/cw-menu-react.js?v=20260505storyside1"></script>
   <script src="/js/client-i18n.js?v=20260509loaderi18n1"></script>
-  <script src="/js/client-core.js?v=20260605bus1"></script>
-  <script src="/js/client-net-input.js?v=20260605mapprops1"></script>
+  <script src="/js/client-core.js?v=20260605dir12"></script>
+  <script src="/js/client-net-input.js?v=20260605dir12"></script>
   <script src="/js/client-menu-runs.js?v=20260506storylevelstatus1"></script>
   <script src="/js/client-death.js?v=20260506defeat1"></script>
   <script src="/js/client-menu-characters.js?v=20260602skillpending1"></script>
@@ -704,8 +704,8 @@
       const params = new URLSearchParams(window.location.search || '');
       const nativeUeMode = String(params.get('native') || '').trim().toLowerCase() === 'ue';
       if (nativeUeMode) return;
-      document.write('<script src="/js/client-webgl-renderer.js?v=20260605mapprops1"><\/script>');
-      document.write('<script src="/js/client-render.js?v=20260605mapprops1"><\/script>');
+      document.write('<script src="/js/client-webgl-renderer.js?v=20260605dir12"><\/script>');
+      document.write('<script src="/js/client-render.js?v=20260605dir12"><\/script>');
     })();
   </script>
 </body>

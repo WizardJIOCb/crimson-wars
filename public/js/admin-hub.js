@@ -153,25 +153,7 @@
     dead_signal_station: 820,
   };
 
-  const NON_ROTATING_VEHICLE_PROP_KEYS = new Set([
-    'abandoned_bus',
-    'ambulance',
-    'ambulance_van',
-    'burnt_sedan',
-    'bus_yellow',
-    'car_blue',
-    'car_red',
-    'futuristic_police_vehicle',
-    'military_ambulance',
-    'post_apocalyptic_car',
-    'red_hatchback',
-    'wrecked_police_car',
-    'yellow_bus',
-  ]);
-
   function getPropPreviewAngle(prop) {
-    const kind = String(prop?.kind || '').trim();
-    if (NON_ROTATING_VEHICLE_PROP_KEYS.has(kind)) return 0;
     return Number(prop?.angle) || 0;
   }
 
@@ -1150,7 +1132,7 @@
         <td><input data-field="x" type="number" step="0.01" value="${prop.x ?? 0.5}" /></td>
         <td><input data-field="y" type="number" step="0.01" value="${prop.y ?? 0.5}" /></td>
         <td><input data-field="scale" type="number" step="0.01" value="${prop.scale ?? 1}" /></td>
-        <td><input data-field="angle" type="number" step="1" value="${Number(radToDeg(prop.angle)).toFixed(1)}" /></td>
+        <td><input data-field="angle" type="number" step="30" value="${Number(radToDeg(prop.angle)).toFixed(1)}" /></td>
         <td><input data-field="zombieBreakable" type="checkbox" ${prop.zombieBreakable ? 'checked' : ''} /></td>
         <td><button class="btn btn-danger" data-action="delete-prop">✕</button></td>
       </tr>

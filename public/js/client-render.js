@@ -53,33 +53,23 @@ const renderScratch = {
   renderLoadScore: 0,
   renderFpsSample: 0,
   renderFrameMsSample: 0,
+  mapPropShadowMasks: new Map(),
 };
 const GROUND_CHUNK_SIZE = 512;
 const GROUND_CHUNK_CACHE_LIMIT = 220;
 const OCCLUSION_GRID_SIZE = 260;
 const MINIMAP_RENDER_INTERVAL_MS = 120;
+const MAP_PROP_SHADOW_CACHE_LIMIT = 96;
+const MAP_PROP_SHADOW_SUN = Object.freeze({
+  offsetX: 0.15,
+  offsetY: 0.09,
+  skewX: -0.36,
+  scaleY: 0.34,
+});
 const mapObjectGeometryCache = new WeakMap();
 const renderImageCache = new Map();
-const RENDER_NON_ROTATING_VEHICLE_MAP_OBJECT_KEYS = new Set([
-  'abandoned_bus',
-  'ambulance',
-  'ambulance_van',
-  'burnt_sedan',
-  'bus_yellow',
-  'car_blue',
-  'car_red',
-  'futuristic_police_vehicle',
-  'military_ambulance',
-  'post_apocalyptic_car',
-  'red_hatchback',
-  'wrecked_police_car',
-  'yellow_bus',
-]);
 
 function getMapObjectRenderAngle(obj) {
-  const kind = String(obj?.kind || '').trim();
-  const spriteKey = String(obj?.spriteKey || '').trim();
-  if (RENDER_NON_ROTATING_VEHICLE_MAP_OBJECT_KEYS.has(kind) || RENDER_NON_ROTATING_VEHICLE_MAP_OBJECT_KEYS.has(spriteKey)) return 0;
   return Number(obj?.angle) || 0;
 }
 
@@ -118,6 +108,60 @@ function getMapPropDirectionFrame(obj) {
     sw: frameW,
     sh: frameH,
   };
+}
+
+function getMapPropImageFrame(sprite) {
+  if (!sprite?.complete || sprite.naturalWidth <= 0 || sprite.naturalHeight <= 0) return null;
+  return {
+    image: sprite,
+    sx: 0,
+    sy: 0,
+    sw: sprite.naturalWidth,
+    sh: sprite.naturalHeight,
+  };
+}
+
+function getMapPropShadowMask(frame) {
+  if (!frame?.image || frame.sw <= 0 || frame.sh <= 0) return null;
+  const src = String(frame.image.currentSrc || frame.image.src || '');
+  const key = `${src}:${frame.sx}:${frame.sy}:${frame.sw}:${frame.sh}`;
+  const cache = renderScratch.mapPropShadowMasks;
+  const cached = cache.get(key);
+  if (cached) return cached;
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.floor(frame.sw));
+  c.height = Math.max(1, Math.floor(frame.sh));
+  const g = c.getContext('2d');
+  if (!g) return null;
+  g.drawImage(frame.image, frame.sx, frame.sy, frame.sw, frame.sh, 0, 0, c.width, c.height);
+  g.globalCompositeOperation = 'source-in';
+  g.fillStyle = '#000';
+  g.fillRect(0, 0, c.width, c.height);
+  cache.set(key, c);
+  if (cache.size > MAP_PROP_SHADOW_CACHE_LIMIT) {
+    const firstKey = cache.keys().next().value;
+    if (firstKey) cache.delete(firstKey);
+  }
+  return c;
+}
+
+function drawProjectedMapObjectShadow(frame, screenX, screenY, width, height, anchorY, obj) {
+  if (!game.shadowsEnabled) return false;
+  const mask = getMapPropShadowMask(frame);
+  if (!mask) return false;
+  const shadowScale = Math.max(0.2, Number(obj?.shadowScale) || 1);
+  const alpha = obj?.destroyed ? 0.11 : Math.max(0.12, Math.min(0.34, 0.23 * shadowScale));
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.filter = 'blur(2px)';
+  ctx.translate(
+    screenX + width * MAP_PROP_SHADOW_SUN.offsetX,
+    screenY + height * MAP_PROP_SHADOW_SUN.offsetY,
+  );
+  ctx.transform(1, 0, MAP_PROP_SHADOW_SUN.skewX, MAP_PROP_SHADOW_SUN.scaleY, 0, 0);
+  ctx.drawImage(mask, -width * 0.5, -height * anchorY, width, height);
+  ctx.restore();
+  return true;
 }
 
 function isRenderDiagEnabled() {
@@ -1496,12 +1540,15 @@ function drawSingleMapObject(obj, nowMs = Date.now(), options = {}) {
   const anchorY = Math.max(0.45, Math.min(0.72, Number(obj.anchorY) || 0.56));
   const directionalFrame = getMapPropDirectionFrame(obj);
   const sprite = sprites.mapProps?.[obj.spriteKey] || null;
+  const spriteFrame = directionalFrame || getMapPropImageFrame(sprite);
   const damaged = obj.destructible && (Number(obj.hp) || 0) < Math.max(1, Number(obj.maxHp) || 1);
   const recentlyHit = Math.max(0, Number(obj.lastHitAt) || 0) > 0 && (nowMs - Number(obj.lastHitAt) <= 120);
 
   if (drawShadow) {
     if (obj.destroyed) {
-      drawShadowAtScreen(screenX, screenY + 10, Math.max(18, width * 0.22), Math.max(6, height * 0.09), 0.14);
+      if (!drawProjectedMapObjectShadow(spriteFrame, screenX, screenY, width, height, anchorY, obj)) {
+        drawShadowAtScreen(screenX, screenY + 10, Math.max(18, width * 0.22), Math.max(6, height * 0.09), 0.14);
+      }
       ctx.save();
       ctx.fillStyle = 'rgba(18, 10, 8, 0.58)';
       ctx.beginPath();
@@ -1509,7 +1556,9 @@ function drawSingleMapObject(obj, nowMs = Date.now(), options = {}) {
       ctx.fill();
       ctx.restore();
     } else {
-      drawShadowAtScreen(screenX, screenY + 10, Math.max(16, width * 0.22 * (Number(obj.shadowScale) || 1)), Math.max(6, height * 0.1), 0.22);
+      if (!drawProjectedMapObjectShadow(spriteFrame, screenX, screenY, width, height, anchorY, obj)) {
+        drawShadowAtScreen(screenX, screenY + 10, Math.max(16, width * 0.22 * (Number(obj.shadowScale) || 1)), Math.max(6, height * 0.1), 0.22);
+      }
     }
   }
 

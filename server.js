@@ -3380,26 +3380,7 @@ const BUILDING_FOOTPRINT_POINTS = Object.freeze([
   [-0.42, 0.38],
 ]);
 
-const NON_ROTATING_VEHICLE_PROP_KEYS = new Set([
-  'abandoned_bus',
-  'ambulance',
-  'ambulance_van',
-  'burnt_sedan',
-  'bus_yellow',
-  'car_blue',
-  'car_red',
-  'futuristic_police_vehicle',
-  'military_ambulance',
-  'post_apocalyptic_car',
-  'red_hatchback',
-  'wrecked_police_car',
-  'yellow_bus',
-]);
-
 function getMapObjectAngle(obj) {
-  const key = String(obj?.kind || obj?.spriteKey || '').trim();
-  const spriteKey = String(obj?.spriteKey || '').trim();
-  if (NON_ROTATING_VEHICLE_PROP_KEYS.has(key) || NON_ROTATING_VEHICLE_PROP_KEYS.has(spriteKey)) return 0;
   return Number(obj?.angle) || 0;
 }
 

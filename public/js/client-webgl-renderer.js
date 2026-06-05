@@ -42,6 +42,12 @@
     height: 0,
     failed: false,
   };
+  const MAP_PROP_SHADOW_SUN = Object.freeze({
+    offsetX: 0.15,
+    offsetY: 0.09,
+    skewX: -0.36,
+    scaleY: 0.34,
+  });
 
   const vertexShaderSource = `
 attribute vec2 a_position;
@@ -90,26 +96,7 @@ void main() {
   gl_FragColor = v_color;
 }`;
 
-  const NON_ROTATING_VEHICLE_MAP_OBJECT_KEYS = new Set([
-    'abandoned_bus',
-    'ambulance',
-    'ambulance_van',
-    'burnt_sedan',
-    'bus_yellow',
-    'car_blue',
-    'car_red',
-    'futuristic_police_vehicle',
-    'military_ambulance',
-    'post_apocalyptic_car',
-    'red_hatchback',
-    'wrecked_police_car',
-    'yellow_bus',
-  ]);
-
   function getMapObjectRenderAngle(obj) {
-    const kind = String(obj?.kind || '').trim();
-    const spriteKey = String(obj?.spriteKey || '').trim();
-    if (NON_ROTATING_VEHICLE_MAP_OBJECT_KEYS.has(kind) || NON_ROTATING_VEHICLE_MAP_OBJECT_KEYS.has(spriteKey)) return 0;
     return Number(obj?.angle) || 0;
   }
 
@@ -518,6 +505,18 @@ void main() {
       positions[8] = right; positions[9] = top;
       positions[10] = right; positions[11] = bottom;
     }
+    const shadowSkewX = Number(options.shadowSkewX) || 0;
+    const shadowScaleY = Number.isFinite(Number(options.shadowScaleY)) ? Number(options.shadowScaleY) : 1;
+    if (shadowSkewX || shadowScaleY !== 1) {
+      const originX = Number.isFinite(Number(options.transformOriginX)) ? Number(options.transformOriginX) : (left + right) * 0.5;
+      const originY = Number.isFinite(Number(options.transformOriginY)) ? Number(options.transformOriginY) : (top + bottom) * 0.5;
+      for (let i = 0; i < positions.length; i += 2) {
+        const ox = positions[i] - originX;
+        const oy = positions[i + 1] - originY;
+        positions[i] = originX + ox + oy * shadowSkewX;
+        positions[i + 1] = originY + oy * shadowScaleY;
+      }
+    }
 
     const texCoords = state.texCoords;
     texCoords[0] = flipX ? u1 : u0; texCoords[1] = v0;
@@ -556,6 +555,31 @@ void main() {
   function drawShadow(sx, sy, rx, ry, alpha) {
     const shadow = ensureShadowCanvas();
     drawSource(shadow, 0, 0, shadow.width, shadow.height, sx - rx, sy - ry, rx * 2, ry * 2, { alpha });
+  }
+
+  function drawMapObjectProjectedShadow(frame, sx, sy, width, height, anchorY, obj) {
+    if (!frame?.image || frame.sw <= 0 || frame.sh <= 0) return false;
+    const shadowScale = Math.max(0.2, Number(obj?.shadowScale) || 1);
+    const alpha = obj?.destroyed ? 0.11 : Math.max(0.12, Math.min(0.34, 0.23 * shadowScale));
+    return drawSource(
+      frame.image,
+      frame.sx,
+      frame.sy,
+      frame.sw,
+      frame.sh,
+      sx - width * 0.5 + width * MAP_PROP_SHADOW_SUN.offsetX,
+      sy - height * anchorY + height * MAP_PROP_SHADOW_SUN.offsetY,
+      width,
+      height,
+      {
+        tint: [0, 0, 0],
+        alpha,
+        shadowSkewX: MAP_PROP_SHADOW_SUN.skewX,
+        shadowScaleY: MAP_PROP_SHADOW_SUN.scaleY,
+        transformOriginX: sx,
+        transformOriginY: sy,
+      },
+    );
   }
 
   function getEnemyBrightnessTint(isBoss) {
@@ -630,8 +654,17 @@ void main() {
       const anchorY = Math.max(0.45, Math.min(0.72, Number(obj.anchorY) || 0.56));
       const sx = (Number(obj.x) || 0) - params.camera.x;
       const sy = (Number(obj.y) || 0) - params.camera.y;
+      const spriteFrame = directionalFrame || {
+        image: sprite,
+        sx: 0,
+        sy: 0,
+        sw: sprite?.naturalWidth || 0,
+        sh: sprite?.naturalHeight || 0,
+      };
       if (params.shadowsEnabled) {
-        drawShadow(sx, sy + 10, Math.max(16, width * 0.22 * (Number(obj.shadowScale) || 1)), Math.max(6, height * 0.1), obj.destroyed ? 0.12 : 0.22);
+        if (!drawMapObjectProjectedShadow(spriteFrame, sx, sy, width, height, anchorY, obj)) {
+          drawShadow(sx, sy + 10, Math.max(16, width * 0.22 * (Number(obj.shadowScale) || 1)), Math.max(6, height * 0.1), obj.destroyed ? 0.12 : 0.22);
+        }
       }
       const adjust = getMapObjectAdjust(obj);
       const source = directionalFrame?.image || sprite;

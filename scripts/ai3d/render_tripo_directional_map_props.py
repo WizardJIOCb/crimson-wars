@@ -19,7 +19,7 @@ import render_tripo_environment_sprites as base
 ROOT = base.ROOT
 DEFAULT_SOURCE_ROOT = base.DEFAULT_SOURCE_ROOT
 MAP_PROP_OUT = base.MAP_PROP_OUT
-DEFAULT_FRAMES = 8
+DEFAULT_FRAMES = 12
 DEFAULT_COLUMNS = 4
 DEFAULT_CAMERA = (-6.0, -7.0, 4.4)
 
@@ -68,13 +68,13 @@ ASSETS = {
     "rusty_shopping_cart": prop_spec("rusty+shopping+cart+3d+model", 640, 384, 0.88, (-5.3, -6.2, 3.5)),
     "steampunk_reactor": prop_spec("steampunk+reactor+3d+model", 768, 512, 0.84, (-5.8, -6.6, 4.4)),
     "toxic_waste_barrels": prop_spec("toxic+waste+barrels+3d+model", 640, 512, 0.86),
-    "bus_yellow": prop_spec("abandoned+bus+3d+model", 768, 384, 0.76, (-6.0, -7.0, 4.2), False),
-    "abandoned_bus": prop_spec("abandoned+bus+3d+model", 768, 384, 0.76, (-6.0, -7.0, 4.2), False),
-    "ambulance": prop_spec("military+ambulance+3d+model", 640, 384, 0.52, (-5.5, -6.4, 3.7), False),
-    "military_ambulance": prop_spec("military+ambulance+3d+model", 640, 384, 0.52, (-5.5, -6.4, 3.7), False),
-    "futuristic_police_vehicle": prop_spec("futuristic+police+vehicle+3d+model", 640, 384, 0.54, (-5.5, -6.4, 3.7), False),
-    "post_apocalyptic_car": prop_spec("post+apocalyptic+car+3d+model", 640, 384, 0.54, (-5.5, -6.4, 3.7), False),
-    "wrecked_police_car": prop_spec("wrecked+police+car+3d+model", 640, 384, 0.54, (-5.5, -6.4, 3.7), False),
+    "bus_yellow": prop_spec("abandoned+bus+3d+model", 768, 384, 0.76, (-6.0, -7.0, 4.2)),
+    "abandoned_bus": prop_spec("abandoned+bus+3d+model", 768, 384, 0.76, (-6.0, -7.0, 4.2)),
+    "ambulance": prop_spec("military+ambulance+3d+model", 640, 384, 0.52, (-5.5, -6.4, 3.7)),
+    "military_ambulance": prop_spec("military+ambulance+3d+model", 640, 384, 0.52, (-5.5, -6.4, 3.7)),
+    "futuristic_police_vehicle": prop_spec("futuristic+police+vehicle+3d+model", 640, 384, 0.54, (-5.5, -6.4, 3.7)),
+    "post_apocalyptic_car": prop_spec("post+apocalyptic+car+3d+model", 640, 384, 0.54, (-5.5, -6.4, 3.7)),
+    "wrecked_police_car": prop_spec("wrecked+police+car+3d+model", 640, 384, 0.54, (-5.5, -6.4, 3.7)),
 }
 
 
