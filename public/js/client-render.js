@@ -60,7 +60,7 @@ const OCCLUSION_GRID_SIZE = 260;
 const MINIMAP_RENDER_INTERVAL_MS = 120;
 const mapObjectGeometryCache = new WeakMap();
 const renderImageCache = new Map();
-const NON_ROTATING_VEHICLE_MAP_OBJECT_KEYS = new Set([
+const RENDER_NON_ROTATING_VEHICLE_MAP_OBJECT_KEYS = new Set([
   'abandoned_bus',
   'ambulance',
   'ambulance_van',
@@ -79,7 +79,7 @@ const NON_ROTATING_VEHICLE_MAP_OBJECT_KEYS = new Set([
 function getMapObjectRenderAngle(obj) {
   const kind = String(obj?.kind || '').trim();
   const spriteKey = String(obj?.spriteKey || '').trim();
-  if (NON_ROTATING_VEHICLE_MAP_OBJECT_KEYS.has(kind) || NON_ROTATING_VEHICLE_MAP_OBJECT_KEYS.has(spriteKey)) return 0;
+  if (RENDER_NON_ROTATING_VEHICLE_MAP_OBJECT_KEYS.has(kind) || RENDER_NON_ROTATING_VEHICLE_MAP_OBJECT_KEYS.has(spriteKey)) return 0;
   return Number(obj?.angle) || 0;
 }
 
