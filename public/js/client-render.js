@@ -1326,7 +1326,7 @@ function drawTrees() {
     if (treeSprite?.complete && treeSprite.naturalWidth > 0 && treeSprite.naturalHeight > 0) {
       const drawH = 86 * s;
       const drawW = drawH * (treeSprite.naturalWidth / treeSprite.naturalHeight);
-      drawShadowAtScreen(x + 8 * s, y - 2 * s, 14 * s, 6 * s, 0.24);
+      drawShadowAtScreen(x + 5 * s, y - 10 * s, 16 * s, 6.5 * s, 0.31);
       ctx.save();
       ctx.translate(x, y);
       ctx.drawImage(treeSprite, -drawW * 0.5, -drawH * 0.93, drawW, drawH);
@@ -4301,7 +4301,11 @@ function buildMinimapStaticSignature(params) {
     objectVersion = objects.length;
     for (let i = 0; i < objects.length; i += 1) {
       const obj = objects[i];
-      objectVersion += (Number(obj?.destroyedAt) || 0) + (obj?.destroyed ? 13 : 0);
+      objectVersion += (Number(obj?.destroyedAt) || 0)
+        + (obj?.destroyed ? 13 : 0)
+        + Math.round((Number(obj?.angle) || 0) * 1000)
+        + Math.round(Number(obj?.collisionW) || 0)
+        + Math.round(Number(obj?.collisionH) || 0);
     }
   }
   return [
@@ -4378,16 +4382,37 @@ function getMinimapStaticLayer(params) {
   }
   g.restore();
 
+  const drawMiniObjectPolygon = (points) => {
+    if (!Array.isArray(points) || points.length < 3) return false;
+    g.beginPath();
+    for (let i = 0; i < points.length; i += 1) {
+      const point = points[i];
+      const sx = toMapX(point.x);
+      const sy = toMapY(point.y);
+      if (i === 0) g.moveTo(sx, sy);
+      else g.lineTo(sx, sy);
+    }
+    g.closePath();
+    g.fill();
+    return true;
+  };
+
   for (const obj of game.state.decor?.objects || []) {
     if (obj?.destroyed && obj?.hideAfterDestroyed) continue;
     if (!isVisibleInMini(obj.x, obj.y, Math.max(Number(obj.w) || 0, Number(obj.h) || 0))) continue;
-    const objW = Math.max(2, (Number(obj.w) || 20) * params.sx);
-    const objH = Math.max(2, (Number(obj.h) || 20) * params.sy);
-    g.save();
-    g.translate(toMapX(obj.x), toMapY(obj.y));
+    const geometry = getMapObjectGeometry(obj);
+    const polygon = geometry?.polygon;
+    const rectW = Math.max(2, (Number(obj.collisionW) || Number(obj.w) || 20) * params.sx);
+    const rectH = Math.max(2, (Number(obj.collisionH) || Number(obj.h) || 20) * params.sy);
     g.fillStyle = obj.destroyed ? 'rgba(120, 113, 108, 0.55)' : 'rgba(226, 232, 240, 0.4)';
-    g.fillRect(-objW * 0.5, -objH * 0.5, objW, objH);
-    g.restore();
+    if (polygon && polygon.length >= 3) {
+      drawMiniObjectPolygon(polygon);
+    } else {
+      g.save();
+      g.translate(toMapX(obj.x), toMapY(obj.y));
+      g.fillRect(-rectW * 0.5, -rectH * 0.5, rectW, rectH);
+      g.restore();
+    }
   }
 
   state.staticSignature = signature;
