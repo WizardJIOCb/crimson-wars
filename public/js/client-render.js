@@ -60,6 +60,28 @@ const OCCLUSION_GRID_SIZE = 260;
 const MINIMAP_RENDER_INTERVAL_MS = 120;
 const mapObjectGeometryCache = new WeakMap();
 const renderImageCache = new Map();
+const NON_ROTATING_VEHICLE_MAP_OBJECT_KEYS = new Set([
+  'abandoned_bus',
+  'ambulance',
+  'ambulance_van',
+  'burnt_sedan',
+  'bus_yellow',
+  'car_blue',
+  'car_red',
+  'futuristic_police_vehicle',
+  'military_ambulance',
+  'post_apocalyptic_car',
+  'red_hatchback',
+  'wrecked_police_car',
+  'yellow_bus',
+]);
+
+function getMapObjectRenderAngle(obj) {
+  const kind = String(obj?.kind || '').trim();
+  const spriteKey = String(obj?.spriteKey || '').trim();
+  if (NON_ROTATING_VEHICLE_MAP_OBJECT_KEYS.has(kind) || NON_ROTATING_VEHICLE_MAP_OBJECT_KEYS.has(spriteKey)) return 0;
+  return Number(obj?.angle) || 0;
+}
 
 function isRenderDiagEnabled() {
   return Boolean(game?.showFpsEnabled && fpsCornerEl);
@@ -1455,7 +1477,7 @@ function drawSingleMapObject(obj, nowMs = Date.now(), options = {}) {
 
   ctx.save();
   ctx.translate(screenX, screenY);
-  ctx.rotate(Number(obj.angle) || 0);
+  ctx.rotate(getMapObjectRenderAngle(obj));
   if (recentlyHit) ctx.filter = 'brightness(1.18) saturate(1.2)';
   else if (obj.destroyed) ctx.filter = 'grayscale(0.65) brightness(0.48) saturate(0.4)';
   else if (damaged) ctx.filter = 'brightness(0.94) saturate(0.92)';
@@ -1517,7 +1539,7 @@ function getMapObjectGeometrySignature(obj) {
     Number(obj?.collisionH) || 0,
     Number(obj?.collisionOffsetY) || 0,
     Number(obj?.anchorY) || 0,
-    Number(obj?.angle) || 0,
+    getMapObjectRenderAngle(obj),
     points.length,
   ].join(':');
 }
@@ -1531,7 +1553,7 @@ function buildMapObjectGeometry(obj) {
   const baseY = (Number(obj?.y) || 0) + Math.max(22, Number(obj?.h) || 22) * (1 - anchorY);
   const topY = (Number(obj?.y) || 0) - Math.max(22, Number(obj?.h) || 22) * anchorY;
   const points = Array.isArray(obj?.collisionPoints) ? obj.collisionPoints : [];
-  const angle = Number(obj?.angle) || 0;
+  const angle = getMapObjectRenderAngle(obj);
   const cos = angle ? Math.cos(angle) : 1;
   const sin = angle ? Math.sin(angle) : 0;
   const polygon = [];
@@ -4303,7 +4325,7 @@ function buildMinimapStaticSignature(params) {
       const obj = objects[i];
       objectVersion += (Number(obj?.destroyedAt) || 0)
         + (obj?.destroyed ? 13 : 0)
-        + Math.round((Number(obj?.angle) || 0) * 1000)
+        + Math.round(getMapObjectRenderAngle(obj) * 1000)
         + Math.round(Number(obj?.collisionW) || 0)
         + Math.round(Number(obj?.collisionH) || 0);
     }

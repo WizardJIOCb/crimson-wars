@@ -7171,13 +7171,36 @@ function buildClientMapObjectRect(obj, pad = 0) {
   };
 }
 
+const NON_ROTATING_VEHICLE_MAP_OBJECT_KEYS = new Set([
+  'abandoned_bus',
+  'ambulance',
+  'ambulance_van',
+  'burnt_sedan',
+  'bus_yellow',
+  'car_blue',
+  'car_red',
+  'futuristic_police_vehicle',
+  'military_ambulance',
+  'post_apocalyptic_car',
+  'red_hatchback',
+  'wrecked_police_car',
+  'yellow_bus',
+]);
+
+function getClientMapObjectAngle(obj) {
+  const kind = String(obj?.kind || '').trim();
+  const spriteKey = String(obj?.spriteKey || '').trim();
+  if (NON_ROTATING_VEHICLE_MAP_OBJECT_KEYS.has(kind) || NON_ROTATING_VEHICLE_MAP_OBJECT_KEYS.has(spriteKey)) return 0;
+  return Number(obj?.angle) || 0;
+}
+
 function buildClientMapObjectPolygon(obj, pad = 0) {
   const points = Array.isArray(obj?.collisionPoints) ? obj.collisionPoints : [];
   const centerX = Number(obj?.x) || 0;
   const centerY = (Number(obj?.y) || 0) + (Number(obj?.collisionOffsetY) || 0);
   const width = Math.max(16, Number(obj?.collisionW) || Number(obj?.w) || 0);
   const height = Math.max(16, Number(obj?.collisionH) || Number(obj?.h) || 0);
-  const angle = Number(obj?.angle) || 0;
+  const angle = getClientMapObjectAngle(obj);
   if (points.length < 3 && !angle) return null;
   const cos = angle ? Math.cos(angle) : 1;
   const sin = angle ? Math.sin(angle) : 0;

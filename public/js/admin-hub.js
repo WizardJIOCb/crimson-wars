@@ -153,6 +153,28 @@
     dead_signal_station: 820,
   };
 
+  const NON_ROTATING_VEHICLE_PROP_KEYS = new Set([
+    'abandoned_bus',
+    'ambulance',
+    'ambulance_van',
+    'burnt_sedan',
+    'bus_yellow',
+    'car_blue',
+    'car_red',
+    'futuristic_police_vehicle',
+    'military_ambulance',
+    'post_apocalyptic_car',
+    'red_hatchback',
+    'wrecked_police_car',
+    'yellow_bus',
+  ]);
+
+  function getPropPreviewAngle(prop) {
+    const kind = String(prop?.kind || '').trim();
+    if (NON_ROTATING_VEHICLE_PROP_KEYS.has(kind)) return 0;
+    return Number(prop?.angle) || 0;
+  }
+
   const dom = {
     loginView: $('admin-login'),
     loginName: $('login-name'),
@@ -724,7 +746,7 @@
       const prop = props[index];
       const screen = normToScreen(prop.x, prop.y);
       const size = getPropDisplaySize(prop);
-      const angle = -(Number(prop.angle) || 0);
+      const angle = -getPropPreviewAngle(prop);
       const dx = point.sx - screen.x;
       const dy = point.sy - screen.y;
       const localX = dx * Math.cos(angle) - dy * Math.sin(angle);
@@ -1413,7 +1435,7 @@
       const selected = index === state.mapEditor.selectedPropIndex;
       ctx.save();
       ctx.translate(x, y);
-      ctx.rotate(Number(prop.angle) || 0);
+      ctx.rotate(getPropPreviewAngle(prop));
       if (selected) {
         ctx.strokeStyle = '#ffcc73';
         ctx.lineWidth = 3;

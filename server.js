@@ -3354,7 +3354,7 @@ function generateTrees(worldOrRoom = null, densityMul = 1, options = {}) {
   const trees = [];
   const baseArea = WORLD_WIDTH * WORLD_HEIGHT;
   const worldArea = Math.max(baseArea, world.width * world.height);
-  const targetCount = Math.max(18, Math.round(TREE_COUNT * (worldArea / baseArea) * Math.max(0.15, Number(densityMul) || 1)));
+  const targetCount = Math.max(10, Math.round(TREE_COUNT * (worldArea / baseArea) * Math.max(0.15, Number(densityMul) || 1)));
   let attempts = 0;
   while (trees.length < targetCount && attempts < targetCount * 8) {
     attempts += 1;
@@ -3379,6 +3379,29 @@ const BUILDING_FOOTPRINT_POINTS = Object.freeze([
   [0, 0.5],
   [-0.42, 0.38],
 ]);
+
+const NON_ROTATING_VEHICLE_PROP_KEYS = new Set([
+  'abandoned_bus',
+  'ambulance',
+  'ambulance_van',
+  'burnt_sedan',
+  'bus_yellow',
+  'car_blue',
+  'car_red',
+  'futuristic_police_vehicle',
+  'military_ambulance',
+  'post_apocalyptic_car',
+  'red_hatchback',
+  'wrecked_police_car',
+  'yellow_bus',
+]);
+
+function getMapObjectAngle(obj) {
+  const key = String(obj?.kind || obj?.spriteKey || '').trim();
+  const spriteKey = String(obj?.spriteKey || '').trim();
+  if (NON_ROTATING_VEHICLE_PROP_KEYS.has(key) || NON_ROTATING_VEHICLE_PROP_KEYS.has(spriteKey)) return 0;
+  return Number(obj?.angle) || 0;
+}
 
 const SCENE_PROP_TEMPLATES = {
   red_hatchback: {
@@ -4030,7 +4053,7 @@ function getMapObjectCollisionPolygon(obj, pad = 0) {
   const centerY = (Number(obj?.y) || 0) + (Number(obj?.collisionOffsetY) || 0);
   const width = Math.max(16, Number(obj?.collisionW) || Number(obj?.w) || 0);
   const height = Math.max(16, Number(obj?.collisionH) || Number(obj?.h) || 0);
-  const angle = Number(obj?.angle) || 0;
+  const angle = getMapObjectAngle(obj);
   if (points.length < 3 && !angle) return null;
   const cos = angle ? Math.cos(angle) : 1;
   const sin = angle ? Math.sin(angle) : 0;
