@@ -113,6 +113,43 @@ void main() {
     return Number(obj?.angle) || 0;
   }
 
+  function ensureMapPropDirectionImage(meta) {
+    if (!meta || typeof meta !== 'object') return null;
+    if (meta.image) return meta.image;
+    const src = String(meta.src || '').trim();
+    if (!src || typeof global.Image === 'undefined') return null;
+    const img = new global.Image();
+    img.decoding = 'async';
+    img.src = src;
+    meta.image = img;
+    return img;
+  }
+
+  function getMapPropDirectionFrame(obj, directionSprites) {
+    const key = String(obj?.spriteKey || '').trim();
+    if (!key) return null;
+    const meta = directionSprites?.[key];
+    const image = ensureMapPropDirectionImage(meta);
+    if (!image?.complete || image.naturalWidth <= 0 || image.naturalHeight <= 0) return null;
+    const frames = Math.max(1, Math.floor(Number(meta.frames) || 1));
+    const columns = Math.max(1, Math.min(frames, Math.floor(Number(meta.columns) || frames)));
+    const rows = Math.max(1, Math.ceil(frames / columns));
+    const frameW = Math.floor(image.naturalWidth / columns);
+    const frameH = Math.floor(image.naturalHeight / rows);
+    if (frameW <= 0 || frameH <= 0) return null;
+    const fullTurn = Math.PI * 2;
+    const direction = Number(meta.direction) || 1;
+    const angle = ((getMapObjectRenderAngle(obj) * direction + (Number(meta.angleOffset) || 0)) % fullTurn + fullTurn) % fullTurn;
+    const frame = Math.round((angle / fullTurn) * frames) % frames;
+    return {
+      image,
+      sx: (frame % columns) * frameW,
+      sy: Math.floor(frame / columns) * frameH,
+      sw: frameW,
+      sh: frameH,
+    };
+  }
+
   function compileShader(gl, type, source) {
     const shader = gl.createShader(type);
     gl.shaderSource(shader, source);
@@ -578,14 +615,16 @@ void main() {
   function drawMapObjects(params) {
     const objects = Array.isArray(params.mapObjects) ? params.mapObjects : [];
     const sprites = params.sprites?.mapProps || {};
+    const directionSprites = params.sprites?.mapPropDirections || {};
     for (const obj of objects) {
       if (!obj || (obj.destroyed && obj.hideAfterDestroyed)) continue;
       if (typeof params.isVisibleWorld === 'function') {
         const radius = Math.max(Number(obj.w) || 0, Number(obj.h) || 0) * 0.55;
         if (!params.isVisibleWorld(Number(obj.x) || 0, Number(obj.y) || 0, radius + 40)) continue;
       }
+      const directionalFrame = getMapPropDirectionFrame(obj, directionSprites);
       const sprite = sprites[obj.spriteKey];
-      if (!sprite || !sprite.complete || sprite.naturalWidth <= 0) continue;
+      if (!directionalFrame && (!sprite || !sprite.complete || sprite.naturalWidth <= 0)) continue;
       const width = Math.max(22, Number(obj.w) || 22);
       const height = Math.max(22, Number(obj.h) || 22);
       const anchorY = Math.max(0.45, Math.min(0.72, Number(obj.anchorY) || 0.56));
@@ -595,12 +634,13 @@ void main() {
         drawShadow(sx, sy + 10, Math.max(16, width * 0.22 * (Number(obj.shadowScale) || 1)), Math.max(6, height * 0.1), obj.destroyed ? 0.12 : 0.22);
       }
       const adjust = getMapObjectAdjust(obj);
+      const source = directionalFrame?.image || sprite;
       drawSource(
-        sprite,
-        0,
-        0,
-        sprite.naturalWidth,
-        sprite.naturalHeight,
+        source,
+        directionalFrame ? directionalFrame.sx : 0,
+        directionalFrame ? directionalFrame.sy : 0,
+        directionalFrame ? directionalFrame.sw : source.naturalWidth,
+        directionalFrame ? directionalFrame.sh : source.naturalHeight,
         sx - width * 0.5,
         sy - height * anchorY,
         width,
@@ -610,7 +650,7 @@ void main() {
           brightness: adjust.brightness,
           contrast: adjust.contrast,
           saturation: adjust.saturation,
-          rotation: getMapObjectRenderAngle(obj),
+          rotation: directionalFrame ? 0 : getMapObjectRenderAngle(obj),
           rotationOriginX: sx,
           rotationOriginY: sy,
         },

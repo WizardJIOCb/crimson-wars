@@ -83,6 +83,43 @@ function getMapObjectRenderAngle(obj) {
   return Number(obj?.angle) || 0;
 }
 
+function ensureMapPropDirectionImage(meta) {
+  if (!meta || typeof meta !== 'object') return null;
+  if (meta.image) return meta.image;
+  const src = String(meta.src || '').trim();
+  if (!src || typeof Image === 'undefined') return null;
+  const img = new Image();
+  img.decoding = 'async';
+  img.src = src;
+  meta.image = img;
+  return img;
+}
+
+function getMapPropDirectionFrame(obj) {
+  const key = String(obj?.spriteKey || '').trim();
+  if (!key) return null;
+  const meta = sprites.mapPropDirections?.[key];
+  const image = ensureMapPropDirectionImage(meta);
+  if (!image?.complete || image.naturalWidth <= 0 || image.naturalHeight <= 0) return null;
+  const frames = Math.max(1, Math.floor(Number(meta.frames) || 1));
+  const columns = Math.max(1, Math.min(frames, Math.floor(Number(meta.columns) || frames)));
+  const rows = Math.max(1, Math.ceil(frames / columns));
+  const frameW = Math.floor(image.naturalWidth / columns);
+  const frameH = Math.floor(image.naturalHeight / rows);
+  if (frameW <= 0 || frameH <= 0) return null;
+  const fullTurn = Math.PI * 2;
+  const direction = Number(meta.direction) || 1;
+  const angle = ((getMapObjectRenderAngle(obj) * direction + (Number(meta.angleOffset) || 0)) % fullTurn + fullTurn) % fullTurn;
+  const frame = Math.round((angle / fullTurn) * frames) % frames;
+  return {
+    image,
+    sx: (frame % columns) * frameW,
+    sy: Math.floor(frame / columns) * frameH,
+    sw: frameW,
+    sh: frameH,
+  };
+}
+
 function isRenderDiagEnabled() {
   return Boolean(game?.showFpsEnabled && fpsCornerEl);
 }
@@ -1457,6 +1494,7 @@ function drawSingleMapObject(obj, nowMs = Date.now(), options = {}) {
   const width = Math.max(22, Number(obj.w) || 22);
   const height = Math.max(22, Number(obj.h) || 22);
   const anchorY = Math.max(0.45, Math.min(0.72, Number(obj.anchorY) || 0.56));
+  const directionalFrame = getMapPropDirectionFrame(obj);
   const sprite = sprites.mapProps?.[obj.spriteKey] || null;
   const damaged = obj.destructible && (Number(obj.hp) || 0) < Math.max(1, Number(obj.maxHp) || 1);
   const recentlyHit = Math.max(0, Number(obj.lastHitAt) || 0) > 0 && (nowMs - Number(obj.lastHitAt) <= 120);
@@ -1477,12 +1515,24 @@ function drawSingleMapObject(obj, nowMs = Date.now(), options = {}) {
 
   ctx.save();
   ctx.translate(screenX, screenY);
-  ctx.rotate(getMapObjectRenderAngle(obj));
+  ctx.rotate(directionalFrame ? 0 : getMapObjectRenderAngle(obj));
   if (recentlyHit) ctx.filter = 'brightness(1.18) saturate(1.2)';
   else if (obj.destroyed) ctx.filter = 'grayscale(0.65) brightness(0.48) saturate(0.4)';
   else if (damaged) ctx.filter = 'brightness(0.94) saturate(0.92)';
 
-  if (sprite?.complete && sprite.naturalWidth > 0) {
+  if (directionalFrame) {
+    ctx.drawImage(
+      directionalFrame.image,
+      directionalFrame.sx,
+      directionalFrame.sy,
+      directionalFrame.sw,
+      directionalFrame.sh,
+      -width * 0.5,
+      -height * anchorY,
+      width,
+      height,
+    );
+  } else if (sprite?.complete && sprite.naturalWidth > 0) {
     ctx.drawImage(sprite, -width * 0.5, -height * anchorY, width, height);
   } else {
     ctx.fillStyle = obj.destroyed ? '#3f3f46' : '#64748b';
