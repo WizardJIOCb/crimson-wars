@@ -4016,35 +4016,55 @@ function buildMapObjectRect(obj, pad = 0) {
   };
 }
 
+function getMapObjectCollisionBounds(obj, pad = 0) {
+  return getPolygonBounds(getMapObjectCollisionPolygon(obj, pad)) || buildMapObjectRect(obj, pad);
+}
+
 function rectsOverlap(a, b) {
   return a.minX < b.maxX && a.maxX > b.minX && a.minY < b.maxY && a.maxY > b.minY;
 }
 
 function getMapObjectCollisionPolygon(obj, pad = 0) {
   const points = Array.isArray(obj?.collisionPoints) ? obj.collisionPoints : [];
-  if (points.length < 3) return null;
   const centerX = Number(obj?.x) || 0;
   const centerY = (Number(obj?.y) || 0) + (Number(obj?.collisionOffsetY) || 0);
   const width = Math.max(16, Number(obj?.collisionW) || Number(obj?.w) || 0);
   const height = Math.max(16, Number(obj?.collisionH) || Number(obj?.h) || 0);
+  const angle = Number(obj?.angle) || 0;
+  if (points.length < 3 && !angle) return null;
+  const cos = angle ? Math.cos(angle) : 1;
+  const sin = angle ? Math.sin(angle) : 0;
   const inflate = Math.max(0, Number(pad) || 0);
-  return points
-    .map((point) => {
+  const polygon = [];
+  const pushLocalPoint = (localX, localY, radialInflate = true) => {
+    let x = localX;
+    let y = localY;
+    if (inflate > 0 && radialInflate) {
+      const len = Math.hypot(x, y) || 1;
+      x += (x / len) * inflate;
+      y += (y / len) * inflate;
+    }
+    polygon.push({
+      x: centerX + x * cos - y * sin,
+      y: centerY + x * sin + y * cos,
+    });
+  };
+  if (points.length >= 3) {
+    for (const point of points) {
       const px = Array.isArray(point) ? Number(point[0]) : Number(point?.x);
       const py = Array.isArray(point) ? Number(point[1]) : Number(point?.y);
-      if (!Number.isFinite(px) || !Number.isFinite(py)) return null;
-      let x = centerX + px * width;
-      let y = centerY + py * height;
-      if (inflate > 0) {
-        const dx = x - centerX;
-        const dy = y - centerY;
-        const len = Math.hypot(dx, dy) || 1;
-        x += (dx / len) * inflate;
-        y += (dy / len) * inflate;
-      }
-      return { x, y };
-    })
-    .filter(Boolean);
+      if (!Number.isFinite(px) || !Number.isFinite(py)) continue;
+      pushLocalPoint(px * width, py * height);
+    }
+  } else {
+    const halfW = width * 0.5 + inflate;
+    const halfH = height * 0.5 + inflate;
+    pushLocalPoint(-halfW, -halfH, false);
+    pushLocalPoint(halfW, -halfH, false);
+    pushLocalPoint(halfW, halfH, false);
+    pushLocalPoint(-halfW, halfH, false);
+  }
+  return polygon.length >= 3 ? polygon : null;
 }
 
 function getPolygonBounds(points) {
@@ -4245,7 +4265,7 @@ function isTreePlacementBlocked(x, y, options = {}) {
   const avoidObjects = Array.isArray(options.avoidObjects) ? options.avoidObjects : [];
   for (const obj of avoidObjects) {
     if (!obj) continue;
-    const rect = buildMapObjectRect(obj, 42);
+    const rect = getMapObjectCollisionBounds(obj, 42);
     if (x >= rect.minX && x <= rect.maxX && y >= rect.minY && y <= rect.maxY) return true;
   }
   return false;
@@ -4324,10 +4344,10 @@ function canPlaceSceneProp(objects, candidate, world, options = {}) {
     const centerClear = sceneCenterSafeRadius(world);
     if ((centerDx * centerDx) + (centerDy * centerDy) < centerClear * centerClear) return false;
   }
-  const rect = buildMapObjectRect(candidate, 42);
+  const rect = getMapObjectCollisionBounds(candidate, 42);
   for (const obj of objects) {
     if (!obj) continue;
-    if (rectsOverlap(rect, buildMapObjectRect(obj, 34))) return false;
+    if (rectsOverlap(rect, getMapObjectCollisionBounds(obj, 34))) return false;
   }
   return true;
 }

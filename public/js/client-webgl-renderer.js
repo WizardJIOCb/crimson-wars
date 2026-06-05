@@ -432,12 +432,32 @@ void main() {
     const right = left + (Number(dw) || 0);
     const bottom = top + (Number(dh) || 0);
     const positions = state.positions;
-    positions[0] = left; positions[1] = top;
-    positions[2] = right; positions[3] = top;
-    positions[4] = left; positions[5] = bottom;
-    positions[6] = left; positions[7] = bottom;
-    positions[8] = right; positions[9] = top;
-    positions[10] = right; positions[11] = bottom;
+    const rotation = Number(options.rotation) || 0;
+    if (rotation) {
+      const originX = Number.isFinite(Number(options.rotationOriginX)) ? Number(options.rotationOriginX) : (left + right) * 0.5;
+      const originY = Number.isFinite(Number(options.rotationOriginY)) ? Number(options.rotationOriginY) : (top + bottom) * 0.5;
+      const cos = Math.cos(rotation);
+      const sin = Math.sin(rotation);
+      const setPosition = (offset, x, y) => {
+        const ox = x - originX;
+        const oy = y - originY;
+        positions[offset] = originX + ox * cos - oy * sin;
+        positions[offset + 1] = originY + ox * sin + oy * cos;
+      };
+      setPosition(0, left, top);
+      setPosition(2, right, top);
+      setPosition(4, left, bottom);
+      setPosition(6, left, bottom);
+      setPosition(8, right, top);
+      setPosition(10, right, bottom);
+    } else {
+      positions[0] = left; positions[1] = top;
+      positions[2] = right; positions[3] = top;
+      positions[4] = left; positions[5] = bottom;
+      positions[6] = left; positions[7] = bottom;
+      positions[8] = right; positions[9] = top;
+      positions[10] = right; positions[11] = bottom;
+    }
 
     const texCoords = state.texCoords;
     texCoords[0] = flipX ? u1 : u0; texCoords[1] = v0;
@@ -567,6 +587,9 @@ void main() {
           brightness: adjust.brightness,
           contrast: adjust.contrast,
           saturation: adjust.saturation,
+          rotation: Number(obj.angle) || 0,
+          rotationOriginX: sx,
+          rotationOriginY: sy,
         },
       );
     }

@@ -7171,6 +7171,49 @@ function buildClientMapObjectRect(obj, pad = 0) {
   };
 }
 
+function buildClientMapObjectPolygon(obj, pad = 0) {
+  const points = Array.isArray(obj?.collisionPoints) ? obj.collisionPoints : [];
+  const centerX = Number(obj?.x) || 0;
+  const centerY = (Number(obj?.y) || 0) + (Number(obj?.collisionOffsetY) || 0);
+  const width = Math.max(16, Number(obj?.collisionW) || Number(obj?.w) || 0);
+  const height = Math.max(16, Number(obj?.collisionH) || Number(obj?.h) || 0);
+  const angle = Number(obj?.angle) || 0;
+  if (points.length < 3 && !angle) return null;
+  const cos = angle ? Math.cos(angle) : 1;
+  const sin = angle ? Math.sin(angle) : 0;
+  const inflate = Math.max(0, Number(pad) || 0);
+  const polygon = [];
+  const pushLocalPoint = (localX, localY, radialInflate = true) => {
+    let x = localX;
+    let y = localY;
+    if (inflate > 0 && radialInflate) {
+      const len = Math.hypot(x, y) || 1;
+      x += (x / len) * inflate;
+      y += (y / len) * inflate;
+    }
+    polygon.push({
+      x: centerX + x * cos - y * sin,
+      y: centerY + x * sin + y * cos,
+    });
+  };
+  if (points.length >= 3) {
+    for (const point of points) {
+      const px = Array.isArray(point) ? Number(point[0]) : Number(point?.x);
+      const py = Array.isArray(point) ? Number(point[1]) : Number(point?.y);
+      if (!Number.isFinite(px) || !Number.isFinite(py)) continue;
+      pushLocalPoint(px * width, py * height);
+    }
+  } else {
+    const halfW = width * 0.5 + inflate;
+    const halfH = height * 0.5 + inflate;
+    pushLocalPoint(-halfW, -halfH, false);
+    pushLocalPoint(halfW, -halfH, false);
+    pushLocalPoint(halfW, halfH, false);
+    pushLocalPoint(-halfW, halfH, false);
+  }
+  return polygon.length >= 3 ? polygon : null;
+}
+
 function clientSegmentIntersectsExpandedRect(x1, y1, x2, y2, rect, pad = 0) {
   let t0 = 0;
   let t1 = 1;
@@ -7203,10 +7246,52 @@ function clientSegmentIntersectsExpandedRect(x1, y1, x2, y2, rect, pad = 0) {
   return true;
 }
 
+function clientPointInsidePolygon(x, y, points) {
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
+    const a = points[i];
+    const b = points[j];
+    const crosses = ((a.y > y) !== (b.y > y))
+      && (x < ((b.x - a.x) * (y - a.y)) / ((b.y - a.y) || 0.000001) + a.x);
+    if (crosses) inside = !inside;
+  }
+  return inside;
+}
+
+function clientSegmentIntersectsSegment(ax, ay, bx, by, cx, cy, dx, dy) {
+  const rX = bx - ax;
+  const rY = by - ay;
+  const sX = dx - cx;
+  const sY = dy - cy;
+  const denom = rX * sY - rY * sX;
+  if (Math.abs(denom) <= 0.000001) return false;
+  const qpx = cx - ax;
+  const qpy = cy - ay;
+  const t = (qpx * sY - qpy * sX) / denom;
+  const u = (qpx * rY - qpy * rX) / denom;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+}
+
+function clientSegmentIntersectsPolygon(x1, y1, x2, y2, points) {
+  if (!Array.isArray(points) || points.length < 3) return false;
+  if (clientPointInsidePolygon(x1, y1, points) || clientPointInsidePolygon(x2, y2, points)) return true;
+  for (let i = 0; i < points.length; i += 1) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    if (clientSegmentIntersectsSegment(x1, y1, x2, y2, a.x, a.y, b.x, b.y)) return true;
+  }
+  return false;
+}
+
 function hasAutoFireLineOfSight(fromX, fromY, toX, toY, objects) {
   const solidObjects = Array.isArray(objects) ? objects : [];
   for (const obj of solidObjects) {
     if (!obj || !obj.solid) continue;
+    const polygon = buildClientMapObjectPolygon(obj, 4);
+    if (polygon) {
+      if (clientSegmentIntersectsPolygon(fromX, fromY, toX, toY, polygon)) return false;
+      continue;
+    }
     const rect = buildClientMapObjectRect(obj);
     if (clientSegmentIntersectsExpandedRect(fromX, fromY, toX, toY, rect, 4)) return false;
   }

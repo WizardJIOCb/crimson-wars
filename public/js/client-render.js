@@ -1323,17 +1323,18 @@ function drawTrees() {
     const s = (tr.scale || 1) * 1.6;
     const treeSprite = sprites.tree;
 
-    drawShadowAtScreen(x + 8 * s, y + 12 * s, 14 * s, 6 * s, 0.24);
-
     if (treeSprite?.complete && treeSprite.naturalWidth > 0 && treeSprite.naturalHeight > 0) {
       const drawH = 86 * s;
       const drawW = drawH * (treeSprite.naturalWidth / treeSprite.naturalHeight);
+      drawShadowAtScreen(x + 8 * s, y - 2 * s, 14 * s, 6 * s, 0.24);
       ctx.save();
       ctx.translate(x, y);
       ctx.drawImage(treeSprite, -drawW * 0.5, -drawH * 0.93, drawW, drawH);
       ctx.restore();
       continue;
     }
+
+    drawShadowAtScreen(x + 8 * s, y + 12 * s, 14 * s, 6 * s, 0.24);
 
     ctx.save();
     ctx.translate(x, y);
@@ -1516,6 +1517,7 @@ function getMapObjectGeometrySignature(obj) {
     Number(obj?.collisionH) || 0,
     Number(obj?.collisionOffsetY) || 0,
     Number(obj?.anchorY) || 0,
+    Number(obj?.angle) || 0,
     points.length,
   ].join(':');
 }
@@ -1529,14 +1531,28 @@ function buildMapObjectGeometry(obj) {
   const baseY = (Number(obj?.y) || 0) + Math.max(22, Number(obj?.h) || 22) * (1 - anchorY);
   const topY = (Number(obj?.y) || 0) - Math.max(22, Number(obj?.h) || 22) * anchorY;
   const points = Array.isArray(obj?.collisionPoints) ? obj.collisionPoints : [];
+  const angle = Number(obj?.angle) || 0;
+  const cos = angle ? Math.cos(angle) : 1;
+  const sin = angle ? Math.sin(angle) : 0;
   const polygon = [];
+  const pushLocalPoint = (localX, localY) => {
+    polygon.push({
+      x: centerX + localX * cos - localY * sin,
+      y: centerY + localX * sin + localY * cos,
+    });
+  };
   if (points.length >= 3) {
     for (const point of points) {
       const px = Array.isArray(point) ? Number(point[0]) : Number(point?.x);
       const py = Array.isArray(point) ? Number(point[1]) : Number(point?.y);
       if (!Number.isFinite(px) || !Number.isFinite(py)) continue;
-      polygon.push({ x: centerX + px * width, y: centerY + py * height });
+      pushLocalPoint(px * width, py * height);
     }
+  } else if (angle) {
+    pushLocalPoint(-width * 0.5, -height * 0.5);
+    pushLocalPoint(width * 0.5, -height * 0.5);
+    pushLocalPoint(width * 0.5, height * 0.5);
+    pushLocalPoint(-width * 0.5, height * 0.5);
   }
   let bounds = null;
   if (polygon.length >= 3) {

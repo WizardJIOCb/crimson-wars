@@ -621,6 +621,17 @@
     return input.value;
   }
 
+  function applyMapPropTableField(prop, input) {
+    const field = input?.dataset?.field || '';
+    if (!prop || !field) return '';
+    if (field === 'angle') {
+      prop.angle = clamp(degToRad(input.value), -Math.PI * 2, Math.PI * 2);
+    } else {
+      prop[field] = getEditorFieldValue(input);
+    }
+    return field;
+  }
+
   function ensureMapScene(map) {
     if (!map) return null;
     map.scene = map.scene && typeof map.scene === 'object' ? map.scene : {};
@@ -713,7 +724,12 @@
       const prop = props[index];
       const screen = normToScreen(prop.x, prop.y);
       const size = getPropDisplaySize(prop);
-      if (Math.abs(point.sx - screen.x) <= size.w * 0.5 + 8 && Math.abs(point.sy - screen.y) <= size.h * 0.5 + 8) {
+      const angle = -(Number(prop.angle) || 0);
+      const dx = point.sx - screen.x;
+      const dy = point.sy - screen.y;
+      const localX = dx * Math.cos(angle) - dy * Math.sin(angle);
+      const localY = dx * Math.sin(angle) + dy * Math.cos(angle);
+      if (Math.abs(localX) <= size.w * 0.5 + 8 && Math.abs(localY) <= size.h * 0.5 + 8) {
         return index;
       }
     }
@@ -1112,7 +1128,7 @@
         <td><input data-field="x" type="number" step="0.01" value="${prop.x ?? 0.5}" /></td>
         <td><input data-field="y" type="number" step="0.01" value="${prop.y ?? 0.5}" /></td>
         <td><input data-field="scale" type="number" step="0.01" value="${prop.scale ?? 1}" /></td>
-        <td><input data-field="angle" type="number" step="0.01" value="${prop.angle ?? 0}" /></td>
+        <td><input data-field="angle" type="number" step="1" value="${Number(radToDeg(prop.angle)).toFixed(1)}" /></td>
         <td><input data-field="zombieBreakable" type="checkbox" ${prop.zombieBreakable ? 'checked' : ''} /></td>
         <td><button class="btn btn-danger" data-action="delete-prop">✕</button></td>
       </tr>
@@ -2626,8 +2642,7 @@
       if (!row) return;
       const prop = getSelectedMap()?.scene?.plannedObjects?.[Number(row.dataset.propIndex)];
       if (!prop) return;
-      const field = event.target.dataset.field;
-      prop[field] = getEditorFieldValue(event.target);
+      const field = applyMapPropTableField(prop, event.target);
       setDirty(true);
       if (field === 'zombieBreakable') renderObjectList();
       renderMapPreview();
@@ -2637,8 +2652,7 @@
       if (!row) return;
       const prop = getSelectedMap()?.scene?.plannedObjects?.[Number(row.dataset.propIndex)];
       if (!prop) return;
-      const field = event.target.dataset.field;
-      prop[field] = getEditorFieldValue(event.target);
+      const field = applyMapPropTableField(prop, event.target);
       setDirty(true);
       if (field === 'zombieBreakable') renderObjectList();
       renderMapPreview();
