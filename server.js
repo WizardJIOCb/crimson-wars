@@ -1,4 +1,4 @@
-const path = require('path');
+﻿const path = require('path');
 const http = require('http');
 const crypto = require('crypto');
 const express = require('express');
@@ -12,6 +12,7 @@ const { createPlayerAuthStore, normalizeNickname } = require('./server/player-au
 const { createRecordsStore } = require('./server/records-store');
 const { createRuntimeRegistryStore } = require('./server/runtime-registry-store');
 const { createSkillsStore } = require('./server/skills-store');
+const { createAccountProgressionStore } = require('./server/account-progression-store');
 const PORT = process.env.PORT || 8080;
 const IS_PROD = process.env.NODE_ENV === 'production';
 const DEV_CHEATS_ENABLED = (process.env.DEV_CHEATS_ENABLED || '1') !== '0';
@@ -99,6 +100,20 @@ const {
   WEAPONS,
   DROP_WEAPON_KEYS,
   DEFAULT_SKILL_DEFS,
+  ACCOUNT_BASE_HERO_ID,
+  ACCOUNT_XP_BASE,
+  ACCOUNT_XP_PER_LEVEL,
+  ACCOUNT_XP_QUAD,
+  ACCOUNT_XP_FROM_SCORE_MUL,
+  ACCOUNT_XP_FROM_KILLS_MUL,
+  ACCOUNT_XP_FROM_BOSS_KILLS_MUL,
+  ACCOUNT_XP_FROM_SURVIVAL_SEC_MUL,
+  ACCOUNT_SHARDS_FROM_SCORE_MUL,
+  ACCOUNT_SHARDS_FROM_KILLS_MUL,
+  ACCOUNT_SHARDS_FROM_BOSS_KILLS_MUL,
+  ACCOUNT_SHARDS_FROM_SURVIVAL_SEC_MUL,
+  HERO_DEFS,
+  HERO_SKILL_TREE_DEFS,
 } = config;
 
 const app = express();
@@ -134,6 +149,24 @@ const playerAuthStore = createPlayerAuthStore({
   dataDir: DATA_DIR,
   dbPath: PLAYER_AUTH_DB_PATH,
 });
+const accountProgressionStore = createAccountProgressionStore({
+  dataDir: DATA_DIR,
+  dbPath: PLAYER_AUTH_DB_PATH,
+  baseHeroId: ACCOUNT_BASE_HERO_ID,
+  heroDefs: HERO_DEFS,
+  heroSkillTreeDefs: HERO_SKILL_TREE_DEFS,
+  xpBase: ACCOUNT_XP_BASE,
+  xpPerLevel: ACCOUNT_XP_PER_LEVEL,
+  xpQuad: ACCOUNT_XP_QUAD,
+  xpFromScoreMul: ACCOUNT_XP_FROM_SCORE_MUL,
+  xpFromKillsMul: ACCOUNT_XP_FROM_KILLS_MUL,
+  xpFromBossKillsMul: ACCOUNT_XP_FROM_BOSS_KILLS_MUL,
+  xpFromSurvivalSecMul: ACCOUNT_XP_FROM_SURVIVAL_SEC_MUL,
+  shardsFromScoreMul: ACCOUNT_SHARDS_FROM_SCORE_MUL,
+  shardsFromKillsMul: ACCOUNT_SHARDS_FROM_KILLS_MUL,
+  shardsFromBossKillsMul: ACCOUNT_SHARDS_FROM_BOSS_KILLS_MUL,
+  shardsFromSurvivalSecMul: ACCOUNT_SHARDS_FROM_SURVIVAL_SEC_MUL,
+});
 const runtimeRegistryStore = createRuntimeRegistryStore({
   dataDir: DATA_DIR,
   dbPath: RUNTIME_REGISTRY_DB_PATH,
@@ -150,6 +183,40 @@ const skillsStore = createSkillsStore({
   skillsConfigPath: SKILLS_CONFIG_PATH,
   defaultSkillDefs: DEFAULT_SKILL_DEFS,
 });
+const progressionCatalog = accountProgressionStore.getCatalogPayload();
+const heroDefsById = Object.fromEntries((progressionCatalog.heroes || []).map((hero) => [hero.id, hero]));
+
+function sanitizeHeroId(rawHeroId) {
+  const id = (rawHeroId || '').toString().trim();
+  if (heroDefsById[id]) return id;
+  return progressionCatalog.baseHeroId || ACCOUNT_BASE_HERO_ID;
+}
+
+function resolveJoinHeroForPlayer(playerAccountId, requestedHeroId) {
+  const desiredHeroId = sanitizeHeroId(requestedHeroId);
+  if (!playerAccountId) {
+    return {
+      heroId: progressionCatalog.baseHeroId || ACCOUNT_BASE_HERO_ID,
+      progression: null,
+    };
+  }
+
+  const progression = accountProgressionStore.getOrCreateProgression(playerAccountId);
+  if (!progression) {
+    return {
+      heroId: progressionCatalog.baseHeroId || ACCOUNT_BASE_HERO_ID,
+      progression: null,
+    };
+  }
+
+  let heroId = desiredHeroId;
+  if (!progression.unlockedHeroes.includes(heroId)) {
+    heroId = progression.unlockedHeroes.includes(progression.activeHero)
+      ? progression.activeHero
+      : (progression.unlockedHeroes[0] || progressionCatalog.baseHeroId || ACCOUNT_BASE_HERO_ID);
+  }
+  return { heroId, progression };
+}
 
 function clampNum(value, min, max, fallback) {
   const n = Number(value);
@@ -482,6 +549,7 @@ app.get('/api/room-route', (req, res) => {
 });
 
 app.get('/api/player/me', (req, res) => {
+  const catalog = accountProgressionStore.getCatalogPayload();
   if (!req.playerUser) {
     res.json({
       ok: true,
@@ -489,16 +557,64 @@ app.get('/api/player/me', (req, res) => {
       player: null,
       identities: [],
       providers: ['google', 'vk', 'mailru'],
+      progressionCatalog: catalog,
+      progression: null,
     });
     return;
   }
+  const progression = accountProgressionStore.getOrCreateProgression(req.playerUser.id);
   res.json({
     ok: true,
     authenticated: true,
     player: req.playerUser,
     identities: req.playerSession?.identities || [],
     providers: ['google', 'vk', 'mailru'],
+    progressionCatalog: catalog,
+    progression: accountProgressionStore.toPublicProgression(progression),
   });
+});
+
+app.post('/api/player/progression/select-hero', (req, res) => {
+  if (!req.playerUser) {
+    res.status(401).json({ ok: false, message: 'Authentication required' });
+    return;
+  }
+  const heroId = (req.body?.heroId || '').toString();
+  const result = accountProgressionStore.selectActiveHero(req.playerUser.id, heroId);
+  if (!result?.ok) {
+    res.status(result?.code || 400).json({ ok: false, message: result?.message || 'Failed to select hero' });
+    return;
+  }
+  res.json({ ok: true, progression: result.progression });
+});
+
+app.post('/api/player/progression/unlock-hero', (req, res) => {
+  if (!req.playerUser) {
+    res.status(401).json({ ok: false, message: 'Authentication required' });
+    return;
+  }
+  const heroId = (req.body?.heroId || '').toString();
+  const result = accountProgressionStore.unlockHero(req.playerUser.id, heroId);
+  if (!result?.ok) {
+    res.status(result?.code || 400).json({ ok: false, message: result?.message || 'Failed to unlock hero' });
+    return;
+  }
+  res.json({ ok: true, progression: result.progression, alreadyUnlocked: !!result.alreadyUnlocked });
+});
+
+app.post('/api/player/progression/upgrade-node', (req, res) => {
+  if (!req.playerUser) {
+    res.status(401).json({ ok: false, message: 'Authentication required' });
+    return;
+  }
+  const heroId = (req.body?.heroId || '').toString();
+  const nodeId = (req.body?.nodeId || '').toString();
+  const result = accountProgressionStore.upgradeHeroNode(req.playerUser.id, heroId, nodeId);
+  if (!result?.ok) {
+    res.status(result?.code || 400).json({ ok: false, message: result?.message || 'Failed to upgrade node' });
+    return;
+  }
+  res.json({ ok: true, progression: result.progression });
 });
 
 app.get('/api/player/nickname-status', (req, res) => {
@@ -771,6 +887,24 @@ app.put('/api/admin/skills/:id', requireAdmin, (req, res) => {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function segmentIntersectsCircle(x0, y0, x1, y1, cx, cy, radius) {
+  const r = Math.max(0, Number(radius) || 0);
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq <= 0.000001) {
+    const pdx = cx - x0;
+    const pdy = cy - y0;
+    return (pdx * pdx + pdy * pdy) <= r * r;
+  }
+  const t = clamp(((cx - x0) * dx + (cy - y0) * dy) / lenSq, 0, 1);
+  const px = x0 + dx * t;
+  const py = y0 + dy * t;
+  const ddx = cx - px;
+  const ddy = cy - py;
+  return (ddx * ddx + ddy * ddy) <= r * r;
 }
 
 function randomSpawnEdge() {
@@ -1064,6 +1198,8 @@ function fireCompanionWeapon(room, companion, owner, now) {
       lifeMs: weapon.bulletLifeMs,
       damage: Math.max(1, Math.round(weapon.bulletDamage * damageMul)),
       color: weapon.color,
+      weaponKey: String(companion.weaponKey || 'pistol').toLowerCase(),
+      segmentHit: String(companion.weaponKey || '').toLowerCase() === 'sniper',
     });
   }
 
@@ -1688,6 +1824,8 @@ function fireFromPlayer(room, player) {
       lifeMs: weapon.bulletLifeMs,
       damage: Math.max(1, Math.round(weapon.bulletDamage * damageMul)),
       color: weapon.color,
+      weaponKey: String(player.weaponKey || 'pistol').toLowerCase(),
+      segmentHit: String(player.weaponKey || '').toLowerCase() === 'sniper',
     });
   }
 
@@ -1817,6 +1955,19 @@ function rebuildPlayerDerivedStats(player) {
     player.hpRegenPerSec += (Number(def.hpRegenPerSecPerLevel) || 0) * lvl;
     player.pickupRadius += (Number(def.pickupRadiusPerLevel) || 0) * lvl;
     player.extraDodgeCharges += (Number(def.extraDodgeChargesPerLevel) || 0) * lvl;
+  }
+
+  const accountBonuses = player.accountHeroBonuses && typeof player.accountHeroBonuses === 'object'
+    ? player.accountHeroBonuses
+    : null;
+  if (accountBonuses) {
+    player.damageMul += Number(accountBonuses.damageMul) || 0;
+    player.fireRateMul += Number(accountBonuses.fireRateMul) || 0;
+    player.moveSpeedMul += Number(accountBonuses.moveSpeedMul) || 0;
+    player.maxHpBonus += Number(accountBonuses.maxHpFlat) || 0;
+    player.hpRegenPerSec += Number(accountBonuses.hpRegenPerSec) || 0;
+    player.pickupRadius += Number(accountBonuses.pickupRadius) || 0;
+    player.extraDodgeCharges += Number(accountBonuses.extraDodgeCharges) || 0;
   }
 
   const nextMaxHp = PLAYER_HP_MAX + Math.max(0, Math.round(player.maxHpBonus));
@@ -2268,16 +2419,39 @@ function downPlayer(room, target, now) {
   const runReplay = finalizeRunReplay(room, target.runReplay, now);
   const runDetails = buildRunDetails(room, { ...target, weaponKey: weaponKeyBeforeDown }, now);
   setPlayerWeapon(target, 'pistol');
+
+  const kills = room.kills.get(target.id) || 0;
+  const score = room.scores.get(target.id) || 0;
+  const survivalSec = Math.max(1, Math.floor((now - (target.joinedAt || now)) / 1000));
   recordsStore.pushRecord({
     name: target.name,
-    kills: room.kills.get(target.id) || 0,
-    score: room.scores.get(target.id) || 0,
+    kills,
+    score,
     roomCode: room.code,
-    durationSec: Math.max(1, Math.floor((now - (target.joinedAt || now)) / 1000)),
+    durationSec: survivalSec,
     at: now,
     runDetails,
     runReplay,
   });
+
+  if (target.playerAccountId) {
+    const rewardResult = accountProgressionStore.grantRunRewards(target.playerAccountId, {
+      score,
+      kills,
+      bossKills: target.bossKills,
+      survivalSec,
+    });
+    if (rewardResult?.progression) {
+      target.accountProgression = rewardResult.progression;
+      target.accountHeroBonuses = accountProgressionStore.computeHeroBonuses(target.accountProgression, target.playerClass);
+      sendTo(target.ws, {
+        type: 'accountProgression',
+        progression: rewardResult.progression,
+        rewards: rewardResult.rewards,
+      });
+    }
+  }
+
   broadcastRoom(room, { type: 'system', message: `${target.name} was downed.` });
 }
 
@@ -2642,7 +2816,8 @@ function joinRoom(ws, join) {
 
   const id = Math.random().toString(36).slice(2, 10);
   const name = identity.name;
-  const playerClass = (join?.playerClass || 'cyber').toString().trim().slice(0, 24) || 'cyber';
+  const joinHero = resolveJoinHeroForPlayer(identity.playerAccountId, join?.playerClass);
+  const playerClass = joinHero.heroId;
   const spawn = randomPlayerSpawn();
 
   const player = {
@@ -2697,6 +2872,8 @@ function joinRoom(ws, join) {
     playerAccountId: identity.playerAccountId || null,
     isRegisteredNickname: !!identity.isRegistered,
     runReplay: null,
+    accountProgression: joinHero.progression ? accountProgressionStore.toPublicProgression(joinHero.progression) : null,
+    accountHeroBonuses: joinHero.progression ? accountProgressionStore.computeHeroBonuses(joinHero.progression, playerClass) : null,
   };
 
   rebuildPlayerDerivedStats(player);
@@ -2720,7 +2897,10 @@ function joinRoom(ws, join) {
       name,
       playerAccountId: player.playerAccountId,
       isRegisteredNickname: player.isRegisteredNickname,
+      activeHero: player.playerClass,
     },
+    progression: player.accountProgression,
+    progressionCatalog,
   });
 
   broadcastRoom(room, {
@@ -3005,6 +3185,8 @@ function tickRoom(room, dtSec, now) {
       b.vy = Math.sin(angle) * speed;
     }
 
+    const prevX = b.x;
+    const prevY = b.y;
     b.x += b.vx * dtSec;
     b.y += b.vy * dtSec;
     b.lifeMs -= dtSec * 1000;
@@ -3014,14 +3196,17 @@ function tickRoom(room, dtSec, now) {
       continue;
     }
 
+    const bulletR = Math.max(BULLET_RADIUS, Number(b.radius) || BULLET_RADIUS);
+    const useSegmentHit = Boolean(b.segmentHit);
     let hit = false;
     if (b.fromEnemy) {
       for (const p of room.players.values()) {
         if (!p.alive) continue;
-        const dx = p.x - b.x;
-        const dy = p.y - b.y;
-        const rr = PLAYER_RADIUS + BULLET_RADIUS;
-        if (dx * dx + dy * dy <= rr * rr) {
+        const rr = PLAYER_RADIUS + bulletR;
+        const collides = useSegmentHit
+          ? segmentIntersectsCircle(prevX, prevY, b.x, b.y, p.x, p.y, rr)
+          : (((p.x - b.x) ** 2 + (p.y - b.y) ** 2) <= rr * rr);
+        if (collides) {
           applyEnemyHitToPlayer(room, p, Math.max(1, Number(b.damage) || ENEMY_RANGED_DAMAGE), now, true);
           hit = true;
           break;
@@ -3030,10 +3215,11 @@ function tickRoom(room, dtSec, now) {
     } else {
       for (let ei = room.enemies.length - 1; ei >= 0; ei -= 1) {
         const e = room.enemies[ei];
-        const dx = e.x - b.x;
-        const dy = e.y - b.y;
-        const rr = (Number(e.radius) || ENEMY_RADIUS) + Math.max(BULLET_RADIUS, Number(b.radius) || BULLET_RADIUS);
-        if (dx * dx + dy * dy <= rr * rr) {
+        const rr = (Number(e.radius) || ENEMY_RADIUS) + bulletR;
+        const collides = useSegmentHit
+          ? segmentIntersectsCircle(prevX, prevY, b.x, b.y, e.x, e.y, rr)
+          : (((e.x - b.x) ** 2 + (e.y - b.y) ** 2) <= rr * rr);
+        if (collides) {
           hit = true;
           if (b.kind === 'rocket') explodeRocket(room, b, now);
           else enemyTakeDamage(room, e, b.damage, b.ownerId, now);
@@ -3041,7 +3227,6 @@ function tickRoom(room, dtSec, now) {
         }
       }
     }
-
     if (hit) {
       room.bullets.splice(i, 1);
     }
@@ -3355,3 +3540,10 @@ server.listen(PORT, () => {
     console.log(`Bootstrap admin password: ${ADMIN_BOOTSTRAP_PASSWORD}`);
   }
 });
+
+
+
+
+
+
+
