@@ -2194,6 +2194,21 @@ async function sendJoinRequest(roomCode, joinSync = null, options = {}) {
   awaitingJoinWelcome = true;
   resetNetStats();
   waitingForFirstStateSince = performance.now();
+  const joinSocket = ws;
+  const joinStartedAt = waitingForFirstStateSince;
+  window.setTimeout(() => {
+    if (ws !== joinSocket || !waitingForFirstState || waitingForFirstStateSince !== joinStartedAt) return;
+    // Close this attempt so a late welcome cannot put the player into a hidden run.
+    joinSocket.close(1000, 'room start timeout');
+    leaveActiveRoom();
+    const message = 'Не дождались начала боя. Попробуй создать комнату ещё раз.';
+    statusEl.textContent = message;
+    setJoinFeedback(message);
+    joinOverlay.style.display = 'grid';
+    joinOverlay.classList.remove('death-mode');
+    setDeathCinematicActive(false);
+    updateMobileControlsVisibility();
+  }, 15000);
   sendJson({
     type: 'join',
     name,
@@ -6212,7 +6227,8 @@ pvpDurationSelectEl?.addEventListener('change', () => {
 
 joinForm.addEventListener('submit', (e) => {
   e.preventDefault();
-  if (ws.readyState !== WebSocket.OPEN) return;
+  // sendJoinRequest resolves the worker and opens (or reconnects) its socket.
+  // A disconnected menu must still allow creating or joining a room.
   const roomCode = joinMode === 'create' ? '' : roomCodeInput.value.trim();
   const joinSync = joinMode === 'create' ? configFromSyncUi() : null;
   void sendJoinRequest(roomCode, joinSync, { source: 'join_form' });
@@ -6564,6 +6580,15 @@ close: () => {
   awaitingJoinWelcome = false;
   netStats.pendingPings.clear();
   window.cwCancelRunStartLoading?.();
+  if (waitingForFirstState) {
+    clearLocalSessionState();
+    forceFreshSocketOnNextJoin = true;
+    setJoinFeedback('Соединение прервалось при запуске боя. Попробуй ещё раз.');
+    joinOverlay.style.display = 'grid';
+    joinOverlay.classList.remove('death-mode');
+    setDeathCinematicActive(false);
+    updateMobileControlsVisibility();
+  }
   if (!restartReloadTimer) {
     statusEl.textContent = 'Disconnected';
   }
@@ -7157,7 +7182,9 @@ message: (ev) => {
 },
 });
 
-void connectGameSocket(APP_ORIGIN);
+void connectGameSocket(APP_ORIGIN).catch((error) => {
+  statusEl.textContent = error.message || 'Failed to connect to game server.';
+});
 
 function buildClientMapObjectRect(obj, pad = 0) {
   const width = Math.max(16, Number(obj?.collisionW) || Number(obj?.w) || 0);

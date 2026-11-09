@@ -1306,20 +1306,26 @@ function connectGameSocket(origin = currentWorkerOrigin, options = {}) {
   ws = socket;
   socketOpenPromise = new Promise((resolve, reject) => {
     let settled = false;
-    socket.addEventListener('open', () => {
-      if (socket !== ws || settled) return;
+    const finish = (error = null) => {
+      if (settled) return;
       settled = true;
-      resolve();
+      window.clearTimeout(timer);
+      if (error) reject(error);
+      else resolve();
+    };
+    const timer = window.setTimeout(() => {
+      finish(new Error('Не удалось подключиться к игровому серверу. Попробуй ещё раз.'));
+      socket.close(1000, 'connection timeout');
+    }, 12000);
+    socket.addEventListener('open', () => {
+      if (socket !== ws) return;
+      finish();
     });
     socket.addEventListener('error', () => {
-      if (socket !== ws || settled) return;
-      settled = true;
-      reject(new Error('Socket connection failed.'));
+      finish(new Error('Socket connection failed.'));
     });
     socket.addEventListener('close', () => {
-      if (socket !== ws || settled) return;
-      settled = true;
-      reject(new Error('Socket closed before connection.'));
+      finish(new Error('Socket closed before connection.'));
     });
   });
   attachSocketBridge(socket);
@@ -1422,7 +1428,18 @@ async function resolveRoomRoute(mode, roomCode = '', options = {}) {
   if (normalizedCode) params.set('roomCode', normalizedCode);
   if ((mode === 'create') && requestedGameMode !== 'normal') params.set('gameMode', requestedGameMode);
   if ((mode === 'create') && requestedGameMode === 'pvp') params.set('pvpDurationMin', String(requestedPvpDurationMin));
-  return apiJson(`/api/room-route?${params.toString()}`, { method: 'GET' });
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 12000);
+  try {
+    return await apiJson(`/api/room-route?${params.toString()}`, { method: 'GET', signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error('Сервер не ответил на запрос комнаты. Попробуй ещё раз.');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 function redirectToResolvedTarget(route) {
